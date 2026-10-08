@@ -148,6 +148,16 @@ test('pad2', () => {
   assert.equal(pad2(12), '12');
 });
 
+test('stateLabel: la frase della rotta; senza, la parola grezza senza trattino basso', () => {
+  /* ux-ui-specialist, 08/10/2026: il ripiego `x.stato_leggibile || x.stato`
+     mostrava «In_corso». Mutazione ESEGUITA: tolto il `replace` -- rossa. */
+  loadScripts([COMMON], { html: HTML });
+  assert.equal(stateLabel('In attesa del momento'), 'In attesa del momento');
+  assert.equal(stateLabel('in_corso'), 'In corso');
+  assert.equal(stateBadge('fallita'), 'badge-err');
+  assert.equal(stateBadge('una_parola_nuova'), 'badge-off');
+});
+
 test('api: Content-Type JSON e l\'intestazione anti-CSRF, quelle di chi chiama vincono', async () => {
   loadScripts([COMMON], { html: HTML });
   const calls = [];

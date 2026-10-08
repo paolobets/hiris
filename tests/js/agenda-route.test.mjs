@@ -142,6 +142,17 @@ test('una promessa saltata mostra il motivo, non solo lo stato', async () => {
   assert.doesNotMatch(document.body.textContent, /\bsaltata\b/);
 });
 
+test('una promessa disdetta non mostra il motivo: la stessa regola delle costruzioni', async () => {
+  /* ux-ui-specialist, 08/10/2026: l'agenda mostrava il motivo per ogni stato,
+     le costruzioni lo nascondono per una disdetta (l'ha chiesta l'utente).
+     Mutazione ESEGUITA: tolta la guardia `p.stato !== 'disdetta'` -- rossa. */
+  const { document } = await monta({
+    get: { agenda: [{ ...PROMESSE[1], id: 'p9', stato: 'disdetta', motivo: 'una frase che non deve vedersi' }] },
+  });
+  assert.ok(document.body.textContent.includes(etichetta('disdetta')));
+  assert.doesNotMatch(document.body.textContent, /una frase che non deve vedersi/);
+});
+
 test('un chiedi concluso in silenzio mostra comunque cio\' che ha trovato', async () => {
   const { document } = await monta();
   assert.ok(document.body.textContent.includes('31 gradi'));

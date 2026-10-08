@@ -141,18 +141,9 @@ window.HirisConstructions = (function () {
   'use strict';
 
   /* La parola di uno stato arriva dalla rotta (`stato_leggibile`, dal
-     vocabolario `hiris/app/states.py`, C-10 della Tappa 8): questa pagina
-     tiene solo il colore. Fino all'08/10/2026 teneva anche la parola, in
-     una tabella sua. */
-  var STATE_BADGE = {
-    in_attesa: 'badge-off',
-    in_corso: 'badge-on',
-    applicata: 'badge-on',
-    disdetta: 'badge-off',
-    fallita: 'badge-err',
-    scaduta: 'badge-warn',
-    incerta: 'badge-warn'
-  };
+     vocabolario `hiris/app/states.py`, C-10 della Tappa 8), e il colore del
+     badge e' uno per tutte le code (`stateBadge`, common.js). Fino
+     all'08/10/2026 questa pagina teneva una tabella sua di tutti e due. */
 
   var DOMAIN_NAME = { automation: 'Automazione', script: 'Script', scene: 'Scena' };
   var DOMAIN_ARTICLE = { automation: 'l’automazione', script: 'lo script', scene: 'la scena' };
@@ -876,7 +867,7 @@ window.HirisConstructions = (function () {
     head.appendChild(nome);
     var bOperation = operationBadge(c);
     head.appendChild(el('span', 'agent-badge ' + bOperation.cls, bOperation.testo));
-    head.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[c.stato] || 'badge-off'),
+    head.appendChild(el('span', 'agent-badge ' + stateBadge(c.stato),
       stateLabel(c.stato_leggibile || c.stato)));
     box.appendChild(head);
     var chi = requesterLine(c);

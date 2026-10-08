@@ -154,9 +154,11 @@ def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
 
 
 def test_ogni_stato_di_una_promessa_ha_un_badge_e_una_frase():
-    js = _promesse_route_js()
+    # Il colore del badge e' uno per tutte le code dall'08/10/2026
+    # (ux-ui-specialist): vive in common.js, non piu' nella pagina.
+    js = (BASE / "common.js").read_text(encoding="utf-8")
     badge = re.search(r"var STATE_BADGE = \{([\s\S]*?)\};", js)
-    assert badge, "STATE_BADGE non trovato in agenda-route.js"
+    assert badge, "STATE_BADGE non trovato in common.js"
     chiavi_badge = set(re.findall(r"(\w+):", badge.group(1)))
     assert set(STATES_CONCLUSI) <= set(PROMISE_STATES)
     for stato in PROMISE_STATES:

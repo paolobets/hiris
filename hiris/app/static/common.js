@@ -75,11 +75,38 @@ function el(tag, cls, text) {
    maiuscola, il resto com'e'. La frase arriva dalla rotta
    (`stato_leggibile`, dal vocabolario `hiris/app/states.py`, C-10 della
    Tappa 8), minuscola perche' il server la mette anche in mezzo a una
-   frase; le pagine non tengono una tabella loro delle parole. */
+   frase; le pagine non tengono una tabella loro delle parole. Se la frase
+   manca e arriva la parola grezza dell'archivio, il trattino basso diventa
+   uno spazio: «In corso», non «In_corso» (ux-ui-specialist, 08/10/2026). */
 // eslint-disable-next-line no-unused-vars -- global bare, letta da config/agenda-route.js e config/constructions-route.js
 function stateLabel(phrase) {
-  var text = phrase == null ? '' : String(phrase);
+  var text = phrase == null ? '' : String(phrase).replace(/_/g, ' ');
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/* Il colore del badge di uno stato, uno per tutte le code (promesse,
+   costruzioni): le parole sono del vocabolario unico (`hiris/app/states.py`),
+   e lo stesso stato ha la stessa faccia in ogni pagina. Fino all'08/10/2026
+   ogni pagina ne teneva una mappa sua (ux-ui-specialist, 08/10/2026).
+   in_attesa e disdetta neutri (il «no» di una persona non e' un guasto);
+   in_corso, mantenuta e applicata accesi; fallita rosso; saltata, scaduta e
+   incerta ambra (tempo passato o esito non saputo, non un fallimento). Uno
+   stato che la mappa non conosce e' neutro. */
+var STATE_BADGE = {
+  in_attesa: 'badge-off',
+  in_corso: 'badge-on',
+  mantenuta: 'badge-on',
+  applicata: 'badge-on',
+  disdetta: 'badge-off',
+  fallita: 'badge-err',
+  saltata: 'badge-warn',
+  scaduta: 'badge-warn',
+  incerta: 'badge-warn'
+};
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/agenda-route.js e config/constructions-route.js
+function stateBadge(state) {
+  return STATE_BADGE[state] || 'badge-off';
 }
 
 /* Svuota un nodo e lo restituisce; un nodo assente resta assente. */

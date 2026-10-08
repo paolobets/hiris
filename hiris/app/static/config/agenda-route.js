@@ -82,15 +82,8 @@ window.HirisAgendaRoute = (function () {
      C-10 della Tappa 8), e `stateLabel` le alza la prima lettera. Fino
      all'08/10/2026 questa pagina ne teneva una tabella sua, e la pagina
      Costruzioni un'altra: `disdetta` si leggeva «Disdetta» qui e «Declinata
-     da te» li'. Resta qui il colore del badge, che e' della pagina. */
-  var STATE_BADGE = {
-    in_attesa: 'badge-off',
-    in_corso: 'badge-on',
-    mantenuta: 'badge-on',
-    saltata: 'badge-warn',
-    fallita: 'badge-err',
-    disdetta: 'badge-off'
-  };
+     da te» li'. Anche il colore del badge e' uno per tutte le code
+     (`stateBadge`, common.js, 08/10/2026). */
   var PENDING_STATES = ['in_attesa', 'in_corso'];
   /* Gli stati che sono una NOTIZIA per chi legge -- gemello di
      `keeper/promise.py::STATES_ESITO`, legato a quello per VALORI da
@@ -352,10 +345,13 @@ window.HirisAgendaRoute = (function () {
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
 
-    line.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[p.stato] || 'badge-off'),
+    line.appendChild(el('span', 'agent-badge ' + stateBadge(p.stato),
       stateLabel(p.stato_leggibile || p.stato)));
 
-    if (p.motivo) {
+    /* Il motivo MAI per `disdetta`, come nella pagina Costruzioni: il «no»
+       di una persona non e' un fallimento, e non si colora come uno
+       (ux-ui-specialist, 08/10/2026: una regola sola per le due code). */
+    if (p.motivo && p.stato !== 'disdetta') {
       var reason = el('p', null, p.motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p.stato);
       line.appendChild(reason);

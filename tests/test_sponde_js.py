@@ -109,6 +109,10 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # `stateLabel` mette la maiuscola alla frase che la rotta manda
     # (`stato_leggibile`), letta dagli Impegni e dalle Costruzioni.
     assert "stateLabel" in globali
+    # 49 -> 50 col colore del badge (ux-ui-specialist, 08/10/2026):
+    # `stateBadge` e' la mappa unica stato -> colore, che gli Impegni e le
+    # Costruzioni tenevano ciascuno in una copia sua.
+    assert "stateBadge" in globali
     #
     # 34 -> 45 con `static/common.js` (Tappa 4, Task 3, 05/10/2026): le
     # utilita' che ogni pagina si riscriveva -- `el`, `clearEl`, `byId`,
@@ -137,7 +141,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 49
+    assert len(globali) == 50
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():
