@@ -105,6 +105,10 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # `SOGLIE_ATTESA`, `FRASI_ATTESA` e `stopwatchText` sono le soglie e le
     # frasi dell'attesa, scritte in common.js per la chat e per le Proposte.
     assert {"SOGLIE_ATTESA", "FRASI_ATTESA", "stopwatchText"} <= globali
+    # 48 -> 49 col vocabolario degli stati (Tappa 8, T4, 08/10/2026):
+    # `stateLabel` mette la maiuscola alla frase che la rotta manda
+    # (`stato_leggibile`), letta dagli Impegni e dalle Costruzioni.
+    assert "stateLabel" in globali
     #
     # 34 -> 45 con `static/common.js` (Tappa 4, Task 3, 05/10/2026): le
     # utilita' che ogni pagina si riscriveva -- `el`, `clearEl`, `byId`,
@@ -133,7 +137,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 48
+    assert len(globali) == 49
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

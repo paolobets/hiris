@@ -40,6 +40,7 @@ import time
 from collections.abc import Iterable
 
 from .mind.observer import SCOPE_TURN_KIND
+from .mind.store import ATTEMPT_EXPIRED
 from .models_store import bridge_deadline_min
 from .reasoning.consegna import close_expired_promise
 from .steering import JOB_SPECIES
@@ -319,7 +320,7 @@ async def reasoning_sweep(app) -> None:
             if store is not None:
                 attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
                 store.record_attempt(
-                    outcome="scaduta",
+                    outcome=ATTEMPT_EXPIRED,
                     detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti",
                     version=read_version())
             logger.warning(

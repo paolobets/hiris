@@ -37,6 +37,14 @@ import threading
 import time as _time
 import uuid
 
+from ..states import (
+    AUTOMATED,
+    CANCELLED,
+    DONE_ELSEWHERE,
+    PENDING,
+    SUPERSEDED,
+    readable,
+)
 from ..storage import archive_name, connect, init_schema, prune_declared
 from .scope import may_overwrite
 
@@ -932,6 +940,36 @@ def _drop_actuator_proposals(conn) -> None:
                      (json.dumps(body, ensure_ascii=False), row["giorno"]))
 
 
+#: Le parole con cui fino all'08/10/2026 una proposta da fare a mano diceva
+#: «aspetto la tua risposta» e «hai detto no». Sono parole RITIRATE (Tappa 8,
+#: D4): non esiste una fonte da interrogare, l'elenco e' il fatto, e serve
+#: solo a `_proposal_state_words` per leggere le righe di allora.
+_RETIRED_PROPOSAL_WORDS = {"attesa": PENDING, "rifiutata": CANCELLED}
+
+
+def _proposal_state_words(conn) -> None:
+    """Le proposte da fare a mano parlano col vocabolario degli stati (Tappa
+    8, G-19, D4 (a), decisa dal proprietario l'08/10/2026): `attesa` diventa
+    `in_attesa` e `rifiutata` diventa `disdetta`, le parole delle promesse.
+    Fino a quel giorno la pagina Costruzioni, che disegna le due code
+    insieme, leggeva `rifiutata` come «hai detto no» su una riga e come
+    «non sono riuscito» su quella accanto.
+
+    Misurato l'08/10/2026 sul backup dell'add-on: {attesa 7, rifiutata 2},
+    tutte proposte dell'attuatore che `_drop_actuator_proposals` toglie
+    prima di questo passo -- su quella casa non resta niente da riscrivere.
+    Il passo c'e' per le righe del proponente nate fra il suo rilascio e
+    questa migrazione. La tabella non ha un `CHECK` sullo stato: il cancello
+    e' `ObservationsStore.PROPOSAL_OUTCOMES`, e la prova del vocabolario.
+    Idempotente: una seconda volta non trova le parole vecchie.
+    """
+    for old, new in _RETIRED_PROPOSAL_WORDS.items():
+        moved = conn.execute("UPDATE proposte SET stato=? WHERE stato=?",
+                             (new, old)).rowcount
+        if moved:
+            logger.info("proposte: %d righe da %s a %s", moved, old, new)
+
+
 def _mark_reports_without_rules(conn) -> None:
     """I resoconti archiviati si marcano `regole: null` (Tappa 8, G-03, D2:
     decisione del proprietario dell'08/10/2026). Sono nati prima che il
@@ -1015,7 +1053,8 @@ def _objective_references(conn) -> None:
 #: riscrivere le altre. Vale finche' la 15 non e' uscita in un rilascio: dopo,
 #: un passo nuovo e' una migrazione 16.
 _MIGRATION_15_STEPS = (_drop_unread_reading_columns, _drop_actuator_proposals,
-                       _mark_reports_without_rules, _objective_references)
+                       _mark_reports_without_rules, _objective_references,
+                       _proposal_state_words)
 
 
 def _migration_15(conn) -> None:
@@ -1911,25 +1950,22 @@ class ObservationsStore:
 
     #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
     #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
-    #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
-    #: scrivere in Home Assistant: quella strada e' l'officina. `superata`
+    #: nessuna pagina sa disegnare. Le parole sono del vocabolario
+    #: (`states.py`, Tappa 8, D4): il tuo «no» e' `disdetta`, come per
+    #: promesse e costruzioni, e una proposta che aspetta e' `in_attesa`.
+    #: `crea` non c'e' -- qui non c'e' niente da scrivere in Home Assistant:
+    #: quella strada e' l'officina. `superata`
     #: la scrive solo il proponente, quando la stessa domanda torna come
     #: proposta costruita (D24-1, scelta del proprietario del 06/10/2026):
     #: nessuna rotta la offre.
-    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori", "superata")
+    PROPOSAL_OUTCOMES = (CANCELLED, DONE_ELSEWHERE, SUPERSEDED)
 
     #: L'esito di una proposta da fare a mano da cui e' nata un'automazione
     #: («Rendila automatica», attori Task 4.5; chiudere col legame, scelta
     #: del proprietario del 06/10/2026). Non sta fra `PROPOSAL_OUTCOMES`:
     #: quelli li chiude una persona dalla pagina, questo lo chiude solo
     #: `automate_proposal`, con l'id della costruzione accanto.
-    PROPOSAL_AUTOMATED = "automatizzata"
-
-    #: Lo stato di una proposta da fare a mano che aspetta la tua risposta.
-    #: Scritto una volta: lo usano le istruzioni qui sotto e la pagina delle
-    #: Proposte, che lo riceve gia' deciso (`sospesa`,
-    #: `handlers_constructions._both_queues`; C-12, Tappa 4, Task 5).
-    PROPOSAL_PENDING = "attesa"
+    PROPOSAL_AUTOMATED = AUTOMATED
 
     def add_proposal(self, *, text: str, perche: str, fingerprint: str,
                      prova: dict, stakes: str | None, now_ts: float) -> str:
@@ -1946,7 +1982,7 @@ class ObservationsStore:
                 "INSERT INTO proposte(id,creata_ts,stato,testo,perche,"
                 "impronta,prova_json,giri_json,stakes) "
                 "VALUES(?,?,?,?,?,?,?,'[]',?)",
-                (ident, now_ts, self.PROPOSAL_PENDING, text, perche, fingerprint,
+                (ident, now_ts, PENDING, text, perche, fingerprint,
                  json.dumps(prova or {}, ensure_ascii=False), stakes))
             self._conn.commit()
         return ident
@@ -1961,7 +1997,7 @@ class ObservationsStore:
         args: tuple = ()
         if pending_only:
             sql += " WHERE stato = ?"
-            args = (self.PROPOSAL_PENDING,)
+            args = (PENDING,)
         if ident is not None:
             sql += (" AND" if args else " WHERE") + " id = ?"
             args = (*args, ident)
@@ -1974,7 +2010,10 @@ class ObservationsStore:
             rounds = _json_column(r[7], table="proposte", key=r[0])
             if prova is _UNREADABLE or rounds is _UNREADABLE:
                 continue
-            out.append({"id": r[0], "creata_ts": r[1], "stato": r[2], "testo": r[3],
+            out.append({"id": r[0], "creata_ts": r[1], "stato": r[2],
+                        # La frase dello stato, dal vocabolario (C-10): la
+                        # stessa chiave delle costruzioni, le due code una forma.
+                        "stato_leggibile": readable(r[2]), "testo": r[3],
                         "perche": r[4], "impronta": r[5], "prova": prova,
                         "giri": rounds, "esito_nota": r[8], "livello": r[9],
                         "costruzione_id": r[10], "non_automatizzabile": r[11]})
@@ -1995,7 +2034,7 @@ class ObservationsStore:
         with self._lock:
             return int(self._conn.execute(
                 "SELECT COUNT(*) FROM proposte WHERE stato = ?",
-                (self.PROPOSAL_PENDING,)).fetchone()[0])
+                (PENDING,)).fetchone()[0])
 
     def proposal_origins(self, construction_ids) -> dict[str, dict]:
         """`{id della costruzione: {"id", "testo"}}`: la proposta a mano da cui
@@ -2022,7 +2061,7 @@ class ObservationsStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE proposte SET stato=?, esito_nota=? WHERE id=? AND stato=?",
-                (occurrence, why, ident, self.PROPOSAL_PENDING))
+                (occurrence, why, ident, PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -2038,7 +2077,7 @@ class ObservationsStore:
                 "UPDATE proposte SET stato=?, construction_id=? "
                 "WHERE id=? AND stato=?",
                 (self.PROPOSAL_AUTOMATED, construction_id, ident,
-                 self.PROPOSAL_PENDING))
+                 PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -2049,7 +2088,7 @@ class ObservationsStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE proposte SET automation_refusal=? WHERE id=? AND stato=?",
-                (reason, ident, self.PROPOSAL_PENDING))
+                (reason, ident, PENDING))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -2135,7 +2174,7 @@ class ObservationsStore:
         for r in rows:
             prova = _json_column(r[1], table="proposte", key=r[4])
             if prova is not _UNREADABLE:
-                decided[r[0]] = {"prova": prova, "aperta": r[2] == self.PROPOSAL_PENDING,
+                decided[r[0]] = {"prova": prova, "aperta": r[2] == PENDING,
                                  "creata_ts": r[3], "id": r[4], "a_mano": True}
         return decided
 

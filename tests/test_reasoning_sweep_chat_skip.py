@@ -252,7 +252,7 @@ async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
     pagina dell'osservatore dice «in corso da N minuti» mentre nessuna
     risposta arrivera' -- un worker fermo con un token buono diventa
     indistinguibile da un turno che sta ancora pensando. E' il gemello di
-    `_close_expired_promise`, ed e' un rilievo della review indipendente
+    `reasoning/consegna.close_expired_promise`, ed e' un rilievo della review indipendente
     dell'11/09/2026.
 
     Mutazione che la uccide: togliere il ramo `SCOPE_TURN_KIND` dalla

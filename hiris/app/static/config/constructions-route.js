@@ -86,53 +86,33 @@
    nota di sistema con un'etichetta propria, mai fra virgolette come le altre.
 
    -- Vocabolario degli stati (guida §6) --
-   in_attesa "In attesa" (neutro) · in_corso "In corso" (acceso, nessuna
-   azione: la guarigione e' gia' lato server) · applicata "Applicata"
-   (acceso, e' qui che compare Ripristina) · rifiutata "Non riuscita" (rosso:
-   HIRIS ha provato e non ce l'ha fatta, `motivo` verbatim) · scaduta
-   "Scaduta" (ambra, non rosso: tempo passato senza decisione, non un
-   fallimento) · disdetta -- il «no» del proprietario, badge NEUTRO come
-   `in_attesa`, mai la faccia di `rifiutata` · incerta "Esito incerto"
-   (ambra come `scaduta`: Home Assistant non ha risposto e non si sa se la
-   scrittura sia arrivata; offre Ripristina, e il server dice se c'era
-   qualcosa da rimettere). Etichetta e badge di `incerta` (G83-2, giro 83,
-   07/10/2026) riusano lo stile che c'era. Passaggio da ux-ui-specialist il
+   La PAROLA di ogni stato arriva dalla rotta (`stato_leggibile`), dal
+   vocabolario unico `hiris/app/states.py` (Tappa 8, D4 e C-10, 08/10/2026):
+   la pagina non ne tiene una tabella. Qui resta il COLORE del badge:
+   in_attesa neutro · in_corso acceso, nessuna azione (la guarigione e' gia'
+   lato server) · applicata acceso, e' qui che compare Ripristina · fallita
+   rosso (HIRIS ha provato e non ce l'ha fatta, `motivo` verbatim) · scaduta
+   ambra, non rosso (tempo passato senza decisione, non un fallimento) ·
+   disdetta -- il «no» di chi costruisce -- NEUTRO come `in_attesa`, mai la
+   faccia di `fallita` · incerta ambra come `scaduta` (Home Assistant non ha
+   risposto e non si sa se la scrittura sia arrivata; offre Ripristina, e il
+   server dice se c'era qualcosa da rimettere).
+   Fino all'08/10/2026 il guasto si chiamava `rifiutata`, la stessa parola
+   del «no» di una persona su una proposta da fare a mano: la guida chiedeva
+   per `disdetta` un'etichetta senza la parola «rifiutata» («Declinata da
+   te»), e un test pinnato la vietava su tutta la pagina. Con il vocabolario
+   unico il guasto e' `fallita` e il «no» e' `disdetta` in tutte e tre le
+   code, e la parola non torna.
+   `incerta` (G83-2, giro 83, 07/10/2026): passaggio da ux-ui-specialist il
    07/10/2026, in sola lettura del codice (la pagina non e' stata aperta):
-   etichetta e ambra confermate; il motivo ha un ripiego se il server non ne
-   manda uno, e sotto una riga fissa che dice cosa fa il bottone; il bottone
-   dice «Verifica e rimetti com’era»; la conferma dice che prima si controlla.
+   ambra confermata; il motivo ha un ripiego se il server non ne manda uno, e
+   sotto una riga fissa che dice cosa fa il bottone; il bottone dice
+   «Verifica e rimetti com’era»; la conferma dice che prima si controlla.
    Contrasto di --warn-ink nel tema chiaro CALCOLATO (formula WCAG su
    OKLCH -> sRGB, 07/10/2026, non misurato in un browser): 5.61 su --surface,
    5.37 su --bg, sopra il 4.5 di AA.
-   ADATTAMENTO rispetto al testo letterale della guida (confermato dalla
-   review indipendente del Task 11: la guida si contraddiceva da sola,
-   proponendo nella STESSA sezione l'etichetta "Rifiutata da te" per
-   `disdetta` e insieme la regola che quello stato non deve mai avere la
-   faccia di `rifiutata`). Un test pinnato vieta che il token "rifiutata"
-   (parola intera, maiuscole/minuscole indifferenti) compaia OVUNQUE nel
-   testo della pagina -- ed e' lo stesso principio della guida, applicato
-   alla lettera: se il proprietario legge la parola "rifiutata" su UNA riga
-   che e' invece il suo "no", la distinzione per cui questa tabella esiste e'
-   gia' persa, non importa quanto sia neutro il colore attorno. L'etichetta
-   usata qui e' "Declinata da te": stesso significato ("sei stato tu, non e'
-   un fallimento"), nessuna parola in comune con "rifiutata", e resta nel
-   registro participiale delle altre cinque etichette (In attesa, In corso,
-   Applicata, Non riuscita, Scaduta) -- "Hai detto no", la prima versione,
-   parlava in seconda persona e stonava nella fila dei badge (review Task 11).
-   SCOPERTA VERA, non solo del test: `revisions.py::mark_cancelled` scrive
-   la COSTANTE `REASON_DISDETTA` ("rifiutata dalla pagina", fetta "il seguito
-   delle chat divise" Task 5, 26/09/2026 -- prima era letteralmente
-   `motivo="rifiutata dal proprietario"`). Fix round 1: il vecchio testo non
-   resta una seconda costante a runtime che nessuno legge -- le righe scritte
-   prima di questa versione si riscrivono UNA volta sola in una migrazione
-   dell'archivio (`revisions.py::_migration_3`), col vecchio letterale
-   dichiarato solo li', con la sua data. Se la pagina mostrasse `motivo`
-   verbatim anche per `disdetta` (come fa per `rifiutata`), la parola
-   "rifiutata" tornerebbe dentro dalla porta sul retro. Questa pagina non
-   mostra mai `motivo` quando `stato === 'disdetta'`, guardando lo STATO e
-   non il testo: e' per questo che una riga non ancora migrata (o letta da
-   un archivio non aggiornato) si comporta gia' come una migrata, senza
-   bisogno di distinguerle qui.
+   Una `disdetta` non porta un motivo (M-76, Tappa 8): la pagina non lo
+   mostrerebbe comunque, guardando lo STATO e non il testo.
 
    -- Comportamenti (guida §7) --
    Approva: nessuna conferma, la card e' gia' la revisione completa.
@@ -160,24 +140,16 @@
 window.HirisConstructions = (function () {
   'use strict';
 
-  var STATE_LABEL = {
-    in_attesa: 'In attesa',
-    in_corso: 'In corso',
-    applicata: 'Applicata',
-    /* Vedi il commento di testa: ADATTAMENTO deliberato rispetto al testo
-       letterale della guida ("Rifiutata da te"), per non far comparire la
-       parola "rifiutata" su una riga che e' il "no" del proprietario. */
-    disdetta: 'Declinata da te',
-    rifiutata: 'Non riuscita',
-    scaduta: 'Scaduta',
-    incerta: 'Esito incerto'
-  };
+  /* La parola di uno stato arriva dalla rotta (`stato_leggibile`, dal
+     vocabolario `hiris/app/states.py`, C-10 della Tappa 8): questa pagina
+     tiene solo il colore. Fino all'08/10/2026 teneva anche la parola, in
+     una tabella sua. */
   var STATE_BADGE = {
     in_attesa: 'badge-off',
     in_corso: 'badge-on',
     applicata: 'badge-on',
     disdetta: 'badge-off',
-    rifiutata: 'badge-err',
+    fallita: 'badge-err',
     scaduta: 'badge-warn',
     incerta: 'badge-warn'
   };
@@ -481,9 +453,12 @@ window.HirisConstructions = (function () {
       box.appendChild(riga);
     });
 
-    if (c.stato !== 'attesa') {
-      box.appendChild(el('div', 'field-hint', CLOSED_TEXT[c.stato] ? CLOSED_TEXT[c.stato](c)
-        : 'Rifiutata.'));
+    /* Chiusa: la frase del suo stato, dalla rotta, e la nota di chi l'ha
+       chiusa. Se aspetta lo dice il server (`sospesa`, C-12): la pagina non
+       conosce la parola. */
+    if (!c.sospesa) {
+      box.appendChild(el('div', 'field-hint', stateLabel(c.stato_leggibile || c.stato) + '.' +
+        (c.esito_nota ? ' ' + c.esito_nota : '')));
       return box;
     }
 
@@ -537,18 +512,6 @@ window.HirisConstructions = (function () {
   /* Come si chiude una proposta a mano, per esito. «automatizzata» (attori,
      Task 4.5): ne e' nata una proposta di automazione, che sta in questa
      stessa pagina col suo «Nata da». */
-  var CLOSED_TEXT = {
-    fatta_fuori: function (c) {
-      return 'L’hai fatta tu, fuori da Home Assistant.' + (c.esito_nota ? ' ' + c.esito_nota : '');
-    },
-    superata: function () {
-      return 'Superata: ora c’è una proposta che HIRIS può costruire.';
-    },
-    automatizzata: function () {
-      return 'Ne è nata un’automazione: la trovi tra le proposte.';
-    }
-  };
-
   function preparingBadge(c) {
     var b = el('span', 'agent-badge badge-warn', 'in preparazione');
     b.setAttribute('aria-label', 'Automazione in preparazione');
@@ -914,7 +877,7 @@ window.HirisConstructions = (function () {
     var bOperation = operationBadge(c);
     head.appendChild(el('span', 'agent-badge ' + bOperation.cls, bOperation.testo));
     head.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[c.stato] || 'badge-off'),
-      STATE_LABEL[c.stato] || c.stato));
+      stateLabel(c.stato_leggibile || c.stato)));
     box.appendChild(head);
     var chi = requesterLine(c);
     if (chi) box.appendChild(chi);
@@ -954,14 +917,8 @@ window.HirisConstructions = (function () {
 
     if (c.prima || c.dopo) box.appendChild(detailsDisclosure(c));
 
-    /* motivo: MAI per `disdetta` -- vedi il commento di testa, `revisions.py`
-       scrive la costante `REASON_DISDETTA` ("rifiutata dalla pagina") su ogni
-       riga disdetta; le righe scritte prima del fix round 1 (col vecchio
-       testo "rifiutata dal proprietario") si migrano una volta sola
-       all'apertura dell'archivio (`_migration_3`), ma anche una non ancora
-       migrata mostrerebbe la stessa faccia: mostrare `motivo` tornerebbe a
-       far leggere la parola "rifiutata" su una riga che e' il "no" di chi
-       costruisce. */
+    /* motivo: MAI per `disdetta` -- vedi il commento di testa: il «no» di
+       chi costruisce non e' un fallimento, e non si colora come uno. */
     /* `incerta`: il ripiego quando il server non manda un motivo dice solo
        il dubbio, non una causa che la pagina non conosce; sotto, una riga
        fissa su cosa fa il bottone (ux-ui-specialist, 07/10/2026). */
@@ -971,7 +928,7 @@ window.HirisConstructions = (function () {
     if (motivo && c.stato !== 'disdetta') {
       var reason = el('p', null, motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:0;color:' +
-        (c.stato === 'rifiutata' ? 'var(--err-ink)' : 'var(--warn-ink)');
+        (c.stato === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)');
       box.appendChild(reason);
     }
     if (c.stato === 'incerta') {

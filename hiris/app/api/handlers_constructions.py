@@ -36,10 +36,10 @@ import time
 
 from aiohttp import web
 
-from ..action.construction.revisions import STATES_SOSPESO
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
+from ..states import PENDING, SUSPENDED
 from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, subject_name
 
@@ -105,11 +105,11 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
 
 
 def _construction_suspended(row: dict) -> bool:
-    """Se una costruzione aspetta ancora: `STATES_SOSPESO`, anche `in_corso`
+    """Se una costruzione aspetta ancora: `states.SUSPENDED`, anche `in_corso`
     (rivendicata e non ancora decisa). E' il campo `sospesa` delle righe
     delle due GET (C-12, Tappa 4, Task 5): la pagina lo legge, e non sa piu'
     quali stati lo dicano."""
-    return row["stato"] in STATES_SOSPESO
+    return row["stato"] in SUSPENDED
 
 
 async def _both_queues(app, store, pending_only: bool) -> list[dict]:
@@ -122,7 +122,7 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     approved = approved_services(app)
     # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
     # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
-    # finche' sono `PROPOSAL_PENDING`.
+    # finche' sono `states.PENDING`.
     observations = app.get("observations")
     by_hand = (observations.proposals(pending_only=pending_only)
                if observations is not None else [])
@@ -150,11 +150,11 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
         in_flight = automate_turn.preparing(app)
         rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
                   "a_mano": True,
-                  "sospesa": row["stato"] == observations.PROPOSAL_PENDING,
+                  "sospesa": row["stato"] == PENDING,
                   "rifacimento": proposal_redo.state(app, row),
                   "in_preparazione": in_flight == row["id"],
                   "automatizzabile": automate_turn.refusal(
-                      row, pending=observations.PROPOSAL_PENDING,
+                      row, pending=PENDING,
                       in_flight=in_flight,
                       redoing=proposal_redo.redoing(app, row)) is None}
                  for row in by_hand]

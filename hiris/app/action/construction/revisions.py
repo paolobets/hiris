@@ -25,6 +25,18 @@ import secrets
 import threading
 
 from ...chat_thread import ChatThread, thread_from_columns, thread_params
+from ...states import (
+    APPLIED,
+    CANCELLED,
+    EXPIRED,
+    FAILED,
+    PENDING,
+    SUSPENDED,
+    TAKEN,
+    UNCERTAIN,
+    readable,
+    sql_list,
+)
 from ...storage import (
     Retention,
     add_missing_columns,
@@ -33,37 +45,21 @@ from ...storage import (
     init_schema,
     prune_declared,
     rekey,
+    table_columns,
 )
 
 logger = logging.getLogger(__name__)
 
-#: Il motivo scritto quando chi costruisce dice no da questa pagina, prima
-#: che l'officina abbia mai provato a scrivere niente (fetta "il seguito
-#: delle chat divise", Task 5, 26/09/2026). Diceva letteralmente «rifiutata
-#: dal proprietario»: un testo che assumeva un proprietario solo, mentre la
-#: pagina Costruzioni e' oggi di chiunque abbia `costruire` (spec 2026-09-26
-#: §3, decisione 5) -- non una persona per nome, che richiederebbe leggerla
-#: da un soggetto che questo metodo non riceve. UNA costante: la pagina la
-#: legge dal campo `motivo` che l'API espone gia' su ogni riga (`_row`,
-#: `handlers_constructions._out`), non la retipa in JavaScript.
+#: Il «no» di chi costruisce non porta un motivo (M-76, Tappa 8): fino
+#: all'08/10/2026 `mark_cancelled` scriveva la costante `REASON_DISDETTA`,
+#: «rifiutata dalla pagina», che nessuno mostrava (la pagina non legge il
+#: motivo di una `disdetta`) e che portava la parola dell'altro significato.
+#: Lo stato basta: la sua frase e' nel vocabolario (`states.readable`).
+#: I due testi di allora vivono solo in `_migration_7`, che li toglie.
 #:
-#: Fix round 1 (review Task 5): si chiamava `MOTIVO_DISDETTA` -- un
-#: identificatore italiano nell'ambito chiuso `action/`, dove il glossario
-#: decide gia' `motivo -> reason` (`docs/GLOSSARIO.md`). Rinominata seguendo
-#: la stessa convenzione della sorella `STATES_SOSPESO` due righe sotto:
-#: prefisso inglese deciso (`REASON`), radice del dominio non tradotta
-#: (`DISDETTA`, un valore di dominio che il glossario rinvia di proposito,
-#: vedi «I valori di dominio»). Il VALORE resta italiano: e' testo per
-#: l'archivio e per la pagina, non un nome.
-REASON_DISDETTA = "rifiutata dalla pagina"
-
-# L'insieme «in sospeso» -- stessa forma di `STATES_SOSPESO` in
-# `keeper/promise.py`, per lo stesso motivo: una proposta rivendicata
-# (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
-# pendenti ne' smettere di contare contro il tetto nella finestra fra
-# `claim` e la transizione finale (`applicata`/`rifiutata`).
-STATES_SOSPESO = ("in_attesa", "in_corso")
-_SOSPESI_SQL = ",".join(f"'{s}'" for s in STATES_SOSPESO)
+#: L'insieme «in sospeso» e' `states.SUSPENDED`, la sua casa sola: fino
+#: all'08/10/2026 questo modulo ne teneva una seconda copia.
+_SOSPESI_SQL = sql_list(SUSPENDED)
 
 #: **Quando una proposta e' scaduta**: in attesa da prima del limite (il
 #: parametro e' `adesso - DEADLINE_S`). Il predicato vive qui una volta, e lo
@@ -72,26 +68,24 @@ _SOSPESI_SQL = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 #: `mark_cancelled`): fino al 06/10/2026 la scadenza la scriveva la LETTURA
 #: dell'elenco (`GET /api/constructions` chiamava `scadi`), e una proposta
 #: scaduta restava confermabile dalla chat finche' nessuno apriva la pagina.
-_EXPIRED_SQL = "(stato='in_attesa' AND creata_ts < ?)"
+_EXPIRED_SQL = f"(stato='{PENDING}' AND creata_ts < ?)"
 
 #: Il motivo di una proposta scaduta, scritto o letto.
 REASON_EXPIRED = "scaduta senza risposta"
 
 #: **Lo stato del dubbio** (E-11, decisione D3a della Tappa 7, 07/10/2026):
 #: la scrittura e' partita e non si sa se Home Assistant l'abbia fatta. Non
-#: e' `rifiutata` -- puo' essere arrivata -- e non e' `applicata` -- puo' non
+#: e' `fallita` -- puo' essere arrivata -- e non e' `applicata` -- puo' non
 #: esserlo. Nasce in due posti: l'officina, quando dopo un silenzio della
 #: scrittura nemmeno la rilettura dell'oggetto risponde (`Workshop.apply`), e
 #: `risana`, all'avvio, per una riga rimasta `in_corso`. Una riga cosi' **non
-#: si pota** (`CONSERVAZIONE`): puo' portare l'unico «prima» rimasto al mondo.
-#: Il nome e' il minimo, al femminile come gli altri stati della costruzione;
-#: il vocabolario unico degli stati e' della Tappa 8, che non ne ha ancora
-#: uno per questo caso (piano della Tappa 8, D4, letto il 07/10/2026).
-UNCERTAIN = "incerta"
+#: si pota** (`CONSERVAZIONE`): puo' portare l'unico «prima» rimasto al mondo. La
+#: parola vive nel vocabolario (`states.UNCERTAIN`), fra le esclusive delle
+#: costruzioni.
 
 #: Il motivo di una riga rimasta `in_corso` a un riavvio (`risana`). Una
 #: costante perche' la legge anche `_migration_6`, che porta a `incerta` le
-#: righe che `risana` segnava `rifiutata` fino al 07/10/2026.
+#: righe che `risana` segnava `rifiutata` (oggi `fallita`) fino al 07/10/2026.
 REASON_RESTARTED = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
                     "se la scrittura sia arrivata a Home Assistant.")
 
@@ -123,7 +117,7 @@ CONSERVAZIONE: Retention = {
          "  SELECT id FROM ("
          "    SELECT id, ROW_NUMBER() OVER ("
          "      PARTITION BY dominio, chiave ORDER BY creata_ts DESC) AS rn"
-         "    FROM costruzioni WHERE stato='applicata'"
+         f"    FROM costruzioni WHERE stato='{APPLIED}'"
          "  ) WHERE rn = 1)")),
     "avvisi": (
         _RETENTION_DAYS,
@@ -136,7 +130,6 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS costruzioni (
     id TEXT PRIMARY KEY,
     creata_ts REAL NOT NULL,
-    aggiornata_ts REAL NOT NULL,
     stato TEXT NOT NULL,
     gesto TEXT NOT NULL,
     dominio TEXT NOT NULL,
@@ -183,10 +176,10 @@ CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiav
 -- scaduta, un fatto della proposta e non un numero di tentativi. Una tabella
 -- a parte, legata per id, e non una colonna: questo schema si esegue a ogni
 -- apertura, quindi nasce anche negli archivi esistenti, senza gradino di
--- versione.
+-- versione. Porta solo l'id: QUANDO e' arrivato l'avviso non lo leggeva
+-- nessuno (`avvisata_ts`, uscita con `_migration_7`).
 CREATE TABLE IF NOT EXISTS avvisi (
-    proposta_id TEXT PRIMARY KEY,
-    avvisata_ts REAL NOT NULL
+    proposta_id TEXT PRIMARY KEY
 );
 """
 
@@ -206,26 +199,14 @@ def _migration_2(conn) -> None:
 
 
 def _migration_3(conn) -> None:
-    """v2 -> v3 (fetta "il seguito delle chat divise", Task 5, fix round 1,
-    26/09/2026 -- RULING del controllore: nessun lettore di produzione legge
-    il testo legacy, quindi si migra invece di tenere una seconda costante a
-    runtime che nessuno usa).
+    """v2 -> v3: **un gradino vuoto, dichiarato** (M-76, Tappa 8, 08/10/2026).
 
-    Il "no" scritto da `mark_cancelled` cambiava testo da «rifiutata dal
-    proprietario» a `REASON_DISDETTA` ("rifiutata dalla pagina"): un
-    proprietario solo non e' piu' vero (spec 2026-09-26 §3). Le righe
-    scritte PRIMA di questa versione portano ancora il vecchio letterale sul
-    disco -- e qui si riscrivono UNA volta sola, invece di lasciarle
-    diverse per sempre. Il vecchio testo vive SOLO qui, con la sua data e la
-    sua ragione: nessun'altra riga del modulo lo nomina piu'.
-
-    Doppia guardia (`stato='disdetta' AND motivo=?`) perche' e' un'UPDATE
-    sui DATI, non sullo schema: tocca solo le righe che portano ESATTAMENTE
-    il vecchio testo, mai una `rifiutata`/`applicata` che porta un motivo
-    diverso per un'altra ragione."""
-    conn.execute(
-        "UPDATE costruzioni SET motivo=? WHERE stato='disdetta' AND motivo=?",
-        (REASON_DISDETTA, "rifiutata dal proprietario"))
+    Riscriveva il motivo delle disdette da «rifiutata dal proprietario» a
+    «rifiutata dalla pagina» (fetta «il seguito delle chat divise», Task 5,
+    26/09/2026). Dall'08/10/2026 una disdetta non porta piu' un motivo, e i
+    due testi li toglie `_migration_7`: riscriverne uno nell'altro per poi
+    toglierli entrambi sarebbe un passo che non lascia niente. Il gradino
+    resta perche' `storage.init_schema` vuole la catena intera."""
 
 
 def _migration_4(conn) -> None:
@@ -262,8 +243,99 @@ def _migration_6(conn) -> None:
     Assistant aveva forse gia' cambiato. Le righe che portano ESATTAMENTE
     quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca."""
     conn.execute(
-        "UPDATE costruzioni SET stato=? WHERE stato='rifiutata' AND motivo=?",
-        (UNCERTAIN, REASON_RESTARTED))
+        "UPDATE costruzioni SET stato=? WHERE stato=? AND motivo=?",
+        (UNCERTAIN, _RETIRED_FAILED, REASON_RESTARTED))
+
+
+#: La parola con cui fino all'08/10/2026 una costruzione diceva «non sono
+#: riuscito a scriverla», e i due motivi che `mark_cancelled` scriveva su una
+#: disdetta. Sono parole RITIRATE (Tappa 8, D4 e M-76): non esiste una fonte
+#: da interrogare, l'elenco e' il fatto, e servono solo alle migrazioni per
+#: leggere le righe di allora.
+_RETIRED_FAILED = "rifiutata"
+_RETIRED_CANCEL_REASONS = ("rifiutata dalla pagina", "rifiutata dal proprietario")
+
+#: Le colonne di `costruzioni` alla versione 7, quelle che la ricostruzione
+#: ricopia. Sono la forma di QUEL gradino, e restano ferme come
+#: `mind/store._PROPOSAL_COLUMNS`: una colonna nata dopo arriva con la sua
+#: migrazione.
+_CONSTRUCTION_COLUMNS = (
+    "id", "creata_ts", "stato", "gesto", "dominio", "chiave", "origine",
+    "turno", "frase", "prima_json", "dopo_json", "helper_json", "anteprima",
+    "esecuzione_id", "motivo", "subject_key", "entry_point", "stakes",
+    "impronta", "prova_json")
+
+
+def _migration_7(conn) -> None:
+    """v6 -> v7 (Tappa 8, «gli archivi seguono la casa»): le parole degli
+    stati, e due colonne che nessuno leggeva.
+
+    - **`rifiutata` diventa `fallita`** (D4 (a), decisa dal proprietario
+      l'08/10/2026): su una costruzione `rifiutata` voleva dire «non sono
+      riuscito a scriverla», mentre su una proposta da fare a mano era il tuo
+      «no». La parola e' quella delle promesse (`states.FAILED`). Dopo
+      `_migration_6` le `rifiutata` rimaste sono solo guasti: i riavvii a
+      meta' sono gia' `incerta`, e restano com'e'.
+    - **Le disdette perdono il motivo** (M-76): «rifiutata dalla pagina» e
+      «rifiutata dal proprietario» non li mostrava nessuno, e portavano la
+      parola dell'altro significato. Solo quei due testi esatti.
+    - **Escono `costruzioni.aggiornata_ts` e `avvisi.avvisata_ts`** (G-07,
+      Tappa 8, Task 5): si scrivevano a ogni transizione e a ogni avviso, e
+      nessuno le leggeva (cercate in `hiris/`, `scripts/` e `tests/`
+      l'08/10/2026; la stessa colonna era gia' uscita da `proposte`, con
+      `mind/store._migration_12`).
+
+    Misurato l'08/10/2026 sul backup dell'add-on: {applicata 12, disdetta 6},
+    nessuna `rifiutata` ne' `incerta`.
+
+    **Si ricostruiscono le tabelle**, come `mind/store._migration_12`:
+    `DROP COLUMN` vuole SQLite 3.35. **Tutto o niente, in una transazione**,
+    per la stessa ragione (G14-1): una ricostruzione interrotta dopo il
+    `RENAME` lascerebbe una tabella vuota. Se un passo fallisce si torna
+    indietro, l'archivio resta alla 6 e la migrazione si rifa' al prossimo
+    avvio. Idempotente: una seconda volta non trova ne' parole ne' colonne.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    try:
+        moved = conn.execute("UPDATE costruzioni SET stato=? WHERE stato=?",
+                             (FAILED, _RETIRED_FAILED)).rowcount
+        if moved:
+            logger.info("costruzioni: %d righe da %s a %s", moved, _RETIRED_FAILED,
+                        FAILED)
+        marks = ",".join("?" * len(_RETIRED_CANCEL_REASONS))
+        conn.execute(f"UPDATE costruzioni SET motivo=NULL WHERE stato=? "
+                     f"AND motivo IN ({marks})", (CANCELLED, *_RETIRED_CANCEL_REASONS))
+        existing = table_columns(conn, "costruzioni")
+        if "aggiornata_ts" in existing:
+            columns = ",".join(_CONSTRUCTION_COLUMNS)
+            conn.execute("ALTER TABLE costruzioni RENAME TO costruzioni_v6")
+            conn.execute(
+                "CREATE TABLE costruzioni (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
+                "stato TEXT NOT NULL, gesto TEXT NOT NULL, dominio TEXT NOT NULL, "
+                "chiave TEXT NOT NULL, origine TEXT NOT NULL, turno TEXT, frase TEXT, "
+                "prima_json TEXT, dopo_json TEXT, helper_json TEXT, anteprima TEXT, "
+                "esecuzione_id TEXT, motivo TEXT, subject_key TEXT, entry_point TEXT, "
+                "stakes TEXT, impronta TEXT, prova_json TEXT)")
+            conn.execute(f"INSERT INTO costruzioni({columns}) "
+                         f"SELECT {columns} FROM costruzioni_v6")
+            conn.execute("DROP TABLE costruzioni_v6")
+            # Gli indici seguono la tabella rinominata e se ne vanno con lei:
+            # si ricreano quando il nome e' di nuovo libero.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_costruzioni_stato "
+                         "ON costruzioni(stato, creata_ts DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto "
+                         "ON costruzioni(dominio, chiave, creata_ts DESC)")
+        existing = table_columns(conn, "avvisi")
+        if "avvisata_ts" in existing:
+            conn.execute("ALTER TABLE avvisi RENAME TO avvisi_v6")
+            conn.execute("CREATE TABLE avvisi (proposta_id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO avvisi(proposta_id) "
+                         "SELECT proposta_id FROM avvisi_v6")
+            conn.execute("DROP TABLE avvisi_v6")
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 def _load(text):
@@ -280,11 +352,14 @@ def _row(r) -> dict:
     `list` con `_EXPIRED_SQL`) la legge scaduta anche quando nessuno l'ha
     ancora segnata. Una lettura non scrive."""
     expired = bool(r["scaduta_ora"])
+    state = EXPIRED if expired else r["stato"]
     return {
         "id": r["id"],
         "creata_ts": r["creata_ts"],
-        "aggiornata_ts": r["aggiornata_ts"],
-        "stato": "scaduta" if expired else r["stato"],
+        "stato": state,
+        # La frase dello stato, dal vocabolario (C-10, Tappa 8): la pagina la
+        # mostra com'e', e non tiene una tabella sua delle parole.
+        "stato_leggibile": readable(state),
         "gesto": r["gesto"],
         "dominio": r["dominio"],
         "chiave": r["chiave"],
@@ -335,9 +410,9 @@ class ConstructionStore:
         self._conn = connect(db_path)
         self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=6,
+        init_schema(self._conn, _SCHEMA, version=7,
                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                               5: _migration_5, 6: _migration_6})
+                               5: _migration_5, 6: _migration_6, 7: _migration_7})
 
     def close(self) -> None:
         with self._lock:
@@ -365,7 +440,7 @@ class ConstructionStore:
             # contano fuori dal tetto: e' l'unico punto che le scrive sul
             # disco. Chi legge non lo aspetta (`_EXPIRED_SQL`).
             self._scadi(now)
-            # `stato IN (STATES_SOSPESO)`, non solo `in_attesa`: una proposta
+            # `stato IN (states.SUSPENDED)`, non solo `in_attesa`: una proposta
             # rivendicata (`in_corso`) e' ancora in sospeso, e deve continuare
             # a occupare un posto sotto il tetto -- se contasse solo
             # `in_attesa`, due `apply` in corsa potrebbero far salire il
@@ -377,11 +452,11 @@ class ConstructionStore:
                 return {"errore": (f"ci sono gia' {aperte} proposte in attesa (il tetto e' "
                                    f"{self.MAX_PENDING}): decidi quelle prima di farne altre.")}
             self._conn.execute(
-                "INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,"
+                "INSERT INTO costruzioni(id,creata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
                 "esecuzione_id,motivo,subject_key,entry_point,stakes) "
-                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
-                (ident, now, now, operation, domain, key, actor, exchange, phrase,
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
+                (ident, now, PENDING, operation, domain, key, actor, exchange, phrase,
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
                  json.dumps(list(helper)), preview,
@@ -399,7 +474,7 @@ class ConstructionStore:
     def list(self, *, now: float, pending_only: bool = False,
              limit: int = 200) -> list[dict]:
         """`pending_only=True` elenca le pendenti -- `stato IN
-        (STATES_SOSPESO)`, non solo `in_attesa`: una proposta rivendicata
+        (states.SUSPENDED)`, non solo `in_attesa`: una proposta rivendicata
         (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco
         nella finestra fra `claim` e la transizione finale. Le scadute non
         sono pendenti, segnate o no."""
@@ -495,19 +570,18 @@ class ConstructionStore:
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni "
-                f"WHERE origine=? AND stakes=? AND stato='in_attesa' "
+                f"WHERE origine=? AND stakes=? AND stato=? "
                 f"AND NOT {_EXPIRED_SQL} "
                 "AND id NOT IN (SELECT proposta_id FROM avvisi) "
                 "ORDER BY creata_ts",
-                (cutoff, actor, stakes, cutoff)).fetchall()
+                (cutoff, actor, stakes, PENDING, cutoff)).fetchall()
         return [_row(r) for r in righe]
 
-    def mark_alerted(self, ident: str, *, now: float) -> None:
+    def mark_alerted(self, ident: str) -> None:
         """L'avviso per `ident` e' arrivato: non si ritenta piu'."""
         with self._lock:
             self._conn.execute(
-                "INSERT OR IGNORE INTO avvisi(proposta_id, avvisata_ts) VALUES(?,?)",
-                (ident, now))
+                "INSERT OR IGNORE INTO avvisi(proposta_id) VALUES(?)", (ident,))
             self._conn.commit()
 
     def count_pending(self, *, now: float) -> int:
@@ -520,7 +594,7 @@ class ConstructionStore:
         l'ora.
 
         `in_corso` conta: rivendicata non vuol dire decisa, ed e' la stessa
-        ragione per cui `propose` guarda `STATES_SOSPESO` e non il solo
+        ragione per cui `propose` guarda `states.SUSPENDED` e non il solo
         `in_attesa`.
 
         Non scrive, e non puo' ignorare la scadenza (review indipendente
@@ -554,13 +628,13 @@ class ConstructionStore:
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE costruzioni SET stato='in_corso', aggiornata_ts=? "
-                f"WHERE id=? AND stato='in_attesa' AND NOT {_EXPIRED_SQL}",
-                (now, ident, now - self.DEADLINE_S))
+                "UPDATE costruzioni SET stato=? "
+                f"WHERE id=? AND stato=? AND NOT {_EXPIRED_SQL}",
+                (TAKEN, ident, PENDING, now - self.DEADLINE_S))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
-        return {"id": ident, "stato": "in_corso"}
+        return {"id": ident, "stato": TAKEN}
 
     def risana(self, *, now: float) -> int:
         """Le proposte rimaste `in_corso` al riavvio: chiuse, non ripescate.
@@ -568,7 +642,7 @@ class ConstructionStore:
         Stessa forma di `AgendaStore.risana` (`keeper/store.py`):
         una riga `in_corso` all'avvio significa una cosa sola, l'add-on si e'
         fermato fra `claim` e la transizione finale (`apply` non ha
-        fatto in tempo a chiamare `mark_applied` o `mark_rejected`).
+        fatto in tempo a chiamare `mark_applied` o `mark_failed`).
 
         **Senza questa chiusura la riga resterebbe un fantasma per sempre**:
         con `claim` a farla uscire da `in_attesa`, nessun altro percorso
@@ -577,7 +651,7 @@ class ConstructionStore:
         anch'essa `WHERE stato='in_attesa'`), non l'utente (ogni `apply`
         successiva la troverebbe gia' "in corso" e rifiuterebbe). Invisibile
         a `list(pending_only=True)` PRIMA di questa correzione, non piu'
-        adesso che quella query legge `STATES_SOSPESO` -- ma restare `in_corso`
+        adesso che quella query legge `states.SUSPENDED` -- ma restare `in_corso`
         per sempre resterebbe comunque un fantasma: mai scaduta, sempre
         contata contro il tetto, cancellata in silenzio dalla potatura dopo
         novanta giorni senza che nessuno abbia mai saputo com'e' andata.
@@ -602,9 +676,8 @@ class ConstructionStore:
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE costruzioni SET stato=?, aggiornata_ts=?, motivo=? "
-                "WHERE stato='in_corso'",
-                (UNCERTAIN, now, REASON_RESTARTED))
+                "UPDATE costruzioni SET stato=?, motivo=? WHERE stato=?",
+                (UNCERTAIN, REASON_RESTARTED, TAKEN))
             self._conn.commit()
             count = cur.rowcount
         if count:
@@ -614,9 +687,9 @@ class ConstructionStore:
 
     def mark_applied(self, ident: str, *, now: float,
                         execution_id: str | None) -> dict:
-        return self._change_state(ident, "applicata", now, execution_id, None)
+        return self._change_state(ident, APPLIED, execution_id, None)
 
-    def mark_rejected(self, ident: str, *, now: float,
+    def mark_failed(self, ident: str, *, now: float,
                       execution_id: str | None) -> dict:
         """La scrittura non e' stata fatta. **Il motivo non si copia qui**
         (D-26, Tappa 7, Task 3, 07/10/2026): vive nella cronaca, e la riga lo
@@ -624,18 +697,18 @@ class ConstructionStore:
         in `costruzioni.motivo` e in `esecuzioni.errore`, due archivi dello
         stesso esito. Chi mostra la riga lo legge dalla cronaca
         (`handlers_constructions._out`)."""
-        return self._change_state(ident, "rifiutata", now, execution_id, None)
+        return self._change_state(ident, FAILED, execution_id, None)
 
     def mark_uncertain(self, ident: str, *, now: float,
                        execution_id: str | None) -> dict:
         """Non si sa se la scrittura sia arrivata (`UNCERTAIN`, D3a): il
-        motivo, come per `mark_rejected`, vive nella cronaca."""
-        return self._change_state(ident, UNCERTAIN, now, execution_id, None)
+        motivo, come per `mark_failed`, vive nella cronaca."""
+        return self._change_state(ident, UNCERTAIN, execution_id, None)
 
     def mark_cancelled(self, ident: str, *, now: float) -> dict:
         """Il «no» di chi costruisce -- che NON e' un fallimento.
 
-        `rifiutata` vuol dire che l'applicazione non e' andata a buon fine:
+        `fallita` vuol dire che l'applicazione non e' andata a buon fine:
         validazione caduta, Home Assistant che rifiuta, una scrittura che
         rileggendo non c'e'. Quando non si sa se lo sia -- il riavvio a meta'
         (`risana`), il silenzio che nemmeno la rilettura scioglie -- lo stato
@@ -662,20 +735,20 @@ class ConstructionStore:
         mondo di com'era quell'oggetto -- diventa cancellabile a 90 giorni.
         Impedire la disdetta di una riga gia' rivendicata chiude la corsa
         alla radice: chi ha vinto la rivendicazione porta la transizione
-        finale fino in fondo (`applicata`, `rifiutata` o `incerta`), e solo allora la
+        finale fino in fondo (`applicata`, `fallita` o `incerta`), e solo allora la
         riga torna leggibile come non piu' in sospeso.
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE costruzioni SET stato='disdetta', aggiornata_ts=?, motivo=? "
-                f"WHERE id=? AND stato='in_attesa' AND NOT {_EXPIRED_SQL}",
-                (now, REASON_DISDETTA, ident, now - self.DEADLINE_S))
+                "UPDATE costruzioni SET stato=? "
+                f"WHERE id=? AND stato=? AND NOT {_EXPIRED_SQL}",
+                (CANCELLED, ident, PENDING, now - self.DEADLINE_S))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
-        return {"id": ident, "stato": "disdetta"}
+        return {"id": ident, "stato": CANCELLED}
 
-    def _change_state(self, ident: str, state: str, now: float,
+    def _change_state(self, ident: str, state: str,
                       execution_id: str | None, reason: str | None) -> dict:
         with self._lock:
             # `IN ('in_attesa','in_corso')`: la transizione finale arriva
@@ -687,9 +760,9 @@ class ConstructionStore:
             # volte la stessa proposta. Stessa forma della presa in carico di
             # una promessa (`keeper/store.py`).
             cur = self._conn.execute(
-                "UPDATE costruzioni SET stato=?, aggiornata_ts=?, esecuzione_id=?, motivo=? "
-                "WHERE id=? AND stato IN ('in_attesa','in_corso')",
-                (state, now, execution_id, reason, ident))
+                "UPDATE costruzioni SET stato=?, esecuzione_id=?, motivo=? "
+                f"WHERE id=? AND stato IN ({_SOSPESI_SQL})",
+                (state, execution_id, reason, ident))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}
@@ -705,9 +778,9 @@ class ConstructionStore:
         scrittura: `read` e `list` le leggono scadute da sole.
         """
         cur = self._conn.execute(
-            "UPDATE costruzioni SET stato='scaduta', aggiornata_ts=?, motivo=? "
+            "UPDATE costruzioni SET stato=?, motivo=? "
             f"WHERE {_EXPIRED_SQL}",
-            (now, REASON_EXPIRED, now - self.DEADLINE_S))
+            (EXPIRED, REASON_EXPIRED, now - self.DEADLINE_S))
         self._conn.commit()
         return cur.rowcount
 

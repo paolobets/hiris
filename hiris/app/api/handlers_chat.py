@@ -34,6 +34,7 @@ from ..providers import SUBSCRIPTION
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
+from ..reasoning.queue import JOB_DECIDED, JOB_EXPIRED, JOB_FAILED, JOB_WAITING
 from ..steering import (
     chain_runner,
     chain_turn,
@@ -865,17 +866,17 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     status = job.get("status")
     decision = job.get("decision") or {}
     reply = decision.get("reply")
-    if status in ("expired", "failed"):
+    if status in (JOB_EXPIRED, JOB_FAILED):
         # Never spin forever: the sweep (`conservazione.reasoning_sweep`)
         # leaves jobs in this state without routing them anywhere else --
         # this is the only place they get surfaced to the user.
         return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
-    if status == "decided" and not reply:
+    if status == JOB_DECIDED and not reply:
         # Task 1's chat_reply_skipped outcome: a decision was recorded but it
         # carries no usable reply. Same terminal treatment as expired/failed
         # -- pending-forever would strand the UI.
         return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
-    if status in ("pending", "claimed") and job.get("deadline_ts", 0) <= time.time():
+    if status in JOB_WAITING and job.get("deadline_ts", 0) <= time.time():
         # Il piano non ha risposto in tempo. Fino alla 2.4.1 finiva qui, con
         # «La risposta non è arrivata in tempo. Riprova.» -- il messaggio era
         # perso e la catena non veniva consultata mai. Adesso il turno scende al
