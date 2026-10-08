@@ -64,6 +64,7 @@ from .home_space.house_history import statistic_ids_for_round
 from .home_space.privacy import PresenceMask
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
+from .home_space.registry_follower import schedule_registry_rebuild
 from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
@@ -102,13 +103,12 @@ from .mind.recipes import (
     unread_series,
 )
 from .mind.seed import (
-    HOUSE_PRIORITY,
     REPO_PRIORITY,
     attribute_seed,
     judgment_seed,
     meaning_seed,
-    meanings_from_translations,
 )
+from .mind.state_words import prime_state_translations
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .models_store import bridge_deadline_min
@@ -434,75 +434,6 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
         logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
         report = {"errore": "Home Assistant non ha risposto"}
     app["ha_problems"] = report
-    return report
-
-
-async def prime_state_translations(app) -> dict:
-    """Scalda le traduzioni degli stati, e torna l'esito etichettato.
-
-    **Perche' esiste, dall'08/09/2026.** Fino a quel giorno la prima lettura
-    avveniva «alla prima pagina che ne ha bisogno», e la scelta era giusta:
-    era una tabella che quella sessione poteva non chiedere mai. Poi le quattro
-    tabelle scritte a mano di `home_space/topology.py` sono sparite (spec §6) e
-    quelle parole sono diventate cio' con cui il NUCLEO rende ogni stato
-    notevole -- cioe' qualcosa che serve a ogni turno di chat, dal primo. Una
-    tabella caricata pigramente e' una tabella che il primo lettore trova
-    vuota: e' la forma «stato condiviso caricato pigramente», e la domanda da
-    farsi e' chi lo riempie. Lo riempie questa funzione.
-
-    **Non solleva mai e non blocca l'avvio**: se Home Assistant non e' ancora
-    pronto, l'esito dice «non lette» col motivo, il nucleo lo DICHIARA e mostra
-    gli stati grezzi, e il giro periodico riprova. Un nucleo che dice «non ho
-    letto le traduzioni» e' onesto; un avvio che non parte per una tabella di
-    parole non lo sarebbe.
-
-    **E SCRIVE NEL SAPERE**, il che non e' cio' che il nome promette e va detto
-    (Fable 5.1, 13/09/2026): quando la lettura riesce, i significati delle
-    classi che l'installazione pubblica entrano nell'archivio del sapere. Sta
-    qui e non altrove perche' e' lo stesso dizionario -- nessuna lettura di
-    rete in piu' -- e il giro periodico che richiama questa funzione ogni
-    cinque minuti ripete una `seed`, che dopo la prima volta non scrive niente.
-    """
-    cache = app.get("state_translations")
-    if cache is None:
-        return {"lette": False,
-                "motivo": "la lettura delle traduzioni non e' collegata a questa istanza"}
-    store = app.get("home_space_store")
-    frame = store.reference_frame() if store is not None else {}
-    try:
-        report = await cache.read(ha_version=frame.get("versione_ha"),
-                                  language=frame.get("lingua"))
-    except Exception as exc:
-        report = {"lette": False, "motivo": f"{type(exc).__name__}: {exc}"}
-    if not report.get("lette"):
-        logger.info("traduzioni degli stati non lette: %s", report.get("motivo"))
-        return report
-    # **Il significato di ogni classe entra nel sapere, da qui.** E' lo stesso
-    # dizionario che il nucleo usa per rendere gli stati: nessuna lettura di
-    # rete in piu', e nessuna seconda tabella. Misurato il 12/09/2026: il repo
-    # scriveva a mano il significato di 18 classi di `sensor` su 62 e di ZERO
-    # su 28 di `binary_sensor` -- le altre non erano «meno importanti», erano
-    # quelle di cui HIRIS non sapeva dire niente.
-    #
-    # Si scrivono con `seed`, non con `write`: dove il repo ha una FRASE
-    # («la potenza ISTANTANEA, non un'energia») quella resta, e il NOME che HA
-    # pubblica («Potenza») non la schiaccia.
-    sapere = app.get("knowledge")
-    if sapere is not None:
-        # **B2: senza versione o lingua non si importa niente.** La fonte di
-        # una riga deve dire da quale versione e in che lingua viene: scrivere
-        # «sconosciuta» sarebbe una citazione che non permette di controllare
-        # nulla, cioe' la forma della motivazione falsa dentro il campo che
-        # esiste per impedirla.
-        versione = frame.get("versione_ha")
-        lingua = report.get("lingua") or frame.get("lingua")
-        scritte = sapere.seed(meanings_from_translations(
-            report.get("risorse") or {}, ha_version=versione, language=lingua),
-            priority=HOUSE_PRIORITY) if versione and lingua else 0
-        if scritte:
-            logger.info(
-                "sapere: %d significati di classe importati dalle traduzioni "
-                "di questa installazione", scritte)
     return report
 
 
@@ -1268,52 +1199,6 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     (`_recompute_chain`). Il token resta letto qui: e' una credenziale, e le
     credenziali stanno ancora nelle opzioni dell'add-on."""
     return bridge_active and subscription_has_token()
-
-
-def schedule_registry_rebuild(client, store, delay: float = 3.0, *,
-                              then=None):
-    """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
-
-    `then`, se c'e', si attende DOPO ogni ricostruzione riuscita: e' cio' che
-    dipende dalla cornice appena letta. In produzione sono le parole degli
-    stati (`prime_state_translations`, A-14): un cambio di lingua arriva come
-    `core_config_updated`, e le parole si rileggono nella lingua nuova invece
-    di aspettare il giro dei cinque minuti. Dopo ogni ricostruzione e non solo
-    dopo quell'evento, perche' `read` risponde dalla cache finche' versione e
-    lingua non cambiano: chiederla in piu' non costa una lettura.
-
-    Riorganizzare la casa in Home Assistant produce una raffica di eventi —
-    spostare dieci entita' ne emette dieci. Ricostruire a ogni evento
-    significherebbe dieci letture di tutti i registri per un unico gesto
-    dell'utente: si aspetta che la raffica finisca, e si rilegge una volta.
-
-    Un guasto viene registrato e basta: l'ascoltatore deve sopravvivere a un
-    Home Assistant che si riavvia, o dopo il primo intoppo l'anagrafe resta
-    ferma per sempre senza che nessuno lo sappia.
-    """
-    state: dict[str, asyncio.Task | None] = {"attesa": None}
-
-    async def _fra_poco():
-        try:
-            await asyncio.sleep(delay)
-            await rebuild(client, store)
-            if then is not None:
-                await then()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("ricostruzione dell'anagrafe fallita: %s", exc)
-
-    def trigger(event_type: str) -> None:
-        pending = state["attesa"]
-        if pending is not None and not pending.done():
-            pending.cancel()
-        # _spawn(), non un asyncio.create_task(...) nudo: tiene un riferimento
-        # forte finche' la ricostruzione non finisce (review C/#15) -- vedi il
-        # commento in cima a `background.py`.
-        state["attesa"] = _spawn(_fra_poco(), name="ricostruzione_anagrafe")
-
-    return trigger
 
 
 def mirror_reload_listener(client, entity_cache, watcher=lambda: None):

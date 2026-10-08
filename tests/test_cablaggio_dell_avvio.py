@@ -34,7 +34,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.home_space import historian
+from hiris.app.home_space import historian, registry_follower
 from hiris.app.mind import realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -392,7 +392,10 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
         spawned.append(coroutine)
 
     house = started_app["ha_client"]
-    with mock.patch.object(server, "_spawn", capture):
+    # Due moduli creano i compiti degli ascoltatori di topologia: lo specchio
+    # in `server.py`, la ricostruzione in `home_space/registry_follower.py`.
+    with (mock.patch.object(server, "_spawn", capture),
+          mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("riconnessione")
     try:
@@ -458,7 +461,8 @@ async def test_a_reference_change_rereads_the_state_words(started_app):
         spawned.append(coroutine)
 
     house = started_app["ha_client"]
-    with mock.patch.object(server, "_spawn", capture):
+    with (mock.patch.object(server, "_spawn", capture),
+          mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("core_config_updated")
     primed = mock.AsyncMock(return_value={"lette": True})
