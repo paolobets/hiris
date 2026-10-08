@@ -69,12 +69,15 @@ from dataclasses import field as _field
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE, STATISTICS_DOMAIN, domain_of
 from .operations import (
+    FROZEN,
     NO_STATISTICS,
     REGISTRY,
     SHAPE_READINGS,
     SHAPE_SERIES,
     STATISTICS_UNREAD,
     UNKNOWN_SOURCE,
+    Exclusion,
+    Measurement,
     NotComputable,
     Result,
 )
@@ -261,6 +264,31 @@ def hourly_points(points) -> list[dict]:
              "minimo": p.get("minimo"),
              "massimo": p.get("massimo")}
             for p in points if isinstance(p, dict)]
+
+
+#: La chiave con cui un punto orario porta l'esclusione che lo copre
+#: (`operations.Exclusion`): la mette `flatline.mark_excluded`, la legge
+#: `Recipe.run`. Non viaggia fuori dal processo -- il resoconto scrive le
+#: misure, non i punti.
+EXCLUDED_MARK = "esclusa"
+
+def _cut(points) -> tuple[list, tuple[Exclusion, ...]]:
+    """I punti con le ore escluse svuotate, e le esclusioni che le coprono.
+
+    L'ora resta nella serie senza dato, invece di sparire: la copertura la
+    conta fra quelle mancanti col conto che c'era gia' (`expected_parts`, o la
+    lunghezza della serie quando la ricetta non lo dice), e un profilo orario
+    la mostra vuota invece di una giornata piu' corta."""
+    cut, found = [], []
+    for point in points or []:
+        exclusion = point.get(EXCLUDED_MARK) if isinstance(point, dict) else None
+        if exclusion is None:
+            cut.append(point)
+            continue
+        found.append(exclusion)
+        # Resta solo QUANDO: un'ora senza dato, mai uno zero inventato.
+        cut.append({"inizio": point.get("inizio"), "fine": point.get("fine")})
+    return cut, tuple(dict.fromkeys(found))
 
 
 def unread_series(error: str) -> NotComputable:
@@ -517,6 +545,15 @@ class Recipe:
                 "ricetta non valida, non eseguita: " + " · ".join(outcome.problems))
 
         mute = dict(silent or {})
+        # Le ore escluse (`EXCLUDED_MARK`) escono dal conto qui, dove il
+        # fatto arriva: come `silent`, e' cio' che l'operazione da sola non
+        # puo' sapere.
+        cut: dict[str, list] = {}
+        excluded: dict[str, tuple[Exclusion, ...]] = {}
+        for entity_id, points in series.items():
+            cut[entity_id], found = _cut(points)
+            if found:
+                excluded[entity_id] = found
         results: dict[str, Result] = {}
         for step in self._steps:
             name = str(step["name"]).strip()
@@ -533,12 +570,49 @@ class Recipe:
                     " · ".join(mute[entity].reason for entity in mute_here),
                     cause=mute[mute_here[0]].cause)
                 continue
-            given_values = [self._resolve(i, wanted, series, readings or {}, results)
-                            for i, wanted in zip(step.get("inputs") or [],
-                                                 operation.takes)]
             params_of_step = dict(step.get("params") or {})
-            results[name] = operation.run(*given_values, **params_of_step)
+            results[name] = self._run_step(step, operation, params_of_step,
+                                           cut, excluded, series, readings or {},
+                                           results)
         return results
+
+    def _run_step(self, step, operation, params, cut, excluded, series,
+                  readings, results) -> Result:
+        """Un passo sui punti senza le ore escluse, con la dichiarazione.
+
+        Le esclusioni del passo sono quelle delle sue entita' e quelle che i
+        passi letti portano gia': una quota fatta su una media senza un'ora
+        e' anche lei senza quell'ora.
+
+        **Sotto la copertura minima il perche' e' il dato fermo** (default
+        scelto con la decisione dell'08/10/2026): se tolte le ore la misura
+        rifiuta -- copertura sotto il minimo, o un giorno intero fermo senza
+        piu' un numero -- e con quelle ore non avrebbe rifiutato, la causa e'
+        l'esclusione, non una copertura bassa venuta da sola. Se rifiuta
+        anche con quelle ore, il perche' e' l'altro, e resta."""
+        inputs = list(step.get("inputs") or [])
+        own = [x for i in inputs if isinstance(i, str) and i.startswith(ENTITY_MARK)
+               for x in excluded.get(i[1:], ())]
+        inherited = [x for i in inputs if isinstance(i, str) and i.startswith(STEP_MARK)
+                     and isinstance(results.get(i[1:]), Measurement)
+                     for x in results[i[1:]].excluded]
+
+        def _run(source):
+            return operation.run(*[self._resolve(i, wanted, source, readings, results)
+                                   for i, wanted in zip(inputs, operation.takes)],
+                                 **params)
+
+        result = _run(cut)
+        if not own and not inherited:
+            return result
+        if isinstance(result, Measurement):
+            return Measurement(result.value, unit=result.unit, coverage=result.coverage,
+                               excluded=(*own, *inherited))
+        if own and _run(series).computable:
+            reasons = " · ".join(dict.fromkeys(x.reason for x in own))
+            return NotComputable(f"{reasons}; senza quelle ore: {result.reason}",
+                                 cause=FROZEN)
+        return result
 
     @staticmethod
     def _resolve(given, wanted: str, series: Mapping, readings: Mapping,

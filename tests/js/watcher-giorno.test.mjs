@@ -134,6 +134,20 @@ test('seam _rendiResoconto: la copertura si dice solo quando NON e\' piena', () 
   assert.match(parziale.corpo.textContent, /83% del giorno/);
 });
 
+test('seam _rendiResoconto: le ore lasciate fuori si dicono sulla piastrella, nell\'ora della casa', () => {
+  // Mutazione che la uccide: togliere il ciclo su `m.esclusi`.
+  const perche = "sensor.t e' ferma: dalle 2026-10-06T01:00:00+02:00 alle 2026-10-06T02:00:00+02:00";
+  const conOre = rendiResoconto(resoconto({ misure: [misura({ copertura: 23 / 24, esclusi: [
+    { dal: '2026-10-06T01:00:00+02:00', al: '2026-10-06T02:00:00+02:00', causa: 'ferma', perche }] })] }));
+  assert.match(conOre.corpo.textContent, /senza 01:00–02:00 \(ferma\)/);
+  const riga = Array.from(conOre.corpo.querySelectorAll('.st-delta'))
+    .find((r) => /senza 01:00/.test(r.textContent));
+  assert.equal(riga.title, perche);
+
+  const senza = rendiResoconto(resoconto({ misure: [misura()] }));
+  assert.doesNotMatch(senza.corpo.textContent, /senza \d/);
+});
+
 test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di attributo', () => {
   // Mutazione che la uccide: non appendere la coda dei cambi di attributo.
   const { corpo } = rendiResoconto(resoconto({

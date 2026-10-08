@@ -323,6 +323,7 @@ def _migration_8(conn) -> None:
                 line.pop("valore", None)
                 line.pop("unita", None)
                 line.pop("copertura", None)
+                line.pop("esclusi", None)
                 line["non_calcolabile"] = _WITHDRAWN_REASON.format(operazione=used)
                 changed = True
         if changed:

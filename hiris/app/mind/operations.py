@@ -162,11 +162,19 @@ class Measurement(Result):
     chiede alla lettera -- *«un valore senza la sua unita' e senza il suo
     significato non e' un oggetto: e' un frammento»* -- e questo progetto l'ha
     gia' pagata leggendo `72` senza sapere se fossero Celsius o Fahrenheit.
+
+    **E porta le ore che ha lasciato fuori** (`excluded`, decisione del
+    proprietario dell'08/10/2026 sul dato fermo): una media fatta su ventitre'
+    ore perche' la ventiquattresima era ferma e' un numero vero solo se lo
+    dice, con la frase e la causa -- un altro posto che lo sapesse e la misura
+    no sarebbe un doppione, e chi riceve il numero non saprebbe di doverlo
+    andare a cercare.
     """
 
-    __slots__ = ("_coverage", "_unit", "_value")
+    __slots__ = ("_coverage", "_excluded", "_unit", "_value")
 
-    def __init__(self, value: float, *, unit: str, coverage: float) -> None:
+    def __init__(self, value: float, *, unit: str, coverage: float,
+                 excluded: tuple[Exclusion, ...] = ()) -> None:
         if not str(unit or "").strip():
             raise ValueError("una misura senza unita' non e' un oggetto: e' un frammento")
         if not 0.0 <= float(coverage) <= 1.0:
@@ -177,6 +185,7 @@ class Measurement(Result):
         self._value = value
         self._unit = str(unit).strip()
         self._coverage = float(coverage)
+        self._excluded = tuple(sorted(set(excluded), key=lambda x: (x.start_ts, x.reason)))
 
     @property
     def computable(self) -> bool:
@@ -194,17 +203,24 @@ class Measurement(Result):
     def coverage(self) -> float:
         return self._coverage
 
+    @property
+    def excluded(self) -> tuple[Exclusion, ...]:
+        """Le ore lasciate fuori dal conto, in ordine; vuoto se nessuna."""
+        return self._excluded
+
     def __eq__(self, other) -> bool:
         return (type(self) is type(other) and self._value == other._value
                 and self._unit == other._unit
-                and self._coverage == other._coverage)
+                and self._coverage == other._coverage
+                and self._excluded == other._excluded)
 
     def __hash__(self) -> int:
-        return hash((self._value, self._unit, self._coverage))
+        return hash((self._value, self._unit, self._coverage, self._excluded))
 
     def __repr__(self) -> str:
+        tail = f", excluded={self._excluded!r}" if self._excluded else ""
         return (f"Measurement({self._value!r}, unit={self._unit!r}, "
-                f"coverage={self._coverage!r})")
+                f"coverage={self._coverage!r}{tail})")
 
 
 # -- PERCHE' una misura non c'e': il vocabolario delle cause (B-26) -----------
@@ -327,6 +343,48 @@ class NotComputable(Result):
 
     def __repr__(self) -> str:
         return f"NotComputable({self._reason!r}, cause={self._cause!r})"
+
+
+@dataclass(frozen=True)
+class Exclusion:
+    """Un tratto di ore lasciato fuori da una misura, **col suo perche'**.
+
+    Nasce dal dato fermo (decisione del proprietario, 08/10/2026): il 06/10
+    un'ora ferma di una stazione ha fatto rifiutare l'intera giornata di
+    temperatura e umidita'. Ora le ore ferme escono dalla serie, la misura si
+    fa sul resto, e porta questo oggetto (`Measurement.excluded`).
+
+    `start_ts`/`end_ts` sono gli istanti (epoch, fine esclusa) con cui si
+    tolgono i punti; `start`/`end` gli stessi detti nell'ora della casa
+    (`historian.instant_out`), una volta sola, da chi conosce la zona. La
+    `cause` e' una parola del vocabolario chiuso, come per un rifiuto.
+    """
+
+    start_ts: float
+    end_ts: float
+    start: str
+    end: str
+    reason: str
+    cause: str
+
+    def __post_init__(self) -> None:
+        if not str(self.reason or "").strip():
+            raise ValueError("un'esclusione senza ragione e' un buco, non una dichiarazione")
+        if self.cause not in CAUSES:
+            raise ValueError(f"causa fuori dal vocabolario: {self.cause!r}")
+        if not self.start_ts < self.end_ts:
+            raise ValueError(f"tratto vuoto o rovesciato: {self.start_ts!r}-{self.end_ts!r}")
+
+    def covers(self, instant_ts: float) -> bool:
+        """Se l'ora che comincia a `instant_ts` sta nel tratto."""
+        return self.start_ts <= instant_ts < self.end_ts
+
+    def out(self) -> dict:
+        """La forma che esce da ogni porta che mostra la misura: il resoconto
+        (`report._measurements`) e la serie dell'analista
+        (`report.series_of_measures`) la ricevono gia' fatta."""
+        return {"dal": self.start, "al": self.end, "causa": self.cause,
+                "perche": self.reason}
 
 
 # ── Il registro ────────────────────────────────────────────────────────────

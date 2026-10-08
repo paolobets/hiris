@@ -212,6 +212,11 @@ window.HirisWatcherGiorno = (function () {
     });
   }
 
+  /* «2026-10-06T01:00:00+02:00» -> «01:00»: l'ora come la casa l'ha detta. */
+  function oraDellaCasa(iso) {
+    return String(iso || '').slice(11, 16);
+  }
+
   function piastrellaMisura(m) {
     var tile = el('div', 'stat-tile');
     tile.appendChild(el('div', 'st-label', (m.nome || m.soggetto) + ' · ' + m.misura));
@@ -224,6 +229,16 @@ window.HirisWatcherGiorno = (function () {
     if (typeof m.copertura === 'number' && m.copertura < 1) {
       tile.appendChild(el('div', 'st-delta', 'su ' + fmtPercent(m.copertura) + ' del giorno'));
     }
+    /* Le ore lasciate fuori dal numero (il dato fermo, 08/10/2026): la riga
+       le porta con l'ora della casa gia' scritta, e qui se ne legge l'ora
+       senza ricalcolarla nel fuso del browser. La frase intera resta nel
+       titolo, per chi vuole sapere perche'. */
+    (m.esclusi || []).forEach(function (x) {
+      var riga = el('div', 'st-delta', 'senza ' + oraDellaCasa(x.dal) + '–'
+        + oraDellaCasa(x.al) + ' (' + x.causa + ')');
+      if (x.perche) riga.title = x.perche;
+      tile.appendChild(riga);
+    });
     return tile;
   }
 
