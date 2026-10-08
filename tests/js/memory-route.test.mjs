@@ -38,9 +38,13 @@ const RICORDO = {
   unita: '°C',
   corretto_da_utente: false,
   ancore: [
-    { tipo: 'area', riferimento: 'sala_pranzo', nome_visto: 'sala', nome_attuale: 'Sala da pranzo', esiste: true },
-    { tipo: 'area', riferimento: 'area_rimossa', nome_visto: 'veranda', nome_attuale: null, esiste: false },
-    { tipo: 'entita', riferimento: 'sensor.x', nome_visto: 'sensore x', nome_attuale: null, esiste: null },
+    { tipo: 'area', riferimento: 'sala_pranzo', nome_visto: 'sala', nome_attuale: 'Sala da pranzo', esiste: true,
+      nome_mostrato: 'Sala da pranzo', nome_di: 'attuale' },
+    { tipo: 'area', riferimento: 'area_rimossa', nome_visto: 'veranda', nome_attuale: null, esiste: false,
+      nome_mostrato: 'veranda — non esiste più in Home Assistant. Il ricordo resta valido, ma non è più collegato a niente.',
+      nome_di: 'visto' },
+    { tipo: 'entita', riferimento: 'sensor.x', nome_visto: 'sensore x', nome_attuale: null, esiste: null,
+      nome_mostrato: 'sensore x', nome_di: 'visto' },
   ],
   condizioni: [{ tipo: 'stagione', valore: 'inverno' }, { tipo: 'presenza', valore: 'casa' }],
 };
@@ -115,7 +119,23 @@ test('un\'ancora sparita dall\'anagrafe (esiste: false) lo dice', async () => {
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
-  assert.match(testo, /veranda.*non esiste più nell.anagrafe/s);
+  assert.match(testo, /veranda.*non esiste più in Home Assistant/s);
+});
+
+test('la riga mostra il nome che prepara il server, e l\'id solo nel title', async () => {
+  // 08/10/2026 (ux-ui-specialist su Memoria): la pagina ricadeva su
+  // `riferimento` e mostrava un id di registro. Il ripiego vive nel server
+  // (`render._shown`); qui si mostra `nome_mostrato`. Mutazione ESEGUITA:
+  // tornare a `a.nome_attuale || a.nome_visto || a.riferimento` -- rossa.
+  const { window, document } = montaConServer();
+  window.HirisMemoryRoute.mount();
+  await tick(20);
+  const righe = Array.from(document.querySelectorAll('li'));
+  const veranda = righe.find((li) => li.textContent.indexOf('veranda') !== -1);
+  assert.ok(veranda, 'deve esserci la riga della veranda');
+  assert.doesNotMatch(veranda.textContent, /area_rimossa/, 'l\'id non e\' un nome');
+  assert.match(veranda.textContent, /Il ricordo resta valido/);
+  assert.equal(veranda.title, 'area_rimossa');
 });
 
 test('«esiste: null» non si legge come un\'ancora cancellata (non ho potuto controllare vs non c\'è più)', async () => {

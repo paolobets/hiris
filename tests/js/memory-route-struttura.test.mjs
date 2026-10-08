@@ -59,7 +59,7 @@ async function montaConRicordo(ricordo) {
 
 test('ancore SENZA grandezza/intervallo: la card non nega la struttura che sta mostrando', async () => {
   const ricordo = Object.assign({}, BASE_RICORDO, {
-    ancore: [{ tipo: 'area', riferimento: 'salotto', nome_visto: 'salotto', nome_attuale: 'Salotto', esiste: true }],
+    ancore: [{ tipo: 'area', riferimento: 'salotto', nome_visto: 'salotto', nome_attuale: 'Salotto', esiste: true, nome_mostrato: 'Salotto', nome_di: 'attuale' }],
   });
   const outlet = await montaConRicordo(ricordo);
   const testo = outlet.textContent;
@@ -106,7 +106,7 @@ test('grandezza/intervallo presenti: il comportamento di prima non e\' cambiato 
 test('grandezza presente E ancore presenti: nessuna riga si contraddice, e nessuna sparisce', async () => {
   const ricordo = Object.assign({}, BASE_RICORDO, {
     grandezza: 'humidity',
-    ancore: [{ tipo: 'area', riferimento: 'bagno', nome_visto: 'bagno', nome_attuale: 'Bagno', esiste: true }],
+    ancore: [{ tipo: 'area', riferimento: 'bagno', nome_visto: 'bagno', nome_attuale: 'Bagno', esiste: true, nome_mostrato: 'Bagno', nome_di: 'attuale' }],
   });
   const outlet = await montaConRicordo(ricordo);
   const testo = outlet.textContent;
