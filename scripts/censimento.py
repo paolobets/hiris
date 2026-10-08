@@ -60,6 +60,8 @@ _TITOLI: dict[str, str] = {
     "tabella-non-concludibile": "Tabelle su cui il rilevatore non puo' concludere",
     "scrittura-fuori-schema":    "Scritture verso tabelle che il file non dichiara",
     "scrittura-non-concludibile": "Scritture con il nome di tabella composto a runtime",
+    "colonna-mai-letta":         "Colonne degli archivi che nessun lettore nomina",
+    "schema-non-concludibile":   "Archivi il cui schema non si legge dall'albero",
     "operazione-fuori-dal-registro": "Operazioni del registro re-implementate altrove",
     "opzione-mai-letta":         "Opzioni dell'add-on che nessun codice legge",
     "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
@@ -387,6 +389,176 @@ def censisci_scritture(file_app: list[Path]) -> list[Reperto]:
         schema_atteso=schema_atteso, scritture=scritture,
         dinamiche=dinamiche, illeggibili=illeggibili,
     )
+    return reperti
+
+
+# ── Colonne ─────────────────────────────────────────────────────────────────
+# Il censimento delle tabelle vede una tabella intera e basta: una colonna
+# scritta a ogni riga e mai letta da nessuno passava (Tappa 8, Task 5 -- le
+# colonne morte G-06, G-07, G-08 erano state trovate a mano). Questa sezione
+# CHIEDE gli schemi al sorgente invece di ricopiarli:
+#
+#   1. gli archivi sono le chiamate a `init_schema(conn, SCHEMA, ...)` in
+#      `hiris/app`; lo schema e' la costante di modulo che ricevono, letta
+#      dall'albero sintattico (`ast.literal_eval`: nessun import del prodotto);
+#   2. lo schema si crea in un database in memoria e le colonne si chiedono a
+#      SQLite (`PRAGMA table_info`), non a una regex sul CREATE;
+#   3. una colonna e' LETTA se il suo nome compare in un letterale di stringa
+#      di `hiris/app` o nel frontend, tolto cio' che la nomina per scriverla o
+#      per costruirla: lo schema stesso, il DDL, la lista delle colonne di un
+#      INSERT, il lato sinistro di un SET, e il codice delle migrazioni (le
+#      funzioni passate a `migrations=`, con cio' che chiamano nel modulo).
+#
+# Il limite, dichiarato: e' una ricerca per NOME. Una colonna che si chiama
+# come una parola comune (`id`, `domain`, `title`) risulta letta anche quando
+# il lettore e' di un'altra tabella. Il cancello prende le colonne che nessuno
+# nomina, non quelle che qualcuno nomina per caso.
+
+_RE_INSERT_COLONNE = re.compile(
+    r"(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO\s+[\"'`]?\w+[\"'`]?\s*\(([^)]*)\)")
+_RE_SET = re.compile(r"\bSET\b(.*?)(?=\bWHERE\b|\bRETURNING\b|$)", re.DOTALL)
+_RE_ASSEGNATA = re.compile(r"\b\w+\s*=(?!=)")
+_RE_EXCLUDED = re.compile(r"\bexcluded\.\w+", re.IGNORECASE)
+_RE_DDL = re.compile(r"\b(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)|ALTER\s+TABLE)\b")
+_RE_COMMENTO_JS = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+
+COPERTURA_COLONNE: dict[str, int] = {}
+
+
+def _nomi_di_modulo(albero: ast.Module) -> dict[str, ast.AST]:
+    """Le funzioni e gli assegnamenti di primo livello, per nome."""
+    nomi: dict[str, ast.AST] = {}
+    for nodo in albero.body:
+        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            nomi[nodo.name] = nodo
+        elif isinstance(nodo, (ast.Assign, ast.AnnAssign)):
+            bersagli = nodo.targets if isinstance(nodo, ast.Assign) else [nodo.target]
+            for b in bersagli:
+                if isinstance(b, ast.Name):
+                    nomi[b.id] = nodo
+    return nomi
+
+
+def _chiamate_init_schema(albero: ast.Module) -> list[ast.Call]:
+    return [n for n in ast.walk(albero)
+            if isinstance(n, ast.Call)
+            and ((isinstance(n.func, ast.Name) and n.func.id == "init_schema")
+                 or (isinstance(n.func, ast.Attribute) and n.func.attr == "init_schema"))]
+
+
+def _schemi_e_costruzione(albero: ast.Module) -> tuple[list[tuple[str, int]], set[int]] | None:
+    """Gli schemi che il modulo passa a `init_schema`, e i nodi che li
+    COSTRUISCONO (lo schema, gli indici di `after_sql`, le migrazioni con cio'
+    che chiamano nel modulo): un nome che compare solo li' non e' letto.
+
+    `None` se il modulo chiama `init_schema` con uno schema che non si legge
+    dall'albero (un nome che non e' una costante di modulo, una f-string): il
+    cancello non ha guardato, e non puo' dire di si'."""
+    nomi = _nomi_di_modulo(albero)
+    schemi: list[tuple[str, int]] = []
+    semi: list[ast.AST] = []
+    for chiamata in _chiamate_init_schema(albero):
+        if len(chiamata.args) < 2 or not isinstance(chiamata.args[1], ast.Name):
+            return None
+        definizione = nomi.get(chiamata.args[1].id)
+        if definizione is None or definizione.value is None:
+            return None
+        try:
+            testo = ast.literal_eval(definizione.value)
+        except ValueError:
+            return None
+        if not isinstance(testo, str):
+            return None
+        schemi.append((testo, definizione.lineno))
+        semi.append(definizione)
+        for kw in chiamata.keywords:
+            if kw.arg in ("after_sql", "migrations"):
+                semi.append(kw.value)
+    costruzione: set[int] = set()
+    visti: set[str] = set()
+    coda = list(semi)
+    while coda:
+        nodo = coda.pop()
+        for figlio in ast.walk(nodo):
+            costruzione.add(id(figlio))
+            if (isinstance(figlio, ast.Name) and figlio.id in nomi
+                    and figlio.id not in visti):
+                visti.add(figlio.id)
+                coda.append(nomi[figlio.id])
+    return schemi, costruzione
+
+
+def colonne_dello_schema(schema: str) -> dict[str, list[str]]:
+    """`{tabella: [colonne]}` di uno schema, chieste a SQLite: lo schema si
+    crea in un database in memoria e si legge con `PRAGMA table_info`."""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript(schema)
+        tabelle = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+        return {t: [r[1] for r in conn.execute(f'PRAGMA table_info("{t}")')]
+                for t in tabelle}
+    finally:
+        conn.close()
+
+
+def _parole_lette(testo: str) -> set[str]:
+    """Le parole di un letterale che LEGGONO: tolto il DDL, la lista delle
+    colonne di un INSERT e il lato sinistro di un SET."""
+    if _RE_DDL.search(testo):
+        return set()
+    testo = _RE_INSERT_COLONNE.sub(" ", testo)
+    testo = _RE_SET.sub(
+        lambda m: " SET " + _RE_ASSEGNATA.sub(" ", _RE_EXCLUDED.sub(" ", m.group(1))),
+        testo)
+    return set(_RE_PAROLA.findall(testo))
+
+
+def censisci_colonne(file_app: list[Path], file_frontend: list[Path]) -> list[Reperto]:
+    """Colonne degli schemi degli archivi che nessun lettore nomina."""
+    archivi: list[tuple[Path, int, dict[str, list[str]]]] = []
+    lette: set[str] = set()
+    illeggibili: list[str] = []
+    for f in file_app:
+        try:
+            albero = ast.parse(_leggi(f))
+        except SyntaxError:
+            illeggibili.append(_rel(f))
+            continue
+        letto = _schemi_e_costruzione(albero)
+        if letto is None:
+            illeggibili.append(_rel(f))
+            continue
+        schemi, costruzione = letto
+        for testo, riga in schemi:
+            archivi.append((f, riga, colonne_dello_schema(testo)))
+        for nodo in _letterali_codice(albero):
+            if id(nodo) not in costruzione:
+                lette |= _parole_lette(nodo.value)
+    for f in file_frontend:
+        if f.suffix == ".js":
+            lette |= set(_RE_PAROLA.findall(_RE_COMMENTO_JS.sub(" ", _leggi(f))))
+
+    reperti: list[Reperto] = []
+    colonne = 0
+    for f, riga, tabelle in archivi:
+        for tabella, nomi in tabelle.items():
+            for colonna in nomi:
+                colonne += 1
+                if colonna not in lette:
+                    reperti.append(Reperto(
+                        "colonna-mai-letta", f"{tabella}.{colonna}", f"{_rel(f)}:{riga}",
+                        "nessun letterale del prodotto ne' il frontend la nomina "
+                        "fuori dallo schema, dalle migrazioni e dalle scritture"))
+    for dove in illeggibili:
+        reperti.append(Reperto(
+            "schema-non-concludibile", "?", dove,
+            "init_schema riceve uno schema che non si legge dall'albero: "
+            "il rilevatore non ha guardato le sue colonne"))
+    COPERTURA_COLONNE.update(archivi=len(archivi), colonne=colonne,
+                             illeggibili=len(illeggibili))
     return reperti
 
 
@@ -933,6 +1105,12 @@ def stampa(reperti: list[Reperto]) -> None:
               f"{COPERTURA_SCRITTURE.get('dinamiche', 0)} con il nome di tabella composto "
               f"a runtime, {COPERTURA_SCRITTURE.get('illeggibili', 0)} file illeggibili.{_RESET}")
 
+    if COPERTURA_COLONNE:
+        print(f"\n{_GRIGIO}Copertura delle colonne: "
+              f"{COPERTURA_COLONNE.get('colonne', 0)} colonne in "
+              f"{COPERTURA_COLONNE.get('archivi', 0)} schemi chiesti a init_schema, "
+              f"{COPERTURA_COLONNE.get('illeggibili', 0)} file illeggibili.{_RESET}")
+
     # Il registro puo' essere VUOTO mentre lo si costruisce, e un registro vuoto
     # produce zero reperti esattamente come un registro pulito: senza questo
     # numero le due cose avrebbero la stessa faccia.
@@ -967,6 +1145,8 @@ def stampa(reperti: list[Reperto]) -> None:
     print("    fantasma di nome «if»;")
     print("  - le COSTANTI di modulo non si esaminano: solo funzioni e classi. Una")
     print("    tupla o un dizionario senza lettori non e' un reperto di questo strumento;")
+    print("  - una colonna si cerca PER NOME: una che si chiama come una parola comune")
+    print("    (id, domain, title) risulta letta anche se il lettore e' di un'altra tabella;")
     print("  - una variabile d'ambiente si vede solo se il suo nome e' una stringa")
     print(f"    letterale: os.environ.get(nome) con un nome indiretto resta invisibile.{_RESET}")
 
@@ -996,6 +1176,9 @@ CATEGORIE_FERMANTI = (
     "simbolo-orfano", "simbolo-solo-test",
     "rotta-senza-chiamanti", "rotta-solo-test",
     "opzione-mai-letta", "tabella-mai-toccata", "tabella-scritta-mai-letta",
+    # Dalla Tappa 8 (Task 5): le colonne, e lo schema che non si legge -- un
+    # archivio di cui il cancello non vede le colonne e' un cancello cieco.
+    "colonna-mai-letta", "schema-non-concludibile",
 )
 
 #: Le voci volute, ognuna con la sua ragione scritta. Possono solo diminuire.
@@ -1059,6 +1242,7 @@ def run(*, cancello: bool = False, exceptions: Path | None = None) -> int:
     file_app = _file_py(APP)
     reperti = censisci_tabelle(file_app)
     reperti += censisci_scritture(file_app)
+    reperti += censisci_colonne(file_app, _file_frontend())
     reperti += censisci_configurazione(
         ROOT / "hiris" / "config.yaml", ROOT / "hiris" / "run.sh", file_app
     )

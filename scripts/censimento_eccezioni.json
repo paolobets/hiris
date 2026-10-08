@@ -4,5 +4,8 @@
  },
  "rotta-solo-test": {
   "/api/misure": "La leggono gli attrezzi di misura (scripts/misure.py, scripts/batteria_attori.py), che il rilevatore non conta fra i chiamanti: dichiarazione D5 della Tappa 0. Voce M-22 del registro."
+ },
+ "colonna-mai-letta": {
+  "avvisi.avvisata_ts": "G-07 (Tappa 8): esce con la migrazione revisions 6 -> 7, che appartiene al Task 4 e a un altro lavoro in parallelo. Quando la colonna esce l'eccezione diventa guarita e il cancello chiede di toglierla."
  }
 }

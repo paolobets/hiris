@@ -1101,6 +1101,7 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 ADMITTED_EXCEPTIONS = {
     ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",
+    ("colonna-mai-letta", "avvisi.avvisata_ts"): "G-07",
 }
 
 
@@ -1157,3 +1158,107 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_po
     assert not loose, (
         "eccezioni che non citano una voce APERTA del registro e non si "
         "dichiarano falso positivo: " + "; ".join(loose))
+
+
+# -- Le colonne (Tappa 8, Task 5) ------------------------------------------------
+
+_ARCHIVIO = '''
+from .storage import init_schema
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ricordi (
+    id INTEGER PRIMARY KEY,
+    testo TEXT,
+    detto_il TEXT,
+    pinned_ts REAL
+);
+"""
+
+
+def _migration_2(conn):
+    conn.execute("UPDATE ricordi SET pinned_ts = NULL WHERE pinned_ts IS NULL")
+    _aiuto(conn)
+
+
+def _aiuto(conn):
+    conn.execute("SELECT pinned_ts FROM ricordi")
+
+
+class Store:
+    def __init__(self, conn):
+        init_schema(conn, _SCHEMA, version=2, migrations={2: _migration_2})
+
+    def salva(self, testo, quando):
+        self._conn.execute(
+            "INSERT INTO ricordi (testo, detto_il, pinned_ts) VALUES (?, ?, ?)",
+            (testo, quando, quando))
+        self._conn.execute("UPDATE ricordi SET detto_il = ? WHERE testo = ?",
+                           (quando, testo))
+
+    def leggi(self):
+        return self._conn.execute("SELECT id, testo FROM ricordi").fetchall()
+'''
+
+
+def _colonne_mai_lette(tmp_path, testo, js=None):
+    f = _scrivi(tmp_path, "store.py", testo)
+    frontend = [_scrivi(tmp_path, "pagina.js", js)] if js is not None else []
+    return sorted(r.nome for r in censimento.censisci_colonne([f], frontend)
+                  if r.categoria == "colonna-mai-letta")
+
+
+def test_una_colonna_scritta_e_mai_letta_si_vede(tmp_path):
+    """La mutazione del piano, in piccolo: `pinned_ts` la scrivono l'INSERT e
+    la migrazione, e la nomina la funzione che la migrazione chiama -- non la
+    legge nessuno. `detto_il` la scrivono l'INSERT e il SET di un UPDATE, il
+    cui WHERE legge `testo`. `id` e `testo` le legge la SELECT.
+
+    Mutazione ESEGUITA sul prodotto (08/10/2026): `pinned_ts REAL` aggiunta
+    allo schema di `memory/store.py` e all'INSERT di `remember` --
+    `censimento.py --cancello` esce 1 con «colonna-mai-letta
+    ricordi.pinned_ts»."""
+    assert _colonne_mai_lette(tmp_path, _ARCHIVIO) == ["ricordi.detto_il", "ricordi.pinned_ts"]
+
+
+def test_il_where_e_il_frontend_sono_letture(tmp_path):
+    testo = _ARCHIVIO.replace('"SELECT id, testo FROM ricordi"',
+                              '"SELECT id, testo FROM ricordi WHERE pinned_ts > ?"')
+    assert _colonne_mai_lette(tmp_path, testo, js="var q = r.detto_il; // pinned_ts") == []
+
+
+def test_lo_schema_si_chiede_a_sqlite_non_a_una_regex(tmp_path):
+    """Le colonne vengono da `PRAGMA table_info` su uno schema creato in
+    memoria: un vincolo di tabella (`PRIMARY KEY (a, b)`) non e' una colonna,
+    e una colonna con la virgola nel DEFAULT resta una."""
+    assert censimento.colonne_dello_schema(
+        "CREATE TABLE t (a TEXT DEFAULT 'x,y', b INTEGER, PRIMARY KEY (a, b));"
+    ) == {"t": ["a", "b"]}
+
+
+def test_uno_schema_che_non_si_legge_dall_albero_ferma(tmp_path):
+    testo = _ARCHIVIO.replace('_SCHEMA = """', '_SCHEMA = f"""')
+    reperti = censimento.censisci_colonne([_scrivi(tmp_path, "store.py", testo)], [])
+    assert [r.categoria for r in reperti] == ["schema-non-concludibile"]
+    assert "schema-non-concludibile" in censimento.CATEGORIE_FERMANTI
+    assert "colonna-mai-letta" in censimento.CATEGORIE_FERMANTI
+
+
+def test_la_derivazione_delle_colonne_vede_ogni_archivio_del_prodotto():
+    """Un insieme improvvisamente piccolo e' un cancello che sembra vivo e non
+    guarda piu' niente. Gli archivi che il cancello deriva dall'albero
+    sintattico si contano qui con un altro metodo -- le chiamate a
+    `init_schema(` nel testo del prodotto, senza commenti e docstring -- e
+    devono essere gli stessi, ognuno con colonne vere.
+
+    Mutazione ESEGUITA (08/10/2026): `_chiamate_init_schema` che riconosce
+    solo `init_schema` chiamato come attributo -- rossa, 0 archivi contro 10."""
+    import re
+
+    file_app = censimento._file_py(censimento.APP)
+    reperti = censimento.censisci_colonne(file_app, censimento._file_frontend())
+    assert not [r for r in reperti if r.categoria == "schema-non-concludibile"]
+    chiamate = sum(len(re.findall(r"(?<!def )\binit_schema\(", censimento._leggi_pulito(f)))
+                   for f in file_app)
+    assert chiamate >= 10, "il conteggio di controllo non trova gli archivi"
+    assert censimento.COPERTURA_COLONNE["archivi"] == chiamate
+    assert censimento.COPERTURA_COLONNE["colonne"] >= 10 * chiamate
