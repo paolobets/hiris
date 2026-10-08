@@ -74,6 +74,62 @@ SCAFFOLDING_FIELD = "impalcatura"
 JUDGMENT_FIELD_NAMES = frozenset({
     GENRE_FIELD, RESTING_FIELD, WORKING_FIELD, OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD, DA_SAPERE_SUBITO_FIELD, SCAFFOLDING_FIELD})
+
+# -- gli altri campi del sapere ---------------------------------------------
+#
+# **Tutti i nomi dei campi del sapere vivono qui** (B-22, decisione D8 della
+# Tappa 8, 08/10/2026). Fino a quel giorno stavano in tre moduli: i giudizi e
+# `significato` qui, `attributi` in `mind/knowledge.py`, i tre della ricetta
+# in `mind/recipe_turn.py`. Sono la FORMA dell'archivio -- come si chiama una
+# cosa -- e chi legge ne ha bisogno quanto chi scrive: stanno in `home_space`
+# perche' `home_space` non importa da `mind`, e `mind` importa da qui.
+# L'elenco intero e' `KNOWLEDGE_FIELD_NAMES`, e il cancello
+# (`tests/test_knowledge_field_names.py`) lo chiede a questo modulo.
+
+#: Il campo sotto cui vive l'elenco degli attributi da tenere per un tipo.
+#:
+#: **Fisso, e il tipo sta nel SOGGETTO** -- `("tipo", "climate", "attributi")`,
+#: non `("tipo", "climate", "attributi:climate")`. La prima stesura scriveva il
+#: tipo due volte nella stessa chiave primaria (revisione indipendente,
+#: 13/09/2026): lo stesso fatto in due posti della stessa riga, cioe' la
+#: seconda fondamenta rotta dentro la chiave che dovrebbe garantirla. E'
+#: anche la forma che `significato` usa gia'.
+ATTRIBUTE_FIELD = "attributi"
+
+#: Il campo del sapere che porta la ricetta di un dispositivo.
+RECIPE_FIELD = "ricetta"
+
+#: Il campo che porta il RIFIUTO, quando una ricetta non si e' potuta scrivere.
+#:
+#: **Due campi e non uno**, perche' sono due cose: `ricetta` porta una ricetta
+#: eseguibile, `ricetta_non_capita` porta il perche' non ce n'e' una. Metterle
+#: nello stesso campo vorrebbe dire che il suo valore significa due cose
+#: diverse a seconda di un altro campo -- e chi legge senza guardare l'altro
+#: eseguirebbe un elenco di problemi come se fosse una sequenza di passi.
+UNDERSTOOD_FIELD = "ricetta_non_capita"
+
+#: Il campo che porta il rifiuto **RAGIONATO**: il modello ha capito, e dice
+#: che non c'e' niente che valga la pena misurare.
+#:
+#: **Tre campi e non due, per la stessa ragione per cui erano due e non uno.**
+#: «Non ho capito questo dispositivo» e «ho capito, e non c'e' una misura da
+#: ricavarne» sono due fatti diversi: il primo e' un lavoro per il
+#: proprietario, il secondo e' una risposta completa. Misurato sulla casa vera
+#: il 15/09/2026, il giorno in cui la porta del sapere si e' aperta: **18
+#: righe su 21** marcate «non capito» erano rifiuti ragionati, e portavano una
+#: frase nostra -- «nessuno ha finito di scrivere» -- che le prove archiviate
+#: accanto smentivano parola per parola. Il proprietario avrebbe letto
+#: ventuno problemi dove ce n'erano tre.
+#:
+#: La `verification` resta NULLA, non `non_capito`: quella colonna dice cosa
+#: ha detto il CONTROLLO (spec §8), e qui il controllo non ha niente da ridire.
+DECLINED_FIELD = "ricetta_non_serve"
+
+#: Ogni nome di campo che il sapere conosce. **Le migrazioni non lo leggono**:
+#: una migrazione deve dire fra due anni la stessa cosa che dice adesso, e
+#: scrive i suoi nomi per esteso (`mind/knowledge._drop_unrunnable_recipes`).
+KNOWLEDGE_FIELD_NAMES = JUDGMENT_FIELD_NAMES | frozenset({
+    MEANING_FIELD, ATTRIBUTE_FIELD, RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD})
 CHRONICLE_FIELDS = (GENRE_FIELD, RESTING_FIELD)
 NO_GENRE = "nessuno"
 #: `integrazione` e' nato il 20/09/2026 con `impalcatura`: il terzo genere

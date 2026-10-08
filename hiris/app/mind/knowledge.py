@@ -43,7 +43,7 @@ import threading
 import time as _time
 from dataclasses import dataclass
 
-from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES, type_subject
+from ..home_space.type_judgments import ATTRIBUTE_FIELD, JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
 from ..storage import connect, init_schema, rekey
 
@@ -90,22 +90,10 @@ PROVENANCES = ("chiesto", Provenance.IMPORTED.value, Provenance.OURS.value,
 #: controllo era possibile», che e' diverso da «non capito».
 VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
 
-# -- il vocabolario dei campi -----------------------------------------------
-#
-# I nomi dei campi vivono qui e non nel seme: sono la FORMA dell'archivio --
-# come si chiama una cosa e come si compone il soggetto -- e chi legge ne ha
-# bisogno quanto chi semina. Tenerli nel seme obbligava il lettore a
-# importarli da li', cioe' a dipendere da chi scrive per poter leggere.
-
-#: Il campo sotto cui vive l'elenco degli attributi da tenere per un tipo.
-#:
-#: **Fisso, e il tipo sta nel SOGGETTO** -- `("tipo", "climate", "attributi")`,
-#: non `("tipo", "climate", "attributi:climate")`. La prima stesura scriveva il
-#: tipo due volte nella stessa chiave primaria (revisione indipendente,
-#: 13/09/2026): lo stesso fatto in due posti della stessa riga, cioe' la
-#: seconda fondamenta rotta dentro la chiave che dovrebbe garantirla. E'
-#: anche la forma che `significato` usa gia'.
-ATTRIBUTE_FIELD = "attributi"
+# I nomi dei campi non vivono qui: sono la FORMA dell'archivio, e chi legge ne
+# ha bisogno quanto chi scrive. Stanno tutti in `home_space/type_judgments.py`
+# (B-22, Tappa 8, 08/10/2026), che `home_space` puo' importare senza
+# dipendere dal cervello.
 
 
 @dataclass(frozen=True)

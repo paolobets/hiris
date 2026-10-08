@@ -51,6 +51,7 @@ from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
+from ..home_space.type_judgments import DECLINED_FIELD, RECIPE_FIELD, UNDERSTOOD_FIELD
 from ..steering import RECIPES_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .knowledge import Fact
 from .operations import NO_STATISTICS, REGISTRY_VERSION, UNKNOWN_SOURCE, NotComputable
@@ -62,34 +63,9 @@ logger = logging.getLogger(__name__)
 #: ricetta: il `kind` della sua dichiarazione, come `observer.SCOPE_TURN_KIND`.
 RECIPE_TURN_KIND = SPECIES[RECIPES_SPECIES].kind
 
-#: Il campo del sapere che porta la ricetta di un dispositivo.
-RECIPE_FIELD = "ricetta"
-
-#: Il campo che porta il RIFIUTO, quando una ricetta non si e' potuta scrivere.
-#:
-#: **Due campi e non uno**, perche' sono due cose: `ricetta` porta una ricetta
-#: eseguibile, `ricetta_non_capita` porta il perche' non ce n'e' una. Metterle
-#: nello stesso campo vorrebbe dire che il suo valore significa due cose
-#: diverse a seconda di un altro campo -- e chi legge senza guardare l'altro
-#: eseguirebbe un elenco di problemi come se fosse una sequenza di passi.
-UNDERSTOOD_FIELD = "ricetta_non_capita"
-
-#: Il campo che porta il rifiuto **RAGIONATO**: il modello ha capito, e dice
-#: che non c'e' niente che valga la pena misurare.
-#:
-#: **Tre campi e non due, per la stessa ragione per cui erano due e non uno.**
-#: «Non ho capito questo dispositivo» e «ho capito, e non c'e' una misura da
-#: ricavarne» sono due fatti diversi: il primo e' un lavoro per il
-#: proprietario, il secondo e' una risposta completa. Misurato sulla casa vera
-#: il 15/09/2026, il giorno in cui la porta del sapere si e' aperta: **18
-#: righe su 21** marcate «non capito» erano rifiuti ragionati, e portavano una
-#: frase nostra -- «nessuno ha finito di scrivere» -- che le prove archiviate
-#: accanto smentivano parola per parola. Il proprietario avrebbe letto
-#: ventuno problemi dove ce n'erano tre.
-#:
-#: La `verification` resta NULLA, non `non_capito`: quella colonna dice cosa
-#: ha detto il CONTROLLO (spec §8), e qui il controllo non ha niente da ridire.
-DECLINED_FIELD = "ricetta_non_serve"
+# I tre campi della ricetta -- `RECIPE_FIELD`, `UNDERSTOOD_FIELD`,
+# `DECLINED_FIELD` -- vivono con gli altri nomi dei campi del sapere in
+# `home_space/type_judgments.py` (B-22, Tappa 8), con le loro ragioni.
 
 #: Contro quale registro il rifiuto e' stato deciso.
 #:
