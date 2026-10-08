@@ -65,9 +65,10 @@ def pragma_sites(trees: dict[str, ast.AST]) -> dict[str, int]:
     return {where: n for where, n in counts.items() if n}
 
 
-def pragma_violations(sites: dict[str, int]) -> list[str]:
-    admitted = {where: entry["conta"]
-                for where, entry in EXCEPTIONS["pragma-table-info"].items()}
+def pragma_violations(sites: dict[str, int],
+                      exceptions: dict | None = None) -> list[str]:
+    entries = EXCEPTIONS["pragma-table-info"] if exceptions is None else exceptions
+    admitted = {where: entry["conta"] for where, entry in entries.items()}
     problems = []
     for where, n in sorted(sites.items()):
         if where == HOME:
@@ -110,11 +111,12 @@ def test_il_cancello_vede_la_f_string_e_salta_il_docstring():
 
 def test_un_eccezione_guarita_e_un_rosso():
     """L'elenco puo' solo accorciarsi: un file ammesso che ha smesso di usare
-    l'idioma esce dall'elenco nello stesso commit."""
-    [admitted] = list(EXCEPTIONS["pragma-table-info"])
-    allowed = EXCEPTIONS["pragma-table-info"][admitted]["conta"]
-    assert pragma_violations({HOME: 1}) == [(
-        f"{admitted}: ammessi {allowed}, ne restano 0 -- l'eccezione guarita "
+    l'idioma esce dall'elenco nello stesso commit. L'elenco vero e' vuoto
+    dalla Tappa 8 (Task 5: `mind/store.py` e' passato a `storage`), quindi
+    l'eccezione qui e' finta."""
+    finta = {"hiris/app/x.py": {"conta": 2, "ragione": "prova"}}
+    assert pragma_violations({HOME: 1}, finta) == [(
+        "hiris/app/x.py: ammessi 2, ne restano 0 -- l'eccezione guarita "
         "esce da `archivi_eccezioni.json`")]
 
 
@@ -169,3 +171,27 @@ def test_after_sql_e_una_frase_sola(tmp_path):
     with pytest.raises((sqlite3.ProgrammingError, sqlite3.Warning)):
         storage.init_schema(conn, "CREATE TABLE IF NOT EXISTS t (id INTEGER);",
                             version=1, after_sql="SELECT 1; SELECT 2")
+
+
+def test_la_ricostruzione_toglie_la_colonna_e_tiene_righe_e_indici(tmp_path):
+    """`storage.rebuild_table`: la colonna esce, le righe e gli indici
+    restano, e un passo che fallisce lascia la tabella com'era."""
+    conn = storage.connect(str(tmp_path / "d.db"))
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, tiene TEXT, via TEXT)")
+    conn.execute("CREATE INDEX idx_t_tiene ON t(tiene)")
+    conn.execute("INSERT INTO t VALUES (1, 'a', 'x')")
+    conn.commit()
+    storage.rebuild_table(
+        conn, "t", "CREATE TABLE t (id INTEGER PRIMARY KEY, tiene TEXT)",
+        ("id", "tiene"), indexes=("CREATE INDEX IF NOT EXISTS idx_t_tiene ON t(tiene)",))
+    conn.commit()
+    assert _columns(conn, "t") == ["id", "tiene"]
+    assert conn.execute("SELECT id, tiene FROM t").fetchall()[0][:] == (1, "a")
+    assert conn.execute("SELECT count(*) FROM sqlite_master WHERE type='index' "
+                        "AND name='idx_t_tiene'").fetchone()[0] == 1
+
+    with pytest.raises(sqlite3.OperationalError):
+        storage.rebuild_table(conn, "t", "CREATE TABLE t (id INTEGER PRIMARY KEY)",
+                              ("id", "manca"))
+    assert _columns(conn, "t") == ["id", "tiene"]
+    assert conn.execute("SELECT count(*) FROM t").fetchone()[0] == 1

@@ -37,7 +37,14 @@ import threading
 import time as _time
 import uuid
 
-from ..storage import connect, init_schema, prune_declared
+from ..storage import (
+    add_missing_columns,
+    connect,
+    init_schema,
+    prune_declared,
+    rebuild_table,
+    table_columns,
+)
 from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
@@ -123,29 +130,12 @@ CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
 logger = logging.getLogger(__name__)
 
 
-def _add_missing_columns(conn, columns: tuple[str, ...]) -> None:
-    """Aggiunge a `cambi` le colonne di `columns` che non ci sono ancora --
-    tutte di tipo `TEXT`, tutte nullable: e' la forma che condividono tutte
-    le migrazioni di questo schema (vedi `_migration_2` e `_migration_3`),
-    perche' non ce ne sia una seconda scritta a mano, un'altra strategia
-    accanto a questa -- due migrazioni adiacenti con due meccanismi diversi
-    sarebbero un invito al copia-incolla sbagliato la prossima volta.
-
-    Il controllo su `PRAGMA table_info` (non un `try`/`except` attorno
-    all'`ALTER`) e' la scelta deliberata: un `except sqlite3.OperationalError`
-    inghiottirebbe QUALUNQUE errore dell'`ALTER`, non solo «la colonna c'e'
-    gia'» -- anche un archivio bloccato o un disco pieno -- e la migrazione
-    proseguirebbe come se fosse andata bene. `init_schema` stampa comunque
-    `PRAGMA user_version` alla fine: un fallimento inghiottito lascerebbe
-    l'archivio dichiarato alla versione nuova SENZA le colonne, e il primo
-    `record` dopo fallirebbe per sempre -- l'osservatore smetterebbe di
-    scrivere, esattamente il rischio che questa migrazione esiste per
-    evitare.
-    """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
-    for column in columns:
-        if column not in existing:
-            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
+def _text_columns(*names: str) -> dict[str, str]:
+    """Le colonne di `cambi` che le migrazioni 2-7 aggiungono: tutte `TEXT`,
+    tutte nullable, la forma che condividono. L'aggiunta e' quella di ogni
+    archivio, `storage.add_missing_columns` (G-13, Tappa 8): fino al
+    08/10/2026 questo file ne aveva una sua, per la sola `cambi`."""
+    return dict.fromkeys(names, "TEXT")
 
 
 def _migration_2(conn) -> None:
@@ -173,7 +163,8 @@ def _migration_2(conn) -> None:
     che ricostruisse la tabella per tre colonne rischierebbe di perdere
     settimane di osservazione per un guadagno estetico.
     """
-    _add_missing_columns(conn, ("device_class", "state_class", "source_type"))
+    add_missing_columns(conn, "cambi", _text_columns("device_class", "state_class",
+                                                     "source_type"))
 
 
 def _migration_3(conn) -> None:
@@ -184,7 +175,7 @@ def _migration_3(conn) -> None:
     Le righe scritte prima rileggono `None` su entrambe -- e' vero: quelle
     righe quei fatti non li avevano.
     """
-    _add_missing_columns(conn, ("domain", "title"))
+    add_missing_columns(conn, "cambi", _text_columns("domain", "title"))
 
 
 def _migration_4(conn) -> None:
@@ -217,7 +208,7 @@ def _migration_4(conn) -> None:
     esistono per un soggetto che non lo dichiara mai, un *repair* o
     un'integrazione).
     """
-    _add_missing_columns(conn, ("first_occurred",))
+    add_missing_columns(conn, "cambi", _text_columns("first_occurred"))
 
 
 def _migration_5(conn) -> None:
@@ -251,7 +242,7 @@ def _migration_5(conn) -> None:
     quello che mostra e' un identificatore (`describeWatchedSubject`, nelle
     pagine dell'osservatore in `static/config/`), mai inventando un nome dall'id.
     """
-    _add_missing_columns(conn, ("friendly_name",))
+    add_missing_columns(conn, "cambi", _text_columns("friendly_name"))
 
 
 def _migration_7(conn) -> None:
@@ -276,7 +267,7 @@ def _migration_7(conn) -> None:
     sarebbe attribuire a ieri lo stato di adesso, la stessa ragione gia'
     scritta per `friendly_name`.
     """
-    _add_missing_columns(conn, ("attributes",))
+    add_missing_columns(conn, "cambi", _text_columns("attributes"))
 
 
 #: Cosa si scrive al posto di un numero calcolato con un'operazione che il
@@ -660,9 +651,7 @@ def _migration_6(conn) -> None:
     l'hanno mai portata, e riempirla oggi attribuirebbe a ieri un fatto di
     adesso.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(scope_attempt)")}
-    if "version" not in existing:
-        conn.execute("ALTER TABLE scope_attempt ADD COLUMN version TEXT")
+    add_missing_columns(conn, "scope_attempt", {"version": "TEXT"})
 
 
 def _migration_11(conn) -> None:
@@ -673,9 +662,7 @@ def _migration_11(conn) -> None:
     state chieste con un livello, e riempirlo oggi attribuirebbe a ieri un
     fatto di adesso.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
-    if "stakes" not in existing:
-        conn.execute("ALTER TABLE proposte ADD COLUMN stakes TEXT")
+    add_missing_columns(conn, "proposte", {"stakes": "TEXT"})
 
 
 #: Le colonne di `proposte` alla versione 12, quelle che la ricostruzione
@@ -705,41 +692,30 @@ def _migration_12(conn) -> None:
     ricostruzione interrotta dopo il `RENAME` lasciava una `proposte` vuota,
     con le righe in `proposte_v11` dove nessuno le legge. Se un passo fallisce
     si torna indietro e l'archivio resta alla versione 11, intero: la
-    migrazione si rifara' al prossimo avvio.
+    migrazione si rifara' al prossimo avvio. Dalla Tappa 8 (Task 5) la
+    ricostruzione e' `storage.rebuild_table`, scritta una volta per tutti gli
+    archivi.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
-    if not existing & {"chi_applica", "aggiornata_ts", "esito_ts"}:
+    if not table_columns(conn, "proposte") & {"chi_applica", "aggiornata_ts",
+                                               "esito_ts"}:
         return
-    columns = ",".join(_PROPOSAL_COLUMNS)
-    # Una migrazione precedente dello stesso avvio puo' averne gia' aperta una
-    # (il modulo la apre da se' davanti a un `UPDATE`): si continua in quella.
-    if not conn.in_transaction:
-        conn.execute("BEGIN")
-    try:
-        conn.execute("ALTER TABLE proposte RENAME TO proposte_v11")
-        conn.execute("DROP INDEX IF EXISTS idx_proposte_stato")
-        conn.execute(
-            "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
-            "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
-            "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
-            "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)")
-        conn.execute(f"INSERT INTO proposte({columns}) SELECT {columns} FROM proposte_v11")
-        conn.execute("DROP TABLE proposte_v11")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
-                     "ON proposte(stato, creata_ts DESC)")
-    except BaseException:
-        conn.rollback()
-        raise
+    rebuild_table(
+        conn, "proposte",
+        "CREATE TABLE proposte (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
+        "stato TEXT NOT NULL, testo TEXT NOT NULL, perche TEXT NOT NULL, "
+        "impronta TEXT NOT NULL, prova_json TEXT NOT NULL, "
+        "giri_json TEXT NOT NULL, esito_nota TEXT, stakes TEXT)",
+        _PROPOSAL_COLUMNS,
+        indexes=(("CREATE INDEX IF NOT EXISTS idx_proposte_stato "
+                  "ON proposte(stato, creata_ts DESC)"),))
 
 
 def _migration_13(conn) -> None:
     """v12 -> v13 (attori, strato 4, Task 4.5): `proposte.construction_id` e
     `proposte.automation_refusal`, l'esito di «Rendila automatica». Le righe
     di prima rileggono `None`: nessuno l'aveva chiesto."""
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(proposte)")}
-    for column in ("construction_id", "automation_refusal"):
-        if column not in existing:
-            conn.execute(f"ALTER TABLE proposte ADD COLUMN {column} TEXT")
+    add_missing_columns(conn, "proposte", {"construction_id": "TEXT",
+                                           "automation_refusal": "TEXT"})
 
 
 #: La chiave sotto cui il vecchio attuatore scriveva i suoi esiti dentro
@@ -846,30 +822,28 @@ def _drop_unread_reading_columns(conn) -> None:
     vive gia' nello specchio di Home Assistant, che e' dove chi ne ha bisogno
     lo chiede (`house.mirror.state_classes`).
 
-    **Si ricostruisce la tabella**, come `_migration_12`: `DROP COLUMN` vuole
-    SQLite 3.35. Gli indici seguono la tabella rinominata e se ne vanno con
-    lei: si ricreano dopo il `DROP`, quando il nome e' di nuovo libero. Il
-    contatore di `AUTOINCREMENT` riparte dall'id piu' alto ricopiato, e basta:
-    la potatura toglie le righe piu' vecchie, mai l'ultima, quindi nessun id
-    gia' dato torna.
+    **Si ricostruisce la tabella**, come `_migration_12`
+    (`storage.rebuild_table`): `DROP COLUMN` vuole SQLite 3.35. Gli indici
+    seguono la tabella rinominata e se ne vanno con lei: si ricreano dopo il
+    `DROP`, quando il nome e' di nuovo libero. Il contatore di
+    `AUTOINCREMENT` riparte dall'id piu' alto ricopiato, e basta: la potatura
+    toglie le righe piu' vecchie, mai l'ultima, quindi nessun id gia' dato
+    torna.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
-    if not existing & {"state_class", "source_type"}:
+    if not table_columns(conn, "cambi") & {"state_class", "source_type"}:
         return
-    columns = ",".join(_READING_COLUMNS)
-    conn.execute("ALTER TABLE cambi RENAME TO cambi_v14")
-    conn.execute(
+    rebuild_table(
+        conn, "cambi",
         "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "quando_ts REAL NOT NULL, "
         "fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')), "
         "soggetto TEXT NOT NULL, da TEXT, a TEXT, device_class TEXT, "
         "domain TEXT, title TEXT, first_occurred TEXT, friendly_name TEXT, "
-        "attributes TEXT)")
-    conn.execute(f"INSERT INTO cambi({columns}) SELECT {columns} FROM cambi_v14")
-    conn.execute("DROP TABLE cambi_v14")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cambi_soggetto "
-                 "ON cambi(soggetto, quando_ts)")
+        "attributes TEXT)",
+        _READING_COLUMNS,
+        indexes=("CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts)",
+                 ("CREATE INDEX IF NOT EXISTS idx_cambi_soggetto "
+                  "ON cambi(soggetto, quando_ts)")))
 
 
 #: L'istante in cui e' nato il codice del proponente: il commit `b79c347`
