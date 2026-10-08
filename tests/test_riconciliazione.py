@@ -20,6 +20,8 @@ Mutazioni ESEGUITE (08/10/2026):
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +33,9 @@ from hiris.app.mind.recipe_turn import ANSWER_FIELDS, DECLINED_FIELD
 from hiris.app.mind.reconciliation import reconcile, what_to_forget
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.proxy.entity_cache import _to_minimal
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta, Refused
 
 READ_AT = "2026-10-08T06:00:00+00:00"
 
@@ -117,12 +122,9 @@ def test_home_assistant_non_avviato_ferma_tutto():
     assert plan.stopped is not None
 
 
-class _Client:
-    def __init__(self, config):
-        self._config = config
-
-    async def get_config(self):
-        return self._config
+def _Client(config) -> CasaFinta:
+    """Home Assistant che risponde a `get_config` con questa config."""
+    return CasaFinta({"ha_config": config})
 
 
 @pytest.mark.asyncio
@@ -130,10 +132,15 @@ class _Client:
     ({"state": "RUNNING"}, True),
     ({"state": "STARTING"}, False),
     ({"state": "NOT_RUNNING"}, False),
-    ({"errore": "Home Assistant non ha risposto", "causa": "rete"}, False),
 ])
 async def test_avviato_si_legge_da_get_config(config, expected):
     assert await ha_running(_Client(config)) is expected
+
+
+@pytest.mark.asyncio
+async def test_un_get_config_rifiutato_non_e_avviato():
+    house = CasaFinta({}, refuse={"get_config": Refused("unknown_error", "giu'")})
+    assert await ha_running(house) is False
 
 
 @pytest.mark.asyncio

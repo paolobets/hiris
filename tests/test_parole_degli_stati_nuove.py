@@ -18,22 +18,29 @@ Mutazioni ESEGUITE:
   rossa `test_un_seme_che_non_scrive_non_fa_avanzare_la_versione` (la prova
   del giro resta verde: sulla tabella in cache il seme non si chiama affatto).
 """
+import sys
+from pathlib import Path
+
 import pytest
 
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.state_words import prime_state_translations
-from hiris.app.proxy.state_translations import StateTranslations
+from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_CATEGORY, StateTranslations
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from casa_finta import CasaFinta
 
 _RISORSE = {"component.binary_sensor.entity_component.gas.name": "Gas"}
 
 
-class _Client:
-    def __init__(self):
-        self.reads = 0
+def _client() -> CasaFinta:
+    return CasaFinta({"translations": {"language": "it",
+                                       "category": STATE_TRANSLATIONS_CATEGORY,
+                                       "report": {"risorse": dict(_RISORSE)}}})
 
-    async def get_translations(self, language, *, category):
-        self.reads += 1
-        return {"risorse": dict(_RISORSE)}
+
+def _reads(house: CasaFinta) -> int:
+    return sum(1 for command, _ in house.calls if command == "frontend/get_translations")
 
 
 class _Casa:
@@ -50,12 +57,12 @@ def sapere(tmp_path):
 
 @pytest.mark.asyncio
 async def test_la_cache_dice_se_la_tabella_e_appena_letta():
-    client = _Client()
+    client = _client()
     cache = StateTranslations(client)
     first = await cache.read(ha_version="2026.9.4", language="it")
     second = await cache.read(ha_version="2026.9.4", language="it")
     assert (first["appena_lette"], second["appena_lette"]) == (True, False)
-    assert client.reads == 1
+    assert _reads(client) == 1
     third = await cache.read(ha_version="2026.10.0", language="it")
     assert third["appena_lette"] is True
 
@@ -63,7 +70,7 @@ async def test_la_cache_dice_se_la_tabella_e_appena_letta():
 @pytest.mark.asyncio
 async def test_il_giro_sulla_tabella_in_cache_non_tocca_il_sapere(sapere):
     app = {"knowledge": sapere, "home_space_store": _Casa(),
-           "state_translations": StateTranslations(_Client())}
+           "state_translations": StateTranslations(_client())}
 
     await prime_state_translations(app)
     assert sapere.get("tipo", "binary_sensor.gas", "significato").value == "Gas"
