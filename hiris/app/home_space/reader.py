@@ -322,6 +322,7 @@ class HomeSpace:
         self._frame_path = os.path.join(data_dir, REFERENCE_FRAME_FILE)
         self._home_space: dict[str, list[dict]] = {}
         self._unavailable: list[str] = []
+        self._unavailable_since: dict[str, str | None] = {}
         # **L'unica cosa dell'anagrafe che sopravvive ai riavvii**, e non e'
         # un'eccezione arbitraria: il fuso e' la cornice in cui e' scritto il
         # NOSTRO archivio, non una copia di un fatto di HA. La riparazione
@@ -391,6 +392,10 @@ class HomeSpace:
         """
         self._home_space = {table: list(home_space.get(table, ())) for table in TABLES}
         self._unavailable = list(unavailable or [])
+        # Chi prende in consegna da qui non porta copie: un registro caduto e'
+        # una tabella vuota, senza eta'. Le copie con la loro eta' le scrive
+        # `hold_registries`, che sola le fa.
+        self._unavailable_since = {name: None for name in self._unavailable}
         if reference_frame:
             self._reference_frame = reference_frame
             self._write_reference_frame(reference_frame)
@@ -416,9 +421,19 @@ class HomeSpace:
         che il proprietario aveva chiamato a modo suo, per un comando fallito.
         """
         built = build_home_space(registries)
-        if self._updated_at is not None:
+        previous_read, previous_since = self._updated_at, self._unavailable_since
+        if previous_read is not None:
             built = _carried_over(built, self._home_space, unavailable or [])
         self.hold(built, unavailable, reference_frame)
+        # **La copia porta il suo istante** (S-36, Tappa 8, Task 1,
+        # 08/10/2026): l'ultima ricostruzione in cui quel registro ha
+        # risposto. Caduto anche allora, resta l'istante di prima; mai letto,
+        # `None`. Fino a quel giorno `unavailable` diceva «non riletta» e
+        # taceva da quando: una copia di un'ora fa e una di tre giorni fa
+        # erano la stessa riga.
+        self._unavailable_since = {
+            name: previous_since.get(name, previous_read)
+            for name in self._unavailable}
 
     def hold_integrations(self, rows: list[dict]) -> None:
         """Le integrazioni appena annunciate da Home Assistant, al posto di
@@ -447,6 +462,7 @@ class HomeSpace:
         self._home_space = {**self._home_space,
                             "integrazioni": [_integration(row) for row in rows]}
         self._unavailable = [name for name in self._unavailable if name != "integrazioni"]
+        self._unavailable_since.pop("integrazioni", None)
 
     def read(self) -> dict[str, list[dict]]:
         """L'anagrafe intera. `{}` finche' nessuna lettura e' riuscita."""
@@ -460,6 +476,13 @@ class HomeSpace:
 
     def unavailable(self) -> list[str]:
         return list(self._unavailable)
+
+    def unavailable_since(self) -> dict[str, str | None]:
+        """Per ogni registro di `unavailable`, l'istante (ISO, UTC) della
+        copia che l'anagrafe tiene al suo posto (`_carried_over`): l'ultima
+        ricostruzione in cui aveva risposto. `None` se non ha mai risposto, e
+        la tabella e' vuota. Vedi `hold_registries` (S-36)."""
+        return dict(self._unavailable_since)
 
     # -- Il comportamento: tenuto a memoria come l'anagrafe, dal 10/09/2026.
     def hold_behavior(self, entries: list[dict], *, problems: list[str] | None = None,
