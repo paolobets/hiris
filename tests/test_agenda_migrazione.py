@@ -18,7 +18,7 @@ chi installa da zero troverebbe l'add-on rotto.
 import os
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.store import AgendaStore, _migration_2
+from hiris.app.keeper.store import SCHEMA_VERSION, AgendaStore, _migration_2
 from hiris.app.storage import connect
 
 # Lo schema com'era a version=1 -- ricopiato QUI apposta, e non importato da
@@ -213,6 +213,73 @@ def test_archivio_nuovo_nasce_gia_a_posto(tmp_path):
         # Lo stesso vale per il filo (versione 4, spec 2026-09-26 §2): nello
         # schema, non solo nella migrazione.
         assert {"subject_key", "entry_point"} <= colonne
-        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert "closed_ts" in colonne and "recapito" not in colonne
+        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     finally:
         store.close()
+
+
+# -- v4 -> v5 (Tappa 8, Task 5): esce `recapito`, nasce `closed_ts` (G-20) --
+
+_SCHEMA_V4 = """
+CREATE TABLE promesse (
+    id TEXT PRIMARY KEY, specie TEXT NOT NULL, frase TEXT NOT NULL,
+    quando_ts REAL NOT NULL, quando_detto TEXT, fuso TEXT, chiamata_json TEXT,
+    domanda TEXT, istantanea_json TEXT, recapito TEXT,
+    stato TEXT NOT NULL DEFAULT 'in_attesa', motivo TEXT, esecuzione_id TEXT,
+    testo TEXT, avvisare INTEGER, nata_ts REAL NOT NULL, risvegliata_ts REAL,
+    esito_letto_ts REAL, entities_at_birth INTEGER, subject_key TEXT,
+    entry_point TEXT);
+CREATE INDEX idx_promesse_scadenza ON promesse(stato, quando_ts);
+PRAGMA user_version = 4;
+"""
+
+
+def _archivio_v4(path: str) -> None:
+    """Le righe com'erano sul disco alla versione 4: una presa e mantenuta,
+    una disdetta e una saltata (che `risvegliata_ts` lo portavano come
+    chiusura), una in attesa col `recapito` scelto dal modello."""
+    conn = connect(path)
+    conn.executescript(_SCHEMA_V4)
+    for ident, stato, presa in (("mantenuta", "mantenuta", ADESSO - 50),
+                                ("disdetta", "disdetta", ADESSO - 40),
+                                ("saltata", "saltata", ADESSO - 30),
+                                ("attesa", "in_attesa", None)):
+        conn.execute(
+            "INSERT INTO promesse(id,specie,frase,quando_ts,recapito,stato,nata_ts,"
+            "risvegliata_ts,subject_key,entry_point) VALUES(?,'fai',?,?,?,?,?,?,?,?)",
+            (ident, "frase " + ident, ADESSO, "notify.mobile_app_x", stato,
+             ADESSO - 100, presa, PAOLO.subject_key, PAOLO.entry_point))
+    conn.commit()
+    conn.close()
+
+
+def test_la_migrazione_5_toglie_il_recapito_e_scrive_la_chiusura(tmp_path):
+    """Due aperture: la prima migra, la seconda non cambia niente.
+
+    Mutazione ESEGUITA (08/10/2026): `closed_ts` non riempito dalla
+    migrazione -- rossa, la mantenuta resta senza chiusura e la potatura non
+    la toglierebbe mai."""
+    path = os.path.join(str(tmp_path), "promesse.db")
+    _archivio_v4(path)
+    for _apertura in range(2):
+        store = AgendaStore(path)
+        try:
+            colonne = {r[1] for r in store._conn.execute("PRAGMA table_info(promesse)")}
+            assert "recapito" not in colonne and "closed_ts" in colonne
+            righe = {r["id"]: r for r in store.list(thread=PAOLO)}
+            assert (righe["mantenuta"]["risvegliata_ts"],
+                    righe["mantenuta"]["closed_ts"]) == (ADESSO - 50, ADESSO - 50)
+            assert (righe["disdetta"]["risvegliata_ts"],
+                    righe["disdetta"]["closed_ts"]) == (None, ADESSO - 40)
+            assert (righe["saltata"]["risvegliata_ts"],
+                    righe["saltata"]["closed_ts"]) == (None, ADESSO - 30)
+            assert (righe["attesa"]["risvegliata_ts"],
+                    righe["attesa"]["closed_ts"]) == (None, None)
+            assert store._conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='index' "
+                "AND name='idx_promesse_scadenza'").fetchone()[0] == 1
+            assert store._conn.execute(
+                "PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        finally:
+            store.close()

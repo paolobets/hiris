@@ -91,9 +91,9 @@ _CHIAVI = (
     # la stessa forma della coda e delle costruzioni. Serve DENTRO il
     # processo (l'orologio, la consegna dell'esito); le rotte e lo strumento
     # lo tolgono con `chat_thread.without_thread` prima di rispondere.
-    # `recapito` e' uscito da qui: la colonna resta per le righe vecchie, ma
-    # nessuno la legge piu' per recapitare (vedi lo schema in `store.py`).
     "thread",
+    # Quando si e' conclusa (G-20, Tappa 8): `risvegliata_ts` e' la presa.
+    "closed_ts",
 )
 
 
@@ -329,6 +329,7 @@ def serializza(row) -> dict:
         # proprietario non le adotta (`chat_thread.adopt_if_owner`).
         "thread": thread_from_columns(_column(row, "subject_key"),
                                       _column(row, "entry_point")),
+        "closed_ts": _column(row, "closed_ts"),
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

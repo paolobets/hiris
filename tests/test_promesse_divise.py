@@ -79,14 +79,14 @@ def _crea(archivio, thread, n: int = 0, *, adesso: float | None = None) -> str:
     return esito["promessa"]["id"]
 
 
-def _semina_orfana(archivio, *, adesso: float, recapito: str | None = None) -> str:
+def _semina_orfana(archivio, *, adesso: float) -> str:
     """Una promessa di PRIMA delle promesse divise: senza filo, come le lascia
     la migrazione. Scritta col SQL perche' `create` non sa piu' farla nascere
     cosi' -- ed e' giusto."""
     archivio._conn.execute(
-        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,recapito,stato,"
-        "nata_ts) VALUES('vecchia','chiedi','detta prima',?,'?',?,'in_attesa',?)",
-        (adesso + 3600, recapito, adesso))
+        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,stato,"
+        "nata_ts) VALUES('vecchia','chiedi','detta prima',?,'?','in_attesa',?)",
+        (adesso + 3600, adesso))
     archivio._conn.commit()
     return "vecchia"
 
@@ -120,14 +120,15 @@ def test_un_soggetto_con_l_apice_non_rompe_la_query(archivio):
 
 
 def test_create_non_scrive_mai_il_recapito(archivio):
-    """2.4: la colonna resta nello schema per le righe vecchie, ma non si
-    scrive piu' -- nemmeno se qualcuno la mette nei dati."""
+    """2.4: un `recapito` nei dati non si scrive -- dalla Tappa 8 (Task 5) la
+    colonna non c'e' piu' (`keeper/store._migration_5`), e la promessa nasce
+    lo stesso."""
     adesso = time.time()
     dati = {**_chiedi(adesso=adesso), "recapito": "notify.mobile_app_x"}
     ident = archivio.create(dati, thread=PAOLO, now=adesso)["promessa"]["id"]
-    riga = archivio._conn.execute(
-        "SELECT recapito FROM promesse WHERE id=?", (ident,)).fetchone()
-    assert riga[0] is None
+    assert archivio.read(ident) is not None
+    colonne = {r[1] for r in archivio._conn.execute("PRAGMA table_info(promesse)")}
+    assert "recapito" not in colonne
 
 
 def test_il_tetto_delle_cinquanta_e_per_filo(archivio):
