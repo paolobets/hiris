@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from .chat_settings import DEFAULT_RETENTION_DAYS
 from .chat_thread import ChatThread, thread_condition, thread_params
+from .home_space.historian import instant_epoch
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
 from .storage import Retention, add_missing_columns, connect, init_schema, rekey
@@ -539,7 +540,9 @@ class ChatStore:
         del disegno**, cioe' l'ora del ricaricamento -- non quella in cui il
         messaggio era stato scritto. La cronologia porta gia' l'ora vera in
         colonna (`timestamp`, scritta da `append()` a ogni turno): mancava
-        solo restituirla a chi la chiede, non inventare una seconda fonte."""
+        solo restituirla a chi la chiede, non inventare una seconda fonte.
+        Esce in epoca, come ogni istante degli archivi (G-14, Tappa 8): sul
+        disco resta l'ISO con `Z`, la conversione e' in lettura."""
         with self._mu:
             rows = self._conn.execute(
                 "SELECT role, content, timestamp FROM chat_messages "
@@ -547,7 +550,8 @@ class ChatStore:
                 (*_fresh_session_params(thread), _retention_cutoff(days)),
             ).fetchall()
             messages = [
-                {"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]}
+                {"role": r["role"], "content": r["content"],
+                 "timestamp": instant_epoch(r["timestamp"])}
                 for r in rows
             ]
             # Strip toxic assistant turns (and their dangling user pair) before
@@ -564,7 +568,9 @@ class ChatStore:
     def get_past_summaries(
         self, thread: ChatThread, n: int = PAST_SESSIONS_LIMIT
     ) -> list[dict]:
-        """Return the thread's closed sessions with summaries, most recent first."""
+        """Return the thread's closed sessions with summaries, most recent first.
+
+        `started_at` e `last_msg_at` escono in epoca (G-14, Tappa 8)."""
         with self._mu:
             rows = self._conn.execute(
                 "SELECT session_id, started_at, last_msg_at, summary FROM chat_sessions "
@@ -572,7 +578,8 @@ class ChatStore:
                 "ORDER BY last_msg_at DESC LIMIT ?",
                 (*thread_params(thread), n),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [{**dict(r), "started_at": instant_epoch(r["started_at"]),
+                     "last_msg_at": instant_epoch(r["last_msg_at"])} for r in rows]
 
     def count_user_turns(self, thread: ChatThread) -> int:
         """Count user messages in the thread's active (non-stale) session."""
@@ -629,7 +636,8 @@ class ChatStore:
                 said.setdefault(m["session_id"], []).append(m["content"])
         return [{"id": r["session_id"],
                  "titolo": conversation_title(said.get(r["session_id"], [])),
-                 "ultimo_messaggio": r["last_msg_at"],
+                 # In epoca, come ogni istante degli archivi (G-14).
+                 "ultimo_messaggio": instant_epoch(r["last_msg_at"]),
                  "attiva": r["session_id"] == active}
                 for r in rows]
 

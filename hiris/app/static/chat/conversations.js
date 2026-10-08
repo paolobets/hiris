@@ -45,11 +45,11 @@
   /* «oggi», «ieri», poi gg-mm, nel fuso di chi guarda. `ultimo_messaggio` si
      mostra cosi' com'e': dopo una ripresa e' l'ora della ripresa (serve alla
      regola delle due ore del server), e inventarne un'altra direbbe una data
-     che nessuno ha scritto. Una data illeggibile non diventa «oggi». */
-  function relativeDay(iso, now) {
-    if (!iso) return '';
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
+     che nessuno ha scritto. Una data illeggibile non diventa «oggi».
+     Arriva in epoca, come ogni istante degli archivi (G-14, Tappa 8). */
+  function relativeDay(epoch, now) {
+    if (typeof epoch !== 'number' || !isFinite(epoch)) return '';
+    var d = new Date(epoch * 1000);
     var n = now || new Date();
     var today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
     var day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -113,7 +113,10 @@
     title.textContent = String(row.titolo == null ? '' : row.titolo);
     var when = document.createElement('time');
     when.className = 'conv-when';
-    if (row.ultimo_messaggio) when.setAttribute('datetime', String(row.ultimo_messaggio));
+    /* `datetime` vuole una data leggibile dalla macchina: l'ISO dell'epoca. */
+    if (relativeDay(row.ultimo_messaggio)) {
+      when.setAttribute('datetime', new Date(row.ultimo_messaggio * 1000).toISOString());
+    }
     when.textContent = relativeDay(row.ultimo_messaggio);
     btn.appendChild(title);
     btn.appendChild(when);
