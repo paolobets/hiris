@@ -260,12 +260,13 @@ def test_history_says_unknown_with_no_key():
 
 # -- cio' che va al modello: l'istantanea di una promessa ----------------------
 #
-# `tools._snapshot` archivia l'istante della misura in epoch (`misurato_ts`):
+# Le promesse nate prima dell'11/10/2026 archiviano l'istante della misura in
+# epoch (`misurato_ts`, che la migrazione 6 dell'archivio chiama `quando`):
 # e' il RECORD, e resta (il piano: «cambia la resa, non il record»). La resa
 # e' `keeper/promise.serializza`, l'unica forma della promessa per lo
 # strumento e per la pagina: li' l'istante esce nell'ora della casa, col fuso
 # che la promessa stessa porta (`fuso`, fondamenta 1). Nessuna pagina legge
-# `misurato_ts` (cercato in `static/` il 05/10/2026): `quando_ts`,
+# `quando` della misura (cercato in `static/` l'11/10/2026): `quando_ts`,
 # `nata_ts`, `risvegliata_ts` ed `esito_letto_ts` invece la pagina Impegni li
 # legge come numeri, e restano epoch finche' la pagina non cambia con loro
 # (Task 4, passo 6).
@@ -287,9 +288,9 @@ def test_the_snapshot_instant_reaches_the_model_in_the_house_zone():
     from hiris.app.keeper.promise import serializza
 
     out = serializza(_promise_row([
-        {"entita": "sensor.t", "valore": "21", "unita": "°C",
-         "misurato_ts": QUARTER_PAST_EIGHT_ROME}]))
-    assert out["istantanea"][0]["misurato_ts"] == "2026-10-04T08:15:00+02:00"
+        {"id": "sensor.t", "stato": "21", "unita": "°C",
+         "quando": QUARTER_PAST_EIGHT_ROME}]))
+    assert out["istantanea"][0]["quando"] == "2026-10-04T08:15:00+02:00"
     # Il record non cambia: i numeri che la pagina legge restano numeri.
     assert out["quando_ts"] == 1.0 and out["nata_ts"] == 1.0
 
@@ -297,8 +298,8 @@ def test_the_snapshot_instant_reaches_the_model_in_the_house_zone():
 def test_a_snapshot_without_a_known_zone_stays_utc():
     from hiris.app.keeper.promise import serializza
 
-    out = serializza(_promise_row([{"entita": "sensor.t", "valore": "21",
+    out = serializza(_promise_row([{"id": "sensor.t", "stato": "21",
                                     "unita": None,
-                                    "misurato_ts": QUARTER_PAST_EIGHT_ROME}],
+                                    "quando": QUARTER_PAST_EIGHT_ROME}],
                                   fuso=None))
-    assert out["istantanea"][0]["misurato_ts"] == "2026-10-04T06:15:00+00:00"
+    assert out["istantanea"][0]["quando"] == "2026-10-04T06:15:00+00:00"

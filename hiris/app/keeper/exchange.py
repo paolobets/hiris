@@ -401,18 +401,19 @@ def _system_prompt() -> str:
 def _domanda(promise: dict) -> str:
     """La domanda, con l'istantanea di partenza accanto.
 
-    Di ogni voce dell'istantanea si rendono l'entita', il valore e l'unita':
+    Di ogni voce dell'istantanea si rendono l'entita', lo stato e l'unita':
     senza, «e' aumentata» non ha un termine di paragone e il modello se lo
-    inventerebbe. L'istantanea porta anche l'istante (`misurato_ts`) e, per
-    un'entita' che non esisteva, una `nota`: qui non si rendono.
+    inventerebbe. L'istantanea porta anche l'istante (`quando`) e il resto
+    della resa corta dell'entita' (`render.render_entity`): qui non si
+    rendono.
     """
     righe = ["Me l'hai chiesto cosi': «{}».".format(promise["frase"]),
              "Quello che devi guardare: {}".format(promise["domanda"])]
     for measurement in promise.get("istantanea") or []:
         righe.append(
             "Quando me l'hai chiesto, {} era {}{} (misurato allora, non adesso).".format(
-                measurement.get("entita"),
-                measurement.get("valore"),
+                measurement.get("id"),
+                measurement.get("stato"),
                 (" " + measurement["unita"]) if measurement.get("unita") else "",
             )
         )

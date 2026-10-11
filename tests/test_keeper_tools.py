@@ -325,9 +325,14 @@ async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.camera_t"]})
     misure = esito["promessa"]["istantanea"]
-    assert misure[0]["entita"] == "sensor.camera_t"
-    assert misure[0]["valore"] == "21.4"
+    assert misure[0]["id"] == "sensor.camera_t"
+    assert misure[0]["stato"] == "21.4"
     assert misure[0]["unita"] == "°C"      # senza unita' e' il `72` senza scala
+    # La misura e' l'entita' resa come da ogni altra porta (C-01, Tappa 9),
+    # alla profondita' corta, piu' l'istante in cui e' stata presa.
+    assert misure[0]["genere"] == "entita" and misure[0]["nome"] == "Camera T"
+    assert misure[0]["quando"].endswith("+00:00")
+    assert not {"entita", "valore", "misurato_ts"} & set(misure[0])
 
 
 @pytest.mark.asyncio

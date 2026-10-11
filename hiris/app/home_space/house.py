@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..memory.resolver import STORE_KEY_PER_TYPE, Lookup, costruisci_indice
-from ..proxy.entity_cache import disclosable_attributes
+from ..proxy.entity_cache import disclosable_attributes, states_by_id
 from . import topology
 from .ha_vocabulary import (
     CONFIG_ENTRY_LOADED,
@@ -49,7 +49,7 @@ from .house_query import (
     _behavior_matches,
     _entity_matches,
 )
-from .topology import Mirror, read_mirror
+from .topology import Mirror, live_mirror, read_mirror
 from .type_vocabulary import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 #: La chiave di `escluse` per ogni classe del fuori (`topology.visibility`).
@@ -141,6 +141,22 @@ class House:
         return cls(home_space_store.read(), read_mirror(cache),
                    tuple(home_space_store.unavailable()), statistic_ids,
                    home_space_store.energy())
+
+    @classmethod
+    def read_ids(cls, home_space_store, cache, entity_ids) -> House:
+        """La casa di adesso con lo specchio delle SOLE `entity_ids`, chiesto
+        per id (A-24, A-35): per chi rende poche entita' -- l'istantanea di una
+        promessa -- e non deve scandire lo specchio intero per trovarle.
+        L'anagrafe e' quella intera, come in `read`: la resa ci legge area,
+        nome e visibilita'. Uno specchio che non si legge resta `readable`
+        falso, come in `read_mirror`."""
+        states = states_by_id(cache)
+        mirror = (Mirror(readable=False) if states is None
+                  else live_mirror([states[i] for i in entity_ids if i in states]))
+        if home_space_store is None:
+            return cls({}, mirror)
+        return cls(home_space_store.read(), mirror, tuple(home_space_store.unavailable()),
+                   energy=home_space_store.energy())
 
     def hierarchy(self) -> list[dict]:
         """L'albero piano -> area -> entita' di `topology.hierarchy`, con i

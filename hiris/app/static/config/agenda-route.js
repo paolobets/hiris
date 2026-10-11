@@ -153,7 +153,7 @@ window.HirisAgendaRoute = (function () {
   function formatSnapshot(snapshot) {
     if (!snapshot || !snapshot.length) return null;
     return snapshot.map(function (m) {
-      return (m.entita || '?') + ' ' + m.valore + (m.unita ? ' ' + m.unita : '');
+      return (m.id || '?') + ' ' + m.stato + (m.unita ? ' ' + m.unita : '');
     }).join(' · ');
   }
 

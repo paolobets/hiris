@@ -543,3 +543,18 @@ def test_un_motivo_corto_non_porta_il_segno_del_taglio(nome):
 
     motivo = getattr(exchange, nome)("credito esaurito")
     assert CUT not in motivo and "credito esaurito" in motivo
+
+
+def test_la_domanda_porta_la_misura_di_partenza_coi_nomi_della_resa():
+    """La misura dell'istantanea e' l'entita' resa da `render_entity` (Tappa
+    9, F2): `id`, `stato`, `unita`. La domanda del risveglio la legge con quei
+    nomi -- con quelli di prima diceva «None era None».
+
+    Mutazione ESEGUITA: `_domanda` che legge ancora `entita`/`valore` --
+    rossa."""
+    from hiris.app.keeper.exchange import _domanda
+
+    testo = _domanda(_promessa_chiedi(istantanea=[
+        {"id": "sensor.camera_t", "stato": "21.4", "unita": "°C",
+         "quando": "2026-10-11T10:00:00+02:00"}]))
+    assert "Quando me l'hai chiesto, sensor.camera_t era 21.4 °C" in testo

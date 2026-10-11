@@ -15,6 +15,7 @@ colonna nella sola migrazione e non in `_SCHEMA`. Un archivio esistente
 funzionerebbe e uno nuovo no -- cioe' il proprietario non vedrebbe niente, e
 chi installa da zero troverebbe l'add-on rotto.
 """
+import json
 import os
 
 from hiris.app.chat_thread import ChatThread
@@ -279,6 +280,37 @@ def test_la_migrazione_5_toglie_il_recapito_e_scrive_la_chiusura(tmp_path):
             assert store._conn.execute(
                 "SELECT count(*) FROM sqlite_master WHERE type='index' "
                 "AND name='idx_promesse_scadenza'").fetchone()[0] == 1
+            assert store._conn.execute(
+                "PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        finally:
+            store.close()
+
+
+# -- v5 -> v6 (Tappa 9, F2): l'istantanea parla il vocabolario dei campi ----
+
+def test_la_migrazione_6_porta_l_istantanea_ai_nomi_della_resa(tmp_path):
+    """Un `chiedi` nato alla versione 5 con `entita`/`valore`/`misurato_ts`
+    esce con `id`/`stato`/`quando`, e `quando` nell'ora della casa
+    (`promise._snapshot_out`). Due aperture: la seconda non cambia niente.
+
+    Mutazione ESEGUITA: `_migration_6` vuota -- rossa (la misura esce con
+    `entita`)."""
+    path = os.path.join(str(tmp_path), "promesse.db")
+    _archivio_v4(path)
+    store = AgendaStore(path)
+    store._conn.execute(
+        "UPDATE promesse SET specie='chiedi', istantanea_json=? WHERE id='attesa'",
+        (json.dumps([{"entita": "sensor.t", "valore": "21.4", "unita": "°C",
+                      "misurato_ts": 1790000000.0}]),))
+    store._conn.execute("PRAGMA user_version = 5")
+    store._conn.commit()
+    store.close()
+    for _apertura in range(2):
+        store = AgendaStore(path)
+        try:
+            riga = {r["id"]: r for r in store.list(thread=PAOLO)}["attesa"]
+            assert riga["istantanea"] == [{"id": "sensor.t", "stato": "21.4", "unita": "°C",
+                                           "quando": "2026-09-21T14:13:20+00:00"}]
             assert store._conn.execute(
                 "PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         finally:
