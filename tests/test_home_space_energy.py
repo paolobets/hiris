@@ -775,8 +775,8 @@ def test_il_ruolo_arriva_alla_resa_dalla_casa_letta_e_da_quella_del_giro(tmp_pat
     store = _store(tmp_path)
     store.hold_energy(energy.declared_roles(PREFS))
     letta = House.read(store, _Cache())
-    del_giro = letta.with_statistics({"sensor.inverter_prelievo"})
-    for casa in (letta, del_giro):
+    giro = letta.with_statistics({"sensor.inverter_prelievo"})
+    for casa in (letta, giro):
         riga = render_entity(casa, "sensor.inverter_prelievo", "media")
         assert riga["ruolo_energia"] == "prelievo", riga
 
