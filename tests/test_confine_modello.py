@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.home_space.redaction import SecretSeal
+from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.proxy import _sanitize
 from tests._mirror_by_id import MirrorById
 
@@ -266,6 +267,10 @@ async def _chiedi(argomenti):
     dispatcher._home_space = _CasaFinta()
     dispatcher._house = None
     dispatcher._journal = None
+    # Le traduzioni non sono collegate, e i giudizi sono il seme del repo:
+    # la storia li passa alla resa delle righe (Tappa 9, F2).
+    dispatcher._translations = None
+    dispatcher._judgments = REPO_JUDGMENTS
     return await dispatcher._history(argomenti)
 
 

@@ -18,6 +18,7 @@ import pytest
 from hiris.app.action.journal import Journal
 from hiris.app.api import handlers_chat
 from hiris.app.api.soffitto import ADMIN_READS_REFUSAL, consente
+from hiris.app.home_space import house_history
 from hiris.app.home_space import tools as _tools
 from hiris.app.home_space.redaction import SecretSeal
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, TOOLS, ToolDispatcher
@@ -29,6 +30,7 @@ from hiris.app.proxy.entity_cache import (
 )
 from hiris.app.proxy.ha_client import MAX_HISTORY_POINTS
 from tests._contracts import assert_stessa_firma
+from tests._house_translations import house_translations
 from tests._mirror_by_id import MirrorById
 from tests.test_briefing import _CASA
 from tests.test_knowledge_tools import _semina_casa
@@ -324,6 +326,32 @@ async def test_gli_stati_di_una_stanza_sono_una_chiamata_sola(tmp_path):
         "light.cucina_1", "light.cucina_2", "sensor.cucina_t", "sensor.energia_oggi"}
     assert esito["profondita"] == "media" and esito["trovate"] == 4
     assert "stato_non_letto" not in esito
+
+
+class _TraduzioniLette:
+    """Le parole di questa casa, come le restituisce `StateTranslations.read`."""
+
+    async def read(self, *, ha_version, language):
+        return house_translations()
+
+
+@pytest.mark.asyncio
+async def test_le_righe_della_storia_dicono_lo_stato_con_le_parole_della_casa(
+        tmp_path, monkeypatch):
+    """La riga corta e' l'entita' resa (C-01): con le traduzioni lette dal
+    dispatcher porta `stato_leggibile`, come da `search`. La corta si chiede
+    alla soglia (`depth_for`), non a quattrocento entita' finte.
+
+    Mutazione ESEGUITA: `_history` senza `translations=` -- rossa
+    (`stato_non_reso` al posto della parola)."""
+    ha = _house(serie={"light.cucina_1": [{"quando": _ADESSO.isoformat(), "valore": "on"}]})
+    dispatcher = _history_dispatcher(tmp_path, ha)
+    dispatcher._translations = _TraduzioniLette()
+    monkeypatch.setattr(house_history, "depth_for", lambda _count: "corta")
+    esito = await dispatcher.dispatch("history", {"area": "cucina"})
+    riga = next(r for r in esito["voci"] if r["id"] == "light.cucina_1")
+    assert riga["stato_leggibile"] == "Acceso"
+    assert "stato_non_reso" not in riga
 
 
 @pytest.mark.asyncio

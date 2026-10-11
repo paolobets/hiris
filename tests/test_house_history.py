@@ -12,6 +12,7 @@ import pytest
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
 from hiris.app.home_space.house import House
+from hiris.app.home_space.render import render_entity
 from tests.test_briefing import _casa_grande
 from tests.test_house_query import (
     BRIDGE_CEILING_CHARS,
@@ -192,6 +193,11 @@ def test_la_storia_non_ha_una_sua_scelta_di_chi():
 _NESSUNA = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
 
 
+def _casa_viva(casa=None, stati=None):
+    """La casa che `state_rows` rende: l'anagrafe e lo specchio di adesso."""
+    return House(casa or _casa(), _specchio(stati or STATI))
+
+
 def _scegli(query, casa=None, comportamento=(), stati=None):
     chosen = hh.choose(query, House(casa or _casa(), _specchio(stati or STATI)),
                        list(comportamento), now=T0)
@@ -220,7 +226,7 @@ def test_una_cosa_sola_da_ogni_cambio_dal_piu_recente():
     chosen = _scegli(query)
     assert chosen.depth == "completa" and chosen.found == 1
     uscita = hh.state_rows(query, chosen, {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=[], current=STATI)
+                           truncated=False, acts=[], house=_casa_viva())
     assert uscita["voci"] == [
         {"quando": "2026-09-29T14:00:00+02:00", "stato": "off"},
         {"quando": "2026-09-29T12:00:00+02:00", "stato": "on"}]
@@ -248,7 +254,7 @@ def test_per_mano_di_hiris_e_probabile_e_il_piu_vicino():
             _atto(3, "light.soggiorno_2", 1),
             _atto(4, "light.soggiorno_1", 180, quando="2026-09-29T12:00:00+00:00")]
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=atti, current=STATI)
+                           truncated=False, acts=atti, house=_casa_viva())
     mezzogiorno, mattina = uscita["voci"]
     assert "per_mano_di" not in mezzogiorno
     assert mattina["per_mano_di"] == "HIRIS"
@@ -265,12 +271,12 @@ def test_un_atto_non_eseguito_non_e_per_mano_di_hiris():
     query = _q(riferimento="light.soggiorno_1")
     rifiutato = [_atto(1, "light.soggiorno_1", 10, eseguito=False)]
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=rifiutato, current=STATI)
+                           truncated=False, acts=rifiutato, house=_casa_viva())
     assert all("per_mano_di" not in voce for voce in uscita["voci"])
 
     entrambi = rifiutato + [_atto(2, "light.soggiorno_1", 40)]
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=entrambi, current=STATI)
+                           truncated=False, acts=entrambi, house=_casa_viva())
     _mezzogiorno, mattina = uscita["voci"]
     assert mattina["atto"]["id"] == 2
 
@@ -281,7 +287,7 @@ def test_una_cronaca_che_non_risponde_si_dichiara():
     Mutazione ESEGUITA: non scrivere `cronaca_non_letta` -- rossa."""
     query = _q(riferimento="light.soggiorno_1")
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=None, current=STATI)
+                           truncated=False, acts=None, house=_casa_viva())
     assert "cronaca_non_letta" in uscita
 
 
@@ -299,7 +305,7 @@ def test_un_entita_rumorosa_si_ferma_a_cinquanta_righe_dal_piu_recente():
     sera = [_punto(_INIZIO, "off"), _punto("2026-09-28T20:00:00+00:00", "on")]
     uscita = hh.state_rows(query, chosen, {"light.soggiorno_2": notte,
                                            "light.soggiorno_1": sera},
-                           truncated=False, acts=[], current=STATI)
+                           truncated=False, acts=[], house=_casa_viva())
     assert len(uscita["voci"]) == 50
     assert uscita["voci"][0] == {"id": "light.soggiorno_2",
                                  "quando": "2026-09-29T05:19:00+02:00", "stato": "on"}
@@ -325,11 +331,37 @@ def test_su_una_casa_grande_una_riga_per_soggetto_e_sotto_la_soglia_del_ponte():
         _punto(f"2026-09-29T0{i}:00:00+00:00", "on" if i % 2 else "off")
         for i in range(1, 6)] for s in chosen.subjects}
     uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
-                           current=stati)
+                           house=_casa_viva(casa, stati))
     assert len(uscita["voci"]) == 50 and uscita["oltre"]["restano"] == 250
-    assert set(uscita["voci"][0]) == {"id", "nome", "cambi", "ultimo_cambio", "stato"}
+    # La riga e' l'entita' resa alla corta, piu' `cambi` (Tappa 9, F2): le
+    # chiavi si chiedono alla resa, non si ricopiano.
+    prima = uscita["voci"][0]
+    assert set(prima) == set(render_entity(_casa_viva(casa, stati), prima["id"], "corta",
+                                           zone=ZoneInfo(ROMA))) | {"cambi"}
     assert uscita["voci"][0]["cambi"] == 5
     assert len(json.dumps(uscita, ensure_ascii=False)) < BRIDGE_CEILING_CHARS
+
+
+def test_la_corta_e_l_entita_resa_e_ultimo_cambio_non_dipende_dalla_finestra():
+    """Tappa 9, F2 (C-01): la riga della corta e' `render_entity` piu'
+    `cambi`. `ultimo_cambio` e' l'ultimo cambio dell'entita' -- lo stesso
+    fatto da ogni porta --, anche quando nella finestra non ce ne sono: fino
+    all'11/10/2026 era l'ultimo cambio NELLA FINESTRA, `null` senza cambi,
+    cioe' un altro fatto con lo stesso nome. «Nessun cambio nella finestra»
+    lo dice `cambi: 0`.
+
+    Mutazione ESEGUITA: la corta torna a comporre `ultimo_cambio` dai cambi
+    della finestra -- rossa (`None`)."""
+    query = _q()
+    chosen = hh.Chosen(1, dict(_NESSUNA), "corta",
+                       [hh.Subject("light.soggiorno_2", "soggiorno 2")])
+    fermo = [_punto(_INIZIO, "off")]
+    uscita = hh.state_rows(query, chosen, {"light.soggiorno_2": fermo},
+                           truncated=False, acts=[], house=_casa_viva())
+    riga = uscita["voci"][0]
+    assert riga["cambi"] == 0
+    assert riga["ultimo_cambio"] == "2026-09-29T09:11:00+02:00"
+    assert riga["genere"] == "entita" and riga["stato"] == "off"
 
 
 def test_chi_si_sposta_e_solo_in_casa_o_fuori_in_ogni_profondita():
@@ -349,13 +381,14 @@ def test_chi_si_sposta_e_solo_in_casa_o_fuori_in_ogni_profondita():
                       {"area": "senza area", "includi_nascoste": True}):
         query = _q(**argomenti)
         uscita = hh.state_rows(query, _scegli(query, casa=casa, stati=stati), serie,
-                               truncated=False, acts=[], current=stati)
+                               truncated=False, acts=[], house=_casa_viva(casa, stati))
         testo = json.dumps(uscita, ensure_ascii=False)
         assert "Lavoro" not in testo and "Palestra" not in testo, argomenti
         suoi = [v for v in uscita["voci"] if v.get("id", "person.marta") == "person.marta"]
         assert [v["stato"] for v in suoi] == ["home", "not_home"], argomenti
     corta = hh.Chosen(12, dict(_NESSUNA), "corta", [hh.Subject("person.marta", "Marta")])
-    uscita = hh.state_rows(_q(), corta, serie, truncated=False, acts=[], current=stati)
+    uscita = hh.state_rows(_q(), corta, serie, truncated=False, acts=[],
+                           house=_casa_viva(casa, stati))
     assert uscita["voci"][0]["stato"] == "not_home"
     assert "Lavoro" not in json.dumps(uscita, ensure_ascii=False)
 
@@ -364,7 +397,7 @@ def test_senza_registrazioni_non_e_mai_cambiato_non_si_dice():
     """Mutazione ESEGUITA: non scrivere `nessuna_registrazione` -- rossa."""
     query = _q(riferimento="light.soggiorno_1")
     uscita = hh.state_rows(query, _scegli(query), {}, truncated=False, acts=[],
-                           current=STATI)
+                           house=_casa_viva())
     assert uscita["voci"] == []
     assert uscita["nessuna_registrazione"]["soggetti"] == ["light.soggiorno_1"]
 
@@ -378,7 +411,7 @@ def test_un_elenco_tagliato_da_home_assistant_si_dichiara_nella_finestra():
     `truncated` e' vero -- rossa (KeyError)."""
     query = _q(riferimento="light.soggiorno_1")
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=True, acts=[], current=STATI)
+                           truncated=True, acts=[], house=_casa_viva())
     assert "i piu' vecchi della finestra mancano" in uscita["finestra"]["troncata"]
 
 
@@ -454,7 +487,7 @@ def test_nella_corta_chi_e_cambiato_nella_finestra_viene_prima():
     chosen = _scegli(query, casa=casa, stati=stati)
     assert chosen.depth == "corta" and len(chosen.subjects) == 16
     uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
-                           current=stati)
+                           house=_casa_viva(casa, stati))
     assert [v["id"] for v in uscita["voci"]] == [
         "light.l15", "light.l03", "light.l00", "light.l01", "light.l02"]
     assert [v["cambi"] for v in uscita["voci"]] == [5, 1, 0, 0, 0]
@@ -475,7 +508,7 @@ def test_nella_corta_salta_su_una_finestra_fissa_non_salta_ne_ripete():
     for salta in (0, 5, 10, 15):
         query = _q(dominio="light", limite=5, salta=salta)
         uscita = hh.state_rows(query, _scegli(query, casa=casa, stati=stati), serie,
-                               truncated=False, acts=[], current=stati)
+                               truncated=False, acts=[], house=_casa_viva(casa, stati))
         visti += [v["id"] for v in uscita["voci"]]
         pagine.append(uscita)
     assert visti == ["light.l15", "light.l03"] + sorted(
@@ -494,12 +527,12 @@ def test_una_finestra_tagliata_dice_da_quando_i_dati_ci_sono_davvero():
     query = _q(riferimento="light.soggiorno_1")
     coda = _LUCE_1[1:]
     uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": coda},
-                           truncated=True, acts=[], current=STATI)
+                           truncated=True, acts=[], house=_casa_viva())
     assert uscita["finestra"]["da"] == "2026-09-29T12:00:00+02:00"
     assert uscita["finestra"]["chiesta_da"] == "2026-09-28T18:40:00+02:00"
     assert "troncata" in uscita["finestra"]
     intera = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
-                           truncated=False, acts=[], current=STATI)
+                           truncated=False, acts=[], house=_casa_viva())
     assert "chiesta_da" not in intera["finestra"]
 
 
@@ -524,7 +557,7 @@ def test_nella_corta_scelta_davvero_chi_si_sposta_resta_in_casa_o_fuori():
     assert chosen.depth == "corta"
     uscita = hh.state_rows(query, chosen, {"person.marta": viaggio,
                                            "device_tracker.iphone": viaggio},
-                           truncated=False, acts=[], current=stati)
+                           truncated=False, acts=[], house=_casa_viva(casa, stati))
     testo = json.dumps(uscita, ensure_ascii=False)
     for vietato in ("Lavoro", "Palestra", "latitude", "longitude", "45.0"):
         assert vietato not in testo, vietato

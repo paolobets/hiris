@@ -53,12 +53,14 @@ from .house_query import (
     parse_filters,
 )
 from .log_source import integration_of
-from .privacy import MOVING_DOMAINS, redact_nested, redact_state
+from .privacy import MOVING_DOMAINS, redact_nested, redact_row, redact_state
 from .queries import ROWS_MAX
 from .redaction import seal_free_text
 from .reference import normalize
-from .render import depth_for
+from .render import depth_for, render_entity
 from .topology import live_name
+from .type_judgments import TypeJudgments
+from .type_vocabulary import REPO_JUDGMENTS
 
 if TYPE_CHECKING:
     from .house import House
@@ -486,13 +488,24 @@ def _activity(tie: str, epoch: float | None) -> tuple:
 
 
 def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]], *,
-               truncated: bool, acts: list[dict] | None,
-               current: dict[str, str]) -> dict:
+               truncated: bool, acts: list[dict] | None, house: House,
+               translations: dict | None = None,
+               judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Gli stati (spec §3): completa -- ogni cambio, con «per mano di»;
     media -- ogni cambio con l'id, una riga per evento; corta -- una riga per
-    soggetto (quanti cambi, l'ultimo, lo stato adesso), dal piu' attivo nella
-    finestra. Ogni profondita' si ferma a `ROWS_MAX` righe, tagliate DOPO la
-    lettura di tutti i soggetti (vedi `Chosen`)."""
+    soggetto, dal piu' attivo nella finestra. Ogni profondita' si ferma a
+    `ROWS_MAX` righe, tagliate DOPO la lettura di tutti i soggetti (vedi
+    `Chosen`).
+
+    La riga della corta e' l'entita' resa (`render.render_entity`, corta:
+    lo stato di adesso, l'unita', `ultimo_cambio`...) piu' `cambi`, quanti
+    cambi nella finestra (Tappa 9, F2, C-01). Fino all'11/10/2026 era una
+    composizione sua, e `ultimo_cambio` era l'ultimo cambio NELLA FINESTRA
+    (`null` senza cambi): lo stesso nome di un altro fatto. Ora e' l'ultimo
+    cambio dell'entita', come da ogni porta, e «nessun cambio nella
+    finestra» lo dice `cambi: 0`. Lo stato passa dal filtro di
+    riservatezza (`privacy.redact_row`); `translations` e' l'esito delle
+    traduzioni, per lo stato in parole."""
     zone = query.start.tzinfo
     start_ts = query.start.timestamp()
     out = _frame(query, chosen)
@@ -503,9 +516,10 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         ranked = []
         for s in chosen.subjects:
             mine = changes[s.ident]
-            row = {"id": s.ident, "nome": s.name, "cambi": len(mine),
-                   "ultimo_cambio": instant_out(mine[-1][0], zone) if mine else None,
-                   "stato": redact_state(s.ident, current.get(s.ident))}
+            row = {**redact_row(render_entity(house, s.ident, "corta", zone=zone,
+                                              translations=translations,
+                                              judgments=judgments)),
+                   "cambi": len(mine)}
             ranked.append((_activity(s.ident, mine[-1][1] if mine else None), row))
         ranked.sort(key=lambda item: item[0])
         out["voci"], beyond = _page([row for _key, row in ranked], query.who)
@@ -524,7 +538,7 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         _name_subjects(out, chosen)
         if "soggetto" in out:
             ident = out["soggetto"]["id"]
-            out["soggetto"]["stato"] = redact_state(ident, current.get(ident))
+            out["soggetto"]["stato"] = redact_state(ident, house.mirror.state.get(ident))
         if acts is None:
             out["cronaca_non_letta"] = _JOURNAL_UNREAD
     if beyond:
@@ -1346,8 +1360,9 @@ def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
         return None
 
 
-async def read_states(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror, *,
-                      journal=None) -> dict:
+async def read_states(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
+                      journal=None, translations: dict | None = None,
+                      judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Gli stati, dallo storico: le serie di tutti i soggetti, con la
     finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
     usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
@@ -1356,7 +1371,8 @@ async def read_states(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror, *
     if "errore" in answer:
         return answer
     return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],
-                      acts=journal_acts(journal, query), current=mirror.state)
+                      acts=journal_acts(journal, query), house=house,
+                      translations=translations, judgments=judgments)
 
 
 async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -> dict:
@@ -1510,7 +1526,8 @@ async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
 
 
 async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
-                       journal=None, now: float) -> dict:
+                       journal=None, now: float, translations: dict | None = None,
+                       judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """La storia della casa per una domanda gia' validata (`parse_query`):
     sceglie di chi con la casa data (`choose`), legge a Home Assistant e
     rende le righe del genere. Una casa per tutta la chiamata: lo specchio
@@ -1537,7 +1554,8 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if query.kind == "valori":
         response = await read_values(ha, query, chosen, mirror)
     else:
-        response = await read_states(ha, query, chosen, mirror, journal=journal)
+        response = await read_states(ha, query, chosen, house, journal=journal,
+                                     translations=translations, judgments=judgments)
     # Come in `search`: senza specchio leggibile lo stato di adesso e
     # l'unita' sarebbero `None` ambigui fra «non c'e'» e «non ho guardato».
     if "errore" not in response and not mirror.readable:

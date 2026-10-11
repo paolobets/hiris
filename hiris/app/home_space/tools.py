@@ -2504,7 +2504,9 @@ class ToolDispatcher:
         # UNA casa per tutta la chiamata, la stessa del turno.
         return await read_history(self._ha, query, self._turn_house(),
                                   self._home_space.behavior(), cache=self._cache,
-                                  seal=self._seal(), journal=self._journal, now=now)
+                                  seal=self._seal(), journal=self._journal, now=now,
+                                  translations=await self._read_translations(),
+                                  judgments=self._judgments)
 
     # -- i calendari ------------------------------------------------------
 
