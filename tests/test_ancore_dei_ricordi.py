@@ -111,41 +111,56 @@ def test_il_nome_dell_ancora_e_il_nome_vivo(anagrafe):
             ancora["tipo"], ancora["riferimento"])
 
 
-def test_il_nome_mostrato_non_e_mai_l_id(anagrafe):
-    """08/10/2026 (`ux-ui-specialist` sulla pagina Memoria, giro su `1d7a909`):
-    un dispositivo senza nome in Home Assistant usciva col suo id come
-    `nome_attuale` (il ripiego di `topology.device_name`), e la pagina lo
-    mostrava a chi aveva detto «la lavatrice». Il ripiego e' uno, in
+def test_il_nome_mostrato_non_e_mai_l_id(anagrafe, tmp_path):
+    """08/10/2026 (`ux-ui-specialist` sulla pagina Memoria, giri su `1d7a909`
+    e `b15aed2`): un dispositivo senza nome in Home Assistant usciva con l'id
+    come `nome_attuale` (il ripiego di `topology.device_name`), e la pagina
+    lo mostrava a chi aveva detto «la lavatrice». Il ripiego e' uno, in
     `render._shown`: nome di oggi, nome di allora, produttore e modello,
-    «dispositivo senza nome» -- mai l'id.
+    «<genere> senza nome» -- mai l'id, e ogni ripiego detto come tale.
 
-    Mutazioni ESEGUITE: `House.tether` che torna a passare il nome uguale
-    all'id -- rossa con `('d_lav', 'd_lav', 'attuale')`; `_shown` senza il ramo del
-    costruttore -- rossa con `'dispositivo senza nome' == 'Bosch WAX'`."""
+    Ogni caso confronta il testo INTERO: una prova che resta verde rimettendo
+    l'id nel testo o togliendo la nota non vale. Mutazioni ESEGUITE:
+    `House.tether` che torna a passare il nome uguale all'id -- rossa con
+    `('d_lav', 'd_lav', 'attuale')`; `_shown` senza la nota del costruttore
+    -- rossa con `'Bosch WAX' == 'Bosch WAX (produttore e modello; ...)'`;
+    `_VANISHED` senza «Il ricordo resta valido» -- rossa sui due sparite."""
     from hiris.app.home_space.render import render_memory
-    registri = dict(_REGISTRI, dispositivi=[
-        {"id": "d_lav", "name": None, "manufacturer": "Bosch", "model": "WAX"},
-        {"id": "d_muto", "name": None}])
+    registri = dict(_REGISTRI,
+                    aree=[*_REGISTRI["aree"], {"area_id": "a_muta", "name": None}],
+                    dispositivi=[
+                        {"id": "d_lav", "name": None, "manufacturer": "Bosch", "model": "WAX"},
+                        {"id": "d_muto", "name": None}],
+                    entita=[*_REGISTRI["entita"], {"entity_id": "sensor.muto"}])
     anagrafe.hold_registries(registri)
     casa = House.read(anagrafe, None)
 
-    def ancora(riferimento, visto=None):
-        a = {"tipo": "dispositivo", "riferimento": riferimento}
+    def ancora(tipo, riferimento, visto=None, house=casa):
+        a = {"tipo": tipo, "riferimento": riferimento}
         if visto:
             a["nome_visto"] = visto
-        resa = render_memory({"id": 1, "ancore": [a]}, casa)["ancore"][0]
+        resa = render_memory({"id": 1, "ancore": [a]}, house)["ancore"][0]
         return resa["nome_attuale"], resa["nome_mostrato"], resa["nome_di"]
 
-    assert ancora("d_lav") == (None, "Bosch WAX", "costruttore")
-    assert ancora("d_muto") == (None, "dispositivo senza nome", "nessuno")
-    assert ancora("d_lav", "lavatrice") == (
+    sparita = ("non esiste più in Home Assistant. Il ricordo resta valido, ma non "
+               "è più collegato a niente.")
+    assert ancora("dispositivo", "d_lav") == (
+        None, "Bosch WAX (produttore e modello; il dispositivo non ha un nome)",
+        "costruttore")
+    assert ancora("dispositivo", "d_muto") == (None, "dispositivo senza nome", "nessuno")
+    assert ancora("area", "a_muta") == (None, "area senza nome", "nessuno")
+    assert ancora("entita", "sensor.muto") == (None, "entità senza nome", "nessuno")
+    assert ancora("dispositivo", "d_lav", "lavatrice") == (
         None, "lavatrice (nome di allora; ora senza nome in Home Assistant)", "visto")
-    assert ancora("d_via", "asciugatrice") == (
-        None, ("asciugatrice — non esiste più in Home Assistant. Il ricordo resta "
-               "valido, ma non è più collegato a niente."), "visto")
-    assert ancora("d_via") == (None, "un dispositivo che non esiste più", "nessuno")
-    resa = render_memory({"id": 2, "ancore": [_VIVA]}, casa)["ancore"][0]
-    assert (resa["nome_mostrato"], resa["nome_di"]) == ("Luce cucina", "attuale")
+    assert ancora("dispositivo", "d_via", "asciugatrice") == (
+        None, "asciugatrice — " + sparita, "visto")
+    assert ancora("dispositivo", "d_via") == (None, sparita, "nessuno")
+    assert ancora("entita", "light.cucina") == ("Luce cucina", "Luce cucina", "attuale")
+    # Non verificata (anagrafe mai letta): il nome di allora, o «nome
+    # sconosciuto» -- mai «senza nome», che non si e' potuto controllare.
+    cieca = House.read(HomeSpace(str(tmp_path / "mai_letta")), None)
+    assert ancora("dispositivo", "d_muto", "lavatrice", cieca) == (None, "lavatrice", "visto")
+    assert ancora("dispositivo", "d_muto", house=cieca) == (None, "nome sconosciuto", "nessuno")
 
 
 def test_i_generi_d_ancora_sono_gli_stessi_nel_server_e_nella_pagina():
