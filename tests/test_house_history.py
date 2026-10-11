@@ -351,7 +351,12 @@ def test_la_corta_e_l_entita_resa_e_ultimo_cambio_non_dipende_dalla_finestra():
     lo dice `cambi: 0`.
 
     Mutazione ESEGUITA: la corta torna a comporre `ultimo_cambio` dai cambi
-    della finestra -- rossa (`None`)."""
+    della finestra -- rossa (`None`).
+
+    N110-1 (revisore, giro 110): le chiavi sono quelle della corta, chieste a
+    `render_entity`, piu' `cambi`; la luce porta `integrazione` alla media,
+    quindi la prova distingue le due profondita'. Mutazione ESEGUITA:
+    `state_rows` che rende alla media -- rossa."""
     query = _q()
     chosen = hh.Chosen(1, dict(_NESSUNA), "corta",
                        [hh.Subject("light.soggiorno_2", "soggiorno 2")])
@@ -362,6 +367,11 @@ def test_la_corta_e_l_entita_resa_e_ultimo_cambio_non_dipende_dalla_finestra():
     assert riga["cambi"] == 0
     assert riga["ultimo_cambio"] == "2026-09-29T09:11:00+02:00"
     assert riga["genere"] == "entita" and riga["stato"] == "off"
+    viva = _casa_viva()
+    corta = render_entity(viva, "light.soggiorno_2", "corta", zone=ZoneInfo(ROMA))
+    media = render_entity(viva, "light.soggiorno_2", "media", zone=ZoneInfo(ROMA))
+    assert set(media) != set(corta)
+    assert set(riga) == set(corta) | {"cambi"}
 
 
 def test_chi_si_sposta_e_solo_in_casa_o_fuori_in_ogni_profondita():
