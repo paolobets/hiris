@@ -68,10 +68,18 @@ def _live_kinds(house: House) -> list[dict]:
 
 
 def _with_live_kind(house: House, entry):
+    """La classe e l'unita' di adesso (`House.kind_of`), solo quando ci sono:
+    una chiave che manca e' la stessa forma di `render_entity` (C-63)."""
     if not isinstance(entry, dict) or not entry.get("id"):
         return entry
     kind = house.kind_of(entry["id"]) or {}
-    return {**entry, "classe": kind.get("classe"), "unita": kind.get("unita")}
+    out = {key: value for key, value in entry.items() if key not in _LIVE_KIND}
+    out.update({key: kind[key] for key in _LIVE_KIND if kind.get(key) is not None})
+    return out
+
+
+#: Cio' che della riga dell'anagrafe si rilegge dal vivo.
+_LIVE_KIND = ("classe", "unita")
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:

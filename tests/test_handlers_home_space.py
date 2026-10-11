@@ -516,3 +516,39 @@ async def test_la_replica_conservata_esce_dalle_due_porte_nella_stessa_forma(
     assert casa["plance"]["non_disponibili"] == ["principale"]
     assert any("replica letta" in a and "non le ha ancora caricate" in a
                for a in nucleo["summary"]["notices"])
+
+
+@pytest.mark.asyncio
+async def test_api_casa_una_classe_che_non_c_e_non_si_scrive_null(aiohttp_client, tmp_path):
+    """C-63 (regola dell'assenza, D1 della Tappa 4): la classe e l'unita' vive
+    entrano nella riga solo quando ci sono. Fino all'11/10/2026
+    `_with_live_kind` scriveva `classe: None` e `unita: None` su ogni entita'
+    senza, mentre `render_entity` lascia mancare la chiave: lo stesso fatto in
+    due forme da due porte.
+
+    Mutazione ESEGUITA: `_with_live_kind` che torna a scrivere i `None` --
+    rossa (la luce porta `classe`)."""
+    archivio = HomeSpace(str(tmp_path))
+    archivio.hold_registries({
+        "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
+        "dispositivi": [], "etichette": [], "categorie": [], "integrazioni": [],
+        "entita": [{"entity_id": "light.cucina", "name": "Faretti", "area_id": "cucina"},
+                   {"entity_id": "sensor.frigo", "name": "Frigo", "area_id": "cucina"}],
+    })
+    app = web.Application()
+    app["home_space_store"] = archivio
+    app["entity_cache"] = _CacheFinta([
+        {"id": "light.cucina", "state": "on", "name": "Faretti"},
+        {"id": "sensor.frigo", "state": "4", "name": "Frigo", "unit": "°C",
+         "device_class": "temperature"}])
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+
+    corpo = await (await client.get("/api/home-space")).json()
+    per_id = {e["id"]: e for e in corpo["piani"][0]["aree"][0]["entita"]}
+    assert "classe" not in per_id["light.cucina"], per_id["light.cucina"]
+    assert "unita" not in per_id["light.cucina"], per_id["light.cucina"]
+    assert per_id["sensor.frigo"]["classe"] == "temperature"
+    assert per_id["sensor.frigo"]["unita"] == "°C"
+    archivio.close()
