@@ -77,6 +77,16 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
+def referencing_tables(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Le tabelle che richiamano `table` con una chiave esterna, chieste a
+    SQLite (`PRAGMA foreign_key_list` di ognuna), in ordine di nome."""
+    names = [row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    return [name for name in names
+            if any(row[2] == table
+                   for row in conn.execute(f"PRAGMA foreign_key_list({name})"))]
+
+
 def rebuild_table(conn: sqlite3.Connection, table: str, create_sql: str,
                   columns: tuple[str, ...], *, select_sql: str | None = None,
                   indexes: tuple[str, ...] = ()) -> None:
@@ -103,8 +113,18 @@ def rebuild_table(conn: sqlite3.Connection, table: str, create_sql: str,
       precedente dello stesso avvio) si continua in quella; se un passo
       fallisce si torna indietro, e l'archivio resta alla versione di prima.
 
+    **Una tabella richiamata da una chiave esterna si rifiuta** (rilievo
+    N103-1, giro 103): con `foreign_keys=ON` (`connect`) il `DROP` della
+    vecchia cancella in cascata le righe delle figlie (misurato dal
+    revisore: figlia 1 -> 0). Si solleva prima di toccare niente; il giorno
+    che serve, si ricostruisce con le chiavi esterne spente e si decide li'.
+
     Il nome di `table` lo scrive chi chiama, in chiaro: e' un nome di
     tabella dello schema, mai un valore che arriva da fuori."""
+    children = referencing_tables(conn, table)
+    if children:
+        raise ValueError(f"{table} e' richiamata da {', '.join(children)}: "
+                         "ricostruirla cancellerebbe in cascata le loro righe")
     old = f"{table}_old"
     names = ",".join(columns)
     if not conn.in_transaction:

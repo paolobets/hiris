@@ -195,3 +195,28 @@ def test_la_ricostruzione_toglie_la_colonna_e_tiene_righe_e_indici(tmp_path):
                               ("id", "manca"))
     assert _columns(conn, "t") == ["id", "tiene"]
     assert conn.execute("SELECT count(*) FROM t").fetchone()[0] == 1
+
+
+def test_la_ricostruzione_rifiuta_una_tabella_richiamata(tmp_path):
+    """Con le chiavi esterne accese (`connect`), il `DROP` della tabella
+    vecchia cancellerebbe in cascata le righe della figlia: la ricostruzione
+    si rifiuta prima di toccare niente (rilievo N103-1, giro 103).
+
+    Mutazione ESEGUITA (08/10/2026): senza il controllo su
+    `referencing_tables` -- rossa (nessun errore, e la figlia passa da 1 a 0
+    righe)."""
+    conn = storage.connect(str(tmp_path / "d.db"))
+    conn.execute("CREATE TABLE madre (id INTEGER PRIMARY KEY, via TEXT)")
+    conn.execute("CREATE TABLE figlia (id INTEGER PRIMARY KEY, "
+                 "madre_id INTEGER REFERENCES madre(id) ON DELETE CASCADE)")
+    conn.execute("INSERT INTO madre VALUES (1, 'x')")
+    conn.execute("INSERT INTO figlia VALUES (1, 1)")
+    conn.commit()
+    assert storage.referencing_tables(conn, "madre") == ["figlia"]
+    assert storage.referencing_tables(conn, "figlia") == []
+
+    with pytest.raises(ValueError, match="figlia"):
+        storage.rebuild_table(conn, "madre", "CREATE TABLE madre (id INTEGER PRIMARY KEY)",
+                              ("id",))
+    assert _columns(conn, "madre") == ["id", "via"]
+    assert conn.execute("SELECT count(*) FROM figlia").fetchone()[0] == 1
