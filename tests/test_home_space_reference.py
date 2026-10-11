@@ -339,7 +339,7 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
         assert archivio.reference_frame()["sistema_unita"]["temperature"] == "C"
 
         cache = _SpecchioFinto([
-            {"id": "sensor.indice", "state": "72", "unit": ""},
+            {"id": "sensor.indice", "state": "72", "unit": None},
             {"id": "sensor.termo", "state": "72", "unit": "F"},
         ])
         d = ToolDispatcher(archivio, memoria, cache=cache)

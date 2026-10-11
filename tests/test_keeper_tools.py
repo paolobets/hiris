@@ -607,7 +607,7 @@ class _CacheFinta(MirrorById):
             # dominio "light" senza "brightness"/"color_temp" negli
             # attributi -> nessuna chiave "attributes" nel risultato.
             {"id": "light.studio", "state": "off", "name": "Studio",
-             "unit": "", "domain": "light", "device_class": None,
+             "unit": None, "domain": "light", "device_class": None,
              "state_class": None, "last_changed": None},
             # `_to_minimal({"entity_id": "sensor.camera_t", "state": "21.4",
             #               "attributes": {"friendly_name": "Camera T",

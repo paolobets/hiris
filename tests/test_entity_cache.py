@@ -51,7 +51,7 @@ async def test_load_builds_minimal_state():
     # prova non era lei -- e' la FORMA che `load()` produce, che resta.
     per_id = {e["id"]: e for e in cache.all_states()}
     assert per_id["light.soggiorno"] == {
-        "id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": "",
+        "id": "light.soggiorno", "state": "on", "name": "Luce Soggiorno", "unit": None,
         "domain": "light", "device_class": None, "state_class": None, "last_changed": None}
     assert per_id["sensor.temp"] == {
         "id": "sensor.temp", "state": "21.5", "name": "Temperatura", "unit": "°C",
@@ -61,7 +61,7 @@ async def test_load_builds_minimal_state():
 def test_on_state_changed_updates_existing_entity():
     cache = EntityCache()
     cache._states = {
-        "light.a": {"id": "light.a", "state": "off", "name": "Luce", "unit": ""},
+        "light.a": {"id": "light.a", "state": "off", "name": "Luce", "unit": None},
     }
 
     cache.on_state_changed({
@@ -137,8 +137,8 @@ def test_un_entita_rimossa_da_home_assistant_sparisce_dallo_specchio():
     cache = EntityCache()
     cache._states = {
         "light.vecchia": {"id": "light.vecchia", "state": "on", "name": "Vecchia",
-                          "unit": ""},
-        "light.viva": {"id": "light.viva", "state": "off", "name": "Viva", "unit": ""},
+                          "unit": None},
+        "light.viva": {"id": "light.viva", "state": "off", "name": "Viva", "unit": None},
     }
 
     cache.on_state_changed(_removal_event("light.vecchia"))
@@ -184,7 +184,7 @@ def test_una_rimozione_di_un_entita_che_non_c_e_non_e_un_errore():
     morta fra due letture). Non e' un guasto, e non deve sollevare."""
     cache = EntityCache()
     cache._states = {"light.viva": {"id": "light.viva", "state": "on",
-                                    "name": "Viva", "unit": ""}}
+                                    "name": "Viva", "unit": None}}
 
     cache.on_state_changed(_removal_event("light.mai_vista"))
 
@@ -196,7 +196,7 @@ def test_un_evento_senza_new_state_E_senza_entity_id_non_solleva():
     evento monco non deve rompere il rubinetto che tiene vivo lo specchio."""
     cache = EntityCache()
     cache._states = {"light.viva": {"id": "light.viva", "state": "on",
-                                    "name": "Viva", "unit": ""}}
+                                    "name": "Viva", "unit": None}}
 
     cache.on_state_changed({"new_state": None})
 
@@ -221,8 +221,8 @@ def test_all_states_returns_every_cached_entity():
     `all_states()`, il nome che i lettori veri usano."""
     cache = EntityCache()
     cache._states = {
-        "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""},
-        "button.b": {"id": "button.b", "state": "available", "name": "B", "unit": ""},
+        "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": None},
+        "button.b": {"id": "button.b", "state": "available", "name": "B", "unit": None},
     }
     assert len(cache.all_states()) == 2
 
