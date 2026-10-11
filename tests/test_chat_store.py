@@ -73,10 +73,11 @@ def test_load_history_with_timestamp_returns_the_stored_value(tmp_path):
     assert len(result) == 1
     assert result[0]["role"] == "user"
     assert result[0]["content"] == "ciao"
-    # Formato di `ChatStore._now()`: "%Y-%m-%dT%H:%M:%SZ" -- UTC, mai
-    # inventato al momento della lettura.
-    import re
-    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", result[0]["timestamp"])
+    # Sul disco l'ISO con `Z` di `ChatStore._now()`; in lettura l'epoca, come
+    # ogni istante degli archivi (G-14, Tappa 8) -- quello della scrittura.
+    import time
+    assert isinstance(result[0]["timestamp"], float)
+    assert abs(result[0]["timestamp"] - time.time()) < 60
 
 
 def test_load_history_with_timestamp_preserves_write_order_not_read_time(tmp_path):

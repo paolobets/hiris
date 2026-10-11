@@ -38,6 +38,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
+from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
 from ..home_space.render import render_memory
 from ..memory.interpretation import deduci_unit, validate
@@ -74,6 +75,8 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     # regola che tutte le porte dei ricordi chiedono a `House.tether` (G-21):
     # un'anagrafe mai letta, o un registro caduto, lasciano `esiste` a `None`.
     house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
+    # `detto_il` nell'ora della casa, come da ogni porta (`render_memory`).
+    zone = home_space_zone(house_timezone(request.app.get("home_space_store")))
 
     # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
     # che ha detto lei, con la chiave che scrive `remember` in chat e dal ponte
@@ -96,7 +99,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # (`render_memory`, Tappa 9 F3): fino all'08/10/2026 la pagina
         # componeva la sua, ed era l'unica a dare `corretto_da_utente` come
         # booleano.
-        "memories": [render_memory(r, house) for r in memories],
+        "memories": [render_memory(r, house, zone=zone) for r in memories],
         # La pagina si chiama "cio' che HIRIS sa": senza il totale, i
         # ricordi oltre `_MEMORIES_SHOWN_LIMIT` sono invisibili, e un
         # ricordo invisibile e' indistinguibile da uno cancellato -- la

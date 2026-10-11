@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 from ..proxy._sanitize import sanitize_structure, sanitize_text
 from .behavior import BEHAVIOR_DOMAINS
 from .ha_vocabulary import LINK_NAME
-from .historian import instant_epoch
+from .historian import home_space_zone, instant_epoch
 from .reference import normalize
 from .render import MEMORY_KIND, _add_labels, render_entity, render_memory, rows_depth
 from .topology import (
@@ -840,7 +840,11 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     sorveglia che la catena interna -- che quella prova strutturale non guarda
     -- lo inoltri davvero fino a `_limits_of_entity`.
     """
-    memories = [render_memory(r, house) for r in sanitized_memories(memories)]
+    # `detto_il` nell'ora della casa; senza fuso, UTC (`home_space_zone`),
+    # mai l'ora del processo.
+    memory_zone = zone if zone is not None else home_space_zone(None)
+    memories = [render_memory(r, house, zone=memory_zone)
+                for r in sanitized_memories(memories)]
     if kind == "area":
         return _view_area(house, memories, reference, translations, zone,
                           judgments=judgments)

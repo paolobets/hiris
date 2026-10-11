@@ -1602,8 +1602,8 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
     agenda = AgendaStore(str(tmp_path / "promesse.db"))
     adesso = time.time()
     agenda._conn.execute(
-        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,recapito,stato,"
-        "nata_ts) VALUES('vecchia','chiedi','detta prima',?,'errori?',NULL,"
+        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,stato,"
+        "nata_ts) VALUES('vecchia','chiedi','detta prima',?,'errori?',"
         "'in_attesa',?)", (adesso - 1, adesso - 100))
     agenda._conn.commit()
     proprietario = ChatThread("persona:u-admin", "pannello")

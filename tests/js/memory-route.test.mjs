@@ -30,7 +30,9 @@ const RICORDO = {
   id: 7,
   testo: "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa",
   detto_da: 'paolo',
-  detto_il: '2026-08-02T09:00:00Z',
+  // ISO con l'offset della casa, come lo rende `render_memory` per ogni
+  // porta (11/10/2026): 2026-08-02T09:00:00Z.
+  detto_il: '2026-08-02T11:00:00+02:00',
   forza: 'preferenza',
   grandezza: 'temperature',
   minimo: 19.0,
@@ -101,6 +103,28 @@ test('mount: mostra la frase e cosa HIRIS ha capito', async () => {
   assert.match(testo, /19.*20.*°C|fra 19 e 20 °C/, 'l\'intervallo con unità deve comparire');
   assert.match(testo, /stagione: inverno/);
   assert.match(testo, /presenza: casa/);
+});
+
+test('detto_il arriva in ISO con l\'offset e si legge come data; un numero non si indovina', async () => {
+  /* La resa del ricordo (`render_memory`) converte l'epoca dell'archivio
+     (G-14) nell'ISO con l'offset della casa per ogni porta (11/10/2026).
+     Mutazione ESEGUITA: `fmtWhen` di nuovo sull'epoca -- rossa, la data non
+     compare e resta «data non disponibile». */
+  const { window, document } = montaConServer();
+  window.HirisMemoryRoute.mount();
+  await tick(20);
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.match(testo, /02\/08\/2026/, 'la data del ricordo deve comparire');
+  assert.doesNotMatch(testo, /data non disponibile/);
+
+  const altro = montaConServer({ get: {
+    available: true, total: 1, shown: 1,
+    memories: [Object.assign({}, RICORDO, { detto_il: 1785661200 })],
+  } });
+  altro.window.HirisMemoryRoute.mount();
+  await tick(20);
+  assert.match(altro.document.getElementById('route-outlet').textContent,
+    /data non disponibile/, 'una forma che non e\' l\'ISO non diventa una data inventata');
 });
 
 test('un\'ancora viva mostra il nome che l\'anagrafe conosce OGGI, non quello congelato', async () => {

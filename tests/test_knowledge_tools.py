@@ -1228,8 +1228,11 @@ async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
     memoria.remember("in cucina niente luci dopo le 23", detto_da="paolo",
                     ancore=[{"tipo": "area", "riferimento": "cucina",
                              "nome_visto": "cucina"}])
-    esito = await dispatcher.dispatch("fetch", {"riferimento": "cucina", "tipo": "stanza"})
-    assert "errore" in esito
+    esito = await dispatcher.dispatch("fetch", {"riferimento": "cucina", "genere": "stanza"})
+    # Il rifiuto e' quello di `_recall` (il genere non e' un'ancora), non
+    # quello di `dispatch` per un argomento sconosciuto (N104-1).
+    assert "non e' un tipo di ancora valido" in esito["errore"], esito
+    assert "«stanza»" in esito["errore"]
 
 
 @pytest.mark.asyncio
@@ -1244,8 +1247,28 @@ async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
     smesso di insegnare l'errore -- restituendo `{"ricordi": []}`, lo
     stesso "non ti ho detto niente" bugiardo che il fix E1-② (sopra) ha
     gia' chiuso una volta."""
-    esito = await dispatcher.dispatch("fetch", {"riferimento": "terra", "tipo": "piano"})
-    assert "errore" in esito
+    esito = await dispatcher.dispatch("fetch", {"riferimento": "terra", "genere": "piano"})
+    # Il rifiuto e' quello di `_recall` (il genere non e' un'ancora), non
+    # quello di `dispatch` per un argomento sconosciuto (N104-1).
+    assert "non e' un tipo di ancora valido" in esito["errore"], esito
+    assert "«piano»" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_il_genere_di_fetch_restringe_le_ancore(dispatcher, memoria):
+    """N104-1 (revisore, giro 104): dopo D7 della Tappa 4 il parametro e'
+    `genere`, e nessuna prova guardava che `_recall` lo leggesse davvero:
+    quelle sopra erano rosse per l'argomento sconosciuto, non per il genere.
+    Mutazione ESEGUITA: `_recall` che torna a leggere `tipo` -- rossa (il
+    ricordo dell'area esce anche chiedendo un dispositivo)."""
+    memoria.remember("in cucina niente luci dopo le 23", detto_da="paolo",
+                    ancore=[{"tipo": "area", "riferimento": "cucina",
+                             "nome_visto": "cucina"}])
+    area_asked = await dispatcher.dispatch("fetch", {"riferimento": "cucina", "genere": "area"})
+    device_asked = await dispatcher.dispatch(
+        "fetch", {"riferimento": "cucina", "genere": "dispositivo"})
+    assert len(area_asked["ricordi"]) == 1
+    assert device_asked["ricordi"] == []
 
 
 @pytest.mark.asyncio
@@ -1253,8 +1276,11 @@ async def test_richiama_con_tipo_accentato_lo_dice(dispatcher):
     """«entità» con l'accento -- plausibilissimo per un modello italiano che
     non lo sta copiando da uno schema -- non e' lo stesso testo del
     vocabolario vero ("entita", senza accento)."""
-    esito = await dispatcher.dispatch("fetch", {"riferimento": "cucina", "tipo": "entità"})
-    assert "errore" in esito
+    esito = await dispatcher.dispatch("fetch", {"riferimento": "cucina", "genere": "entità"})
+    # Il rifiuto e' quello di `_recall` (il genere non e' un'ancora), non
+    # quello di `dispatch` per un argomento sconosciuto (N104-1).
+    assert "non e' un tipo di ancora valido" in esito["errore"], esito
+    assert "«entità»" in esito["errore"]
 
 
 @pytest.mark.asyncio

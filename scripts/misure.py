@@ -439,9 +439,11 @@ def chi_ha_chiesto(dati) -> None:
     _titolo("CHI HA CHIESTO")
     conta = Counter()
     for turno, _ in dati:
+        # Dalla Tappa 8 (A-17) il turno porta CHI come chiave: specie e id,
+        # il nome no -- cambia, e una copia mentirebbe.
         soggetto = turno["subject"]
         chi = "nessuna persona" if not soggetto else (
-            f"{soggetto.get('nome')} ({soggetto.get('specie')})")
+            f"{soggetto.get('specie')}:{soggetto.get('id') or '-'}")
         conta[(turno["species"], chi)] += 1
     for (specie, chi), quanti in sorted(conta.items()):
         print(f"  {specie:12} {chi:34} {quanti:>5} turni")

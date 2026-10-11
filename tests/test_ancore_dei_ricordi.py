@@ -127,7 +127,7 @@ def test_il_nome_mostrato_non_e_mai_l_id(anagrafe, tmp_path):
     `_VANISHED` senza «Il ricordo resta valido» -- rossa sui due sparite."""
     from hiris.app.home_space.render import render_memory
     registri = dict(_REGISTRI,
-                    aree=[*_REGISTRI["aree"], {"area_id": "a_muta", "name": None}],
+                    aree=[*_REGISTRI["aree"], {"area_id": "orto", "name": "orto"}],
                     dispositivi=[
                         {"id": "d_lav", "name": None, "manufacturer": "Bosch", "model": "WAX"},
                         {"id": "d_muto", "name": None}],
@@ -139,7 +139,7 @@ def test_il_nome_mostrato_non_e_mai_l_id(anagrafe, tmp_path):
         a = {"tipo": tipo, "riferimento": riferimento}
         if visto:
             a["nome_visto"] = visto
-        resa = render_memory({"id": 1, "ancore": [a]}, house)["ancore"][0]
+        resa = render_memory({"id": 1, "ancore": [a]}, house, zone=None)["ancore"][0]
         return resa["nome_attuale"], resa["nome_mostrato"], resa["nome_di"]
 
     sparita = ("non esiste più in Home Assistant. Il ricordo resta valido, ma non "
@@ -148,7 +148,11 @@ def test_il_nome_mostrato_non_e_mai_l_id(anagrafe, tmp_path):
         None, "Bosch WAX (produttore e modello; il dispositivo non ha un nome)",
         "costruttore")
     assert ancora("dispositivo", "d_muto") == (None, "dispositivo senza nome", "nessuno")
-    assert ancora("area", "a_muta") == (None, "area senza nome", "nessuno")
+    # G104-1: l'id di un'area e' lo slug del suo nome, e un nome uguale
+    # all'id e' un nome. Mutazione ESEGUITA: `House.tether` che torna a
+    # confrontare il nome con l'id -- rossa con
+    # `(None, 'orto (nome di allora; ...)', 'visto') == ('orto', 'orto', 'attuale')`.
+    assert ancora("area", "orto", "orto") == ("orto", "orto", "attuale")
     assert ancora("entita", "sensor.muto") == (None, "entità senza nome", "nessuno")
     assert ancora("dispositivo", "d_lav", "lavatrice") == (
         None, "lavatrice (nome di allora; ora senza nome in Home Assistant)", "visto")
@@ -169,7 +173,7 @@ def test_i_generi_d_ancora_sono_gli_stessi_nel_server_e_nella_pagina():
     Memoria (`TETHER_TYPE_LABELS`, `memory-route.js`) li elencano. Un genere
     nuovo che entra da una parte sola si mostrerebbe senza nome o senza
     etichetta: la prova lo dice.
-    Mutazione ESEGUITA: togliere `area` da `_NAMELESS` -- rossa."""
+    Mutazione ESEGUITA: togliere `entita` da `_NAMELESS` -- rossa."""
     import re
     from pathlib import Path
 
@@ -180,4 +184,7 @@ def test_i_generi_d_ancora_sono_gli_stessi_nel_server_e_nella_pagina():
     labels = re.search(r"var TETHER_TYPE_LABELS = \{([^}]*)\}", js)
     assert labels, "TETHER_TYPE_LABELS non si trova piu' in memory-route.js"
     js_kinds = set(re.findall(r"(\w+):", labels.group(1)))
-    assert set(_NAMELESS) == set(STORE_KEY_PER_TYPE) == js_kinds
+    assert set(STORE_KEY_PER_TYPE) == js_kinds
+    # Un'area ha sempre un nome (`House._has_own_name`): il ripiego non la
+    # porta, ogni altro genere si'.
+    assert set(_NAMELESS) == set(STORE_KEY_PER_TYPE) - {"area"}

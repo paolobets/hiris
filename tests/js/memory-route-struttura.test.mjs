@@ -34,7 +34,7 @@ const BASE_RICORDO = {
   id: 1,
   testo: 'un ricordo qualsiasi',
   detto_da: 'paolo',
-  detto_il: '2026-09-01T09:00:00Z',
+  detto_il: '2026-09-01T11:00:00+02:00',  // ISO con l'offset della casa (render_memory)
   forza: 'fatto',
   grandezza: null,
   minimo: null,

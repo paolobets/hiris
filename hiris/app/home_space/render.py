@@ -794,7 +794,7 @@ _MEMORY_FIELDS = ("id", "testo", "detto_da", "said_by", "detto_il", "forza",
                   "ancore", "condizioni")
 
 
-def render_memory(memory: dict, house: House) -> dict:
+def render_memory(memory: dict, house: House, *, zone) -> dict:
     """La resa di UN ricordo: la stessa forma da ogni porta da cui un ricordo
     esce -- il dettaglio di `search` (`queries._view_memory`), i `ricordi`
     ancorati nelle schede di area, entita', dispositivo e comportamento,
@@ -816,6 +816,15 @@ def render_memory(memory: dict, house: House) -> dict:
     `genere` sempre; una chiave assente nella riga resta assente («non lo
     so»), un `NULL` della colonna esce `null` («so che non c'e'»).
 
+    **`detto_il` esce nell'ora della casa** (D3 della Tappa 4), col fuso
+    `zone` (`historian.home_space_zone`): l'archivio lo restituisce in epoca
+    (G-14, Tappa 8), e ogni porta -- il modello e la pagina -- lo riceve
+    come ISO con l'offset, come ogni altro istante (`instant_out`). Fino
+    all'11/10/2026 lo convertiva solo la porta del modello
+    (`queries.sanitized_memories`), e la pagina riceveva l'epoca. `zone` non
+    ha un predefinito: un ricordo reso senza fuso uscirebbe nell'ora del
+    processo.
+
     **Il testo esce com'e'.** Il sanitizzatore lo applicano le porte che
     parlano al modello (`queries.sanitized_memories`), prima di questa
     funzione; la pagina mostra al proprietario le sue parole. La memoria non
@@ -826,6 +835,8 @@ def render_memory(memory: dict, house: House) -> dict:
             out[field] = memory[field]
     if "corretto_da_utente" in out:
         out["corretto_da_utente"] = bool(out["corretto_da_utente"])
+    if "detto_il" in out:
+        out["detto_il"] = instant_out(out["detto_il"], zone)
     if "ancore" in out:
         out["ancore"] = [_shown(house.tether(tether), house)
                          for tether in out["ancore"] or []]
@@ -834,8 +845,9 @@ def render_memory(memory: dict, house: House) -> dict:
 
 #: Come si chiama una cosa che c'e' ma di cui Home Assistant non sa il nome,
 #: per genere d'ancora (08/10/2026, `ux-ui-specialist` sulla pagina Memoria).
-_NAMELESS = {"dispositivo": "dispositivo senza nome", "area": "area senza nome",
-             "entita": "entità senza nome"}
+#: Un'area non c'e': in Home Assistant ha sempre un nome
+#: (`House._has_own_name`).
+_NAMELESS = {"dispositivo": "dispositivo senza nome", "entita": "entità senza nome"}
 
 #: Cio' che accompagna un nome che non e' quello di oggi: il nome di allora
 #: di una cosa che c'e' ancora ma non ha piu' un nome, il produttore e il

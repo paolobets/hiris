@@ -67,10 +67,21 @@ async def _proposta(officina, now: float = ADESSO) -> str:
     return esito["proposta_id"]
 
 
-def _soggetto_scritto(cronaca, esito) -> dict:
+def _riga(cronaca, esito) -> dict:
     riga = cronaca.read(esito["esecuzione_id"])
     assert riga is not None, "l'atto non è finito in cronaca"
-    return riga["soggetto"] or {}
+    return riga
+
+
+def _soggetto_scritto(cronaca, esito) -> dict:
+    return _riga(cronaca, esito)["soggetto"] or {}
+
+
+def _frase_scritta(cronaca, esito) -> str | None:
+    """La frase ha la sua colonna dalla Tappa 8 (Task 5, A-17): il soggetto
+    della cronaca e' diventato una chiave, e la frase era l'unico fatto della
+    vecchia copia che non vive altrove."""
+    return _riga(cronaca, esito)["confirm_phrase"]
 
 
 @pytest.mark.asyncio
@@ -87,7 +98,7 @@ async def test_la_frase_del_turno_che_conferma_FINISCE_in_cronaca(banco):
                                  confirm_phrase="grazie")
 
     assert esito.get("eseguito"), esito
-    assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == "grazie"
+    assert _frase_scritta(cronaca, esito) == "grazie"
 
 
 @pytest.mark.asyncio
@@ -105,9 +116,8 @@ async def test_la_frase_NON_scalza_chi_ha_chiamato(banco):
                                  confirm_phrase="sì, procedi")
 
     scritto = _soggetto_scritto(cronaca, esito)
-    assert scritto["nome"] == "Paolo"
-    assert scritto["specie"] == "persona"
-    assert scritto["confirm_phrase"] == "sì, procedi"
+    assert (scritto["specie"], scritto["id"]) == ("persona", "u1")
+    assert _frase_scritta(cronaca, esito) == "sì, procedi"
 
 
 @pytest.mark.asyncio
@@ -144,7 +154,7 @@ async def test_una_conferma_dalla_PAGINA_non_porta_nessuna_frase(banco):
                                  subject=SOGGETTO)
 
     assert esito.get("eseguito"), esito
-    assert "confirm_phrase" not in _soggetto_scritto(cronaca, esito)
+    assert _frase_scritta(cronaca, esito) is None
 
 
 @pytest.mark.asyncio
@@ -160,7 +170,7 @@ async def test_una_frase_VUOTA_non_diventa_una_frase(banco):
         esito = await officina.apply(proposta, actor="chat",
                                      exchange="turno-2", now=ADESSO + 60,
                                      subject=SOGGETTO, confirm_phrase=vuota)
-        assert "confirm_phrase" not in _soggetto_scritto(cronaca, esito), vuota
+        assert _frase_scritta(cronaca, esito) is None, vuota
 
 
 @pytest.mark.asyncio
@@ -184,7 +194,7 @@ async def test_la_frase_si_TAGLIA(banco):
                                  now=ADESSO + 60, subject=SOGGETTO,
                                  confirm_phrase="a" * (PHRASE_MAX + 500))
 
-    scritta = _soggetto_scritto(cronaca, esito)["confirm_phrase"]
+    scritta = _frase_scritta(cronaca, esito)
     assert len(scritta) <= PHRASE_MAX, len(scritta)
     assert scritta == truncate_with_marker("a" * (PHRASE_MAX + 500), PHRASE_MAX), (
         "il taglio non si dichiara col marcatore della casa")
@@ -203,7 +213,7 @@ async def test_una_frase_CORTA_non_si_tocca(banco):
                                  now=ADESSO + 60, subject=SOGGETTO,
                                  confirm_phrase=detta)
 
-    assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == detta
+    assert _frase_scritta(cronaca, esito) == detta
 
 
 @pytest.mark.asyncio
@@ -220,7 +230,7 @@ async def test_senza_NESSUN_soggetto_la_frase_nasce_lo_stesso(banco):
                                  now=ADESSO + 60, subject=None,
                                  confirm_phrase="fallo")
 
-    assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == "fallo"
+    assert _frase_scritta(cronaca, esito) == "fallo"
 
 
 def test_OGNI_chiamante_del_dispatcher_puo_portare_la_frase():
@@ -307,4 +317,4 @@ async def test_lo_STRUMENTO_confirm_porta_la_frase_fino_in_cronaca(banco):
     esito = await dispatcher.dispatch("confirm", {"proposta_id": proposta})
 
     assert esito.get("eseguito"), esito
-    assert _soggetto_scritto(cronaca, esito)["confirm_phrase"] == "sì, scrivila"
+    assert _frase_scritta(cronaca, esito) == "sì, scrivila"
