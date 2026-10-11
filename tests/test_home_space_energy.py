@@ -780,3 +780,16 @@ def test_il_ruolo_arriva_alla_resa_dalla_casa_letta_e_da_quella_del_giro(tmp_pat
         riga = render_entity(casa, "sensor.inverter_prelievo", "media")
         assert riga["ruolo_energia"] == "prelievo", riga
 
+
+def test_quando_esce_nell_ora_della_casa_anche_fuori_da_utc(tmp_path):
+    """N108-1 (revisore, giro 108): con la casa a Roma `quando` porta
+    l'offset di Roma. Con UTC non si distingueva una conversione da nessuna
+    conversione: la lettura e' gia' ISO UTC (`HomeSpace.hold_energy`).
+
+    Mutazioni ESEGUITE: `describe` che non converte `quando` -- rossa
+    (`+00:00`); `energy_dashboard` che passa sempre UTC -- rossa."""
+    store = HomeSpace(str(tmp_path))
+    store.hold_registries(REGISTRIES, [], reference_frame={"fuso": "Europe/Rome"})
+    answer = _run(energy.energy_dashboard(CasaFinta({"energy_prefs": PREFS}), store,
+                                          _house(store)))
+    assert answer["quando"][-6:] in {"+01:00", "+02:00"}, answer["quando"]
