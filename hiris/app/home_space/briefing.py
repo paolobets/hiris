@@ -500,7 +500,7 @@ def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list
     if now_line:
         lines.append(now_line)
 
-    unit = frame.get("unita") or {}
+    unit = frame.get("sistema_unita") or {}
     if isinstance(unit, dict):
         # Ordine dichiarato da `_MEASUREMENT_NAMES`, non quello del dizionario che
         # arriva da HA: due case identiche devono produrre lo stesso digesto.
