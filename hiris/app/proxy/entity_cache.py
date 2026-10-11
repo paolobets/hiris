@@ -569,7 +569,10 @@ def _to_minimal(raw: dict) -> dict:
         # L1-sicurezza.md).
         "state": sanitize_ha_value(raw.get("state", type_vocabulary.STATE_UNKNOWN)),
         "name": sanitize_ha_value(attrs.get("friendly_name") or ""),
-        "unit": attrs.get("unit_of_measurement") or "",
+        # Senza unita' e' `None`, come `device_class` qui sotto: una forma
+        # sola dell'assenza nella stessa voce (C-45). Una stringa vuota non e'
+        # un'unita', e la chiave c'e' sempre perche' lo stato e' stato letto.
+        "unit": attrs.get("unit_of_measurement") or None,
         "domain": dom,
         "device_class": attrs.get("device_class"),
         # `state_class` (`measurement`, `total`, `total_increasing`) dice se un

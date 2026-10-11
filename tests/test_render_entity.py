@@ -59,3 +59,21 @@ def test_la_profondita_viene_dal_numero_delle_righe():
     assert rows_depth(11) == "corta"
     with pytest.raises(ValueError):
         render_entity(_casa(), "valve.aiuola", "lunga")
+
+
+def test_il_ruolo_energia_e_quello_che_la_dashboard_dichiara():
+    """D13 della Tappa 4: l'entita' dice da se' il suo ruolo nella dashboard
+    Energia, alla media e alla completa; alla corta no. Mai dal nome: la
+    valvola senza ruolo dichiarato non ne ha uno.
+
+    Mutazione ESEGUITA: `render_entity` senza la riga di `ruolo_energia` --
+    rossa (la media non lo porta)."""
+    energia = {"ruoli": [{"ruolo": "produzione", "statistica": "sensor.diag"}],
+               "dichiarata": True, "quando": None}
+    casa = House(_CASA, _SPECCHIO, energy=energia)
+    assert "ruolo_energia" not in render_entity(casa, "sensor.diag", "corta")
+    assert render_entity(casa, "sensor.diag", "media")["ruolo_energia"] == "produzione"
+    assert render_entity(casa, "sensor.diag", "completa")["ruolo_energia"] == "produzione"
+    assert "ruolo_energia" not in render_entity(casa, "valve.aiuola", "completa")
+    # Una dashboard mai letta: la chiave manca, non si indovina.
+    assert "ruolo_energia" not in render_entity(_casa(), "sensor.diag", "completa")

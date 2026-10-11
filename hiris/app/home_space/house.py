@@ -107,13 +107,17 @@ class House:
 
     def __init__(self, home_space: dict, mirror: Mirror,
                  unavailable: tuple[str, ...] = (),
-                 statistic_ids: frozenset[str] | set[str] | None = None) -> None:
+                 statistic_ids: frozenset[str] | set[str] | None = None,
+                 energy: dict | None = None) -> None:
         self.home_space = home_space
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
         # Le entita' per cui Home Assistant tiene statistiche, lette dal giro
         # (`server.statistic_ids_for_round`); `None` = non lette (B-12).
         self.statistic_ids = None if statistic_ids is None else frozenset(statistic_ids)
+        # L'ultima dashboard Energia tenuta (`HomeSpace.energy`), o `None` se
+        # nessuna lettura e' riuscita: la sorgente di `energy_role` (D13).
+        self.energy = energy
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
@@ -135,7 +139,8 @@ class House:
         if home_space_store is None:
             return cls({}, read_mirror(cache), statistic_ids=statistic_ids)
         return cls(home_space_store.read(), read_mirror(cache),
-                   tuple(home_space_store.unavailable()), statistic_ids)
+                   tuple(home_space_store.unavailable()), statistic_ids,
+                   home_space_store.energy())
 
     def hierarchy(self) -> list[dict]:
         """L'albero piano -> area -> entita' di `topology.hierarchy`, con i
@@ -341,6 +346,22 @@ class House:
                 "statistiche_da": ("home_assistant" if self.statistic_ids is not None
                                    else "regola")}
 
+    def energy_role(self, entity_id: str) -> str | None:
+        """Il ruolo che la dashboard Energia dichiara per questa entita'
+        (`energy.ROLES`: produzione, prelievo, immissione...), o `None`.
+
+        **Mai dal nome ne' dalla classe** (CLAUDE.md: `device_class: energy`
+        vale per la produzione E per il prelievo): solo cio' che il
+        proprietario ha dichiarato a Home Assistant. `None` sia quando la
+        dashboard non nomina l'entita' sia quando non e' mai stata letta: chi
+        rende lascia mancare la chiave in entrambi i casi, e la dashboard
+        intera (con `dichiarata` e l'istante della lettura) resta chiedibile a
+        `mind(cosa="energia")`."""
+        for role in (self.energy or {}).get("ruoli") or []:
+            if role.get("statistica") == entity_id:
+                return role.get("ruolo")
+        return None
+
     def has_statistics(self, entity_id: str) -> bool:
         """«Ha statistiche?» (B-12): l'elenco che Home Assistant tiene, se il
         giro l'ha letto; altrimenti la regola del sorgente sullo
@@ -354,7 +375,8 @@ class House:
         l'elenco delle statistiche che il giro ha letto dopo averla aperta.
         Nessuna lettura nuova: chi la chiama ha gia' l'elenco in mano
         (`server.statistic_ids_for_round`, la lettura unica del giro)."""
-        return House(self.home_space, self.mirror, self.unavailable, statistic_ids)
+        return House(self.home_space, self.mirror, self.unavailable, statistic_ids,
+                     self.energy)
 
     def instance(self, entry_id: str | None) -> dict | None:
         """L'istanza d'integrazione dell'anagrafe (`reader._integration`) con

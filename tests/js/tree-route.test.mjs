@@ -46,7 +46,7 @@ function casaCompleta(extra = {}) {
     sistema_di_riferimento: {
       nome: 'Casa di prova', fuso: 'Europe/Rome', lingua: 'it', valuta: 'EUR',
       versione_ha: '2026.8.1',
-      unita: { temperature: '°C', length: 'km' },
+      sistema_unita: { temperature: '°C', length: 'km' },
     },
     // I nomi delle misure li manda il server (`briefing._MEASUREMENT_NAMES`,
     // C-09): qui una loro parte, quanto basta alla casa di prova.
@@ -322,10 +322,10 @@ test('sistema di riferimento: presente si legge, assente lo dichiara (mai silenz
 test('i nomi delle misure arrivano dal server, nel suo ordine; una chiave che non nomina resta grezza', async () => {
   /* C-09 (Tappa 4, Task 5): la pagina non tiene piu' una copia della tabella
      del nucleo. Un nome che solo il server conosce ('calore') deve comparire,
-     l'ordine e' quello della mappa e non quello di `unita`, e una chiave che
+     l'ordine e' quello della mappa e non quello di `sistema_unita`, e una chiave che
      la mappa non nomina compare col suo nome grezzo invece di sparire. */
   const { testo } = await rendi(casaCompleta({
-    sistema_di_riferimento: { nome: 'Casa', unita: { length: 'km', ignota: 'x', temperature: '°C' } },
+    sistema_di_riferimento: { nome: 'Casa', sistema_unita: { length: 'km', ignota: 'x', temperature: '°C' } },
     nomi_misure: { temperature: 'calore', length: 'lunghezza' },
   }));
   assert.match(testo, /Unità con cui ragiona la casa: calore °C, lunghezza km, ignota x \(/);

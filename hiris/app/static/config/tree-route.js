@@ -187,7 +187,7 @@ window.HirisTreeRoute = (function () {
     if (system.versione_ha) identity.push('Home Assistant ' + system.versione_ha);
     line(body, identity.length ? identity.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONE_CALM);
 
-    var measurements = homeMeasurements(system.unita, measurementNames);
+    var measurements = homeMeasurements(system.sistema_unita, measurementNames);
     if (measurements.length) {
       line(body, 'Unità con cui ragiona la casa: ' + measurements.join(', ') +
         ' (ogni entità porta la propria: se manca, manca — non è questa).', TONE_CALM);

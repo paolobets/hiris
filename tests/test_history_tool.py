@@ -73,7 +73,7 @@ _COMPORTAMENTO = [
 
 
 def _riga(eid, stato, **altro):
-    return {"id": eid, "state": stato, "name": "", "unit": "", "domain": eid.split(".")[0],
+    return {"id": eid, "state": stato, "name": "", "unit": None, "domain": eid.split(".")[0],
             "last_changed": "2026-09-29T07:11:00+00:00", **altro}
 
 

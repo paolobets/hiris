@@ -211,34 +211,39 @@ def test_legacy_grid_lists_bring_the_same_roles():
 # -- l'oggetto della casa ----------------------------------------------------
 
 def test_object_carries_what_it_needs_to_be_read_alone(tmp_path):
-    """Fondamenta 1: ruolo, entita', unita', statistiche, provenienza."""
+    """Fondamenta 1: ruolo, entita', unita', statistiche, provenienza. I nomi
+    sono quelli del vocabolario (C-61, D1 della Tappa 4): `id` e non `entita`,
+    `statistiche` e non `ha_statistiche`, `quando` (ISO nell'ora della casa)
+    e non `letta_alle`."""
     store = _store(tmp_path)
     house = CasaFinta({"energy_prefs": PREFS})
     answer = _run(energy.energy_dashboard(house, store, _house(store),
                                           with_series={"sensor.inverter_prelievo"}))
 
     assert answer["provenienza"] == "dashboard Energia di Home Assistant"
-    assert answer["dichiarata"] is True and answer["letta_alle"]
+    assert answer["dichiarata"] is True
+    assert answer["quando"].endswith("+00:00") and "letta_alle" not in answer
     by_id = {r["statistica"]: r for r in answer["ruoli"]}
     assert by_id["sensor.inverter_prelievo"] | {} == {
         "ruolo": "prelievo", "statistica": "sensor.inverter_prelievo",
-        "entita": "sensor.inverter_prelievo", "unita": "kWh", "ha_statistiche": True,
+        "id": "sensor.inverter_prelievo", "unita": "kWh", "statistiche": True,
         "tipo": "grid", "campo": "stat_energy_from"}
     assert by_id["sensor.inverter_soc"]["unita"] == "%"
     # L'unita' e' quella viva: il registro di questa casa non ne porta.
     assert all(e.get("unita") is None for e in store.read()["entita"])
-    assert by_id["sensor.inverter_immissione"]["ha_statistiche"] is False
+    assert by_id["sensor.inverter_immissione"]["statistiche"] is False
     # Una statistica esterna non e' un'entita' dell'anagrafe: non si finge.
-    assert by_id["contatore:gas"]["entita"] is None
+    assert by_id["contatore:gas"]["id"] is None
     assert by_id["contatore:gas"]["unita"] is None
 
 
 def test_unknown_statistics_stay_unknown():
-    """`with_series` a `None` e' «non l'ho potuto chiedere»: `ha_statistiche`
+    """`with_series` a `None` e' «non l'ho potuto chiedere»: `statistiche`
     resta `None`, non diventa un «no»."""
     roles = energy.describe({"ruoli": energy.declared_roles(PREFS), "dichiarata": True,
-                             "letta_alle": "x"}, House({}, live_mirror([])), None)["ruoli"]
-    assert {r["ha_statistiche"] for r in roles} == {None}
+                             "quando": None}, House({}, live_mirror([])), None,
+                            zone=None)["ruoli"]
+    assert {r["statistiche"] for r in roles} == {None}
 
 
 def test_no_battery_no_role_guessed_from_names(tmp_path):

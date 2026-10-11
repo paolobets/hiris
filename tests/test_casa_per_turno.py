@@ -197,6 +197,9 @@ class _Store:
     def unavailable(self) -> list[str]:
         return []
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
 
 class _Cache:
     loaded = True

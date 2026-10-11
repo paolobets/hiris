@@ -63,8 +63,8 @@ def test_tiene_i_campi_del_riferimento():
     assert rif["paese"] == "IT"
     assert rif["nome"] == "Casa"
     assert rif["versione_ha"] == "2026.8.1"
-    assert rif["unita"]["temperature"] == "C"
-    assert rif["unita"]["length"] == "km"
+    assert rif["sistema_unita"]["temperature"] == "C"
+    assert rif["sistema_unita"]["length"] == "km"
 
 
 def test_non_tiene_cio_che_e_gia_altrove_o_e_momentaneo():
@@ -168,6 +168,17 @@ def test_il_nucleo_dichiara_il_riferimento():
     assert "Europe/Rome" in testo
     assert "EUR" in testo
     assert "2026.8.1" in testo
+
+
+def test_il_nucleo_dice_le_unita_della_casa_lette_dalla_cornice():
+    """La cornice scrive `sistema_unita` (C-40, D1 della Tappa 4: `unita` e'
+    l'unita' di un'entita') e il nucleo la legge con lo stesso nome. Nessuna
+    prova guardava che il nome scritto e quello letto fossero lo stesso.
+
+    Mutazione ESEGUITA: il nucleo che legge ancora `unita` -- rossa (la riga
+    delle unita' sparisce)."""
+    testo = _nucleo(reference_frame(_CONFIG))
+    assert "Unita' con cui ragiona la casa: temperatura C" in testo
 
 
 # --- il vocabolario invecchiato: "qualcuno lo dice" -------------------------
@@ -325,10 +336,10 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
                   "area_id": "cucina", "unit_of_measurement": "F"},
              ]},
             [], reference_frame=reference_frame(_CONFIG))
-        assert archivio.reference_frame()["unita"]["temperature"] == "C"
+        assert archivio.reference_frame()["sistema_unita"]["temperature"] == "C"
 
         cache = _SpecchioFinto([
-            {"id": "sensor.indice", "state": "72", "unit": ""},
+            {"id": "sensor.indice", "state": "72", "unit": None},
             {"id": "sensor.termo", "state": "72", "unit": "F"},
         ])
         d = ToolDispatcher(archivio, memoria, cache=cache)

@@ -322,6 +322,9 @@ class _Store:
     def unavailable(self):
         return []
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
 
 #: La domanda delle statistiche orarie (`HAClient.hourly_statistics`).
 _STATISTICS = "recorder/statistics_during_period"

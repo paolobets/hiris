@@ -604,7 +604,7 @@ class HomeSpace:
         `None` e' una casa che una dashboard Energia non l'ha (`not_found`):
         «nessuna dashboard dichiarata», che non e' «non l'ho letta»."""
         self._energy = {"ruoli": list(roles or []), "dichiarata": roles is not None,
-                        "letta_alle": datetime.now(UTC).isoformat(timespec="seconds")}
+                        "quando": datetime.now(UTC).isoformat(timespec="seconds")}
         self._energy_current = True
 
     def energy(self) -> dict | None:

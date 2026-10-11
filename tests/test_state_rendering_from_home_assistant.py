@@ -162,7 +162,7 @@ def test_la_coppia_si_ricostruisce_dalle_due_chiavi():
     """
     coppia = state_translations.published_pair(
         house_translations()["risorse"], domain="binary_sensor", device_class="moisture")
-    assert coppia == {"letto": True, "valore": ("Bagnato", "Asciutto")}
+    assert coppia == {"lette": True, "valore": ("Bagnato", "Asciutto")}
 
 
 def test_la_coppia_a_meta_FALLISCE_DICHIARANDOLO_e_non_si_inventa_l_altra_meta():
@@ -179,7 +179,7 @@ def test_la_coppia_a_meta_FALLISCE_DICHIARANDOLO_e_non_si_inventa_l_altra_meta()
     del meta["component.binary_sensor.entity_component.moisture.state.off"]
     esito = state_translations.published_pair(
         meta, domain="binary_sensor", device_class="moisture")
-    assert esito["letto"] is False
+    assert esito["lette"] is False
     assert esito["silenzio"] == state_translations.SILENCE_ABSENT
     assert "`.state.off`" in esito["motivo"]
     assert "Bagnato" in esito["motivo"]

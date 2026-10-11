@@ -1213,13 +1213,13 @@ def _source(raw) -> str | None:
 
 def error_rows(query: HistoryQuery, entries: list) -> dict:
     """Il registro di Home Assistant (spec §3): una forma sola, la corta, una
-    riga per voce -- livello, messaggio accorciato, fonte, `volte`, prima e
+    riga per voce -- livello, messaggio accorciato, `codice`, `volte`, prima e
     ultima volta, e l'ultima riga dell'eccezione (il «cosa»). Filtrato per
     `livello`, `integrazione` e finestra; una voce senza istante leggibile
     non si scarta: non si sa se e' fuori.
 
     L'ordine e la pagina sono quelli delle altre corte: dall'ultima volta piu'
-    recente (`_activity`, a parita' fonte e messaggio), poi `_page` e `_oltre`.
+    recente (`_activity`, a parita' codice e messaggio), poi `_page` e `_oltre`.
 
     `entries`: le voci di `system_log/list` con `message` ed `exception` GIA'
     passati dal sigillo dei segreti dal gestore (reperto B-1): qui non si
@@ -1253,13 +1253,13 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
         if last is not None and not start_ts <= last <= end_ts:
             continue
         row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
-               "fonte": _source(entry.get("source")), "integrazione": integration,
+               "codice": _source(entry.get("source")), "integrazione": integration,
                "volte": entry.get("count"),
                "prima": instant_out(entry.get("first_occurred"), zone),
                "ultima": instant_out(entry.get("timestamp"), zone)}
         if entry.get("exception"):
             row["eccezione"] = _short(last_line(entry["exception"]))
-        ranked.append((_activity(f"{level}|{row['fonte']}|{row['messaggio']}", last),
+        ranked.append((_activity(f"{level}|{row['codice']}|{row['messaggio']}", last),
                        row))
     ranked.sort(key=lambda item: item[0])
     page, beyond = _page([row for _key, row in ranked], query.who)

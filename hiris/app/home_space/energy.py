@@ -3,13 +3,12 @@ Assistant su chi e' rete, sole, batteria, gas, acqua -- un oggetto della casa
 suo (piano degli attori, strato 2, Task 2.2; D6 «oggetto a parte», scelta
 del proprietario il 03/10/2026).
 
-**Perche' un oggetto a parte, e non un campo dell'entita'.** Il ruolo dentro
-la riga dell'entita' dovrebbe comparire da TUTTE le porte che oggi rendono
-un'entita' (fondamenta 3), e quelle porte si unificano alla Tappa 4: oggi
-allargherebbe i doppioni che quella tappa toglie. Quindi la dashboard si
-chiede qui, una volta, e chi la usa la cita a parte -- come il giro delle
-ricette fa gia' per «queste entita' hanno una serie»
-(`recipe_turn._series_block`).
+**Un oggetto suo, e un campo dell'entita'.** La dashboard intera (con
+`dichiarata` e l'istante della lettura) si chiede qui, una volta, e il giro
+delle ricette la cita a parte. Dalla Tappa 9 (D13 della Tappa 4) il ruolo
+compare anche dentro la resa dell'entita' (`ruolo_energia`, letto da
+`House.energy_role`): le porte che rendono un'entita' sono diventate una,
+`render.render_entity`, e il ruolo esce da tutte nella stessa forma.
 
 **Mai dai nomi.** Il ruolo di un'entita' e' quello che la dashboard dichiara;
 un'entita' che la dashboard non nomina non ha ruolo, qualunque cosa dica il
@@ -63,6 +62,7 @@ from __future__ import annotations
 
 import logging
 
+from .historian import home_space_zone, house_timezone, instant_out
 from .reader import clean_name
 
 logger = logging.getLogger(__name__)
@@ -134,9 +134,11 @@ def declared_roles(prefs: dict) -> list[dict]:
 
 
 def describe(held: dict | None, house,
-             with_series: set[str] | None) -> dict | None:
+             with_series: set[str] | None, *, zone) -> dict | None:
     """L'oggetto intero: per ogni ruolo l'entita', la sua unita' e se ha
-    statistiche.
+    statistiche. I nomi sono quelli del vocabolario (C-61, D1 della Tappa 4:
+    `id`, `statistiche`, `quando`), e `quando` esce in ISO nell'ora della
+    casa (`historian.instant_out`, `zone`), come ogni istante.
 
     **L'unita' e' quella di adesso**, chiesta alla casa (`House.kind_of`: lo
     specchio, col registro come ripiego -- `topology.live_first`). Fino al
@@ -147,7 +149,7 @@ def describe(held: dict | None, house,
     (`House.entity_ids`), come prima: una statistica esterna (`dominio:nome`)
     non ha ne' entita' ne' unita'.
 
-    `ha_statistiche` e' la regola di oggi del giro delle ricette: l'id sta
+    `statistiche` e' la regola di oggi del giro delle ricette: l'id sta
     nell'elenco di `recorder/list_statistic_ids` (`server.statistic_ids_for_round`).
     Non e' una regola nuova: la regola unica di «ha statistiche» (B-12) la
     porta un'altra fetta, e quando c'e' si chiede a lei. `with_series` a
@@ -161,12 +163,12 @@ def describe(held: dict | None, house,
         statistic = role["statistica"]
         kind = house.kind_of(statistic) if statistic in known else None
         roles.append({**role,
-                      "entita": statistic if kind is not None else None,
+                      "id": statistic if kind is not None else None,
                       "unita": (kind or {}).get("unita"),
-                      "ha_statistiche": (None if with_series is None
-                                         else statistic in with_series)})
+                      "statistiche": (None if with_series is None
+                                      else statistic in with_series)})
     return {"provenienza": PROVENANCE, "dichiarata": held["dichiarata"],
-            "letta_alle": held["letta_alle"], "ruoli": roles}
+            "quando": instant_out(held["quando"], zone), "ruoli": roles}
 
 
 async def reread_energy(client, home_space) -> None:
@@ -198,4 +200,5 @@ async def energy_dashboard(client, home_space, house, *,
     """
     if not home_space.energy_current():
         await reread_energy(client, home_space)
-    return describe(home_space.energy(), house, with_series)
+    return describe(home_space.energy(), house, with_series,
+                    zone=home_space_zone(house_timezone(home_space)))

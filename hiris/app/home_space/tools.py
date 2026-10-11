@@ -2652,7 +2652,7 @@ class ToolDispatcher:
         questo non passa da `MindView` -- ma e' la stessa domanda «su cosa
         ragiona HIRIS», e il cervello la legge prima di scrivere una ricetta.
 
-        `ha_statistiche` resta `None`: l'elenco delle statistiche lo chiede il
+        `statistiche` resta `None`: l'elenco delle statistiche lo chiede il
         giro delle ricette, e qui «non l'ho chiesto» si dice com'e'."""
         if self._ha is None or self._home_space is None:
             return {"errore": "la dashboard Energia si legge da Home Assistant, "

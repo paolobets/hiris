@@ -80,6 +80,9 @@ class _FintaCasa:
         """I registri caduti: nessuno. La casa del giro li chiede (`House.read`)."""
         return ()
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
 
 def _richiesta(app, query=None):
     class _R:
