@@ -79,11 +79,14 @@ def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 def referencing_tables(conn: sqlite3.Connection, table: str) -> list[str]:
     """Le tabelle che richiamano `table` con una chiave esterna, chieste a
-    SQLite (`PRAGMA foreign_key_list` di ognuna), in ordine di nome."""
+    SQLite (`PRAGMA foreign_key_list` di ognuna), in ordine di nome. I nomi
+    si confrontano senza maiuscole, come li confronta SQLite (N105-1):
+    `REFERENCES Madre(id)` richiama `madre`."""
     names = [row[0] for row in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    wanted = table.lower()
     return [name for name in names
-            if any(row[2] == table
+            if any(row[2].lower() == wanted
                    for row in conn.execute(f"PRAGMA foreign_key_list({name})"))]
 
 
