@@ -1219,9 +1219,12 @@ _REGISTRO = [
 
 
 def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
-    """Spec §3: livello, messaggio accorciato, fonte, volte, prima e ultima.
+    """Spec §3: livello, messaggio accorciato, codice, volte, prima e ultima.
     `volte: 12` e' una voce, non dodici (fino al 05/10/2026 la chiave era
     `count`, inglese in una riga italiana: trovato 3 della Tappa 4, D1).
+    La posizione nel codice si chiama `codice` (D5 della Tappa 4, C-59):
+    `fonte` e' lo stato della fonte di un'entita', e nella stessa risposta i
+    due fatti collidevano.
     Dall'ultima volta piu' recente; la voce senza istante leggibile non si
     scarta (non si sa se e' fuori) e sta in fondo.
 
@@ -1232,7 +1235,7 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
     assert [v["messaggio"] for v in uscita["voci"]] == [
         "lento", "zigbee giu'", "senza istante"]
     assert uscita["voci"][1] == {"livello": "ERROR", "messaggio": "zigbee giu'",
-                                 "fonte": "homeassistant/components/zha/core.py:10",
+                                 "codice": "homeassistant/components/zha/core.py:10",
                                  "integrazione": "zha", "volte": 12,
                                  "prima": "2026-09-29T16:40:00+02:00",
                                  "ultima": "2026-09-29T18:30:00+02:00",
