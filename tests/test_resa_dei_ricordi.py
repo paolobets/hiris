@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from aiohttp.test_utils import make_mocked_request
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
+from hiris.app.home_space.historian import home_space_zone, house_timezone
 from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.render import render_memory
@@ -71,7 +73,8 @@ def test_il_dettaglio_dice_se_lo_hai_corretto():
 def test_una_chiave_assente_resta_assente():
     """«Non lo so» non diventa «so che non c'e'»: una riga senza la colonna non
     esce con `null` (vocabolario dei campi, regola 1)."""
-    resa = render_memory({"id": 1, "testo": "x", "forza": None}, House({}, Mirror()))
+    resa = render_memory({"id": 1, "testo": "x", "forza": None}, House({}, Mirror()),
+                         zone=UTC)
     assert resa == {"genere": "ricordo", "id": 1, "testo": "x", "forza": None}
 
 
@@ -102,8 +105,12 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
         from_fetch = next(m for m in fetched["ricordi"] if m["id"] == ident)
 
         house = House.read(app["home_space_store"], app["entity_cache"])
-        expected = render_memory(memory.get(ident), house)
+        zone = home_space_zone(house_timezone(app["home_space_store"]))
+        expected = render_memory(memory.get(ident), house, zone=zone)
         assert expected["corretto_da_utente"] is True
+        # L'istante nell'ora della casa da ogni porta, pagina compresa
+        # (11/10/2026: la pagina riceveva l'epoca, il modello l'ISO).
+        assert isinstance(expected["detto_il"], str)
         assert expected["ancore"][0]["esiste"] is True
         assert {"pagina": from_page, "dettaglio": detail, "scheda": from_card,
                 "fetch": from_fetch} == {"pagina": expected, "dettaglio": expected,

@@ -1800,6 +1800,8 @@ class ToolDispatcher:
                               # Il sapere: cosa significa la classe di
                               # un'entita'. `None` e' legittimo.
                               knowledge=self._knowledge,
+                              # L'ora della casa: `ultimo_cambio` delle entita',
+                              # `detto_il` dei ricordi (D3, G-14).
                               zone=historian.home_space_zone(self._timezone()),
                               # L'istantanea dei giudizi (spec §3): mai `None`
                               # qui -- `__init__` l'ha gia' ricaduta sul seme.
@@ -1989,7 +1991,9 @@ class ToolDispatcher:
         # ricordo, la stessa delle altre porte (`render_memory`, Tappa 9 F3),
         # con le ancore risolte sulla casa del turno (G-21).
         house = self._turn_house()
-        return {"ricordi": [render_memory(r, house) for r in _sanitized_memories(memories)]}
+        zone = historian.home_space_zone(self._timezone())
+        return {"ricordi": [render_memory(r, house, zone=zone)
+                            for r in _sanitized_memories(memories)]}
 
     # -- execute -------------------------------------------------------
 

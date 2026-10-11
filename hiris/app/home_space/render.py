@@ -794,7 +794,7 @@ _MEMORY_FIELDS = ("id", "testo", "detto_da", "said_by", "detto_il", "forza",
                   "ancore", "condizioni")
 
 
-def render_memory(memory: dict, house: House) -> dict:
+def render_memory(memory: dict, house: House, *, zone) -> dict:
     """La resa di UN ricordo: la stessa forma da ogni porta da cui un ricordo
     esce -- il dettaglio di `search` (`queries._view_memory`), i `ricordi`
     ancorati nelle schede di area, entita', dispositivo e comportamento,
@@ -816,6 +816,15 @@ def render_memory(memory: dict, house: House) -> dict:
     `genere` sempre; una chiave assente nella riga resta assente («non lo
     so»), un `NULL` della colonna esce `null` («so che non c'e'»).
 
+    **`detto_il` esce nell'ora della casa** (D3 della Tappa 4), col fuso
+    `zone` (`historian.home_space_zone`): l'archivio lo restituisce in epoca
+    (G-14, Tappa 8), e ogni porta -- il modello e la pagina -- lo riceve
+    come ISO con l'offset, come ogni altro istante (`instant_out`). Fino
+    all'11/10/2026 lo convertiva solo la porta del modello
+    (`queries.sanitized_memories`), e la pagina riceveva l'epoca. `zone` non
+    ha un predefinito: un ricordo reso senza fuso uscirebbe nell'ora del
+    processo.
+
     **Il testo esce com'e'.** Il sanitizzatore lo applicano le porte che
     parlano al modello (`queries.sanitized_memories`), prima di questa
     funzione; la pagina mostra al proprietario le sue parole. La memoria non
@@ -826,23 +835,27 @@ def render_memory(memory: dict, house: House) -> dict:
             out[field] = memory[field]
     if "corretto_da_utente" in out:
         out["corretto_da_utente"] = bool(out["corretto_da_utente"])
+    if "detto_il" in out:
+        out["detto_il"] = instant_out(out["detto_il"], zone)
     if "ancore" in out:
         out["ancore"] = [_shown(house.tether(tether), house)
                          for tether in out["ancore"] or []]
     return out
 
 
-#: Come si chiama una cosa di cui non si sa il nome, per genere d'ancora: senza
-#: nome in Home Assistant, e sparita (08/10/2026, `ux-ui-specialist` sulla
-#: pagina Memoria).
-_NAMELESS = {"dispositivo": ("dispositivo senza nome", "un dispositivo che non esiste più"),
-             "area": ("area senza nome", "un'area che non esiste più"),
-             "entita": ("entità senza nome", "un'entità che non esiste più")}
+#: Come si chiama una cosa che c'e' ma di cui Home Assistant non sa il nome,
+#: per genere d'ancora (08/10/2026, `ux-ui-specialist` sulla pagina Memoria).
+#: Un'area non c'e': in Home Assistant ha sempre un nome
+#: (`House._has_own_name`).
+_NAMELESS = {"dispositivo": "dispositivo senza nome", "entita": "entità senza nome"}
 
-#: Cio' che si aggiunge al nome di allora quando la cosa c'e' ancora ma non ha
-#: piu' un nome, e quando non c'e' piu'.
+#: Cio' che accompagna un nome che non e' quello di oggi: il nome di allora
+#: di una cosa che c'e' ancora ma non ha piu' un nome, il produttore e il
+#: modello di un dispositivo senza nome, e la cosa che non c'e' piu'.
 _SEEN_NOW_NAMELESS = " (nome di allora; ora senza nome in Home Assistant)"
-_VANISHED = (" — non esiste più in Home Assistant. Il ricordo resta valido, ma non è "
+_MAKER_NOTE = " (produttore e modello; il dispositivo non ha un nome)"
+_UNKNOWN = "nome sconosciuto"
+_VANISHED = ("non esiste più in Home Assistant. Il ricordo resta valido, ma non è "
              "più collegato a niente.")
 
 
@@ -853,7 +866,10 @@ def _shown(tether: dict, house: House) -> dict:
     Il ripiego e' uno, e vive qui per ogni porta da cui un ricordo esce: il
     nome di oggi; il nome con cui la persona l'ha nominata, detto come nome di
     allora; per un dispositivo il produttore e il modello, se l'anagrafe li
-    ha; altrimenti «dispositivo senza nome». **L'id non e' mai un nome**: fino
+    ha, detti come tali; altrimenti «dispositivo senza nome». **L'id non e'
+    mai un nome** -- nemmeno per un'entita': `House.name` ricade sull'entity_id
+    quando ne' lo specchio ne' il registro le danno un nome
+    (`topology.live_name`), e `House.tether` lo scarta per ogni genere: fino
     all'08/10/2026 la pagina Memoria ricadeva su `riferimento` e mostrava un
     id di registro a chi aveva detto «la lavatrice» (`ux-ui-specialist`,
     giro su `1d7a909`). Per un'ancora sparita la frase dice che il ricordo
@@ -861,16 +877,22 @@ def _shown(tether: dict, house: House) -> dict:
     (`esiste: None`) il nome resta quello di allora, e lo stato lo dice chi
     mostra."""
     kind, seen = tether.get("tipo"), tether.get("nome_visto")
-    nameless, vanished = _NAMELESS.get(kind, ("senza nome", "una cosa che non esiste più"))
     current = tether.get("nome_attuale")
     if tether.get("esiste") is False:
-        shown = (seen + _VANISHED, "visto") if seen else (vanished, "nessuno")
+        # Senza nome di allora la frase sta da sola: chi mostra la riga la
+        # apre col genere («Dispositivo: non esiste piu'...»).
+        shown = (f"{seen} — {_VANISHED}", "visto") if seen else (_VANISHED, "nessuno")
     elif current:
         shown = (current, "attuale")
+    elif tether.get("esiste") is None:
+        # Non verificata: il nome di allora, o nessuno -- non «senza nome»,
+        # che sarebbe un fatto che non si e' potuto controllare.
+        shown = (seen, "visto") if seen else (_UNKNOWN, "nessuno")
     elif seen:
-        shown = (seen + (_SEEN_NOW_NAMELESS if tether.get("esiste") else ""), "visto")
+        shown = (seen + _SEEN_NOW_NAMELESS, "visto")
     else:
         device = (house.device(tether.get("riferimento")) or {}) if kind == "dispositivo" else {}
         maker = " ".join(p for p in (device.get("produttore"), device.get("modello")) if p)
-        shown = (maker, "costruttore") if maker else (nameless, "nessuno")
+        shown = ((maker + _MAKER_NOTE, "costruttore") if maker
+                 else (_NAMELESS.get(kind, "senza nome"), "nessuno"))
     return {**tether, "nome_mostrato": shown[0], "nome_di": shown[1]}

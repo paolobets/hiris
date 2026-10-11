@@ -1646,3 +1646,19 @@ def test_una_correzione_su_limiti_arriva_dalla_vista_intera_non_solo_dalla_fogli
         "arrivare fino al dettaglio che `view()` restituisce, non solo a "
         "`_limits_of_entity` chiamata da sola")
     assert "massimo" not in limiti_corretti
+
+
+def test_ogni_scheda_dice_il_suo_genere():
+    """N104-1 (revisore, giro 104): dopo D7 della Tappa 4 le schede di `view`
+    dicono `genere`, non `tipo`, e nessuna prova lo guardava. La stessa
+    parola da ogni ramo, anche quando la cosa non c'e'.
+    Mutazione ESEGUITA: la scheda di un'area che torna a scrivere `tipo` --
+    rossa con `assert 'tipo' not in {...}`."""
+    house = House(_CASA, _SPECCHIO)
+    casi = [("area", "cucina"), ("automazione", "automation.sveglia"),
+            ("script", "script.buonanotte"), ("ricordo", 1), ("entita", "light.nessuna"),
+            ("area", "nessuna")]
+    for genere, riferimento in casi:
+        scheda = view(house, _COMPORTAMENTO, _RICORDI, genere, riferimento)
+        assert "tipo" not in scheda, (genere, riferimento)
+        assert scheda["genere"] == genere, scheda

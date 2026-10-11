@@ -338,4 +338,8 @@ def test_il_registro_dei_turni_scrive_il_soggetto_del_ponte(tmp_path):
     registra({"species": "chat", "channel": "ponte", "provider": "subscription",
               "model": "m", "duration_ms": 1, "iterations": 1, "tools": [],
               "outcome": "riuscito", "subject": MARTA})
-    assert archivio.turns()[0]["subject"] == MARTA
+    # CHI come chiave (A-17, Tappa 8): specie e id, il nome no.
+    from hiris.app.chat_thread import subject_from_key, subject_key_for
+
+    assert archivio.turns()[0]["subject"] == subject_from_key(subject_key_for(MARTA))
+    assert archivio.turns()[0]["subject"]["id"] == MARTA["id"]

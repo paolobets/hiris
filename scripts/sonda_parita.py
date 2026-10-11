@@ -323,7 +323,6 @@ def references(inputs: dict) -> dict:
 def today(inputs: dict, *, step_minutes: int = 10) -> dict:
     """«Oggi» -- l'etichetta di data che la chat mette alle sessioni passate,
     contro il giorno della casa, per ogni istante di un anno."""
-    from hiris.app import chat_store
     from hiris.app.api import handlers_chat
 
     timezone = inputs["ha_config"].get("time_zone") or "UTC"
@@ -348,8 +347,8 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
     try:
         instant = datetime(2026, 1, 1, tzinfo=UTC)
         while instant < datetime(2027, 1, 1, tzinfo=UTC):
-            session["row"] = {"started_at": instant.strftime(chat_store._TS_FMT),
-                              "summary": "x"}
+            # L'archivio restituisce `started_at` in epoca (G-14, Tappa 8).
+            session["row"] = {"started_at": instant.timestamp(), "summary": "x"}
             context = handlers_chat.compose_chat_context(
                 {"home_space_store": _Frame()}, "/nonexistent", thread=None, soggetto=None)
             label = context.split("[", 1)[1].split("]", 1)[0]

@@ -142,8 +142,8 @@ function avviaChat(t) {
 }
 
 const DUE = [
-  { id: 'c2', titolo: 'Accendi la luce della cucina', ultimo_messaggio: '2026-09-26T10:00:00Z', attiva: true },
-  { id: 'c1', titolo: 'Che tempo fa domani?', ultimo_messaggio: '2026-09-20T08:00:00Z', attiva: false },
+  { id: 'c2', titolo: 'Accendi la luce della cucina', ultimo_messaggio: 1790416800, attiva: true },
+  { id: 'c1', titolo: 'Che tempo fa domani?', ultimo_messaggio: 1789891200, attiva: false },
 ];
 
 test("l'elenco si disegna dalla risposta; la voce attiva ha .active e aria-current, le altre no", async (t) => {
@@ -161,8 +161,10 @@ test("l'elenco si disegna dalla risposta; la voce attiva ha .active e aria-curre
   assert.equal(voci[0].getAttribute('aria-current'), 'true');
   assert.equal(voci[1].classList.contains('active'), false);
   assert.equal(voci[1].hasAttribute('aria-current'), false, 'aria-current solo sulla voce attiva (7.9)');
-  assert.equal(voci[0].querySelector('time').getAttribute('datetime'), '2026-09-26T10:00:00Z',
-    'la data e\' quella del server, cosi\' com\'e\'');
+  /* G-14 (Tappa 8): l'istante arriva in epoca (2026-09-26T10:00:00Z);
+     `datetime` ne porta l'ISO, lo stesso istante. */
+  assert.equal(voci[0].querySelector('time').getAttribute('datetime'), '2026-09-26T10:00:00.000Z',
+    'la data e\' quella del server, lo stesso istante');
   assert.equal(document.getElementById('conv-empty').hidden, true);
   assert.equal(window.HirisChatConversations.activeId(), 'c2');
   assert.equal(document.getElementById('delete-conv-btn').disabled, false,
@@ -173,7 +175,7 @@ test('il titolo e\' testo dell\'utente: resta testo, mai markup (7.1)', async (t
   const { window, document } = avviaChat(t);
   const trappola = '<img src=x onerror=alert(1)>';
   server(window, { 'GET api/chat/conversations': { conversations: [
-    { id: 'c1', titolo: trappola, ultimo_messaggio: '2026-09-26T10:00:00Z', attiva: true }] } });
+    { id: 'c1', titolo: trappola, ultimo_messaggio: 1790416800, attiva: true }] } });
 
   await window.HirisChatConversations.refresh();
 
@@ -182,15 +184,22 @@ test('il titolo e\' testo dell\'utente: resta testo, mai markup (7.1)', async (t
 });
 
 test('la data relativa: oggi, ieri, poi gg-mm; niente data se il server non ne manda una valida', (t) => {
+  /* G-14 (Tappa 8): l'istante arriva in epoca. Mutazione ESEGUITA
+     (08/10/2026): `relativeDay` di nuovo con `new Date(iso)` -- rossa, un
+     epoch in secondi diventa una data del 1970. */
   const { window } = avviaChat(t);
   const giorno = window.HirisChatConversations.relativeDay;
+  const epoca = (d) => d.getTime() / 1000;
   const adesso = new Date(2026, 8, 26, 9, 30);
-  assert.equal(giorno(new Date(2026, 8, 26, 0, 5).toISOString(), adesso), 'oggi');
-  assert.equal(giorno(new Date(2026, 8, 25, 23, 50).toISOString(), adesso), 'ieri');
-  assert.equal(giorno(new Date(2026, 8, 24, 12, 0).toISOString(), adesso), '24-09');
-  assert.equal(giorno(new Date(2026, 0, 3, 12, 0).toISOString(), adesso), '03-01');
+  assert.equal(giorno(epoca(new Date(2026, 8, 26, 0, 5)), adesso), 'oggi');
+  assert.equal(giorno(epoca(new Date(2026, 8, 25, 23, 50)), adesso), 'ieri');
+  assert.equal(giorno(epoca(new Date(2026, 8, 24, 12, 0)), adesso), '24-09');
+  assert.equal(giorno(epoca(new Date(2026, 0, 3, 12, 0)), adesso), '03-01');
   assert.equal(giorno('', adesso), '');
+  assert.equal(giorno(null, adesso), '');
   assert.equal(giorno('non-una-data', adesso), '');
+  assert.equal(giorno('2026-09-26T10:00:00Z', adesso), '',
+    'una forma che non e\' l\'epoca non si indovina');
 });
 
 test('elenco vuoto: il testo di spec §4, e il cestino non ha niente da cancellare', async (t) => {
@@ -261,8 +270,8 @@ test('toccare una voce: resume, storia ricaricata senza parametri, fuoco a #inpu
     'GET api/chat/conversations': { conversations: DUE },
     'POST api/chat/conversations/c1/resume': { ok: true },
     'GET api/chat/history': { messages: [
-      { role: 'user', content: 'Che tempo fa domani?', timestamp: '2026-09-20T08:00:00Z' },
-      { role: 'assistant', content: 'Sereno.', timestamp: '2026-09-20T08:00:05Z' }] },
+      { role: 'user', content: 'Che tempo fa domani?', timestamp: 1789891200 },
+      { role: 'assistant', content: 'Sereno.', timestamp: 1789891205 }] },
   });
   await window.HirisChatConversations.init();
   window.HirisChatMessages.appendMsg('user', 'messaggio della conversazione aperta');
@@ -451,7 +460,7 @@ test("finito un turno l'elenco si rilegge: la conversazione nata scrivendo diven
   server(window, {
     'POST api/chat': { response: 'ok' },
     'GET api/chat/conversations': { conversations: [
-      { id: 'c3', titolo: 'ciao', ultimo_messaggio: '2026-09-26T10:00:00Z', attiva: true }] },
+      { id: 'c3', titolo: 'ciao', ultimo_messaggio: 1790416800, attiva: true }] },
   });
   assert.equal(window.HirisChatConversations.activeId(), null);
 
@@ -575,13 +584,13 @@ test('un titolo con caratteri di direzione e invisibili resta testo, e la data a
   const { window, document } = avviaChat(t);
   const titolo = 'abc' + String.fromCharCode(0x202e) + 'def' + String.fromCharCode(0x200b) + 'ghi';
   server(window, { 'GET api/chat/conversations': { conversations: [
-    { id: 'c1', titolo, ultimo_messaggio: '2026-09-20T08:00:00Z', attiva: true }] } });
+    { id: 'c1', titolo, ultimo_messaggio: 1789891200, attiva: true }] } });
 
   await window.HirisChatConversations.refresh();
 
   assert.equal(document.querySelector('.conv-title').textContent, titolo);
   assert.equal(document.querySelector('.conv-when').textContent,
-    window.HirisChatConversations.relativeDay('2026-09-20T08:00:00Z'));
+    window.HirisChatConversations.relativeDay(1789891200));
   assert.equal(document.querySelector('.conv-when').parentElement,
     document.querySelector('.conv-title').parentElement, 'fratelli, non l\'uno dentro l\'altro');
   /* Il ribaltamento lo contiene il foglio: `unicode-bidi: isolate` chiude la

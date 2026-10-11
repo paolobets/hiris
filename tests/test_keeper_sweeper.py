@@ -141,14 +141,16 @@ def _crea_chiedi(archivio, *, quando):
     }, thread=PAOLO, now=ADESSO)["promessa"]["id"]
 
 
-def _seed_legacy_chiedi(archivio, *, quando, recapito):
-    """Una promessa nata PRIMA delle promesse divise, col `recapito` che il
-    modello aveva scelto. `create` non la sa piu' far nascere cosi' -- ed e'
-    giusto -- quindi si scrive col SQL, com'e' sul disco di chi aggiorna."""
+def _seed_legacy_chiedi(archivio, *, quando):
+    """Una promessa nata PRIMA delle promesse divise, senza filo. `create`
+    non la sa piu' far nascere cosi' -- ed e' giusto -- quindi si scrive col
+    SQL, com'e' sul disco di chi aggiorna. Il `recapito` che il modello aveva
+    scelto non c'e': la colonna e' uscita con `keeper/store._migration_5`
+    (Tappa 8, Task 5)."""
     archivio._conn.execute(
-        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,recapito,stato,"
+        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,stato,"
         "nata_ts) VALUES('di-prima','chiedi','fra un''ora verifica',?,"
-        "'e'' aumentata?',?,'in_attesa',?)", (quando, recapito, ADESSO))
+        "'e'' aumentata?','in_attesa',?)", (quando, ADESSO))
     archivio._conn.commit()
     return "di-prima"
 
@@ -267,14 +269,13 @@ async def test_una_promessa_di_prima_col_recapito_non_notifica_piu(archivio):
     """Vincolo 2.5: il `recapito` delle righe vecchie non si usa per
     recapitare. L'aveva scelto il modello, alla nascita, e nessuno lo ha piu'
     verificato; il recapito vero si risolve al risveglio dal soggetto di chi
-    ha chiesto (spec 2026-09-26 §2.3). Mutazione eseguita: rimettere il ramo
-    `if avvisare and promise["recapito"]` fa diventare rosso questo test.
+    ha chiesto (spec 2026-09-26 §2.3). Dalla Tappa 8 (Task 5) la colonna non
+    c'e' piu', e la prova resta per cio' che dice dell'orfana.
 
     Dal Task 3 (extra 4) il motivo non e' piu' «nessun modo per venire a
     cercarti»: una riga di prima e' ORFANA (senza filo), e l'orfana lo dice
     col suo motivo -- non si sa di chi e', quindi non si cerca nessuno."""
-    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10,
-                                  recapito="notify.mobile_app_x")
+    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     recapito = RecapitoFinto(["notify.mobile_app_iphone_bet"])
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
@@ -291,8 +292,7 @@ async def test_una_promessa_di_prima_col_recapito_non_notifica_piu(archivio):
 async def test_una_promessa_di_prima_adottata_notifica_al_recapito_vero(archivio):
     """La stessa riga di prima, adottata dal proprietario: ha un filo, e la
     push va ai servizi di `recipients_for` -- mai alla colonna `recapito`."""
-    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10,
-                                  recapito="notify.mobile_app_x")
+    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10)
     assert archivio.adopt_orphans(PAOLO) == 1
     porta = PortaFinta()
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})

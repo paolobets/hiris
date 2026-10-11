@@ -52,7 +52,8 @@ function setup(t) {
 
 test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ricaricamento", async (t) => {
   const { window, document } = setup(t);
-  const timestampFisso = '2020-01-01T03:15:00Z';
+  // In epoca, come ogni istante degli archivi (G-14): 2020-01-01T03:15:00Z.
+  const timestampFisso = 1577848500;
   window.fetch = async (url) => {
     if (String(url).includes('api/chat/history')) {
       return {
@@ -68,7 +69,7 @@ test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ric
   const timeEl = document.querySelector('.msg-time');
   assert.ok(timeEl, 'la bolla ripristinata deve avere un elemento .msg-time');
 
-  const atteso = new Date(timestampFisso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const atteso = new Date(timestampFisso * 1000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   const adesso = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   // Precondizione anti-coincidenza: se per puro caso l'ora reale del test
   // combaciasse con quella (fissa, del 2020) del timestamp, l'assert sotto

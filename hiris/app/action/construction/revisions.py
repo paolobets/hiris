@@ -44,6 +44,7 @@ from ...storage import (
     connect,
     init_schema,
     prune_declared,
+    rebuild_table,
     rekey,
     table_columns,
 )
@@ -288,12 +289,13 @@ def _migration_7(conn) -> None:
     Misurato l'08/10/2026 sul backup dell'add-on: {applicata 12, disdetta 6},
     nessuna `rifiutata` ne' `incerta`.
 
-    **Si ricostruiscono le tabelle**, come `mind/store._migration_12`:
-    `DROP COLUMN` vuole SQLite 3.35. **Tutto o niente, in una transazione**,
-    per la stessa ragione (G14-1): una ricostruzione interrotta dopo il
-    `RENAME` lascerebbe una tabella vuota. Se un passo fallisce si torna
-    indietro, l'archivio resta alla 6 e la migrazione si rifa' al prossimo
-    avvio. Idempotente: una seconda volta non trova ne' parole ne' colonne.
+    **Si ricostruiscono le tabelle** con `storage.rebuild_table`, la forma
+    sola con cui una colonna esce da un archivio. **Tutto o niente, in una
+    transazione** che apre questa migrazione, per la stessa ragione (G14-1):
+    una ricostruzione interrotta dopo il `RENAME` lascerebbe una tabella
+    vuota. Se un passo fallisce si torna indietro, l'archivio resta alla 6 e
+    la migrazione si rifa' al prossimo avvio. Idempotente: una seconda volta
+    non trova ne' parole ne' colonne.
     """
     if not conn.in_transaction:
         conn.execute("BEGIN")
@@ -306,33 +308,23 @@ def _migration_7(conn) -> None:
         marks = ",".join("?" * len(_RETIRED_CANCEL_REASONS))
         conn.execute(f"UPDATE costruzioni SET motivo=NULL WHERE stato=? "
                      f"AND motivo IN ({marks})", (CANCELLED, *_RETIRED_CANCEL_REASONS))
-        existing = table_columns(conn, "costruzioni")
-        if "aggiornata_ts" in existing:
-            columns = ",".join(_CONSTRUCTION_COLUMNS)
-            conn.execute("ALTER TABLE costruzioni RENAME TO costruzioni_v6")
-            conn.execute(
+        if "aggiornata_ts" in table_columns(conn, "costruzioni"):
+            rebuild_table(
+                conn, "costruzioni",
                 "CREATE TABLE costruzioni (id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, "
                 "stato TEXT NOT NULL, gesto TEXT NOT NULL, dominio TEXT NOT NULL, "
                 "chiave TEXT NOT NULL, origine TEXT NOT NULL, turno TEXT, frase TEXT, "
                 "prima_json TEXT, dopo_json TEXT, helper_json TEXT, anteprima TEXT, "
                 "esecuzione_id TEXT, motivo TEXT, subject_key TEXT, entry_point TEXT, "
-                "stakes TEXT, impronta TEXT, prova_json TEXT)")
-            conn.execute(f"INSERT INTO costruzioni({columns}) "
-                         f"SELECT {columns} FROM costruzioni_v6")
-            conn.execute("DROP TABLE costruzioni_v6")
-            # Gli indici seguono la tabella rinominata e se ne vanno con lei:
-            # si ricreano quando il nome e' di nuovo libero.
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_costruzioni_stato "
-                         "ON costruzioni(stato, creata_ts DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto "
-                         "ON costruzioni(dominio, chiave, creata_ts DESC)")
-        existing = table_columns(conn, "avvisi")
-        if "avvisata_ts" in existing:
-            conn.execute("ALTER TABLE avvisi RENAME TO avvisi_v6")
-            conn.execute("CREATE TABLE avvisi (proposta_id TEXT PRIMARY KEY)")
-            conn.execute("INSERT INTO avvisi(proposta_id) "
-                         "SELECT proposta_id FROM avvisi_v6")
-            conn.execute("DROP TABLE avvisi_v6")
+                "stakes TEXT, impronta TEXT, prova_json TEXT)",
+                _CONSTRUCTION_COLUMNS,
+                indexes=(("CREATE INDEX IF NOT EXISTS idx_costruzioni_stato "
+                          "ON costruzioni(stato, creata_ts DESC)"),
+                         ("CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto "
+                          "ON costruzioni(dominio, chiave, creata_ts DESC)")))
+        if "avvisata_ts" in table_columns(conn, "avvisi"):
+            rebuild_table(conn, "avvisi", "CREATE TABLE avvisi (proposta_id TEXT PRIMARY KEY)",
+                          ("proposta_id",))
     except BaseException:
         conn.rollback()
         raise

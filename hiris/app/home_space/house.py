@@ -648,12 +648,31 @@ class House:
         if kind in self.unverifiable_tether_kinds():
             return {**tether, "nome_attuale": None, "esiste": None}
         exists = self.lookup().verify(kind, reference) is not None
-        name = self.name(kind, reference) if exists else None
-        # Un nome uguale all'id e' il ripiego di `name`, non un nome
-        # (`topology.device_name`): l'ancora lo dice `None`, e chi la mostra
-        # sceglie il suo ripiego (`render.render_memory`), mai l'id.
-        return {**tether, "nome_attuale": None if name == reference else name,
+        # Senza un nome suo, `name` ricade sull'id: l'ancora dice `None`, e chi
+        # la mostra sceglie il suo ripiego (`render.render_memory`), mai l'id.
+        named = exists and self._has_own_name(kind, reference)
+        return {**tether, "nome_attuale": self.name(kind, reference) if named else None,
                 "esiste": exists}
+
+    def _has_own_name(self, kind: str, reference: str) -> bool:
+        """Se una cosa della casa ha un nome suo, letto dalla riga che lo
+        porta -- non confrontando il nome con l'id (G104-1, revisore,
+        11/10/2026: l'id di un'area e' lo slug del suo nome, e l'area
+        «cucina» si chiama `cucina`).
+
+        Un'area ce l'ha sempre: `AreaEntry.name` e' obbligatorio, e l'id
+        nasce da lui (`area_registry.async_create`, `_generate_id(name)`,
+        letto su home-assistant/core 2026.10.0 l'11/10/2026). Un dispositivo
+        quando l'anagrafe ha `nome` (`reader._device`: `name_by_user` o
+        `name`, entrambi nullable); un'entita' quando lo specchio o il
+        registro gliene danno uno (`topology.live_name`, le stesse due fonti
+        prima dell'id)."""
+        if kind == "dispositivo":
+            return bool((self.device(reference) or {}).get("nome"))
+        if kind == "entita":
+            return bool(self.mirror.names.get(reference)
+                        or (self.entry(reference) or {}).get("nome"))
+        return True
 
     def device(self, device_id: str) -> dict | None:
         """La voce di un dispositivo dell'anagrafe (`reader._device`: nome,

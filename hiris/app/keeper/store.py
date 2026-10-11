@@ -26,7 +26,9 @@ from ..storage import (
     connect,
     init_schema,
     prune_declared,
+    rebuild_table,
     rekey,
+    table_columns,
 )
 from .promise import (
     CEILING_IN_SOSPESO,
@@ -50,19 +52,14 @@ CREATE TABLE IF NOT EXISTS promesse (
     chiamata_json TEXT,
     domanda TEXT,
     istantanea_json TEXT,
-    -- Il servizio notify che il MODELLO sceglieva alla nascita. Dalla fetta
-    -- «il seguito delle chat divise» (spec 2026-09-26 §2) non si scrive
-    -- piu' e non si legge piu' per recapitare: il recapito si risolve al
-    -- risveglio dal soggetto di chi ha chiesto (`keeper/recipient.py`). La
-    -- colonna resta perche' le righe vecchie la portano, e togliere una
-    -- colonna in SQLite e' una riscrittura della tabella per niente.
-    recapito TEXT,
     stato TEXT NOT NULL DEFAULT '{PENDING}',
     motivo TEXT,
     esecuzione_id TEXT,
     testo TEXT,
     avvisare INTEGER,
     nata_ts REAL NOT NULL,
+    -- Quando l'orologio l'ha PRESA (`prendi`): NULL per una promessa che non
+    -- e' mai partita -- in attesa, disdetta, saltata.
     risvegliata_ts REAL,
     esito_letto_ts REAL,
     entities_at_birth INTEGER,
@@ -70,7 +67,11 @@ CREATE TABLE IF NOT EXISTS promesse (
     -- `chat_sessions`, `reasoning_jobs`, `costruzioni`. NULL per le promesse
     -- nate prima, invisibili a tutti finche' il proprietario non le adotta.
     subject_key TEXT,
-    entry_point TEXT
+    entry_point TEXT,
+    -- Quando si e' CONCLUSA (G-20, Tappa 8): la scrive chi chiude --
+    -- `concludi`, `cancel`, `risana` -- e la legge la potatura. In inglese
+    -- come le colonne nuove. NULL finche' e' in sospeso.
+    closed_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
@@ -98,12 +99,13 @@ _ESITI = sql_list(STATES_ESITO)
 #:
 #: **Le promesse in sospeso non si potano mai**, qualunque eta' abbiano: il
 #: tetto dei 30 giorni le tiene gia' entro un limite. **L'eta' si misura da
-#: `risvegliata_ts`, non da `nata_ts`** (fix review finale, rilievo minore):
+#: `closed_ts`, non da `nata_ts`** (fix review finale, rilievo minore):
 #: novanta giorni dalla CONCLUSIONE. Una promessa nata 91 giorni fa e mantenuta
 #: ieri (legittimo -- l'orizzonte di nascita e' 30 giorni, non di conclusione)
-#: resta novanta giorni da ieri. `risvegliata_ts` e' sempre popolato per uno
-#: stato concluso: `concludi()` e `cancel()` lo scrivono con
-#: `COALESCE(risvegliata_ts, adesso)`.
+#: resta novanta giorni da ieri. `closed_ts` e' sempre popolato per uno stato
+#: concluso: lo scrivono `concludi()`, `cancel()` e `risana()`. Fino alla
+#: Tappa 8 (G-20) la potatura leggeva `risvegliata_ts`, che valeva «presa» per
+#: una promessa presa e «chiusa» per una disdetta.
 #:
 #: Fino alla Tappa 8 (D5) la potatura girava a ogni promessa nuova, «alla
 #: scrittura, non con un lavoro periodico» (spec §8.1): la ragione era non
@@ -116,7 +118,7 @@ CONSERVAZIONE: Retention = {
          "Impegni conta gli esiti da leggere; oltre un trimestre dalla "
          "conclusione nessuno le rilegge"),
         (f"DELETE FROM promesse WHERE stato IN ({_CONCLUSI}) "
-         "AND risvegliata_ts < ?")),
+         "AND closed_ts < ?")),
 }
 
 
@@ -198,6 +200,68 @@ def _migration_4(conn) -> None:
                         {"subject_key": "TEXT", "entry_point": "TEXT"})
 
 
+#: Le colonne di `promesse` alla versione 5, quelle che la ricostruzione
+#: riempie. Sono la forma di QUEL gradino, e restano ferme: una colonna nata
+#: dopo arriva con la sua migrazione.
+_COLUMNS_V5 = ("id", "specie", "frase", "quando_ts", "quando_detto", "fuso",
+               "chiamata_json", "domanda", "istantanea_json", "stato", "motivo",
+               "esecuzione_id", "testo", "avvisare", "nata_ts", "risvegliata_ts",
+               "esito_letto_ts", "entities_at_birth", "subject_key", "entry_point",
+               "closed_ts")
+
+#: Gli stati in cui una promessa si chiude senza essere mai stata presa:
+#: `disdetta` (`cancel` vuole `in_attesa`) e `saltata` (l'orologio la salta
+#: prima di `prendi`). Servono solo a `_migration_5`, e sono la forma di quel
+#: gradino.
+_NEVER_TAKEN_V5 = ("disdetta", "saltata")
+
+
+def _migration_5(conn) -> None:
+    """v4 -> v5 (Tappa 8, Task 5): esce `recapito`, nasce `closed_ts` (G-20).
+
+    `recapito` era il servizio notify che il MODELLO sceglieva alla nascita;
+    dalla fetta «il seguito delle chat divise» (spec 2026-09-26 §2) non si
+    scriveva ne' si leggeva piu', e restava «perche' togliere una colonna e'
+    una riscrittura per niente». La riscrittura c'e' gia', una per tutti
+    (`storage.rebuild_table`), e una colonna che nessuno legge e' un fatto
+    che mente al primo che la legge.
+
+    `closed_ts` si riempie, per le concluse, con `risvegliata_ts`: e' cio' che
+    la potatura leggeva fino a oggi come istante di chiusura, quindi nessuna
+    promessa cambia giorno di uscita. Per le due specie di chiusura che non
+    sono mai partite (`_NEVER_TAKEN_V5`) quella colonna era la chiusura e non
+    la presa: torna NULL, ed e' cio' che quelle righe sono -- mai prese.
+    Idempotente: senza `recapito` lo schema e' gia' il nuovo.
+    """
+    if "recapito" not in table_columns(conn, "promesse"):
+        return
+    never = ",".join(f"'{s}'" for s in _NEVER_TAKEN_V5)
+    rebuild_table(
+        conn, "promesse",
+        "CREATE TABLE promesse (id TEXT PRIMARY KEY, specie TEXT NOT NULL, "
+        "frase TEXT NOT NULL, quando_ts REAL NOT NULL, quando_detto TEXT, "
+        "fuso TEXT, chiamata_json TEXT, domanda TEXT, istantanea_json TEXT, "
+        "stato TEXT NOT NULL DEFAULT 'in_attesa', motivo TEXT, esecuzione_id TEXT, "
+        "testo TEXT, avvisare INTEGER, nata_ts REAL NOT NULL, risvegliata_ts REAL, "
+        "esito_letto_ts REAL, entities_at_birth INTEGER, subject_key TEXT, "
+        "entry_point TEXT, closed_ts REAL)",
+        _COLUMNS_V5,
+        select_sql=(
+            "SELECT id, specie, frase, quando_ts, quando_detto, fuso, chiamata_json, "
+            "domanda, istantanea_json, stato, motivo, esecuzione_id, testo, avvisare, "
+            f"nata_ts, CASE WHEN stato IN ({never}) THEN NULL ELSE risvegliata_ts END, "
+            "esito_letto_ts, entities_at_birth, subject_key, entry_point, "
+            f"CASE WHEN stato IN ({_CONCLUSI}) THEN risvegliata_ts END "
+            "FROM promesse_old"),
+        indexes=(("CREATE INDEX IF NOT EXISTS idx_promesse_scadenza "
+                  "ON promesse(stato, quando_ts)"),))
+
+
+#: A che versione sta lo schema: chi lo prova lo chiede qui invece di
+#: ricopiarne il numero (il precedente e' `mind/store.SCHEMA_VERSION`).
+SCHEMA_VERSION = 5
+
+
 # La condizione «di questo filo» (`thread_condition`): ogni lettura e
 # scrittura per conto di qualcuno la porta. Vive in `chat_thread.py` (B-52,
 # Tappa 6 Task 2), la stessa per i quattro archivi che portano il filo.
@@ -214,8 +278,9 @@ class AgendaStore:
         self._conn = connect(db_path)
         self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=4,
-                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
+        init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
+                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
+                                5: _migration_5})
 
     def close(self) -> None:
         with self._lock:
@@ -238,8 +303,9 @@ class AgendaStore:
 
         `thread` non ha un default: una promessa senza nessuno che l'abbia
         chiesta non avrebbe a chi tornare. Chi non ha un filo lo dice prima
-        (`ToolDispatcher._promise`). `recapito` non si scrive, anche se
-        arriva nei dati: vedi lo schema.
+        (`ToolDispatcher._promise`). Un `recapito` nei dati non si scrive:
+        la colonna e' uscita (`_migration_5`), e il recapito si risolve al
+        risveglio dal soggetto di chi ha chiesto (`keeper/recipient.py`).
 
         Due tetti, in quest'ordine: quello del filo (e' il caso normale, e il
         messaggio parla delle TUE promesse) e quello della casa (vedi
@@ -316,7 +382,7 @@ class AgendaStore:
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato=?, motivo=?, esecuzione_id=?, testo=?, "
-                "avvisare=?, risvegliata_ts=COALESCE(risvegliata_ts, ?) "
+                "avvisare=?, closed_ts=? "
                 f"WHERE id=? AND stato IN ({_SOSPESI})",
                 (state, reason, execution_id, text,
                  None if avvisare is None else int(avvisare), now, promise_id))
@@ -378,8 +444,7 @@ class AgendaStore:
         """
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato=?, "
-                "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
+                "UPDATE promesse SET stato=?, closed_ts=? "
                 f"WHERE id=? AND stato=? AND {thread_condition()}",
                 (CANCELLED, now, promise_id, PENDING, *thread_params(thread)))
             self._conn.commit()
@@ -431,10 +496,10 @@ class AgendaStore:
             "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE promesse SET stato=?, "
+                "UPDATE promesse SET stato=?, closed_ts=?, "
                 "motivo=CASE WHEN specie='fai' THEN ? ELSE ? END "
                 "WHERE stato=?",
-                (FAILED, _REASON_FAI, _REASON_CHIEDI, TAKEN))
+                (FAILED, now, _REASON_FAI, _REASON_CHIEDI, TAKEN))
             self._conn.commit()
             count = cur.rowcount
         if count:

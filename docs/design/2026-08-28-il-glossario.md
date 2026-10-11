@@ -183,6 +183,16 @@ che le ha estratte tutte invece di fidarsi di questa spec.
 `TEXT NOT NULL`, e cambiarli significa migrare quello che c'è già scritto. Stesso trattamento:
 **il nome si decide qui, si applica in una fetta che sa gestire la migrazione.**
 
+**Le frasi degli stati** (Tappa 8, D4, approvate dal proprietario l'08/10/2026). Il valore
+scritto negli archivi e' la parola di `hiris/app/states.py`; cio' che le pagine e il modello
+leggono e' la sua frase, `states.READABLE`, mandata dalle rotte come `stato_leggibile`. La casa
+delle frasi e' quella: qui si annota la decisione, non si ricopia l'elenco.
+
+- `disdetta` si legge «annullata da te» (scelta del proprietario contro «disdetta da te»): una
+  frase sola per le promesse, le costruzioni e le proposte da fare a mano.
+- La parola `rifiutata` e' ritirata: su una costruzione diventa `fallita` («non riuscita»), su una
+  proposta `disdetta`, e l'esito di un turno scartato si chiama `scartato`.
+
 **Ma i nomi delle costanti sono un'altra cosa.** `genere`, `specie`, `famiglia`, `gesto`, `direzione`, `segno`, `origine` sono **identificatori**
 e **concetti**: vanno nell'insieme ①, si decidono col
 metodo del §5, e si rinominano con tutto il resto. Il valore `'funzionamento'` è un dato; la parola

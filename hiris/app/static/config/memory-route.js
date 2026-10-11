@@ -66,11 +66,14 @@ window.HirisMemoryRoute = (function () {
   ];
   var TETHER_TYPE_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
 
-  /* L'istante arriva in ISO 8601 UTC (`detto_il`, `store.py`): l'utente
-     legge l'ora locale. `null` se manca o non è interpretabile — si
-     dichiara "data non disponibile", non se ne inventa una. */
+  /* L'istante arriva in ISO 8601 con l'offset della casa (`detto_il`: lo
+     converte la resa del ricordo, `render.render_memory`, la stessa per la
+     pagina e per il modello; dall'08 all'11/10/2026 qui arrivava l'epoca):
+     l'utente legge l'ora locale. `null` se manca o non è un testo
+     interpretabile — si dichiara "data non disponibile", non se ne inventa
+     una. */
   function fmtWhen(iso) {
-    var t = iso ? Date.parse(iso) : NaN;
+    var t = typeof iso === 'string' && iso ? Date.parse(iso) : NaN;
     if (isNaN(t)) return null;
     try {
       return new Date(t).toLocaleString('it-IT', {

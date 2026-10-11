@@ -359,11 +359,13 @@ def test_la_migrazione_7_delle_costruzioni_e_tutto_o_niente(tmp_path, monkeypatc
     in `costruzioni`, e senza guasto la migrazione si rifa' fino alla 7
     (rilievo G100-1, giro 100; lo stesso di G94-1 sulla 15 delle
     osservazioni). Il guasto e' l'`INSERT ... SELECT` che chiede una colonna
-    che `costruzioni_v6` non ha: solleva dopo il `RENAME` e il `CREATE`.
+    che la tabella rinominata non ha: solleva dopo il `RENAME` e il `CREATE`.
 
-    Mutazioni ESEGUITE (08/10/2026): senza il `rollback` -- rossa (la
+    Mutazioni ESEGUITE (08/10/2026): senza il `rollback`, qui e in
+    `storage.rebuild_table` che la migrazione ora usa -- rossa (la
     ricostruzione resta a meta' in una transazione aperta, e l'archivio e'
-    bloccato: «database is locked»); senza il `BEGIN` e
+    bloccato: «database is locked»; tolto solo quello della migrazione resta
+    verde, perche' `rebuild_table` torna indietro da se'); senza il `BEGIN` e
     con la ricostruzione spostata prima degli `UPDATE` -- rossa, il DDL va in
     autocommit. Senza il solo `BEGIN` resta verde, ed e' giusto: l'`UPDATE`
     in testa apre gia' la transazione (il modulo `sqlite3` la apre prima di

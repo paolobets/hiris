@@ -691,8 +691,8 @@ class _FakeAutomationWatcher:
     def marked_automations(self):
         return list(self._marked)
 
-    def watch_automation_outcome(self, entity_id, outcome, *, domain=None, title=None):
-        self.calls.append((entity_id, outcome, domain, title))
+    def watch_automation_outcome(self, entity_id, outcome, *, title=None):
+        self.calls.append((entity_id, outcome, title))
         return self._result
 
 
@@ -870,7 +870,7 @@ def test_the_title_is_the_name_the_house_gives_at_the_outcome():
 
     asyncio.run(server.watch_automation_outcomes(app, client))
 
-    assert {c[0]: c[3] for c in watcher.calls} == {
+    assert {c[0]: c[2] for c in watcher.calls} == {
         "automation.luci_sera": "Luci della sera (rinominata)",
         "automation.senza_nome": None}
 
