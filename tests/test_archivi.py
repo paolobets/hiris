@@ -220,3 +220,19 @@ def test_la_ricostruzione_rifiuta_una_tabella_richiamata(tmp_path):
                               ("id",))
     assert _columns(conn, "madre") == ["id", "via"]
     assert conn.execute("SELECT count(*) FROM figlia").fetchone()[0] == 1
+
+
+def test_la_tabella_richiamata_si_riconosce_senza_maiuscole(tmp_path):
+    """SQLite confronta i nomi delle tabelle senza maiuscole: una figlia che
+    scrive `REFERENCES Madre(id)` richiama `madre`, e la ricostruzione deve
+    rifiutarla lo stesso (rilievo N105-1, giro 105).
+
+    Mutazione ESEGUITA (11/10/2026): il confronto senza `.lower()` -- rossa
+    (`[] == ['figlia']`)."""
+    conn = storage.connect(str(tmp_path / "d.db"))
+    conn.execute("CREATE TABLE madre (id INTEGER PRIMARY KEY, via TEXT)")
+    conn.execute("CREATE TABLE figlia (id INTEGER PRIMARY KEY, "
+                 "madre_id INTEGER REFERENCES Madre(id) ON DELETE CASCADE)")
+    conn.commit()
+    assert storage.referencing_tables(conn, "madre") == ["figlia"]
+    assert storage.referencing_tables(conn, "MADRE") == ["figlia"]
