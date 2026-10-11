@@ -616,7 +616,7 @@ def _readable_climate_state(value, hvac_action, *, translations, resources) -> d
     """
     mode = state_translations.rendered_state(
         value, domain="climate", translations=translations)
-    if not mode.get("letto"):
+    if not mode.get("lette"):
         return mode
     if str(value).strip().lower() == "off":
         return mode
@@ -652,7 +652,7 @@ def readable_state(value, *, domain, device_class=None, hvac_action=None,
     non ha resa», e chi legge deve poterla dire.
 
     Restituisce l'esito etichettato di `proxy/state_translations.py`:
-    `{"letto": True, "valore": "..."}` oppure `{"letto": False, "silenzio":
+    `{"lette": True, "valore": "..."}` oppure `{"lette": False, "silenzio":
     ..., "motivo": ...}`. **Non una stringa**: una stringa costringerebbe ogni
     lettore a inventarsi cosa fare del caso in cui non c'e' -- ed e'
     esattamente cio' che una tabella scritta a mano gli risparmiava mentendo,

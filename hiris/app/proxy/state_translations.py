@@ -97,31 +97,31 @@ SILENCE_UNDEFINED = "ho chiesto una cosa che non esiste"
 
 
 def known(value) -> dict:
-    """L'esito pieno: `{"letto": True, "valore": ...}`.
+    """L'esito pieno: `{"lette": True, "valore": ...}`.
 
     Le chiavi restano **italiane** come quelle che questo modulo gia' emette
     (`lette`, `motivo`, `risorse`): un contratto che si estende non cambia
     lingua a meta'. Gli identificatori del codice restano inglesi, come vuole
     il glossario.
     """
-    return {"letto": True, "valore": value}
+    return {"lette": True, "valore": value}
 
 
 def unreachable(reason: str) -> dict:
     """Silenzio 1 -- e il motivo lo dichiara CHI HA FALLITO, non chi legge."""
-    return {"letto": False, "silenzio": SILENCE_UNREACHABLE,
+    return {"lette": False, "silenzio": SILENCE_UNREACHABLE,
             "motivo": reason or "motivo non dichiarato"}
 
 
 def absent(reason: str) -> dict:
     """Silenzio 2 -- il soggetto esiste, quella conoscenza su di lui no."""
-    return {"letto": False, "silenzio": SILENCE_ABSENT,
+    return {"lette": False, "silenzio": SILENCE_ABSENT,
             "motivo": reason or "motivo non dichiarato"}
 
 
 def undefined(reason: str) -> dict:
     """Silenzio 3 -- il soggetto stesso non e' fra cio' che HA pubblica."""
-    return {"letto": False, "silenzio": SILENCE_UNDEFINED,
+    return {"lette": False, "silenzio": SILENCE_UNDEFINED,
             "motivo": reason or "motivo non dichiarato"}
 
 
@@ -374,7 +374,7 @@ def rendered_state(state, *, domain, device_class=None, translations) -> dict:
         # cio' che la tupla scritta a mano impediva per costruzione. Si scende
         # al gradino del dominio, che e' un tipo solo e ce l'ha tutta.
         pair = published_pair(resources, domain=domain, device_class=device_class)
-        if pair.get("letto"):
+        if pair.get("lette"):
             return known(pair["valore"][PAIR_STATES.index(text)])
         device_class = None
     word = state_translation(text, domain=domain, device_class=device_class,

@@ -129,13 +129,13 @@ def test_e_senza_hvac_action_non_si_inventa_un_funzionamento():
     inventa "fermo" ne' "sta scaldando" -- nessuno dei due sarebbe vero."""
     reso = readable_state("heat", domain="climate", hvac_action=None,
                           translations=house_translations())
-    assert reso == {"letto": True, "valore": "impostato su Riscaldamento"}
+    assert reso == {"lette": True, "valore": "impostato su Riscaldamento"}
     # Un valore FUORI dall'enumerazione di Home Assistant vale come nessun
     # valore: non si compone una frase attorno a una parola che il fornitore
     # non pubblica.
     fuori = readable_state("heat", domain="climate", hvac_action="marziano",
                            translations=house_translations())
-    assert fuori == {"letto": True, "valore": "impostato su Riscaldamento"}
+    assert fuori == {"lette": True, "valore": "impostato su Riscaldamento"}
 
 
 # --- il confine deciso: attributi SOLO sul dettaglio, mai nelle liste -----

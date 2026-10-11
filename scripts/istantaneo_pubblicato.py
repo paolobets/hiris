@@ -436,7 +436,7 @@ def distill(resources, services, states, *, ha_version, language) -> dict:
     state_classes = published_state_classes(resources)
     bits = capability_bits(registry)
     switchable = switchable_domains(registry)
-    if not bits.get("letto") or not switchable.get("letto"):
+    if not bits.get("lette") or not switchable.get("lette"):
         raise ReadingFailed("il registro dei servizi non si e' potuto leggere: "
                             + str(bits.get("motivo") or switchable.get("motivo")))
 

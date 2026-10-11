@@ -307,7 +307,7 @@ def _state_in_words(row: dict, entity_id: str, device_class, attributes: dict,
     rendered = readable_state(
         value, domain=domain_of(entity_id), device_class=device_class,
         hvac_action=attributes.get(HVAC_ACTION_ATTRIBUTE), translations=translations)
-    if rendered.get("letto"):
+    if rendered.get("lette"):
         row["stato_leggibile"] = rendered["valore"]
     elif rendered.get("silenzio") in TABLE_MISSING_SILENCES:
         row["stato_non_reso"] = {"silenzio": rendered.get("silenzio"),
