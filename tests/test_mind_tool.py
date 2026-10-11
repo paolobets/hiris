@@ -196,7 +196,7 @@ async def test_senza_osservatore_e_senza_letture_si_dice_cosa_manca(tmp_path):
 async def test_l_energia_e_la_dashboard_della_casa(tmp_path):
     """`cosa: energia` e' la dashboard Energia dell'anagrafe
     (`energy.energy_dashboard`), lo stesso oggetto che legge il giro delle
-    ricette -- con `ha_statistiche` a `None`, perche' qui l'elenco delle
+    ricette -- con `statistiche` a `None`, perche' qui l'elenco delle
     statistiche non si chiede, e «non l'ho chiesto» si dice com'e'."""
     store = _store(tmp_path)
     ha = CasaFinta({"energy_prefs": PREFS})
@@ -205,5 +205,5 @@ async def test_l_energia_e_la_dashboard_della_casa(tmp_path):
     answer = await dispatcher.dispatch("mind", {"cosa": "energia"})
     expected = await energy.energy_dashboard(ha, store, _house(store))
     assert answer == {"energia": expected}
-    assert all(role["ha_statistiche"] is None for role in answer["energia"]["ruoli"])
+    assert all(role["statistiche"] is None for role in answer["energia"]["ruoli"])
 
