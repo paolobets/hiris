@@ -132,7 +132,7 @@ async def test_a_chat_promise_takes_its_snapshot_without_scanning(tmp_path):
         agenda.close()
     assert "errore" not in outcome, outcome
     snapshot = outcome["promessa"]["istantanea"]
-    assert [(m["entita"], m["valore"], m["unita"]) for m in snapshot] == [
+    assert [(m["id"], m["stato"], m["unita"]) for m in snapshot] == [
         ("sensor.sensore_a_temperatura", "21.5", "°C")]
 
 

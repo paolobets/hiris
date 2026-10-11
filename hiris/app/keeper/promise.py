@@ -271,21 +271,20 @@ def _snapshot_out(snapshot, timezone):
     """L'istantanea come esce: l'istante di ogni misura nell'ora della casa
     (decisione D3, 05/10/2026), col fuso che la promessa porta con se'.
 
-    L'archivio tiene l'epoch che `ToolDispatcher._snapshot` ha scritto: si
-    cambia la resa, non il record, e cosi' escono uguali anche le promesse
-    nate prima di oggi. Nessuna pagina legge `misurato_ts` (cercato in
-    `static/` il 05/10/2026): la pagina Impegni mostra della misura soltanto
-    entita', valore e unita'.
+    Le misure nate dall'11/10/2026 portano gia' `quando` in ISO
+    (`ToolDispatcher._snapshot`); quelle di prima, portate ai nomi nuovi dalla
+    migrazione 6 di `keeper/store.py`, tengono l'epoch di allora. Si cambia la
+    resa, non il record: `instant_out` rende uguali le due forme.
     """
     if not isinstance(snapshot, list):
         return snapshot
     zone = None
     out = []
     for measurement in snapshot:
-        if isinstance(measurement, dict) and "misurato_ts" in measurement:
+        if isinstance(measurement, dict) and "quando" in measurement:
             zone = zone or home_space_zone(timezone)
             measurement = {**measurement,
-                           "misurato_ts": instant_out(measurement["misurato_ts"], zone)}
+                           "quando": instant_out(measurement["quando"], zone)}
         out.append(measurement)
     return out
 

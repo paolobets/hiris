@@ -85,6 +85,7 @@ import asyncio
 import inspect
 import logging
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -129,7 +130,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import depth_for, render_memory
+from .render import depth_for, render_entity, render_memory
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -2390,37 +2391,28 @@ class ToolDispatcher:
         return None
 
     def _snapshot(self, entities: list) -> list[dict]:
-        """I valori di partenza, presi ADESSO, con la loro unita'.
+        """I valori di partenza, presi ADESSO: ogni entita' resa come da ogni
+        altra porta (`render.render_entity`, profondita' corta: lo stato con
+        la sua unita', il nome, l'area), piu' `quando`, l'istante della
+        misura nell'ora della casa.
 
         Senza l'unita' e senza l'istante, «e' aumentata» non ha un termine di
         paragone e il modello se lo inventerebbe. E' la fondamenta n.1: il `72`
         che non si sa se sia Celsius o Fahrenheit.
 
-        `stati` (da `states_by_id()`) e' la forma MINIMALE vera di
-        `proxy/entity_cache.py::_to_minimal` -- non lo stato grezzo di Home
-        Assistant. L'unita' vive li' nella chiave `unit` DI PRIMO LIVELLO,
-        non dentro `attributes.unit_of_measurement` (quello e' HA grezzo, mai
-        cio' che questo dispatcher vede): leggerla dagli attributi e' il
-        difetto R6 -- l'istantanea nasceva SEMPRE senza unita' in produzione.
-        `valore` invece era gia' corretto: legge `state`, che e' una chiave
-        di primo livello identica in entrambe le forme.
+        Fino all'11/10/2026 era una composizione sua (C-01): `entita`,
+        `valore`, `misurato_ts` in epoch, e un ramo per l'entita' che non
+        esisteva -- morto da quando `_verify_comparison_targets` rifiuta, nella
+        stessa chiamata e senza attese in mezzo, ogni riferimento che lo
+        specchio non conosce. Le promesse nate prima le porta alla forma nuova
+        la migrazione 6 di `keeper/store.py`.
         """
-        import time as _time
-
-        states = states_by_id(self._cache) or {}
-        now = _time.time()
-        measurements = []
-        for identifier in entities:
-            state = states.get(identifier)
-            if state is None:
-                measurements.append({"entita": identifier, "valore": None, "unita": None,
-                               "misurato_ts": now,
-                               "nota": "non esisteva quando l'hai chiesto"})
-                continue
-            measurements.append({"entita": identifier, "valore": state.get("state"),
-                           "unita": state.get("unit") or None,
-                           "misurato_ts": now})
-        return measurements
+        zone = historian.home_space_zone(self._timezone())
+        house = House.read_ids(self._home_space, self._cache, entities)
+        now = historian.instant_out(time.time(), zone)
+        return [{**render_entity(house, identifier, "corta", zone=zone,
+                                 judgments=self._judgments), "quando": now}
+                for identifier in entities]
 
     def _timezone(self) -> str | None:
         """Il fuso della casa, dall'unico lettore (`historian.house_timezone`).
@@ -2512,7 +2504,9 @@ class ToolDispatcher:
         # UNA casa per tutta la chiamata, la stessa del turno.
         return await read_history(self._ha, query, self._turn_house(),
                                   self._home_space.behavior(), cache=self._cache,
-                                  seal=self._seal(), journal=self._journal, now=now)
+                                  seal=self._seal(), journal=self._journal, now=now,
+                                  translations=await self._read_translations(),
+                                  judgments=self._judgments)
 
     # -- i calendari ------------------------------------------------------
 

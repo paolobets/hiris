@@ -757,3 +757,39 @@ def test_empty_dashboard_changes_nothing(tmp_path):
                 == recipe_turn.build_device_question("x", casa, "inv"))
     finally:
         sapere.close()
+
+
+# -- il ruolo nella resa dell'entita' (D13), dalle strade di produzione ------
+
+def test_il_ruolo_arriva_alla_resa_dalla_casa_letta_e_da_quella_del_giro(tmp_path):
+    """G108-1 (revisore, giro 108): la dashboard tenuta dall'anagrafe arriva a
+    `render_entity` dalle due strade di produzione -- `House.read` (il turno
+    della chat, le pagine) e `with_statistics` (la casa del giro delle
+    ricette) --, non da una `House(energy=...)` costruita a mano.
+
+    Mutazioni ESEGUITE: `House.read` che non passa `energy()` -- rossa (la
+    casa letta); `with_statistics` che perde la dashboard -- rossa (la casa
+    del giro)."""
+    from hiris.app.home_space.render import render_entity
+
+    store = _store(tmp_path)
+    store.hold_energy(energy.declared_roles(PREFS))
+    letta = House.read(store, _Cache())
+    giro = letta.with_statistics({"sensor.inverter_prelievo"})
+    for casa in (letta, giro):
+        riga = render_entity(casa, "sensor.inverter_prelievo", "media")
+        assert riga["ruolo_energia"] == "prelievo", riga
+
+
+def test_quando_esce_nell_ora_della_casa_anche_fuori_da_utc(tmp_path):
+    """N108-1 (revisore, giro 108): con la casa a Roma `quando` porta
+    l'offset di Roma. Con UTC non si distingueva una conversione da nessuna
+    conversione: la lettura e' gia' ISO UTC (`HomeSpace.hold_energy`).
+
+    Mutazioni ESEGUITE: `describe` che non converte `quando` -- rossa
+    (`+00:00`); `energy_dashboard` che passa sempre UTC -- rossa."""
+    store = HomeSpace(str(tmp_path))
+    store.hold_registries(REGISTRIES, [], reference_frame={"fuso": "Europe/Rome"})
+    answer = _run(energy.energy_dashboard(CasaFinta({"energy_prefs": PREFS}), store,
+                                          _house(store)))
+    assert answer["quando"][-6:] in {"+01:00", "+02:00"}, answer["quando"]

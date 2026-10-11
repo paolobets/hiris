@@ -52,7 +52,7 @@ const PROMESSE = [
     id: 'p3', specie: 'chiedi', frase: 'posso aprire le finestre?',
     quando_ts: 1755400000, quando_detto: 'fra due ore', fuso: 'Europe/Rome',
     chiamata: null, domanda: 'la temperatura esterna e\' sotto i 25 gradi?',
-    istantanea: [{ entita: 'sensor.temp_esterna', valore: 31, unita: '°C' }],
+    istantanea: [{ id: 'sensor.temp_esterna', stato: 31, unita: '°C' }],
     stato: 'mantenuta', motivo: null, esecuzione_id: 'e1',
     testo: 'no: fuori ci sono 31 gradi', avvisare: false,
     nata_ts: 1755390000, risvegliata_ts: 1755400050, origine: null, esito_letto_ts: 1755400900,
@@ -156,6 +156,15 @@ test('una promessa disdetta non mostra il motivo: la stessa regola delle costruz
 test('un chiedi concluso in silenzio mostra comunque cio\' che ha trovato', async () => {
   const { document } = await monta();
   assert.ok(document.body.textContent.includes('31 gradi'));
+});
+
+test('l\'istantanea di un chiedi si legge coi nomi della resa: id, stato, unita', async () => {
+  /* Tappa 9, F2 (C-01): la misura e' l'entita' resa da `render_entity`, piu'
+     `quando`. Mutazione ESEGUITA: `formatSnapshot` che legge ancora
+     `entita`/`valore` -- rossa («? undefined °C»). */
+  const { document } = await monta();
+  assert.ok(document.body.textContent.includes('Basato su: sensor.temp_esterna 31 °C'),
+    document.body.textContent);
 });
 
 test('solo le in sospeso hanno il bottone per disdire', async () => {

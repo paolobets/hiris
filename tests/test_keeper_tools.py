@@ -11,6 +11,8 @@ from hiris.app.action import actuator as actuator_module
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.chat_thread import ChatThread
+from hiris.app.home_space.house import House
+from hiris.app.home_space.render import render_entity
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -325,9 +327,35 @@ async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.camera_t"]})
     misure = esito["promessa"]["istantanea"]
-    assert misure[0]["entita"] == "sensor.camera_t"
-    assert misure[0]["valore"] == "21.4"
+    assert misure[0]["id"] == "sensor.camera_t"
+    assert misure[0]["stato"] == "21.4"
     assert misure[0]["unita"] == "°C"      # senza unita' e' il `72` senza scala
+    # La misura e' l'entita' resa come da ogni altra porta (C-01, Tappa 9),
+    # alla profondita' corta, piu' l'istante in cui e' stata presa.
+    assert misure[0]["genere"] == "entita" and misure[0]["nome"] == "Camera T"
+    assert misure[0]["quando"].endswith("+00:00")
+    assert not {"entita", "valore", "misurato_ts"} & set(misure[0])
+
+
+@pytest.mark.asyncio
+async def test_l_istantanea_del_chiedi_resta_alla_profondita_corta(promesse):
+    """N109-1 (revisore, giro 109): ogni misura e' l'entita' resa alla
+    profondita' corta, chiesta a `render_entity` stesso, piu' `quando` --
+    niente di piu': un'istantanea alla media porterebbe nella promessa, e
+    nel prompt di chi la riprende, campi che il confronto non usa.
+
+    Mutazione ESEGUITA: `_snapshot` che rende alla profondita' media -- rossa."""
+    cache = _CacheFinta()
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=cache)
+    esito = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "verifica la temperatura",
+        "quando": _fra(60),
+        "domanda": "e' aumentata?", "da_confrontare": ["sensor.camera_t"]})
+    casa = House.read_ids(None, cache, ["sensor.camera_t"])
+    corta = render_entity(casa, "sensor.camera_t", "corta")
+    media = render_entity(casa, "sensor.camera_t", "media")
+    assert set(media) != set(corta)  # la prova distingue le due profondita'
+    assert set(esito["promessa"]["istantanea"][0]) == set(corta) | {"quando"}
 
 
 @pytest.mark.asyncio

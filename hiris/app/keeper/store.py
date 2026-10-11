@@ -257,9 +257,47 @@ def _migration_5(conn) -> None:
                   "ON promesse(stato, quando_ts)"),))
 
 
+#: Le chiavi di una misura dell'istantanea scritte fino alla versione 5, coi
+#: nomi del vocabolario dei campi (`home_space/field_vocabulary.py`, D1 della
+#: Tappa 4). Sono la forma di QUEL gradino, e restano ferme.
+_SNAPSHOT_KEYS_V6 = {"entita": "id", "valore": "stato", "misurato_ts": "quando"}
+
+
+def _migration_6(conn) -> None:
+    """v5 -> v6 (Tappa 9, F2): l'istantanea di un `chiedi` parla il
+    vocabolario dei campi.
+
+    `ToolDispatcher._snapshot` scriveva ogni misura con `entita`, `valore` e
+    `misurato_ts`; dalla Tappa 9 la misura e' l'entita' resa da
+    `render.render_entity` (`id`, `stato`, `unita`...) piu' `quando`. Le
+    promesse nate prima si riscrivono qui, una volta, perche' i lettori
+    (`exchange._domanda`, la pagina Impegni) leggano un nome solo invece di
+    due. `quando` resta l'epoch di allora: `promise._snapshot_out` lo rende
+    nell'ora della casa all'uscita, come gli ISO delle misure nuove.
+
+    Idempotente: una misura gia' nella forma nuova non ha chiavi da cambiare.
+    Un JSON che non si legge resta com'e': non e' questa migrazione a
+    deciderne la sorte.
+    """
+    rows = conn.execute("SELECT id, istantanea_json FROM promesse "
+                        "WHERE istantanea_json IS NOT NULL").fetchall()
+    for promise_id, raw in rows:
+        try:
+            snapshot = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(snapshot, list):
+            continue
+        renamed = [{_SNAPSHOT_KEYS_V6.get(key, key): value for key, value in m.items()}
+                   if isinstance(m, dict) else m for m in snapshot]
+        if renamed != snapshot:
+            conn.execute("UPDATE promesse SET istantanea_json = ? WHERE id = ?",
+                         (json.dumps(renamed), promise_id))
+
+
 #: A che versione sta lo schema: chi lo prova lo chiede qui invece di
 #: ricopiarne il numero (il precedente e' `mind/store.SCHEMA_VERSION`).
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 # La condizione «di questo filo» (`thread_condition`): ogni lettura e
@@ -280,7 +318,7 @@ class AgendaStore:
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                                5: _migration_5})
+                                5: _migration_5, 6: _migration_6})
 
     def close(self) -> None:
         with self._lock:

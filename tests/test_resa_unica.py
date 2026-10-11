@@ -85,6 +85,14 @@ ADMITTED: dict[str, str] = {
     "home_space/house.py::kind_of": (
         "il fatto «che tipo e'» dell'oggetto casa della Tappa 3 (B-17): "
         "una domanda della casa, che la resa chiamera'"),
+    "action/actuator.py::_fingerprint": (
+        "l'impronta del confronto prima/dopo di un comando, non la resa: lo "
+        "stato, l'unita' e TUTTI gli attributi appiattiti, chiave per chiave, "
+        "costruita allo stesso modo da tre fonti -- lo specchio, il ritorno di "
+        "`call_service` e l'annuncio del websocket -- due delle quali non "
+        "passano dalla casa (`House`) che la resa legge. Rendere qui vorrebbe "
+        "dire confrontare lo specchio di prima con lo specchio di prima "
+        "(Tappa 9, F2, 11/10/2026)"),
     "action/construction/revisions.py::_row": (
         "la riga di una costruzione, non un'entita': `stato` e' quello della "
         "costruzione (in attesa, confermata...) e `dominio` quello della voce "
