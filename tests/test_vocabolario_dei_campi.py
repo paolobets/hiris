@@ -21,6 +21,8 @@ import re
 from pathlib import Path
 
 from hiris.app.home_space.field_vocabulary import FIELDS
+from hiris.app.home_space.house_query import KINDS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
 GLOSSARY = Path(__file__).resolve().parents[1] / "docs" / "GLOSSARIO.md"
 
@@ -64,3 +66,47 @@ def test_stessi_proprietari_e_stessi_nomi_tolti():
         owners, replaced = rows[name]
         assert field.owners == owners, (name, sorted(field.owners), sorted(owners))
         assert field.replaces == replaced, (name, sorted(field.replaces), sorted(replaced))
+
+
+def _parameters(schema, found: set[str]) -> set[str]:
+    if isinstance(schema, dict):
+        for name, sub in (schema.get("properties") or {}).items():
+            found.add(name)
+            _parameters(sub, found)
+        _parameters(schema.get("items"), found)
+    return found
+
+
+def _descriptions(node):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "description" and isinstance(value, str):
+                yield value
+            else:
+                yield from _descriptions(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _descriptions(value)
+
+
+def test_le_descrizioni_non_nominano_un_campo_tolto():
+    """G102-1 (revisore, giro 102): la descrizione di `search` diceva ancora
+    «una voce con `nascosta: true`» quando le voci portano gia' `fuori`. Il
+    modello legge la descrizione e cerca un campo che non c'e' piu'.
+
+    I nomi tolti si chiedono al vocabolario (`Field.replaces`), non si
+    ricopiano. Restano ammessi i nomi che sono anche un parametro dello
+    stesso strumento (il `tipo` di un'ancora di `remember` e' la colonna
+    del ricordo, non un campo della resa) e i generi (`entita`).
+    Mutazione ESEGUITA: rimettere «`nascosta: true`» nella descrizione di
+    `search` -- rossa con `('search', 'nascosta')`."""
+    retired = set().union(*(f.replaces for f in FIELDS.values())) - set(FIELDS) - set(KINDS)
+    assert {"da_quando", "piattaforma", "nascosta"} <= retired, \
+        "la derivazione dei nomi tolti si e' svuotata"
+    named = []
+    for tool in KNOWLEDGE_TOOLS:
+        parameters = _parameters(tool["input_schema"], set())
+        for text in _descriptions(tool):
+            named.extend((tool["name"], word) for word in re.findall(r"`([a-z_]+)", text)
+                         if word in retired and word not in parameters)
+    assert not named, named

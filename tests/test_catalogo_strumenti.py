@@ -63,7 +63,13 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # `fermo_da_ore`/`cambiato_da_ore`, numeri col `minimum` nello schema; la
 # descrizione di `ore` (`history`) non ripete il `maximum` che lo schema gia'
 # dice e che `dispatch` ora fa valere. Misurato: 30.495.
-CATALOG_CEILING = 30495
+#
+# 08/10/2026 (Tappa 9, F2, D7 della Tappa 4): il parametro `tipo` diventa
+# `dominio` in `search` e `history`, `genere` in `related` e `fetch`; la
+# descrizione del `genere` di `fetch` non ripete «ometti per cercare su tutti
+# e tre», che la descrizione dello strumento dice gia'; `search` dice «una
+# voce nascosta (`fuori`)» invece di `nascosta: true` (G102-1). Misurato: 30.463.
+CATALOG_CEILING = 30463
 
 
 def catalog_chars(definitions) -> int:

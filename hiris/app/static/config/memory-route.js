@@ -116,14 +116,16 @@ window.HirisMemoryRoute = (function () {
     var ul = el('ul');
     ul.style.cssText = 'margin:0 0 8px;padding-left:18px;font-size:var(--fs-13);color:var(--text-2)';
     tethers.forEach(function (a) {
-      var name = a.nome_attuale || a.nome_visto || a.riferimento;
-      var text, tone;
-      if (a.esiste === true) { text = name; tone = ''; }
+      /* `nome_mostrato` lo prepara il server (`render._shown`): il ripiego e'
+         uno per ogni porta, e l'id non e' mai un nome -- sta solo nel title.
+         Per un'ancora sparita e' gia' la frase intera. */
+      var text = a.nome_mostrato, tone = '';
       /* `--err-ink`/`--warn-ink` e non `--err`/`--warn`: e' testo, e sul tema
          chiaro i due originali stanno sotto AA (4.05:1 e 2.04:1). */
-      else if (a.esiste === false) { text = name + ' — non esiste più nell’anagrafe'; tone = 'var(--err-ink)'; }
-      else { text = name + ' — non è stato possibile verificarlo'; tone = 'var(--warn-ink)'; }
+      if (a.esiste === false) { tone = 'var(--err-ink)'; }
+      else if (a.esiste !== true) { text = text + ' — non è stato possibile verificarlo'; tone = 'var(--warn-ink)'; }
       var li = el('li', null, (TETHER_TYPE_LABELS[a.tipo] || a.tipo) + ': ' + text);
+      if (a.riferimento) li.title = a.riferimento;
       if (tone) li.style.color = tone;
       ul.appendChild(li);
     });

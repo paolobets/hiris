@@ -213,7 +213,7 @@ def test_la_storia_dichiara_i_filtri_di_search_e_nessuno_e_obbligatorio():
     storia = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "history")
     schema = storia["input_schema"]
     assert set(schema["properties"]) == {
-        "cosa", "nome", "riferimento", "tipo", "classe", "area", "piano",
+        "cosa", "nome", "riferimento", "dominio", "classe", "area", "piano",
         "integrazione", "includi_nascoste", "includi_servizio", "ore", "da", "a",
         "esecuzione", "livello", "limite", "salta"}
     assert not schema.get("required")
@@ -672,7 +672,7 @@ async def test_chi_non_amministra_non_legge_esecuzioni_ne_errori(tmp_path, argom
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argomenti", [{"riferimento": "light.cucina_1"},
-                                       {"cosa": "valori", "tipo": "sensor"}])
+                                       {"cosa": "valori", "dominio": "sensor"}])
 async def test_chi_non_amministra_legge_stati_e_valori(tmp_path, argomenti):
     """Mutazione ESEGUITA: il soffitto controllato per ogni genere -- rossa."""
     ha = _house()

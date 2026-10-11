@@ -827,5 +827,50 @@ def render_memory(memory: dict, house: House) -> dict:
     if "corretto_da_utente" in out:
         out["corretto_da_utente"] = bool(out["corretto_da_utente"])
     if "ancore" in out:
-        out["ancore"] = [house.tether(tether) for tether in out["ancore"] or []]
+        out["ancore"] = [_shown(house.tether(tether), house)
+                         for tether in out["ancore"] or []]
     return out
+
+
+#: Come si chiama una cosa di cui non si sa il nome, per genere d'ancora: senza
+#: nome in Home Assistant, e sparita (08/10/2026, `ux-ui-specialist` sulla
+#: pagina Memoria).
+_NAMELESS = {"dispositivo": ("dispositivo senza nome", "un dispositivo che non esiste più"),
+             "area": ("area senza nome", "un'area che non esiste più"),
+             "entita": ("entità senza nome", "un'entità che non esiste più")}
+
+#: Cio' che si aggiunge al nome di allora quando la cosa c'e' ancora ma non ha
+#: piu' un nome, e quando non c'e' piu'.
+_SEEN_NOW_NAMELESS = " (nome di allora; ora senza nome in Home Assistant)"
+_VANISHED = (" — non esiste più in Home Assistant. Il ricordo resta valido, ma non è "
+             "più collegato a niente.")
+
+
+def _shown(tether: dict, house: House) -> dict:
+    """Un'ancora col nome PRONTO da mostrare (`nome_mostrato`) e da dove
+    viene (`nome_di`: `attuale`, `visto`, `costruttore`, `nessuno`).
+
+    Il ripiego e' uno, e vive qui per ogni porta da cui un ricordo esce: il
+    nome di oggi; il nome con cui la persona l'ha nominata, detto come nome di
+    allora; per un dispositivo il produttore e il modello, se l'anagrafe li
+    ha; altrimenti «dispositivo senza nome». **L'id non e' mai un nome**: fino
+    all'08/10/2026 la pagina Memoria ricadeva su `riferimento` e mostrava un
+    id di registro a chi aveva detto «la lavatrice» (`ux-ui-specialist`,
+    giro su `1d7a909`). Per un'ancora sparita la frase dice che il ricordo
+    resta, perche' la memoria non evapora; per una non verificata
+    (`esiste: None`) il nome resta quello di allora, e lo stato lo dice chi
+    mostra."""
+    kind, seen = tether.get("tipo"), tether.get("nome_visto")
+    nameless, vanished = _NAMELESS.get(kind, ("senza nome", "una cosa che non esiste più"))
+    current = tether.get("nome_attuale")
+    if tether.get("esiste") is False:
+        shown = (seen + _VANISHED, "visto") if seen else (vanished, "nessuno")
+    elif current:
+        shown = (current, "attuale")
+    elif seen:
+        shown = (seen + (_SEEN_NOW_NAMELESS if tether.get("esiste") else ""), "visto")
+    else:
+        device = (house.device(tether.get("riferimento")) or {}) if kind == "dispositivo" else {}
+        maker = " ".join(p for p in (device.get("produttore"), device.get("modello")) if p)
+        shown = (maker, "costruttore") if maker else (nameless, "nessuno")
+    return {**tether, "nome_mostrato": shown[0], "nome_di": shown[1]}

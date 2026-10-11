@@ -639,10 +639,23 @@ class House:
         per un dispositivo `topology.device_name`. Fino a quel giorno era la
         voce dell'indice (`name` o `original_name` del registro, mai il
         `friendly_name`): la pagina Memoria chiamava un'entita' in un modo e
-        il resto del prodotto in un altro."""
+        il resto del prodotto in un altro.
+
+        **Mai l'id come nome** (08/10/2026, `ux-ui-specialist` sulla pagina
+        Memoria): `nome_attuale` e' `None` quando la cosa c'e' ma Home
+        Assistant non le da' un nome."""
         kind, reference = tether.get("tipo"), tether.get("riferimento")
         if kind in self.unverifiable_tether_kinds():
             return {**tether, "nome_attuale": None, "esiste": None}
         exists = self.lookup().verify(kind, reference) is not None
-        return {**tether, "nome_attuale": self.name(kind, reference) if exists else None,
+        name = self.name(kind, reference) if exists else None
+        # Un nome uguale all'id e' il ripiego di `name`, non un nome
+        # (`topology.device_name`): l'ancora lo dice `None`, e chi la mostra
+        # sceglie il suo ripiego (`render.render_memory`), mai l'id.
+        return {**tether, "nome_attuale": None if name == reference else name,
                 "esiste": exists}
+
+    def device(self, device_id: str) -> dict | None:
+        """La voce di un dispositivo dell'anagrafe (`reader._device`: nome,
+        produttore, modello...); `None` se l'anagrafe non lo conosce."""
+        return self._devices().get(device_id)

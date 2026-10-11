@@ -653,7 +653,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                     "remember", {"testo": "in cucina si cena alle 20",
                                 "ancore": [{"tipo": "area", "riferimento": "cucina"}]})
                 visto["fetch"] = _chiama("fetch", {"riferimento": "cucina",
-                                                         "tipo": "area"})
+                                                         "genere": "area"})
             return _ProcFelice()
 
         from hiris.app.reasoning.consegna import consegna
