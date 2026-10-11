@@ -72,6 +72,9 @@ class _Anagrafe(HomeSpace):
     def unavailable(self):
         return []
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
 
 @pytest.fixture
 def stores(tmp_path):

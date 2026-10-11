@@ -44,6 +44,9 @@ class _Anagrafe:
     def unavailable(self):
         return []
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
 
 def _entita(eid, **extra):
     riga = {"id": eid, "nome": eid, "classe": None, "unita": None,

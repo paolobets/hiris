@@ -145,7 +145,7 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
       `fuori`. Lo stato in parole c'e' gia' qui: un allagamento non deve
       avere la forma di una lampadina accesa in nessuna riga. L'unita'
       pure (fondamenta 1: `72` senza unita' e' un frammento);
-    - `media` -- piu' `classe`, `integrazione`, `capacita`,
+    - `media` -- piu' `classe`, `ruolo_energia`, `integrazione`, `capacita`,
       `stato_presunto`, `etichette`, `categorie` e gli `attributi`
       filtrati nelle loro ceste, come alla completa (C-34);
     - `completa` -- la scheda: piu' `piano`, `dispositivo`,
@@ -203,6 +203,13 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
     # manda affatto (`topology.live_first`, dentro `kind_of`).
     if kind.get("classe"):
         row["classe"] = kind["classe"]
+    # Il ruolo nella dashboard Energia (D13 della Tappa 4): l'entita' dice da
+    # se' se e' produzione, prelievo, immissione o accumulo, letto da
+    # `energy/get_prefs` -- la fonte dichiarativa di HA, mai il nome ne' la
+    # classe. Solo quando la dashboard lo dichiara.
+    role = house.energy_role(entity_id)
+    if role is not None:
+        row["ruolo_energia"] = role
     integration = _integration_of(house, entry)
     if integration is not None:
         row["integrazione"] = integration

@@ -3,13 +3,12 @@ Assistant su chi e' rete, sole, batteria, gas, acqua -- un oggetto della casa
 suo (piano degli attori, strato 2, Task 2.2; D6 «oggetto a parte», scelta
 del proprietario il 03/10/2026).
 
-**Perche' un oggetto a parte, e non un campo dell'entita'.** Il ruolo dentro
-la riga dell'entita' dovrebbe comparire da TUTTE le porte che oggi rendono
-un'entita' (fondamenta 3), e quelle porte si unificano alla Tappa 4: oggi
-allargherebbe i doppioni che quella tappa toglie. Quindi la dashboard si
-chiede qui, una volta, e chi la usa la cita a parte -- come il giro delle
-ricette fa gia' per «queste entita' hanno una serie»
-(`recipe_turn._series_block`).
+**Un oggetto suo, e un campo dell'entita'.** La dashboard intera (con
+`dichiarata` e l'istante della lettura) si chiede qui, una volta, e il giro
+delle ricette la cita a parte. Dalla Tappa 9 (D13 della Tappa 4) il ruolo
+compare anche dentro la resa dell'entita' (`ruolo_energia`, letto da
+`House.energy_role`): le porte che rendono un'entita' sono diventate una,
+`render.render_entity`, e il ruolo esce da tutte nella stessa forma.
 
 **Mai dai nomi.** Il ruolo di un'entita' e' quello che la dashboard dichiara;
 un'entita' che la dashboard non nomina non ha ruolo, qualunque cosa dica il

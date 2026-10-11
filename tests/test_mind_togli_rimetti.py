@@ -211,6 +211,9 @@ class _Anagrafe:
     def unavailable(self):
         return ()
 
+    def energy(self):
+        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
+
     def reference_frame(self):
         return {}
 
