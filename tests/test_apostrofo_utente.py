@@ -185,6 +185,9 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "api/handlers_agenda.py": WHOLE_FILE,
     "api/handlers_constructions.py": WHOLE_FILE,
     "keeper/sweeper.py": WHOLE_FILE,
+    # Le frasi degli stati (Tappa 8, C-10): le pagine le mostrano cosi' come
+    # arrivano dalla rotta, quindi ogni stringa del file e' per una persona.
+    "states.py": WHOLE_FILE,
     # **Dall'albero e dal contenuto, non dai numeri** (26/09/2026, fetta «il
     # seguito delle chat divise»). Questi tre erano ancora intervalli scritti
     # a mano, ed erano GIA' scivolati prima di questa fetta: sulla base

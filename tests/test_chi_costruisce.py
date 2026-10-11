@@ -298,7 +298,7 @@ async def test_chi_non_costruisce_riceve_403_e_niente_cambia(cliente, metodo, ro
     assert (await risposta.json())["error"]
     assert app["constructions"].read(c, now=time.time())["stato"] == "in_attesa"
     [manual] = app["observations"].proposals()
-    assert (manual["stato"], manual["giri"]) == ("attesa", [])
+    assert (manual["stato"], manual["giri"]) == ("in_attesa", [])
     assert app["knowledge"].summary()["totale"] == righe_sapere
 
 

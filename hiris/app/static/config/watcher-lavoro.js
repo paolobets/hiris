@@ -675,7 +675,7 @@ window.HirisWatcherLavoro = (function () {
     accodata: 'In attesa', riuscito: 'Riuscito', non_riuscito: 'Non riuscito',
     scaduta: 'Scaduta'
   };
-  /* Le stesse tre pastiglie di `agenda-route.js` (`STATE_BADGE`): lo stesso
+  /* Le stesse tre pastiglie degli stati (`STATE_BADGE`, common.js): lo stesso
      vocabolario visivo per lo stesso genere di fatto, invece di un semaforo
      nuovo che questa pagina non ha mai avuto. */
   /* I due esiti che sono un GUASTO, e contano nella serie. «Scaduta» e' il

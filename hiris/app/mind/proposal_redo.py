@@ -29,7 +29,8 @@ import logging
 import secrets
 import time
 
-from ..reasoning.queue import PRIORITY_CHAT
+from ..reasoning.queue import JOB_EXPIRED, JOB_FAILED, JOB_WAITING, PRIORITY_CHAT
+from ..states import PENDING, SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
     SPECIES,
@@ -236,7 +237,7 @@ def settle(app, store, ident: str, request: str, occurrence: dict, *,
     silenzio (scelta del proprietario del 06/10/2026): chi l'ha rifiutata
     mentre il turno era in volo ha gia' deciso."""
     row = store.proposal(ident)
-    if row is None or row["stato"] != store.PROPOSAL_PENDING:
+    if row is None or row["stato"] != PENDING:
         logger.info("rifalla: la proposta %s non e' piu' in attesa, la risposta "
                     "si scarta", ident)
         return DISCARDED
@@ -261,7 +262,7 @@ def settle(app, store, ident: str, request: str, occurrence: dict, *,
                                   fingerprint=row["impronta"], prova=row["prova"])
         store.add_proposal_round(ident, request=request, outcome=kind, turn=turn,
                                  built=built, now_ts=time.time())
-        store.close_proposal(ident, "superata", why=proposer_turn.SUPERSEDED_WHY)
+        store.close_proposal(ident, SUPERSEDED, why=proposer_turn.SUPERSEDED_WHY)
     return kind
 
 
@@ -286,7 +287,7 @@ def state(app, proposal: dict) -> dict | None:
 
     queue, store = app.get("reasoning_queue"), app.get("observations")
     if queue is None or store is None \
-            or proposal.get("stato") != store.PROPOSAL_PENDING:
+            or proposal.get("stato") != PENDING:
         return None
     job = queue.latest(proposer_turn.PROPOSAL_TURN_KIND, wake_key=WAKE_KEY,
                        wake_value=proposal["id"])
@@ -294,11 +295,11 @@ def state(app, proposal: dict) -> dict | None:
                           for g in proposal.get("giri") or []):
         return None
     status = job.get("status")
-    if status in ("pending", "claimed"):
+    if status in JOB_WAITING:
         phase = RUNNING if job["deadline_ts"] > time.time() else EXPIRED
-    elif status == "expired":
+    elif status == JOB_EXPIRED:
         phase = EXPIRED
-    elif status == "failed" or not str(turn_answer(job) or "").strip():
+    elif status == JOB_FAILED or not str(turn_answer(job) or "").strip():
         # Deciso ma vuoto: il piano non ha risposto, per chi preme il bottone
         # e' un fallimento come gli altri.
         phase = FAILED

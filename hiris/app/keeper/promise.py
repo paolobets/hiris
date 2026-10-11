@@ -21,21 +21,16 @@ import json
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
+from ..states import CANCELLED, FAILED, KEPT, SKIPPED, readable
 
 VERB = ("fai", "chiedi")
-STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
-# L'insieme «in sospeso» -- la sua UNICA casa (review finale, rilievo ②).
-# Prima viveva scritto a mano in due punti di `store.py` (due `WHERE
-# stato IN (...)` SQL letterali) e una terza volta in
-# `static/config/agenda-route.js::STATI_SOSPESO`, senza niente che li
-# legasse: uno stato non conclusivo aggiunto qui un domani sarebbe sparito
-# in silenzio dalla sezione azionabile della pagina, senza che niente
-# fallisse -- precisamente il rischio che la spec §12 nomina per la fetta
-# successiva (i lavori di sistema, «la specie e' un campo, non un `if`»).
-# `tests/js/agenda-route-vocabulary.test.mjs` lega questo insieme al
-# JavaScript: e' quello che rende la divergenza NON silenziosa
-# (`scripts/doppioni.py`, `_costanti_gia_legate`).
-STATES_SOSPESO = ("in_attesa", "in_corso")
+#: Gli stati che chiudono una promessa. Le parole vivono nel vocabolario
+#: (`states.py`, Tappa 8, D4): qui si dice solo quali sono le conclusive di
+#: questa coda. L'insieme «in sospeso» e' `states.SUSPENDED`, la sua casa
+#: sola: fino all'08/10/2026 ce n'era una copia qui e una in
+#: `action/construction/revisions.py`. `tests/js/agenda-route-vocabulary.test.mjs`
+#: lega questi insiemi al JavaScript della pagina Impegni.
+STATES_CONCLUSI = (KEPT, SKIPPED, CANCELLED, FAILED)
 
 # Gli stati che sono una NOTIZIA per chi legge -- `STATES_CONCLUSI` meno
 # `disdetta`. Sono due insiemi diversi perche' rispondono a due domande
@@ -57,7 +52,7 @@ STATES_SOSPESO = ("in_attesa", "in_corso")
 # dentro tutto cio' che non e' in sospeso, `disdetta` compresa. Percio' qui
 # c'e' un elenco esplicito: e' l'unico modo perche' la domanda «questo e'
 # una notizia?» abbia una risposta scritta invece che dedotta.
-STATES_ESITO = ("mantenuta", "saltata", "fallita")
+STATES_ESITO = (KEPT, SKIPPED, FAILED)
 
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
 # si dichiara `saltata`. Una sola, non configurabile per promessa (spec §7).
@@ -82,7 +77,7 @@ HOUSE_CEILING_IN_SOSPESO = 200
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
-    "domanda", "istantanea", "stato", "motivo", "esecuzione_id",
+    "domanda", "istantanea", "stato", "stato_leggibile", "motivo", "esecuzione_id",
     "testo", "avvisare", "nata_ts", "risvegliata_ts", "esito_letto_ts",
     # `entities_at_birth`: quante entita' toccava il bersaglio alla nascita
     # (reperto B-6, 22/09/2026). In inglese perche' le colonne nuove lo sono.
@@ -308,6 +303,9 @@ def serializza(row) -> dict:
         "domanda": row["domanda"],
         "istantanea": _snapshot_out(_load(row["istantanea_json"]), row["fuso"]),
         "stato": row["stato"],
+        # La frase dello stato, dal vocabolario (C-10, Tappa 8): la pagina
+        # Impegni la mostra com'e', con la stessa chiave delle costruzioni.
+        "stato_leggibile": readable(row["stato"]),
         "motivo": row["motivo"],
         "esecuzione_id": row["esecuzione_id"],
         "testo": row["testo"],
@@ -344,3 +342,11 @@ def delay_reason(delay_s: float) -> str:
     if minuti < 1:
         return "scaduta da meno di un minuto quando l’orologio l’ha vista -- non eseguita."
     return f"scaduta da {minuti} minuti quando l’orologio l’ha vista -- non eseguita."
+
+
+def bridge_silence_reason(provider_name: str, minutes: int) -> str:
+    """Il motivo di una promessa il cui turno sul ponte e' scaduto senza
+    risposta (`reasoning/consegna.close_expired_promise`): quanto si e' aspettato, e chi.
+    Come `delay_reason`, dice cio' che si e' misurato e nient'altro."""
+    return (f"ho aspettato il {provider_name} per {minutes} minuti e non ha "
+            "risposto: non so cosa dirti.")

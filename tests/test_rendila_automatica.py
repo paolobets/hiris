@@ -122,7 +122,7 @@ async def test_un_automazione_su_una_SERRATURA_si_rifiuta_dentro_il_turno(casa):
     assert app["llm_router"].risultati[0] == {"errore": stakes.HIGH_UNATTENDED}
     assert app["constructions"].list(now=1.0, pending_only=False, limit=10) == []
     riga = _riga(store, ident)
-    assert riga["stato"] == store.PROPOSAL_PENDING
+    assert riga["stato"] == "in_attesa"
     assert riga["non_automatizzabile"] == "tocca la serratura, che chiede sempre"
     # E il comando, su quella forma, non c'e' piu'.
     righe = await _both_queues(app, app["constructions"], False)
@@ -421,7 +421,7 @@ async def test_una_proposta_ALTA_gia_decisa_risponde_409_non_403(casa):
     alta = store.add_proposal(text="Chiudi a chiave", perche="x",
                               fingerprint="lock|y|None|1", prova={},
                               stakes=stakes.HIGH, now_ts=300.0)
-    store.close_proposal(alta, "rifiutata")
+    store.close_proposal(alta, "disdetta")
 
     risposta = await handle_proposal_automate(_richiesta(app, {"id": alta}))
 

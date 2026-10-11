@@ -42,6 +42,7 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from ..mind import automate_turn, proposal_redo
+from ..states import CANCELLED, DONE_ELSEWHERE, PENDING
 from .boundary import error_response, json_object
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ async def _close(request, outcome: str) -> web.Response:
 
 async def handle_proposal_reject(request: web.Request) -> web.Response:
     """«No.» Chiude la proposta, e resta visibile con la sua data."""
-    return await _close(request, "rifiutata")
+    return await _close(request, CANCELLED)
 
 
 async def handle_proposal_done(request: web.Request) -> web.Response:
@@ -84,7 +85,7 @@ async def handle_proposal_done(request: web.Request) -> web.Response:
     Chiude **come applicata**: e' un esito positivo, e HIRIS dichiara di non
     averlo fatto lui e di non poterlo verificare in nessun oggetto.
     """
-    return await _close(request, "fatta_fuori")
+    return await _close(request, DONE_ELSEWHERE)
 
 
 async def handle_proposal_redo(request: web.Request) -> web.Response:
@@ -107,7 +108,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     row = _row(store, ident)
     if row is None:
         return error_response(404, _NOT_FOUND)
-    if row["stato"] != store.PROPOSAL_PENDING:
+    if row["stato"] != PENDING:
         return error_response(409, _NOT_PENDING)
     body = await json_object(request, optional=True)
     richiesta = str(body.get("richiesta") or "").strip()
@@ -160,7 +161,7 @@ async def handle_proposal_automate(request: web.Request) -> web.Response:
     row = _row(store, ident)
     if row is None:
         return error_response(404, _NOT_FOUND)
-    reason = automate_turn.refusal(row, pending=store.PROPOSAL_PENDING,
+    reason = automate_turn.refusal(row, pending=PENDING,
                                    in_flight=automate_turn.preparing(request.app),
                                    redoing=proposal_redo.redoing(request.app, row))
     if reason is not None:

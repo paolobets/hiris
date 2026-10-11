@@ -39,6 +39,16 @@ def connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """I nomi delle colonne di `table`, letti da SQLite.
+
+    La casa sola di `PRAGMA table_info` (Tappa 8, Task 4): la usano
+    `add_missing_columns` qui sotto e le migrazioni che RICOSTRUISCONO una
+    tabella per toglierne una colonna (`revisions._migration_7`), che devono
+    sapere se la colonna c'e' ancora per restare idempotenti."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
 def add_missing_columns(conn: sqlite3.Connection, table: str,
                         columns: dict[str, str]) -> None:
     """Aggiunge a `table` le colonne di `columns` (`{nome: tipo}`) che non ci
@@ -60,7 +70,7 @@ def add_missing_columns(conn: sqlite3.Connection, table: str,
     archivio alla versione vecchia con parte delle colonne; e un archivio che
     nasce oggi le porta gia' dal suo schema. In entrambi i casi la migrazione
     rigira e deve trovare il lavoro fatto."""
-    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    existing = table_columns(conn, table)
     for name, kind in columns.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
@@ -106,12 +116,12 @@ def prune_declared(conn: sqlite3.Connection, conservation: Retention,
     return removed
 
 
-def database_name(conn: sqlite3.Connection) -> str:
-    """Il nome del file su cui `conn` e' aperta, chiesto a SQLite (`PRAGMA
-    database_list`) e non ricordato a parte: e' cio' che `/api/health`
-    mostra come nome dell'archivio."""
-    row = conn.execute("PRAGMA database_list").fetchone()
-    return os.path.basename(row[2]) if row and row[2] else ""
+def archive_name(db_path: str) -> str:
+    """Il nome con cui un archivio si presenta: quello del suo file, cioe'
+    cio' che si vede in `/data` e che `/api/health` mostra (D7). Lo dice
+    l'archivio stesso, aperto su `db_path`: chi lo elenca non deve leggere la
+    sua connessione fuori dal suo lucchetto (rilievo N98-2, giro 98)."""
+    return os.path.basename(db_path)
 
 
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,

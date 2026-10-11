@@ -419,7 +419,7 @@ async def test_chi_SALTA_una_domanda_lo_scrive_nel_registro(casa, caplog):
     ident = app["observations"].add_proposal(
         text="x", perche="y", fingerprint=observation_key(riga),
         prova=evidence_of(riga), stakes=None, now_ts=1.0)
-    app["observations"].close_proposal(ident, "rifiutata")
+    app["observations"].close_proposal(ident, "disdetta")
     app["llm_router"] = _Modello(([], json.dumps({"esiti": [
         {"osservazione": 0, "esito": "niente", "perche": "abitudine"}]})))
 

@@ -95,6 +95,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
 from ..models_store import bridge_deadline_min
 from ..providers import SUBSCRIPTION
+from ..states import TAKEN
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
 from ..usage.giro import pesa_in_caratteri
@@ -315,7 +316,7 @@ def _exchange_promise_id(request: web.Request) -> str:
     if store is None:
         return ""
     row = store.read(ident)
-    return ident if row and row.get("stato") == "in_corso" else ""
+    return ident if row and row.get("stato") == TAKEN else ""
 
 
 def _exchange_chat_job(request: web.Request) -> tuple[bool, dict | None]:
@@ -742,7 +743,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
                 "assenti, la promessa NON e' stata chiusa", promise_id)
             result = {"errore": ("ho ricevuto la conclusione ma non ho "
                                  "potuto chiudere la promessa.")}
-        elif row.get("stato") != "in_corso":
+        elif row.get("stato") != TAKEN:
             # Riletta adesso, non al primo controllo dell'intestazione: fra i
             # due puo' essere arrivata la scadenza, o un `conclude` gemello.
             # Una promessa gia' chiusa non si riconsegna (Task 3, fix round 1:

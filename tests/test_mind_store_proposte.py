@@ -49,7 +49,7 @@ def test_una_proposta_si_scrive_e_si_rilegge(archivio):
     assert righe[0]["id"] == ident
     assert righe[0]["testo"].startswith("Sposta la lavatrice")
     assert righe[0]["perche"].startswith("il prelievo")
-    assert righe[0]["stato"] == "attesa"
+    assert righe[0]["stato"] == "in_attesa"
 
 
 def test_i_TRE_esiti_chiudono_la_proposta(archivio):
@@ -61,11 +61,11 @@ def test_i_TRE_esiti_chiudono_la_proposta(archivio):
     rifiutata = _proposta(archivio)
     fatta = _proposta(archivio, fingerprint="dev2|consumo|None|1")
 
-    archivio.close_proposal(rifiutata, "rifiutata")
+    archivio.close_proposal(rifiutata, "disdetta")
     archivio.close_proposal(fatta, "fatta_fuori", why="l'ho spostata a mano")
 
     per_id = {r["id"]: r for r in archivio.proposals()}
-    assert per_id[rifiutata]["stato"] == "rifiutata"
+    assert per_id[rifiutata]["stato"] == "disdetta"
     assert per_id[fatta]["stato"] == "fatta_fuori"
     assert per_id[fatta]["esito_nota"] == "l'ho spostata a mano"
 
@@ -88,7 +88,7 @@ def test_solo_le_proposte_APERTE_quando_si_chiedono_quelle(archivio):
     Mutazione: ignorare `pending_only` -- rossa."""
     aperta = _proposta(archivio)
     chiusa = _proposta(archivio, fingerprint="dev2|consumo|None|1")
-    archivio.close_proposal(chiusa, "rifiutata")
+    archivio.close_proposal(chiusa, "disdetta")
 
     aperte = archivio.proposals(pending_only=True)
     assert [r["id"] for r in aperte] == [aperta]
@@ -117,7 +117,7 @@ def test_il_filo_dei_GIRI_si_accoda_e_si_rilegge_in_ordine(archivio):
         "troppo presto, dopo le 14", "e solo nei feriali"]
     assert riga["testo"].endswith("nei feriali"), (
         "il testo della proposta deve essere l'ULTIMA forma, non la prima")
-    assert riga["stato"] == "attesa", "un giro non chiude niente"
+    assert riga["stato"] == "in_attesa", "un giro non chiude niente"
 
 
 def test_lo_STESSO_turno_non_scrive_due_giri(archivio):
@@ -161,7 +161,7 @@ def test_le_proposte_DECISE_si_leggono_per_impronta(archivio):
     aperta = _proposta(archivio)
     chiusa = _proposta(archivio, fingerprint="dev2|consumo|None|1",
                        prova={"base": 3, "quanti_scarti": 1, "spiegato": None})
-    archivio.close_proposal(chiusa, "rifiutata")
+    archivio.close_proposal(chiusa, "disdetta")
 
     decise = archivio.decided_proposals()
     assert set(decise) == {"dev1|prelievo|None|1", "dev2|consumo|None|1"}
@@ -177,7 +177,7 @@ def test_per_impronta_conta_l_ULTIMA_proposta(archivio):
 
     Mutazione ESEGUITA (06/10/2026): `ORDER BY creata_ts DESC` -- rossa."""
     vecchia = _proposta(archivio, prova={"base": 3, "quanti_scarti": 1, "spiegato": None})
-    archivio.close_proposal(vecchia, "rifiutata")
+    archivio.close_proposal(vecchia, "disdetta")
     archivio.add_proposal(text="di nuovo", perche="la prova e' cambiata",
                           fingerprint="dev1|prelievo|None|1",
                           prova={"base": 19, "quanti_scarti": 3, "spiegato": None},

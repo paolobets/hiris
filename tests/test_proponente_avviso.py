@@ -284,7 +284,7 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
     await pr.proposer_round(casa)
     (riga,) = casa["constructions"].list(now=time.time())
 
-    casa["constructions"].mark_rejected(riga["id"], now=riga["creata_ts"] + 1,
+    casa["constructions"].mark_failed(riga["id"], now=riga["creata_ts"] + 1,
                                         execution_id=None)
     await pr.proposer_round(casa)
 
@@ -324,7 +324,7 @@ def test_gli_avvisi_nascono_anche_in_un_ARCHIVIO_esistente(tmp_path):
 
     archivio = ConstructionStore(percorso)
     try:
-        archivio.mark_alerted("p1", now=1_000_000.0)
+        archivio.mark_alerted("p1")
     finally:
         archivio.close()
 

@@ -22,7 +22,8 @@ import time
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
 from ..keeper.delivery import notify_admins
-from ..reasoning.queue import turn_answer
+from ..reasoning.queue import JOB_DECIDED, turn_answer
+from ..states import SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
     SPECIES,
@@ -157,7 +158,7 @@ async def _collect(app, store, today: str) -> dict | None:
     queue = app.get("reasoning_queue")
     turn = (queue.latest(proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY)
             if queue else None)
-    if not turn or turn.get("status") != "decided":
+    if not turn or turn.get("status") != JOB_DECIDED:
         return None
     wake = turn.get("wake") or {}
     if wake.get(ROUND_KEY) != today:
@@ -275,7 +276,7 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
                 constructions.answers(outcome["proposta_id"], actor=PROPOSER_SPECIES,
                                       fingerprint=key, prova=evidence_of(observation))
             if earlier is not None:
-                store.close_proposal(earlier["id"], "superata",
+                store.close_proposal(earlier["id"], SUPERSEDED,
                                      why=proposer_turn.SUPERSEDED_WHY)
                 logger.info("proponente: la proposta a mano su %s e' superata "
                             "dalla costruita %s", key, outcome["proposta_id"])
@@ -325,4 +326,4 @@ async def _alert_high(app) -> None:
             app, ALERT_TEXT.format(name=name or row.get("chiave")),
             actor=PROPOSER_SPECIES)
         if report.get("push", 0) > len(report.get("mancate") or ()):
-            constructions.mark_alerted(row["id"], now=time.time())
+            constructions.mark_alerted(row["id"])

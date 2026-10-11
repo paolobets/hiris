@@ -51,7 +51,7 @@ from typing import NamedTuple as _NamedTuple
 
 from .models_store import _STORE_DEFAULTS, bridge_deadline_min
 from .providers import subscription_has_token
-from .reasoning.queue import PRIORITY_BACKGROUND, PRIORITY_CHAT
+from .reasoning.queue import JOB_WAITING, PRIORITY_BACKGROUND, PRIORITY_CHAT
 
 logger = logging.getLogger(__name__)
 
@@ -357,7 +357,7 @@ TRUNCATED = "troncato"
 
 #: L'esito di un turno andato a buon fine, per quanto ne sa l'imbuto. E'
 #: l'unico che `declare_refused` corregge (G31-1, giro 31 della revisione,
-#: 06/10/2026): un «fallito» non ha risposto, e riscriverlo «rifiutata»
+#: 06/10/2026): un «fallito» non ha risposto, e riscriverlo «scartato»
 #: direbbe al giro dopo che il modello ha sbagliato quando non ha parlato.
 SUCCEEDED = "riuscito"
 
@@ -374,7 +374,12 @@ TOOL_LEAKED = "strumento_scappato"
 #: registro la chiamava «riuscito». A differenza di `TRUNCATED` non lo sa il
 #: runner: lo sa il mestiere, dopo il turno, e lo scrive sulla riga gia'
 #: registrata (`declare_refused`).
-REFUSED = "rifiutata"
+#:
+#: **Si chiama «scartato»** dall'08/10/2026 (Tappa 8, D4 (a)): prima era
+#: «rifiutata», la parola del «no» di una persona su una proposta e del
+#: guasto di una costruzione, e al femminile in mezzo a esiti al maschile. Le
+#: righe di prima le riscrive `usage/store._migration_6`.
+REFUSED = "scartato"
 
 #: Cosa riceve il mestiere al posto delle decisioni, quando il turno e' stato
 #: troncato (D2, approvata il 05/10/2026): **non si legge**. Un JSON tagliato a
@@ -982,7 +987,7 @@ def turn_in_flight(app, kind: str, *, wake_key: str | None = None) -> bool:
     turn = queue.latest(kind, wake_key=wake_key)
     if turn is None:
         return False
-    return (turn["status"] in ("pending", "claimed")
+    return (turn["status"] in JOB_WAITING
             and turn["deadline_ts"] > _time.time())
 
 

@@ -37,7 +37,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from ..storage import DAY_S, Retention, connect, init_schema, prune_declared
+from ..storage import DAY_S, Retention, archive_name, connect, init_schema, prune_declared
 
 # I ruoli e le specie si chiedono al vocabolario del confine (F-02): fino al
 # 07/10/2026 `RUOLI` era scritto due volte, qui e in `canali.py`.
@@ -108,6 +108,7 @@ class ServiziStore:
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
+        self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=1)
 

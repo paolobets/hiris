@@ -18,6 +18,7 @@ import logging
 
 from ..chat_thread import subject_from_thread
 from ..proxy._sanitize import sanitize_ha_value
+from ..states import FAILED, KEPT, SKIPPED
 from .delivery import deliver
 from .outcome import write_line
 from .promise import (
@@ -95,7 +96,7 @@ class Sweeper:
             # racconterebbe un'altra storia.
             if delay > self._tolleranza:
                 closed = self._store.concludi(
-                    promise["id"], state="saltata", reason=delay_reason(delay),
+                    promise["id"], state=SKIPPED, reason=delay_reason(delay),
                     now=now)
                 logger.info("promessa %s saltata: %s", promise["id"],
                             delay_reason(delay))
@@ -111,7 +112,7 @@ class Sweeper:
                 logger.warning("promessa %s: guasto imprevisto (%s: %s)",
                                promise["id"], type(error).__name__, error)
                 closed = self._store.concludi(
-                    promise["id"], state="fallita", now=now,
+                    promise["id"], state=FAILED, now=now,
                     reason=(
                         f"guasto imprevisto mentre la mantenevo "
                         f"({type(error).__name__}: {error})."
@@ -166,7 +167,7 @@ class Sweeper:
     async def _keep_fai(self, promise: dict, now: float) -> None:
         thread = promise.get("thread")
         if thread is None:
-            self._store.concludi(promise["id"], state="fallita", now=now,
+            self._store.concludi(promise["id"], state=FAILED, now=now,
                                  reason=_ORPHAN_FAI_REASON)
             return
         # La cronaca nomina CHI l'aveva chiesta (ruling 2.7): il soggetto si
@@ -180,7 +181,7 @@ class Sweeper:
         ceiling = await self._ceiling(subject)
         if not ceiling.get("comandare"):
             reason = ceiling.get("perche") or "oggi non puoi comandare la casa."
-            if self._store.concludi(promise["id"], state="fallita", now=now,
+            if self._store.concludi(promise["id"], state=FAILED, now=now,
                                     reason=reason):
                 self._tell(promise, failure_message(promise, reason))
             return
@@ -207,7 +208,7 @@ class Sweeper:
                 promise.get("entities_at_birth"),
                 len(target.get("risolte") or []) if isinstance(target, dict) else None)
             closed = self._store.concludi(
-                promise["id"], state="mantenuta", now=now,
+                promise["id"], state=KEPT, now=now,
                 execution_id=occurrence.get("esecuzione_id"), reason=notice)
             # Il racconto nel filo (spec §2.4), da campi limitati: la frase
             # tagliata e l'avviso del bersaglio, testo di HIRIS (vincolo 3.7).
@@ -219,7 +220,7 @@ class Sweeper:
             error = (occurrence.get("errore")
                      or "non e' andata, e non so dire perche'.")
             closed = self._store.concludi(
-                promise["id"], state="fallita", now=now, reason=error,
+                promise["id"], state=FAILED, now=now, reason=error,
                 execution_id=occurrence.get("esecuzione_id"))
             # L'errore viene da Home Assistant (o dalla porta che lo riporta):
             # nella chat entra ripulito come ogni valore di HA, poi tagliato.
@@ -239,7 +240,7 @@ class Sweeper:
             # Il motivo puo' citare cio' che il modello aveva risposto al posto
             # di concludere (`exchange._senza_conclusione`): quella citazione,
             # `excerpt`, passa dal filtro dei veleni da sola.
-            if self._store.concludi(promise["id"], state="fallita", now=now,
+            if self._store.concludi(promise["id"], state=FAILED, now=now,
                                     reason=answer["errore"]):
                 self._tell(promise, failure_message(promise, answer["errore"]),
                            quoted=answer.get("excerpt") or None)
@@ -276,7 +277,7 @@ class Sweeper:
         # e non riconsegna. `concludi` e' guardato sullo stato: se la
         # promessa era gia' conclusa (una scadenza, un `conclude` ripetuto)
         # qui non si consegna niente.
-        if not self._store.concludi(promise["id"], state="mantenuta", now=now,
+        if not self._store.concludi(promise["id"], state=KEPT, now=now,
                                     reason=note or None, text=text,
                                     avvisare=avvisare):
             logger.info("promessa %s: gia' conclusa, nessuna consegna",

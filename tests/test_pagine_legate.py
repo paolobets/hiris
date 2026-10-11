@@ -17,14 +17,14 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 
-from hiris.app.action.construction.revisions import STATES_SOSPESO
 from hiris.app.api import servizi
 from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.reader import TABLES, HomeSpace
 from hiris.app.mind.facts import NOT_ENTITY_PREFIXES
 from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
-from hiris.app.mind.store import READING_RETENTION_S, ObservationsStore
+from hiris.app.mind.store import READING_RETENTION_S
+from hiris.app.states import SUSPENDED
 from tests._avvio import started_app  # noqa: F401
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,8 +100,8 @@ def test_tree_page_keeps_no_measurement_names():
 
 # -- C-12: il raggruppamento «in sospeso» delle Proposte ----------------------
 # La pagina mostra due code (`handlers_constructions._both_queues`): le
-# costruzioni, sospese in `STATES_SOSPESO`, e le proposte da fare a mano,
-# sospese in `PROPOSAL_PENDING`. Dal passo 2 il server manda `sospesa` per riga
+# costruzioni, sospese in `states.SUSPENDED`, e le proposte da fare a mano,
+# sospese in `states.PENDING`. Dal passo 2 il server manda `sospesa` per riga
 # (`test_constructions_api.py`), e la pagina non tiene un elenco di stati.
 # Mutazione eseguita (passo 1, con la copia): tolto "in_corso" da
 # `revisions.STATES_SOSPESO` -> rossa. Passo 2: rimesso nel JS l'elenco
@@ -109,7 +109,7 @@ def test_tree_page_keeps_no_measurement_names():
 
 def test_constructions_page_keeps_no_pending_states():
     source = _js("config/constructions-route.js")
-    pending = set(STATES_SOSPESO) | {ObservationsStore.PROPOSAL_PENDING}
+    pending = set(SUSPENDED)
     arrays = [set(re.findall(r"'([^']*)'", body))
               for body in re.findall(r"\[([^\[\]]*)\]", source)]
     copies = [sorted(found & pending) for found in arrays if found & pending]

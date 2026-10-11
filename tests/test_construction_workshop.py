@@ -14,12 +14,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import SILENT, CasaFinta, Refused, Silence
 
 from hiris.app.action.construction import workshop as officina_modulo
-from hiris.app.action.construction.revisions import UNCERTAIN, ConstructionStore
+from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop, _entity_platform
 from hiris.app.action.journal import Journal
 from hiris.app.action.write_outcome import silent
 from hiris.app.chat_thread import ChatThread
 from hiris.app.proxy.ha_client import HAClient
+from hiris.app.states import UNCERTAIN, readable
 from tests._casa_sintetica import synthetic_inputs
 
 ADESSO = 1_756_000_000.0
@@ -392,6 +393,23 @@ async def test_dalla_pagina_si_applica_sempre(banco):
 
 
 @pytest.mark.asyncio
+async def test_una_proposta_non_piu_in_attesa_si_rifiuta_con_la_frase_del_suo_stato(banco):
+    """Il rifiuto dice lo stato con la frase del vocabolario (Tappa 8, D4),
+    non con la parola della tabella. Fino all'08/10/2026 una tabella di
+    `workshop.py` ne traduceva quattro e `incerta` usciva grezza.
+
+    Mutazione ESEGUITA (08/10/2026): `proposal['stato']` al posto di
+    `readable(proposal['stato'])` nel rifiuto -- rossa qui."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    archivio.mark_uncertain(p["proposta_id"], now=ADESSO + 1, execution_id=None)
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert esito["errore"] == f"quella proposta non e' piu' in attesa: {readable('incerta')}."
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
 async def test_l_entita_nata_riceve_l_etichetta(banco):
     officina, ha, _, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
@@ -446,7 +464,7 @@ async def test_se_l_automazione_cade_gli_helper_appena_nati_si_disfano(banco):
     assert "errore" in esito
     assert ha.helper_creati, "l'helper doveva essere creato prima del rifiuto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
-    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "fallita"
 
 
 @pytest.mark.asyncio
@@ -880,7 +898,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
     assert ha.helper_creati, "l'helper doveva essere creato prima del guasto"
     assert ha.helper_cancellati == [("input_boolean", "modalita_notte")]
     # (c) la proposta non resta bloccata in_corso.
-    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "fallita"
 
 
 @pytest.mark.asyncio
@@ -913,7 +931,7 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
 
     assert "errore" in esito
     assert silent(esito)
-    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "fallita"
 
 
 @pytest.mark.asyncio
@@ -1098,7 +1116,7 @@ async def test_scrittura_muta_non_arrivata_rifiutata(banco):
     assert esito["eseguito"] is False
     assert silent(esito)
     assert "non e' arrivata" in esito["errore"]
-    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "rifiutata"
+    assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "fallita"
 
 
 @pytest.mark.asyncio
@@ -1107,7 +1125,7 @@ async def test_il_no_non_tocca_home_assistant(banco):
     la proposta `disdetta`, senza scrivere niente in casa.
 
     Mutazione ESEGUITA (07/10/2026): `reject` che chiama
-    `self._store.mark_rejected(proposal_id, now=now, execution_id=None)` --
+    `self._store.mark_failed(proposal_id, now=now, execution_id=None)` --
     rossa su `stato == "disdetta"` (era `rifiutata`); ripristinata e
     verificata col confronto del file."""
     officina, ha, archivio, _ = banco

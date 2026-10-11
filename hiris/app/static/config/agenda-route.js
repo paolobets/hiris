@@ -77,25 +77,13 @@
 window.HirisAgendaRoute = (function () {
   'use strict';
 
-  /* Vocabolario dell'interfaccia (guida di disegno §0), diverso dai nomi
-     tecnici di `stato` in archivio: non toccare senza rileggere quella
-     guida, la distinzione non e' un dettaglio estetico. */
-  var STATE_LABEL = {
-    in_attesa: 'In attesa',
-    in_corso: 'In corso',
-    mantenuta: 'Mantenuta',
-    saltata: 'Non eseguita',
-    fallita: 'Non riuscita',
-    disdetta: 'Disdetta'
-  };
-  var STATE_BADGE = {
-    in_attesa: 'badge-off',
-    in_corso: 'badge-on',
-    mantenuta: 'badge-on',
-    saltata: 'badge-warn',
-    fallita: 'badge-err',
-    disdetta: 'badge-off'
-  };
+  /* La parola che una persona legge per uno stato non vive qui: arriva
+     dalla rotta (`stato_leggibile`, dal vocabolario `hiris/app/states.py`,
+     C-10 della Tappa 8), e `stateLabel` le alza la prima lettera. Fino
+     all'08/10/2026 questa pagina ne teneva una tabella sua, e la pagina
+     Costruzioni un'altra: `disdetta` si leggeva «Disdetta» qui e «Declinata
+     da te» li'. Anche il colore del badge e' uno per tutte le code
+     (`stateBadge`, common.js, 08/10/2026). */
   var PENDING_STATES = ['in_attesa', 'in_corso'];
   /* Gli stati che sono una NOTIZIA per chi legge -- gemello di
      `keeper/promise.py::STATES_ESITO`, legato a quello per VALORI da
@@ -357,10 +345,13 @@ window.HirisAgendaRoute = (function () {
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
 
-    line.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[p.stato] || 'badge-off'),
-      STATE_LABEL[p.stato] || p.stato));
+    line.appendChild(el('span', 'agent-badge ' + stateBadge(p.stato),
+      stateLabel(p.stato_leggibile || p.stato)));
 
-    if (p.motivo) {
+    /* Il motivo MAI per `disdetta`, come nella pagina Costruzioni: il «no»
+       di una persona non e' un fallimento, e non si colora come uno
+       (ux-ui-specialist, 08/10/2026: una regola sola per le due code). */
+    if (p.motivo && p.stato !== 'disdetta') {
       var reason = el('p', null, p.motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p.stato);
       line.appendChild(reason);
