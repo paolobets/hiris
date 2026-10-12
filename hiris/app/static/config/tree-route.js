@@ -1,10 +1,11 @@
 /* HIRIS · Configurazione · «Albero della casa» (route #/tree)
 
    Chiude il reperto 26: `GET /api/home-space` manda gia' l'albero completo che
-   `topology.hierarchy()` costruisce -- piani -> aree -> entita', col
-   comportamento, la piattaforma, la categoria, la classe, l'unita', se
-   un'entita' e' nascosta, i suoi alias e le sue etichette -- ed e' il
-   payload piu' ricco che HIRIS produce. Prima usciva verso nessuno:
+   `topology.hierarchy()` costruisce -- piani -> aree -> entita'. Dalla Tappa 9
+   (F5, 12/10/2026) ogni entita' e' la resa media della chat
+   (`render.render_entity`), senza l'area (e' il ramo) e senza gli attributi:
+   lo stato, l'integrazione, il `fuori`, le etichette col nome, gli alias, il
+   `translation_key` -- ed e' il payload piu' ricco che HIRIS produce. Prima usciva verso nessuno:
    `dashboard.js` (`#/`, «Cosa HIRIS sa») legge la stessa risposta e ne
    mostra solo i CONTEGGI (`casa.conteggi`), mai `casa.piani`. Questa pagina
    e' la faccia di quel campo.
@@ -119,25 +120,19 @@ window.HirisTreeRoute = (function () {
       .map(function (k) { return (names[k] || k) + ' ' + unit[k]; });
   }
 
-  /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
-     id -> nome, risolta una volta sola dal backend -- vedi
-     `handlers_home_space.handle_get_home_space`. `hierarchy()` mette su aree ed
-     entita' i soli `label_id` (cosi' li manda Home Assistant): senza
-     questa funzione l'albero mostrerebbe lo slug («da_controllare»)
-     invece del nome che l'utente ha scritto («Da controllare»).
+  /* Il segno di un'entita' fuori dai visibili (`fuori.classe`, la regola di
+     `topology.visibility_classes`), con le parole che questa pagina usava
+     gia' (scelta del proprietario, 12/10/2026: «Parole di oggi», nessun
+     termine nuovo). Una classe che la mappa non conosce compare col suo
+     nome, non sparisce. */
+  var OUTSIDE_MARK = {
+    disabilitata: '[disabilitata]',
+    nascosta: '[nascosta in Home Assistant]',
+    servizio: '[di servizio]'
+  };
 
-     Un id che la mappa non conosce NON sparisce e non diventa un nome
-     inventato: resta l'id cosi' com'e'. E' un riferimento penzolante --
-     un'etichetta cancellata dopo che l'entita' l'ha ricevuta, o una
-     mappa letta solo in parte -- e "questa cosa ha un'etichetta che non
-     so nominare" e' piu' vero di "questa cosa non ha etichette". Vale
-     anche quando `mappa` e' `null` (l'archivio manca, stessa disciplina
-     a tre stati di `non_disponibili`): un lookup su `null` non trova
-     niente, e la stessa riga sotto ripiega sull'id grezzo. */
-  function labelName(id, map) {
-    if (map && Object.prototype.hasOwnProperty.call(map, id)) return map[id];
-    return id;
-  }
+  /* Quante voci di un elenco si nominano prima di «e altre N». */
+  var NAMED_AT_MOST = 10;
 
   function line(parent, text, style) {
     var p = el('p', 'sc-desc', text);
@@ -196,16 +191,34 @@ window.HirisTreeRoute = (function () {
 
   /* --------------------------------------------------------------------- entità */
 
-  function entityLine(ul, e, disabled, labelMap) {
+  /* Lo stato da scrivere accanto al nome: le parole di Home Assistant
+     (`stato_leggibile`) quando ci sono, altrimenti il valore grezzo con la
+     sua unita'. Le parole di `unavailable`/`unknown` Home Assistant non le
+     pubblica (`proxy/state_translations.state_translation`): restano grezze,
+     come nella chat. Senza stato non si scrive niente. */
+  function stateText(e) {
+    if (e.stato_leggibile) return e.stato_leggibile;
+    if (e.stato == null) return '';
+    return e.unita ? e.stato + ' ' + e.unita : String(e.stato);
+  }
+
+  function entityLine(ul, e) {
     var li = el('li');
     /* `overflow-wrap:anywhere` anche qui (non solo sull'id): alias ed
-       etichette penzolanti sono a loro volta slug senza spazi, stesso
-       rischio di sfondare la larghezza. */
+       etichette sono a loro volta slug senza spazi, stesso rischio di
+       sfondare la larghezza. */
     li.style.cssText = 'margin-bottom:8px;font-size:var(--fs-13);overflow-wrap:anywhere';
 
     var head = el('span', null, (e.nome || e.id || '?') + ' ');
     head.style.fontWeight = '500';
     li.appendChild(head);
+
+    var state = stateText(e);
+    if (state) {
+      var st = el('span', null, '· ' + state + ' ');
+      st.style.cssText = 'font-size:var(--fs-13);color:var(--text-2)';
+      li.appendChild(st);
+    }
 
     if (e.id) {
       /* C2 (audit 2026-08-24): gli entity_id lunghi (es.
@@ -220,22 +233,17 @@ window.HirisTreeRoute = (function () {
       li.appendChild(idSpan);
     }
 
-    /* Le due marcature non si nascondono l'un l'altra e non si nascondono
-       l'entità: "disabilitata" (registro) e "nascosta" (Home Assistant)
-       sono fatti diversi, e un'entità puo' portarli entrambi. */
-    if (disabled) {
-      var d = el('span', null, ' [disabilitata]');
-      d.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
-      li.appendChild(d);
-    }
-    if (e.nascosta) {
-      var n = el('span', null, ' [nascosta in Home Assistant]');
-      n.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
-      li.appendChild(n);
+    /* Il segno del `fuori`: una classe sola, la prima per precedenza
+       (disabilitata > nascosta > di servizio), come la legge la chat. */
+    var outside = e.fuori && e.fuori.classe;
+    if (outside) {
+      var mark = el('span', null, ' ' + (OUTSIDE_MARK[outside] || '[' + outside + ']'));
+      mark.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
+      li.appendChild(mark);
     }
 
     /* `translation_key` su una riga SUA, e non dentro la riga a «·» qui
-       sotto. Quella riga raccoglie fatti di CLASSIFICAZIONE -- piattaforma,
+       sotto. Quella riga raccoglie fatti di CLASSIFICAZIONE -- integrazione,
        categoria, classe, unita': vocabolari chiusi, valori di poche lettere,
        che dicono COME l'entita' e' cablata. Questo e' un fatto di genere
        diverso: e' l'AUTODICHIARAZIONE dell'integrazione, cosa l'entita' E'.
@@ -268,10 +276,13 @@ window.HirisTreeRoute = (function () {
     }
 
     var details = [];
-    if (e.piattaforma) details.push('piattaforma ' + e.piattaforma);
-    if (e.categoria) details.push('categoria ' + e.categoria);
+    if (e.integrazione && e.integrazione.nome) details.push('integrazione ' + e.integrazione.nome);
+    /* La categoria di Home Assistant (`entity_category`) e' la causa del
+       `fuori` di servizio: un fatto solo, letto li'. */
+    if (outside === 'servizio' && e.fuori.causa) details.push('categoria ' + e.fuori.causa);
     if (e.classe) details.push('classe ' + e.classe);
-    if (e.unita) details.push('unità ' + e.unita);
+    /* L'unita' accanto allo stato grezzo non si ripete qui. */
+    if (e.unita && !(state && !e.stato_leggibile)) details.push('unità ' + e.unita);
     if (details.length) {
       var dl = el('div', null, details.join(' · '));
       dl.style.cssText = 'font-size:var(--fs-12);color:var(--text-2)';
@@ -283,9 +294,10 @@ window.HirisTreeRoute = (function () {
       a.style.cssText = 'font-size:var(--fs-12);color:var(--text-3)';
       li.appendChild(a);
     }
+    /* Le etichette arrivano col nome, nella forma della chat (`Nome (id:
+       X)`, `topology.labels_with_id`): la pagina non le traduce piu'. */
     if (e.etichette && e.etichette.length) {
-      var nomiEtichette = e.etichette.map(function (id) { return labelName(id, labelMap); });
-      var et = el('div', null, 'etichette: ' + nomiEtichette.join(', '));
+      var et = el('div', null, 'etichette: ' + e.etichette.join(', '));
       et.style.cssText = 'font-size:var(--fs-12);color:var(--text-3)';
       li.appendChild(et);
     }
@@ -310,10 +322,16 @@ window.HirisTreeRoute = (function () {
        niente -- un'area con quattro luci nascoste e tre attive deve
        leggersi come "3 entità, 4 nascoste", non come "3 entità" secco. */
     if (hidden) base += ', ' + hidden + (hidden === 1 ? ' nascosta' : ' nascoste');
+    /* Le entita' di servizio stanno fra quelle contate (`hierarchy()` non le
+       separa): si dice quante sono, con la parola del loro segno. */
+    var service = (area.entita || []).filter(function (e) {
+      return e && e.fuori && e.fuori.classe === 'servizio';
+    }).length;
+    if (service) base += ', ' + service + ' di servizio';
     return base;
   }
 
-  function renderArea(container, area, labelMap) {
+  function renderArea(container, area) {
     var det = el('details');
     /* C2 (audit 2026-08-24): con `open` sempre vero, una casa di 1224
        entità rendeva 49.282px di pagina su desktop e 70.154px su mobile --
@@ -356,7 +374,7 @@ window.HirisTreeRoute = (function () {
     if (active.length) {
       var ul = el('ul');
       ul.style.cssText = 'margin:4px 0;padding-left:18px';
-      active.forEach(function (e) { entityLine(ul, e, false, labelMap); });
+      active.forEach(function (e) { entityLine(ul, e); });
       body.appendChild(ul);
     }
     if (disabled.length) {
@@ -369,7 +387,7 @@ window.HirisTreeRoute = (function () {
       body.appendChild(disabledTitle);
       var ulD = el('ul');
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
-      disabled.forEach(function (e) { entityLine(ulD, e, true, labelMap); });
+      disabled.forEach(function (e) { entityLine(ulD, e); });
       body.appendChild(ulD);
     }
     if (hidden.length) {
@@ -383,7 +401,7 @@ window.HirisTreeRoute = (function () {
       body.appendChild(hiddenTitle);
       var ulN = el('ul');
       ulN.style.cssText = 'margin:4px 0;padding-left:18px';
-      hidden.forEach(function (e) { entityLine(ulN, e, false, labelMap); });
+      hidden.forEach(function (e) { entityLine(ulN, e); });
       body.appendChild(ulN);
     }
 
@@ -399,7 +417,7 @@ window.HirisTreeRoute = (function () {
     return n + ' ' + word;
   }
 
-  function renderFloor(container, floor, labelMap) {
+  function renderFloor(container, floor) {
     var det = el('details');
     /* Primo livello: resta aperto (vedi il commento in rendiArea per il
        perche' le aree, sotto, non lo sono piu'). */
@@ -416,10 +434,101 @@ window.HirisTreeRoute = (function () {
     var explanation = FLOOR_EXPLANATION[floor.id];
     if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
-    (floor.aree || []).forEach(function (area) { renderArea(body, area, labelMap); });
+    (floor.aree || []).forEach(function (area) { renderArea(body, area); });
 
     det.appendChild(body);
     container.appendChild(det);
+  }
+
+  /* ------------------------------------------------- registri e confronto */
+
+  /* Per ogni registro che non ha risposto, la copia che l'anagrafe tiene al
+     suo posto e di quando e' (`non_disponibili_letti_il`, S-36): `null` se
+     quel registro non ha mai risposto. Senza la mappa, i soli nomi. */
+  function unavailableWithCopy(unavailable, since) {
+    var names = nomiRegistriInItaliano(unavailable);
+    if (!since) return names;
+    return unavailable.map(function (entry, i) {
+      var at = since[entry];
+      return names[i] + ' — ' + (at
+        ? 'HIRIS usa la copia del ' + fmtDateTime(at) + '.'
+        : 'nessuna copia disponibile, mai letto.');
+    });
+  }
+
+  /* I nomi delle entita' dell'albero, per dire le divergenze per nome: ogni
+     elenco di un'area (le attive, le nascoste, le disabilitate), senza
+     ricopiare qui quali sono. */
+  function entityNames(floors) {
+    var names = {};
+    floors.forEach(function (floor) {
+      (floor.aree || []).forEach(function (area) {
+        Object.keys(area).forEach(function (key) {
+          if (!Array.isArray(area[key])) return;
+          area[key].forEach(function (e) { if (e && e.id) names[e.id] = e.nome || e.id; });
+        });
+      });
+    });
+    return names;
+  }
+
+  function namedList(ids, names) {
+    var shown = ids.slice(0, NAMED_AT_MOST).map(function (id) { return names[id] || id; });
+    var rest = ids.length - shown.length;
+    return shown.join(', ') + (rest > 0 ? ' e altre ' + rest : '');
+  }
+
+  /* L'esito dell'ultimo confronto fra l'albero e cio' che Home Assistant
+     risponde su un campione di aree (`topology.compare_with_home_assistant`).
+     Ogni frase dice quante aree si sono guardate: «combacia» su un campione
+     non e' «tutta la casa combacia». */
+  function renderComparison(body, comparison, floors) {
+    var title = el('div', null, 'Confronto con Home Assistant');
+    title.style.cssText = 'font-weight:500;margin-top:14px';
+    body.appendChild(title);
+
+    if (comparison == null) {
+      line(body, 'Mai confrontato: HIRIS non ha ancora verificato il suo albero contro quello di ' +
+        'Home Assistant.', TONE_CALM);
+      return;
+    }
+    if (comparison.errore) {
+      line(body, 'Il confronto non si è potuto fare: ' + comparison.errore + '.', TONE_UNKNOWN);
+      return;
+    }
+    var checked = comparison.guardate || [];
+    if (!checked.length || !comparison.aree_totali) {
+      line(body, 'Il confronto non ha avuto aree da controllare.', TONE_CALM);
+      return;
+    }
+    var when = comparison.letto_il ? 'Confronto del ' + fmtDateTime(comparison.letto_il) : 'Ultimo confronto';
+    line(body, when + ': ' + (checked.length === 1 ? 'controllata 1 area' : 'controllate ' + checked.length + ' aree') +
+      ' su ' + comparison.aree_totali + '.', TONE_CALM);
+
+    var names = entityNames(floors);
+    var failed = checked.filter(function (g) { return g.errore; });
+    var differing = checked.filter(function (g) {
+      return !g.errore && (g.assente_in_ha || (g.in_piu || []).length || (g.mancanti || []).length);
+    });
+    if (!failed.length && !differing.length) {
+      line(body, 'Tutto combacia: in queste aree l’albero di HIRIS è uguale a quello che Home ' +
+        'Assistant risponde.', TONE_CALM);
+    }
+    if (differing.length) {
+      line(body, (differing.length === 1 ? 'In 1 area' : 'In ' + differing.length + ' aree') +
+        ' l’albero di HIRIS non combacia con Home Assistant:', TONE_PROBLEM);
+      list(body, differing.map(function (g) {
+        if (g.assente_in_ha) return g.nome + ' — non esiste più in Home Assistant.';
+        var parts = [];
+        if ((g.in_piu || []).length) parts.push('HIRIS ha in più: ' + namedList(g.in_piu, names));
+        if ((g.mancanti || []).length) parts.push('gli manca: ' + namedList(g.mancanti, names));
+        return g.nome + ' — ' + parts.join('; ') + '.';
+      }));
+    }
+    if (failed.length) {
+      line(body, 'Aree che non si sono potute controllare:', TONE_UNKNOWN);
+      list(body, failed.map(function (g) { return g.nome + ' — ' + g.errore + '.'; }));
+    }
   }
 
   /* --------------------------------------------------------------------- albero */
@@ -443,6 +552,10 @@ window.HirisTreeRoute = (function () {
        ISO grezzo in UTC -> fmtDateTime (common.js), non una seconda
        funzione di formattazione. */
     line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
+    /* Lo stato accanto a ogni entita' e' quello dello specchio quando la
+       pagina si e' aperta (Tappa 9, F5): invecchia mentre la si guarda. */
+    line(body, 'Gli stati mostrati sono quelli di quando hai aperto la pagina, non quelli di adesso.',
+      TONE_CALM);
 
     /* `non_disponibili` a tre stati: null = non si sa quali registri hanno
        risposto; [] = tutti hanno risposto; pieno = una lettura a metà, che
@@ -455,27 +568,15 @@ window.HirisTreeRoute = (function () {
       line(body,
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
         TONE_PROBLEM);
-      list(body, nomiRegistriInItaliano(home_space.non_disponibili));
+      list(body, unavailableWithCopy(home_space.non_disponibili,
+        home_space.non_disponibili_letti_il));
     } else {
       line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }
 
-    renderSystem(body, home_space.sistema_di_riferimento, home_space.nomi_misure);
+    renderComparison(body, home_space.confronto, home_space.piani || []);
 
-    /* `etichette` (`casa.etichette`) e' a tre stati come `non_disponibili`:
-       `null` = l'archivio manca, nessun nome risolvibile (nella pratica
-       coincide col ramo `anagrafe_letta_il == null` qui sopra, che e' gia'
-       uscito prima di arrivare qui -- ma questa funzione non lo presume: se
-       un domani i due campi divergessero, l'albero continuerebbe a mostrare
-       gli id grezzi invece di un nome inventato, e lo DICHIAREREBBE, non lo
-       tacerebbe); `{}` = il registro ha risposto senza etichette; pieno = la
-       mappa che `labelName()` usa per tradurre gli slug sotto. */
-    var labelMap = home_space.etichette;
-    if (labelMap == null) {
-      line(body,
-        'I nomi delle etichette non sono stati letti: dove un’entità o un’area ne porta una, ' +
-        'resta visibile il solo identificativo grezzo.', TONE_UNKNOWN);
-    }
+    renderSystem(body, home_space.sistema_di_riferimento, home_space.nomi_misure);
 
     var treeTitle = el('div', null, 'L’albero');
     treeTitle.style.cssText = 'font-weight:600;margin-top:16px;font-size:var(--fs-15)';
@@ -486,7 +587,7 @@ window.HirisTreeRoute = (function () {
       line(body, 'La lettura non ha prodotto nessun piano né area.', TONE_CALM);
       return;
     }
-    floor.forEach(function (floor) { renderFloor(body, floor, labelMap); });
+    floor.forEach(function (floor) { renderFloor(body, floor); });
   }
 
   function renderTreeError(outlet, err) {

@@ -29,7 +29,7 @@ from __future__ import annotations
 import pytest
 
 from hiris.app import server
-from hiris.app.api.handlers_home_space import _live_kinds
+from hiris.app.api.handlers_home_space import _tree
 from hiris.app.home_space.ha_vocabulary import has_statistics
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import build_home_space
@@ -95,9 +95,11 @@ def test_cambiata_l_unita_nello_specchio_l_osservatore_la_vede():
 def test_l_albero_della_pagina_porta_la_classe_e_l_unita_di_adesso():
     """`GET /api/home-space`: la pagina dell'albero mostrava la classe che la
     ricostruzione aveva copiato. Ora la chiede alla casa, e le voci
-    dell'anagrafe non si toccano."""
+    dell'anagrafe non si toccano. Dalla Tappa 9 (F5) l'entita' dell'albero e'
+    la resa media (`_tree`)."""
     house = _house("°F")
-    rows = [entry for floor in _live_kinds(house) for area in floor["aree"]
+    rows = [entry for floor in _tree(house, {"lette": False}, None)
+            for area in floor["aree"]
             for entry in area.get("entita") or [] if entry["id"] == TERMOMETRO]
     assert [(row["classe"], row["unita"]) for row in rows] == [("temperature", "°F")]
     assert next(e for e in house.home_space["entita"]

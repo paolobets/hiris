@@ -101,6 +101,7 @@ from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
+from ..proxy.state_translations import read_for_house
 from ..usage.giro import pesa_in_caratteri
 from . import historian
 from .appointments import merge_calendars, readable_calendars
@@ -2054,28 +2055,9 @@ class ToolDispatcher:
     # -- le promesse -----------------------------------------------------
 
     async def _read_translations(self) -> dict:
-        """L'esito etichettato delle traduzioni, scaldandole se serve.
-
-        **Il motivo lo dichiara chi ha fallito.** Senza cache cablata, senza
-        sistema di riferimento (la casa non ha ancora detto la propria lingua)
-        o con la lettura caduta, si torna un esito «non lette» col motivo --
-        mai un dizionario vuoto che il chiamante dovrebbe interpretare.
-
-        La coppia `(versione_ha, lingua)` viene dal sistema di riferimento che
-        l'anagrafe ha gia' distillato da `Config.as_dict()`
-        (`home_space.topology.reference_frame`): non una seconda lettura verso
-        Home Assistant, e non una seconda idea di «lingua della casa».
-        """
-        if self._translations is None:
-            return {"lette": False,
-                    "motivo": "la lettura delle traduzioni non e' collegata a "
-                              "questo dispatcher"}
-        frame = self._home_space.reference_frame()
-        try:
-            return await self._translations.read(
-                ha_version=frame.get("versione_ha"), language=frame.get("lingua"))
-        except Exception as error:
-            return {"lette": False, "motivo": f"{type(error).__name__}: {error}"}
+        """L'esito etichettato delle traduzioni, scaldandole se serve
+        (`state_translations.read_for_house`)."""
+        return await read_for_house(self._translations, self._home_space.reference_frame())
 
     async def _ensure_registry_fresh(self) -> None:
         """Scalda il registro dei servizi prima di leggerlo o di verificare.

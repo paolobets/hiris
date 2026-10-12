@@ -51,26 +51,24 @@ function casaCompleta(extra = {}) {
     // I nomi delle misure li manda il server (`briefing._MEASUREMENT_NAMES`,
     // C-09): qui una loro parte, quanto basta alla casa di prova.
     nomi_misure: { temperature: 'temperatura', length: 'lunghezza' },
-    // Una nota risolvibile (nomeEtichetta la traduce) e una PENZOLANTE
-    // (nessuna voce in questa mappa): 'Luce cucina' sotto porta entrambi gli
-    // id, cosi' la stessa entita' prova sia la traduzione sia il fallback.
-    etichette: { da_controllare: 'Da controllare', priorita_alta: 'Priorità alta' },
     piani: [
       {
         id: 'piano_terra', nome: 'Piano terra', livello: 0,
         aree: [
           {
-            id: 'cucina', nome: 'Cucina', alias: [], etichette: [],
+            id: 'cucina', nome: 'Cucina',
             entita_temperatura: 'sensor.temperatura_cucina',
             entita: [
-              { id: 'light.cucina', nome: 'Luce cucina', piattaforma: 'hue', categoria: null,
-                classe: null, unita: null, disabilitata: 0, nascosta: 0, alias: [],
-                etichette: ['da_controllare', 'slug_fantasma'] },
+              // La resa media della chat (Tappa 9, F5): le etichette col nome,
+              // l'integrazione come riferimento, `fuori` solo quando c'e'.
+              { id: 'light.cucina', genere: 'entita', nome: 'Luce cucina', stato: 'on',
+                stato_leggibile: 'Acceso', integrazione: { id: 'hue', nome: 'Philips Hue' },
+                etichette: ['Da controllare (id: da_controllare)'] },
             ],
             entita_disabilitate: [
-              { id: 'sensor.vecchio', nome: 'Vecchio sensore cucina', piattaforma: 'zwave',
-                categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0,
-                alias: [], etichette: [] },
+              { id: 'sensor.vecchio', genere: 'entita', nome: 'Vecchio sensore cucina',
+                integrazione: { id: 'zwave_js', nome: 'Z-Wave' },
+                fuori: { classe: 'disabilitata', causa: 'user' } },
             ],
           },
         ],
@@ -78,26 +76,26 @@ function casaCompleta(extra = {}) {
       {
         id: '__senza_piano__', nome: 'Senza piano', livello: null,
         aree: [
-          { id: 'garage', nome: 'Garage', alias: [], etichette: [], entita: [], entita_disabilitate: [] },
+          { id: 'garage', nome: 'Garage', entita: [], entita_disabilitate: [] },
         ],
       },
       {
         id: '__piani_non_letti__', nome: 'Piani non letti', livello: null,
         aree: [
-          { id: 'taverna', nome: 'Taverna', alias: [], etichette: [], entita: [], entita_disabilitate: [] },
+          { id: 'taverna', nome: 'Taverna', entita: [], entita_disabilitate: [] },
         ],
       },
       {
         id: '__fuori_dalle_aree__', nome: 'Fuori dalle aree', livello: null,
         aree: [
-          { id: '__aree_non_lette__', nome: 'Aree non lette', alias: [], etichette: [],
-            entita: [{ id: 'sensor.a', nome: 'Entità A', alias: [], etichette: [] }] },
-          { id: '__area_sconosciuta__', nome: 'Area sconosciuta', alias: [], etichette: [],
-            entita: [{ id: 'sensor.b', nome: 'Entità B', alias: [], etichette: [] }] },
-          { id: '__senza_area__', nome: 'Senza area', alias: [], etichette: [],
-            entita: [{ id: 'sensor.c', nome: 'Entità C', alias: [], etichette: [] }] },
-          { id: '__dispositivi_non_letti__', nome: 'Dispositivi non letti', alias: [], etichette: [],
-            entita: [{ id: 'sensor.d', nome: 'Entità D', alias: [], etichette: [] }] },
+          { id: '__aree_non_lette__', nome: 'Aree non lette',
+            entita: [{ id: 'sensor.a', nome: 'Entità A' }] },
+          { id: '__area_sconosciuta__', nome: 'Area sconosciuta',
+            entita: [{ id: 'sensor.b', nome: 'Entità B' }] },
+          { id: '__senza_area__', nome: 'Senza area',
+            entita: [{ id: 'sensor.c', nome: 'Entità C' }] },
+          { id: '__dispositivi_non_letti__', nome: 'Dispositivi non letti',
+            entita: [{ id: 'sensor.d', nome: 'Entità D' }] },
         ],
       },
     ],
@@ -175,8 +173,8 @@ test('un\'entità nascosta compare SEMPRE, marcata, in una sezione propria (2026
   casa.piani[0].aree[0].entita = [];
   casa.piani[0].aree[0].entita_nascoste = [
     { id: 'light.lampadario_fake', nome: null,
-      piattaforma: 'ave_domina', categoria: null, classe: null, unita: null,
-      disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+      integrazione: { id: 'ave_domina', nome: 'ave_domina' },
+      fuori: { classe: 'nascosta', causa: 'user' } },
   ];
   const { document } = await rendi(casa);
   const sommarioCucina = [...document.querySelectorAll('summary')]
@@ -199,16 +197,16 @@ test('collaudo 3.22 (A9): il plurale del riepilogo è «disabilitate»/«nascost
   const casa = casaCompleta();
   casa.piani[0].aree[0].entita = [];
   casa.piani[0].aree[0].entita_disabilitate = [
-    { id: 'sensor.vecchio1', nome: 'Vecchio sensore 1', piattaforma: 'zwave',
-      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
-    { id: 'sensor.vecchio2', nome: 'Vecchio sensore 2', piattaforma: 'zwave',
-      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
+    { id: 'sensor.vecchio1', nome: 'Vecchio sensore 1', integrazione: { id: 'zwave', nome: 'zwave' },
+      fuori: { classe: 'disabilitata', causa: 'user' } },
+    { id: 'sensor.vecchio2', nome: 'Vecchio sensore 2', integrazione: { id: 'zwave', nome: 'zwave' },
+      fuori: { classe: 'disabilitata', causa: 'user' } },
   ];
   casa.piani[0].aree[0].entita_nascoste = [
-    { id: 'light.nascosta1', nome: 'Nascosta 1', piattaforma: 'hue',
-      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
-    { id: 'light.nascosta2', nome: 'Nascosta 2', piattaforma: 'hue',
-      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+    { id: 'light.nascosta1', nome: 'Nascosta 1', integrazione: { id: 'hue', nome: 'hue' },
+      fuori: { classe: 'nascosta', causa: 'user' } },
+    { id: 'light.nascosta2', nome: 'Nascosta 2', integrazione: { id: 'hue', nome: 'hue' },
+      fuori: { classe: 'nascosta', causa: 'user' } },
   ];
   const { document } = await rendi(casa);
   const sommarioCucina = [...document.querySelectorAll('summary')]
@@ -233,12 +231,12 @@ test('U2 bis: una pseudo-area («Senza area») mostra le disabilitate/nascoste c
   const senzaArea = casa.piani.find((p) => p.id === '__fuori_dalle_aree__')
     .aree.find((a) => a.id === '__senza_area__');
   senzaArea.entita_disabilitate = [
-    { id: 'sensor.orfano_spento', nome: 'Sensore orfano spento', piattaforma: 'zwave',
-      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
+    { id: 'sensor.orfano_spento', nome: 'Sensore orfano spento', integrazione: { id: 'zwave', nome: 'zwave' },
+      fuori: { classe: 'disabilitata', causa: 'user' } },
   ];
   senzaArea.entita_nascoste = [
-    { id: 'light.orfano_nascosto', nome: 'Luce orfana nascosta', piattaforma: 'hue',
-      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+    { id: 'light.orfano_nascosto', nome: 'Luce orfana nascosta', integrazione: { id: 'hue', nome: 'hue' },
+      fuori: { classe: 'nascosta', causa: 'user' } },
   ];
   const { document } = await rendi(casa);
   const sommarioSenzaArea = [...document.querySelectorAll('summary')]
@@ -331,24 +329,107 @@ test('i nomi delle misure arrivano dal server, nel suo ordine; una chiave che no
   assert.match(testo, /Unità con cui ragiona la casa: calore °C, lunghezza km, ignota x \(/);
 });
 
-test("le etichette di un'entità mostrano il NOME (`casa.etichette`), non lo slug", async () => {
-  // Luce cucina porta due id: 'da_controllare' (nella mappa -> 'Da controllare')
-  // e 'slug_fantasma' (fuori mappa: un riferimento penzolante).
+test("le etichette di un'entità arrivano col nome dal server, e la pagina non le traduce", async () => {
+  /* Fino alla Tappa 9 (F5) la pagina riceveva gli id e una mappa id -> nome
+     (`casa.etichette`) e li traduceva da se'. Ora l'entita' e' la resa media
+     della chat: le etichette arrivano gia' «Nome (id: X)», e la mappa non
+     esce piu'. */
   const { testo } = await rendi(casaCompleta());
-  assert.match(testo, /etichette: Da controllare, slug_fantasma/,
-    'l’id risolvibile diventa il nome; quello penzolante resta l’id, non sparisce');
-  assert.doesNotMatch(testo, /da_controllare/,
-    'lo slug grezzo di un id RISOLVIBILE non deve comparire più da nessuna parte');
+  assert.match(testo, /etichette: Da controllare \(id: da_controllare\)/);
+  assert.doesNotMatch(testo, /I nomi delle etichette non sono stati letti/,
+    'la frase della mappa mancante esce con la mappa');
 });
 
-test('`etichette: null`: lo dichiara, e nel frattempo gli id restano grezzi (mai un nome inventato)', async () => {
-  const { testo } = await rendi(casaCompleta({ etichette: null }));
-  assert.match(testo, /I nomi delle etichette non sono stati letti/,
-    'un `null` sulla mappa si dichiara, stessa disciplina di `non_disponibili`');
-  assert.match(testo, /etichette: da_controllare, slug_fantasma/,
-    'senza mappa nessun id si traduce: restano tutti grezzi, non un misto inventato');
-  assert.doesNotMatch(testo, /etichette: Da controllare/,
-    'senza la mappa non può comparire un nome tradotto');
+test('lo stato sta accanto al nome: le parole di Home Assistant, o il valore con la sua unità', async () => {
+  /* D1 della F5 (disegno dello ux-ui-specialist): «· 21,5 °C» dopo il nome e
+     prima dell'id; l'unita' scritta accanto allo stato non si ripete nella
+     riga dei dettagli; senza stato non si scrive niente, nemmeno «—». */
+  const casa = casaCompleta();
+  casa.piani[0].aree[0].entita.push(
+    { id: 'sensor.temperatura_cucina', nome: 'Temperatura cucina', stato: '21.5', unita: '°C',
+      classe: 'temperature' },
+    { id: 'sensor.muto', nome: 'Sensore muto', unita: 'W' });
+  const { document, testo } = await rendi(casa);
+  const riga = (id) => [...document.querySelectorAll('#route-outlet li')]
+    .find((li) => li.textContent.includes('(' + id + ')')).textContent;
+  assert.match(riga('light.cucina'), /Luce cucina · Acceso \(light\.cucina\)/,
+    'le parole di Home Assistant al posto del grezzo');
+  const termometro = riga('sensor.temperatura_cucina');
+  assert.match(termometro, /Temperatura cucina · 21\.5 °C \(sensor\.temperatura_cucina\)/);
+  assert.doesNotMatch(termometro, /unità °C/, 'l’unità dello stato non si ripete');
+  const muto = riga('sensor.muto');
+  assert.doesNotMatch(muto, /·\s*\(/, 'senza stato nessun segno davanti all’id');
+  assert.match(muto, /unità W/, 'senza stato l’unità resta fra i dettagli');
+  assert.match(testo, /Gli stati mostrati sono quelli di quando hai aperto la pagina/);
+});
+
+test('il segno del `fuori` usa le parole di oggi, e «[di servizio]» per le entità di servizio', async () => {
+  /* Scelta del proprietario, 12/10/2026 («Parole di oggi»): nessun termine
+     nuovo. La categoria di Home Assistant e' la causa del `fuori` di
+     servizio, e il riepilogo dell'area conta le entita' di servizio. */
+  const casa = casaCompleta();
+  casa.piani[0].aree[0].entita.push(
+    { id: 'sensor.segnale', nome: 'Segnale', fuori: { classe: 'servizio', causa: 'diagnostic' },
+      integrazione: { id: 'shelly', nome: 'Shelly' } },
+    { id: 'sensor.strano', nome: 'Strano', fuori: { classe: 'nuova_classe', causa: null } });
+  const { document } = await rendi(casa);
+  const riga = (id) => [...document.querySelectorAll('#route-outlet li')]
+    .find((li) => li.textContent.includes('(' + id + ')')).textContent;
+  assert.match(riga('sensor.segnale'), /\[di servizio\]/);
+  assert.match(riga('sensor.segnale'), /integrazione Shelly · categoria diagnostic/);
+  assert.match(riga('sensor.vecchio'), /\[disabilitata\]/);
+  assert.match(riga('sensor.strano'), /\[nuova_classe\]/, 'una classe sconosciuta non sparisce');
+  assert.doesNotMatch(riga('light.cucina'), /\[/, 'un’entità visibile non porta segni');
+  const sommario = [...document.querySelectorAll('summary')]
+    .find((x) => x.textContent.indexOf('Cucina') === 0).textContent;
+  assert.match(sommario, /3 entità, 1 disabilitata, 1 di servizio/);
+});
+
+test('i registri caduti dicono di quando è la copia che HIRIS usa al loro posto', async () => {
+  const { testo } = await rendi(casaCompleta({
+    non_disponibili: ['piani', 'aree'],
+    non_disponibili_letti_il: { piani: '2026-10-03T12:20:00+00:00', aree: null },
+  }));
+  const quando = globalThis.fmtDateTime('2026-10-03T12:20:00+00:00');
+  assert.ok(testo.includes('Piani — HIRIS usa la copia del ' + quando + '.'), testo);
+  assert.ok(testo.includes('Aree — nessuna copia disponibile, mai letto.'), testo);
+});
+
+test('il confronto con Home Assistant: mai fatto, combacia, diverge, non si è potuto fare', async () => {
+  const mai = (await rendi(casaCompleta({ confronto: null }))).testo;
+  assert.match(mai, /Mai confrontato: HIRIS non ha ancora verificato il suo albero/);
+
+  const letto = '2026-10-12T10:00:00+00:00';
+  const uguale = (await rendi(casaCompleta({ confronto: { aree_totali: 16, letto_il: letto,
+    guardate: [{ area: 'cucina', nome: 'Cucina', mancanti: [], in_piu: [], assente_in_ha: false }] } }))).testo;
+  assert.ok(uguale.includes('Confronto del ' + globalThis.fmtDateTime(letto) +
+    ': controllata 1 area su 16.'), uguale);
+  assert.match(uguale, /Tutto combacia: in queste aree/);
+  assert.doesNotMatch(uguale, /tutta la casa/);
+
+  const tanti = Array.from({ length: 12 }, (_, i) => 'sensor.x' + i);
+  const diverge = (await rendi(casaCompleta({ confronto: { aree_totali: 16, letto_il: letto,
+    guardate: [
+      { area: 'cucina', nome: 'Cucina', mancanti: ['sensor.nuovo'], in_piu: ['light.cucina'],
+        assente_in_ha: false },
+      { area: 'cantina', nome: 'Cantina', mancanti: [], in_piu: [], assente_in_ha: true },
+      { area: 'sala', nome: 'Sala', mancanti: tanti, in_piu: [], assente_in_ha: false },
+      { area: 'bagno', nome: 'Bagno', errore: 'Home Assistant non ha risposto' },
+    ] } }))).testo;
+  assert.match(diverge, /controllate 4 aree su 16/);
+  assert.match(diverge, /In 3 aree l’albero di HIRIS non combacia con Home Assistant:/);
+  assert.match(diverge, /Cucina — HIRIS ha in più: Luce cucina; gli manca: sensor\.nuovo\./,
+    'le entità per nome quando l’albero le conosce, per id altrimenti');
+  assert.match(diverge, /Cantina — non esiste più in Home Assistant\./);
+  assert.match(diverge, /Sala — gli manca: sensor\.x0, .*sensor\.x9 e altre 2\./);
+  assert.match(diverge, /Aree che non si sono potute controllare:/);
+  assert.match(diverge, /Bagno — Home Assistant non ha risposto\./);
+  assert.doesNotMatch(diverge, /Tutto combacia/);
+
+  const vuoto = (await rendi(casaCompleta({ confronto: { aree_totali: 0, guardate: [] } }))).testo;
+  assert.match(vuoto, /Il confronto non ha avuto aree da controllare/);
+  const errore = (await rendi(casaCompleta({ confronto: { errore: 'rete giù' } }))).testo;
+  assert.match(errore, /Il confronto non si è potuto fare: rete giù\./);
 });
 
 test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', async () => {
@@ -390,9 +471,9 @@ test('wiring: la rotta #/tree e lo script sono registrati nella SPA', () => {
 
 test('il translation_key sta su una riga sua, non impastato coi dettagli tecnici', async () => {
   const { document } = await rendi({
-    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [], etichette: {},
+    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [],
     piani: [{ id: 'terra', nome: 'Terra', aree: [{ id: 'cucina', nome: 'Cucina', entita: [
-      { id: 'sensor.solare', nome: 'Energia prodotta', piattaforma: 'zcsazzurro',
+      { id: 'sensor.solare', nome: 'Energia prodotta', integrazione: { id: 'zcsazzurro', nome: 'ZCS' },
         classe: 'energy', unita: 'kWh', translation_key: 'energy_generating_today' },
     ] }] }],
   });
@@ -413,9 +494,9 @@ test('il translation_key sta su una riga sua, non impastato coi dettagli tecnici
 
 test('dove il translation_key non c’è, la riga non compare affatto', async () => {
   const { testo } = await rendi({
-    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [], etichette: {},
+    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [],
     piani: [{ id: 'terra', nome: 'Terra', aree: [{ id: 'cucina', nome: 'Cucina', entita: [
-      { id: 'light.lampadario', nome: 'Lampadario', piattaforma: 'ave_domina' },
+      { id: 'light.lampadario', nome: 'Lampadario', integrazione: { id: 'ave_domina', nome: 'ave_domina' } },
     ] }] }],
   });
   /* Su 331 entita' di questa casa il campo non c'e'. Un «translation_key: —»

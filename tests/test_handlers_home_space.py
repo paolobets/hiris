@@ -6,12 +6,23 @@ Convenzione seguita: quella vera del repo (vedi `hiris/app/server.py`,
 il repo non lo usa da nessun'altra parte, e introdurlo qui sarebbe esattamente
 il secondo modo di fare la stessa cosa che questo refactor vuole eliminare.
 """
+import json
+import sys
+from pathlib import Path
+
 import pytest
 from aiohttp import web
+from aiohttp.test_utils import make_mocked_request
 
+from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.handlers_home_space import handle_get_briefing, handle_get_home_space
+from hiris.app.api.soffitto import consente
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
+from tests._casa_sintetica import synthetic_inputs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import fotografia_porte
 
 
 class _CacheFinta:
@@ -68,10 +79,10 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     assert corpo["anagrafe_letta_il"] is None
     # Stesso principio applicato al comportamento: senza archivio, un
     # "senza_corpo" a zero affermerebbe "conosco tutto" -- resta `None`,
-    # non un fatto finto. `conteggi`/`voci` sono contenitori naturali.
+    # non un fatto finto. `conteggi` e' un contenitore naturale.
     assert corpo["comportamento"] == {
         "letto_il": None, "conteggi": {}, "senza_corpo": None,
-        "problemi": None, "corpi_non_letti": None, "conservato": None, "voci": [],
+        "problemi": None, "corpi_non_letti": None, "conservato": None,
     }
     assert corpo["plance"] == {"lette_il": None, "non_disponibili": None,
                                "conservato": None, "voci": []}
@@ -110,15 +121,14 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     # Solo "a_mano" e' senza corpo: "vuoto" un corpo ce l'ha, e' solo vuoto --
     # le due cose non sono la stessa cosa e non vanno confuse.
     assert comportamento["senza_corpo"] == 1
-    assert len(comportamento["voci"]) == 3
+    # Le voci col corpo non escono (Tappa 9, F5, D3): nessuna pagina le
+    # legge, e il corpo la chat lo chiede a `search`.
+    assert "voci" not in comportamento
     # Le dichiarazioni costruite da comportamento.compose()/reread() devono
     # arrivare fin qui, non morire in un log (Important 3).
     assert comportamento["problemi"] == ["automations.yaml: id 42 usato da 2 voci"]
     assert comportamento["corpi_non_letti"] == {
         "automation.a_mano": "configurazione non letta da Home Assistant"}
-    per_id = {v["id"]: v for v in comportamento["voci"]}
-    assert per_id["automation.a_mano"]["corpo"] is None
-    assert per_id["script.vuoto"]["corpo"] == {}
     archivio.close()
 
 
@@ -126,10 +136,8 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
 async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client, tmp_path):
     archivio = HomeSpace(str(tmp_path))
     archivio.hold_dashboards([
-        {"percorso": None, "titolo": "Principale", "modalita": "storage",
-         "config": {"views": []}, "entita": ["light.cucina"]},
-        {"percorso": "cucina", "titolo": "Cucina", "modalita": "storage",
-         "config": None, "entita": []},
+        {"percorso": None, "titolo": "Principale"},
+        {"percorso": "cucina", "titolo": "Cucina"},
     ])
     app = web.Application()
     app["home_space_store"] = archivio
@@ -146,13 +154,10 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     assert sezione["non_disponibili"] == []
     plance = sezione["voci"]
     assert len(plance) == 2
-    principale = next(p for p in plance if p["percorso"] is None)
-    assert principale["titolo"] == "Principale"
-    assert principale["entita"] == ["light.cucina"]
-    cucina = next(p for p in plance if p["percorso"] == "cucina")
-    # Una plancia in modalita' YAML non si legge: `config: None` e' un fatto
-    # diverso da "plancia senza viste" e non va appiattito.
-    assert cucina["config"] is None
+    # Di ogni plancia escono titolo e percorso, quelli che la pagina mostra
+    # (Tappa 9, F5, D3).
+    assert plance == [{"percorso": None, "titolo": "Principale"},
+                      {"percorso": "cucina", "titolo": "Cucina"}]
     archivio.close()
 
 
@@ -366,20 +371,23 @@ async def test_pagina_e_nucleo_contano_gli_stessi_corpi_mancanti(aiohttp_client,
 
 
 @pytest.mark.asyncio
-async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
-    """L'albero porta i soli `label_id`: senza questa mappa chi disegna puo'
-    solo mostrare lo slug -- «da_controllare» invece di «Da controllare», una
-    parola che l'utente non ha mai scritto e che non cambierebbe nemmeno
-    rinominando l'etichetta in Home Assistant.
+async def test_le_etichette_escono_col_nome_sull_entita_non_in_una_mappa(aiohttp_client,
+                                                                         tmp_path):
+    """Fino al 12/10/2026 l'albero portava i soli `label_id` e, a parte, la
+    mappa id -> nome (e quella delle categorie, per ambito), che la pagina
+    applicava da se'. Dalla Tappa 9 (F5, D1) l'entita' e' la resa media: le
+    etichette arrivano col nome, nella forma della chat (`Nome (id: X)`), e
+    le due mappe non escono piu'. L'area non porta alias ne' etichette (D3).
 
-    Esce la MAPPA, una volta, non il nome ripetuto su ogni entita' etichettata:
-    li' e' lo stesso fatto scritto mille volte.
-    """
+    Rossa prima di F5: `etichette` della voce era `["da_controllare"]`."""
     casa = HomeSpace(str(tmp_path))
     casa.hold_registries({
-        "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"]}],
+        "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"],
+                  "aliases": ["Angolo cottura"]}],
         "etichette": [{"label_id": "da_controllare", "name": "Da controllare"}],
-        "entita": [],
+        "entita": [{"entity_id": "light.cucina", "area_id": "cucina",
+                    "labels": ["da_controllare"], "aliases": ["Lampadario"],
+                    "platform": "hue", "translation_key": "ceiling"}],
     }, [])
     app = web.Application()
     app["home_space_store"] = casa
@@ -387,59 +395,43 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/home-space")).json()
-    assert corpo["etichette"]["da_controllare"] == "Da controllare"
-    # La mappa, non il nome ripetuto: sull'albero l'etichetta resta un id.
+    casa.close()
+    assert "etichette" not in corpo and "categorie" not in corpo
     area = corpo["piani"][0]["aree"][0]
-    assert area["etichette"] == ["da_controllare"]
+    assert "etichette" not in area and "alias" not in area
+    luce = area["entita"][0]
+    assert luce["etichette"] == ["Da controllare (id: da_controllare)"]
+    assert luce["alias"] == ["Lampadario"]
+    assert luce["translation_key"] == "ceiling"
+    assert luce["integrazione"] == {"id": "hue", "nome": "hue"}
+    # Il ramo e' l'area: non si ripete sull'entita'; le ceste dello stato non
+    # le disegna nessuno.
+    assert "area" not in luce and "attributi" not in luce
 
 
 @pytest.mark.asyncio
-async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, tmp_path):
-    """Stessa disciplina delle etichette, con una differenza che conta: le
-    categorie escono ANNIDATE PER AMBITO.
+async def test_l_entita_dell_albero_e_quella_di_search(tmp_path):
+    """Fondamenta 3: la stessa entita' ha la stessa forma dalla pagina e dalla
+    chat. L'albero e' la resa media meno il ramo (`area`) e le ceste
+    (`attributi`), con lo stato in parole della stessa tabella.
 
-    Il registro di Home Assistant e' partizionato (`automation`, `script`,
-    `scene`, `helpers`) e due categorie omonime in ambiti diversi sono cose
-    diverse -- e' la stessa ragione per cui la chiave dell'archivio e'
-    `(ambito, id)`. Appiattirle qui rimetterebbe in piedi l'ambiguita' che
-    quella chiave esiste per chiudere.
-
-    E la ragione per cui questa prova esiste: la fetta delle categorie aveva
-    cablato i nomi in `guarda` e nell'indice di `cerca`, e aveva saltato
-    questa porta -- la stessa categoria usciva col nome dallo strumento e con
-    l'id grezzo dalla pagina.
-    """
-    casa = HomeSpace(str(tmp_path))
-    casa.hold_registries({
-        "aree": [], "entita": [],
-        "categorie": [
-            {"category_id": "c1", "name": "Vacanza", "ambito": "automation"},
-            # Stesso id, ambito diverso, nome diverso: sono due cose.
-            {"category_id": "c1", "name": "Luci esterne", "ambito": "script"},
-        ],
-    }, [])
-    app = web.Application()
-    app["home_space_store"] = casa
-    app.router.add_get("/api/home-space", handle_get_home_space)
-    client = await aiohttp_client(app)
-
-    corpo = await (await client.get("/api/home-space")).json()
-    assert corpo["categorie"]["automation"]["c1"] == "Vacanza"
-    assert corpo["categorie"]["script"]["c1"] == "Luci esterne"
-
-
-@pytest.mark.asyncio
-async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
-    """`None` e non `{}`: qui non e' «la casa non ha etichette», e' «non
-    abbiamo letto niente». La stessa distinzione di `non_disponibili`."""
-    app = web.Application()
-    app["home_space_store"] = None
-    app.router.add_get("/api/home-space", handle_get_home_space)
-    client = await aiohttp_client(app)
-
-    corpo = await (await client.get("/api/home-space")).json()
-    assert corpo["etichette"] is None
-    assert corpo["categorie"] is None
+    Mutazione ESEGUITA: `_tree_entity` alla corta -- rossa (mancano `classe` e
+    `integrazione`)."""
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        risposta = await handle_get_home_space(
+            make_mocked_request("GET", "/api/home-space", app=app))
+        corpo = json.loads(risposta.text)
+        albero = {e["id"]: e for piano in corpo["piani"] for area in piano["aree"]
+                  for e in area.get("entita") or []}
+        dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
+        ricerca = await dispatcher.dispatch("search", {"dominio": "sensor"})
+    assert ricerca["profondita"] == "media", ricerca["profondita"]
+    confrontate = 0
+    for voce in ricerca["voci"]:
+        attesa = {k: v for k, v in voce.items() if k not in ("area", "attributi")}
+        assert albero[voce["id"]] == attesa, voce["id"]
+        confrontate += 1
+    assert confrontate >= 2
 
 
 # -- il corpo delle automazioni solo a chi amministra (3.73.1) ---------------
@@ -473,39 +465,19 @@ def _servizio(ruolo):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("ruolo", ["lettore", "utente", None])
-async def test_chi_non_amministra_non_riceve_il_corpo_delle_automazioni(
-        aiohttp_client, tmp_path, ruolo):
-    """Lo strumento della chat lo negava gia' (`tools.py`); la rotta lo
-    consegnava a un servizio firmato «lettore» (spec «una fonte sola di
-    verita'» §1.6). Stessa regola, dalla stessa funzione, con la stessa frase.
-
-    Mutazioni ESEGUITE, rosse tutte e due: tolta la copertura dalla rotta;
-    coperti anche gli script (tolto il controllo sul tipo)."""
+@pytest.mark.parametrize("ruolo", ["lettore", "utente", "amministratore", None])
+async def test_il_corpo_delle_automazioni_non_esce_da_questa_porta(aiohttp_client, tmp_path,
+                                                                   ruolo):
+    """Dalla 3.73.1 la rotta copriva il corpo a chi non amministra. Dalla
+    Tappa 9 (F5, D3) le voci non escono per nessuno: nessuna pagina le
+    leggeva, e il corpo la chat lo chiede a `search`, con la stessa regola
+    (`privacy.cover_reserved_body`)."""
     app, archivio = _app_with_behavior(tmp_path, _servizio(ruolo))
     client = await aiohttp_client(app)
-    voci = (await (await client.get("/api/home-space")).json())["comportamento"]["voci"]
-    per_id = {v["id"]: v for v in voci}
-    assert per_id["a1"]["corpo"] is None
-    assert "amministratori" in per_id["a1"]["corpo_non_disponibile"]
-    assert per_id["a1"]["nome"] == "Luci"
-    # Un'automazione di cui HIRIS non ha il corpo resta «senza corpo», non «coperta».
-    assert "corpo_non_disponibile" not in per_id["a2"]
-    # Gli script Home Assistant non li riserva.
-    assert per_id["s1"]["corpo"] == {"sequence": [1]}
-    archivio.close()
-
-
-@pytest.mark.asyncio
-async def test_chi_amministra_riceve_i_corpi_come_prima(aiohttp_client, tmp_path):
-    app, archivio = _app_with_behavior(tmp_path, _servizio("amministratore"))
-    client = await aiohttp_client(app)
     risposta = await (await client.get("/api/home-space")).json()
-    voci = {v["id"]: v for v in risposta["comportamento"]["voci"]}
-    assert voci["a1"]["corpo"] == {"triggers": [1]}
-    assert "corpo_non_disponibile" not in voci["a1"]
-    assert risposta["comportamento"]["senza_corpo"] == 1
     archivio.close()
+    assert "voci" not in risposta["comportamento"]
+    assert "triggers" not in str(risposta) and "sequence" not in str(risposta)
 
 
 @pytest.mark.asyncio

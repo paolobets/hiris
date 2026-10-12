@@ -20,6 +20,7 @@ from aiohttp import web
 from hiris.app.api import servizi
 from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
+from hiris.app.home_space.house import _EXCLUDED_KEY
 from hiris.app.home_space.reader import TABLES, HomeSpace
 from hiris.app.mind.facts import NOT_ENTITY_PREFIXES
 from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
@@ -211,3 +212,15 @@ def test_subject_prefixes_are_read_by_the_page():
     read = re.findall(r"s\.indexOf\('([a-z]+:)'\) === 0", body.group(1))
     assert len(read) >= 4, f"la lettura dei prefissi non trova piu' niente: {read}"
     assert sorted(read) == sorted(NOT_ENTITY_PREFIXES)
+
+
+def test_i_segni_del_fuori_dell_albero_sono_le_classi_del_server():
+    """L'albero scrive un segno per ogni classe del `fuori` (`OUTSIDE_MARK`,
+    Tappa 9, F5: «Parole di oggi», scelta del proprietario il 12/10/2026). Le
+    classi sono quelle di `topology.visibility_classes`, che `House` conta in
+    `_EXCLUDED_KEY`: una classe nuova senza segno uscirebbe col nome grezzo,
+    e un segno senza classe sarebbe una parola morta.
+
+    Mutazione ESEGUITA: `servizio` tolto da `OUTSIDE_MARK` -- rossa."""
+    marks = _js_object(_js("config/tree-route.js"), "OUTSIDE_MARK")
+    assert set(marks) == set(_EXCLUDED_KEY), (sorted(marks), sorted(_EXCLUDED_KEY))
