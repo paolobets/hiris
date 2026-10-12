@@ -162,6 +162,22 @@ def test_cio_che_home_assistant_dichiara_non_si_butta():
     assert "original_name" not in entita
 
 
+def test_senza_un_nome_scelto_il_nome_e_quello_dell_integrazione():
+    """L'utente non ha rinominato niente (`name: null`): `nome` e' il nome
+    che l'integrazione ha dato (`original_name`), l'unico ripiego rimasto da
+    M-35. Sulla casa vera `original_name` c'e' sull'89% delle entita'
+    (misurato il 10/09/2026): senza il ripiego quasi ogni entita' resterebbe
+    senza nome nell'anagrafe.
+
+    N129-1 (giro 129): questa asserzione stava nella prova uscita con M-35
+    (`52f888c`). Mutazione ESEGUITA: `reader._entity` con il solo `name` --
+    rossa."""
+    entita = _entita(build_home_space(_REGISTRI),
+                     "sensor.ze1es030n5e528_energia_prodotta_oggi")
+
+    assert entita["nome"] == "Energia prodotta oggi"
+
+
 def test_il_nome_del_dispositivo_e_quello_scelto_dall_utente_se_c_e():
     """L'inverter si chiama `SOLARE` perche' il proprietario l'ha rinominato
     -- l'integrazione lo chiamava `ZE1ES030N5E528`. Un dispositivo mai
