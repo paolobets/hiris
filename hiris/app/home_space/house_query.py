@@ -23,7 +23,7 @@ from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .render import depth_for, render_behavior, render_device, render_entity
+from .render import depth_for, render_area, render_behavior, render_device, render_entity
 from .topology import (
     _ID_WITHOUT_AREA,
     Mirror,
@@ -288,8 +288,7 @@ def _area_rows(f: HouseFilters, house: House):
                 continue
             if f.floor and not _floor_matches(f.floor, floor):
                 continue
-            rows.append({"id": area["id"], "nome": area.get("nome"),
-                         "genere": "area", "piano": floor.get("nome")})
+            rows.append(area)
     return rows
 
 
@@ -448,25 +447,26 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     for key, count in chosen.excluded.items():
         excluded[key] += count
     matched, behaving = chosen.entities, chosen.behavior
-    others: list[dict] = []
+    areas: list[dict] = []
     devices: list[dict] = []
     for kind in kinds:
         if kind == "area":
-            others.extend(_area_rows(f, house))
+            areas.extend(_area_rows(f, house))
         elif kind == "dispositivo":
             devices.extend(_device_rows(f, house, excluded))
-    found = len(matched) + len(behaving) + len(devices) + len(others)
+    found = len(matched) + len(behaving) + len(devices) + len(areas)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
     depth = depth_for(found)
     if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
+        if behaving:
+            item = behaving[0][0]
+            return 1, "completa", [detail(item.get("tipo"), item["id"])], None
         if devices:
             return 1, "completa", [detail("dispositivo", devices[0]["id"])], None
-        item = behaving[0][0] if behaving else others[0]
-        kind = item.get("tipo") if behaving else item["genere"]
-        return 1, "completa", [detail(kind, item["id"])], None
+        return 1, "completa", [detail("area", areas[0]["id"])], None
     # Con `limite` 0 la voce sola non si apre: chi chiede zero righe vuole
     # solo il conto, e la profondita' resta quella di un elenco.
     medium = depth != "corta"
@@ -480,7 +480,7 @@ def _select(f: HouseFilters, house: House, behavior, detail,
             + [render_behavior(house, item, rows_at, zone=zone)
                for item, _values in behaving]
             + [render_device(house, device, rows_at) for device in devices]
-            + others)
+            + [render_area(house, area, rows_at) for area in areas])
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
     return found, rows_at, page, beyond

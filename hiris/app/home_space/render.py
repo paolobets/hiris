@@ -25,6 +25,7 @@ from ..proxy.entity_cache import (
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .ha_vocabulary import domain_of, entity_category_measure_rule
 from .historian import instant_out
+from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
     VISIBLE,
@@ -32,6 +33,7 @@ from .topology import (
     clean_text,
     decoded_capabilities,
     device_name,
+    is_pseudo_area,
     labels_with_id,
     live_name,
     readable_state,
@@ -337,6 +339,57 @@ def render_device(house: House, device: dict, depth: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# L'AREA
+# --------------------------------------------------------------------------
+
+#: Il genere di un'area (`house_query.KINDS`).
+AREA = "area"
+
+#: Le entita' di riferimento della stanza, dichiarate dall'utente in Home
+#: Assistant: alla completa, solo quando ci sono.
+_AREA_REFERENCES = ("entita_temperatura", "entita_umidita")
+
+
+def render_area(house: House, area: dict, depth: str) -> dict:
+    """UN'AREA, a una profondita': la sola funzione che la compone (Tappa 9,
+    F4; C-02 della Tappa 4).
+
+    Fino al 12/10/2026 la scheda di `view` (`queries._view_area`) e le voci
+    di `search` (`house_query._area_rows`) la componevano ciascuna per conto
+    suo: la voce col piano come nome nudo, la scheda senza piano ne' alias.
+
+    `area` e' il nodo dell'albero (`topology._area_node`): la stessa forma
+    per le aree vere e per le pseudo-aree (C-43).
+
+    - `corta` -- `id`, `genere`, `nome`, `piano` come `{id, nome}` (assente
+      per una pseudo-area: il contenitore «Fuori dalle aree» ripeterebbe solo
+      che l'area non c'e', come in `House.where`);
+    - `media` -- piu' `alias` ed `etichette`, quando ci sono;
+    - `completa` -- piu' `entita_temperatura` ed `entita_umidita`, quando
+      l'utente le ha dichiarate. Le entita' dell'area le aggiunge la scheda
+      (`queries._view_area`), che ne decide la profondita'."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    row: dict = {"id": area["id"], "genere": AREA, "nome": area.get("nome")}
+    if not is_pseudo_area(area["id"]):
+        _area, floor = _area_and_floor(house, area["id"])
+        if floor is not None:
+            row["piano"] = floor
+    if depth == "corta":
+        return row
+    if area.get("alias"):
+        row["alias"] = list(area["alias"])
+    _add_labels(row, area, house.labels())
+    if depth == "media":
+        return row
+    for key in _AREA_REFERENCES:
+        value = (area.get(key) or "").strip()
+        if value:
+            row[key] = value
+    return row
+
+
+# --------------------------------------------------------------------------
 # IL COMPORTAMENTO
 # --------------------------------------------------------------------------
 
@@ -414,6 +467,41 @@ def _integration_of(house: House, entry: dict) -> dict | None:
         return None
     instance = house.instance(entry.get("config_entry_id")) or {}
     return {"id": platform, "nome": instance.get("titolo") or platform}
+
+
+#: Il genere di un'integrazione (`house_query.KINDS`).
+INTEGRATION = "integrazione"
+
+
+def render_integration(house: House, domain: str, depth: str) -> dict:
+    """UN'INTEGRAZIONE, a una profondita': la sola funzione che la compone
+    (Tappa 9, F4; C-02 della Tappa 4).
+
+    Fino al 12/10/2026 la scheda di `view` (`queries._view_integration`) la
+    chiamava `dominio` e non aveva ne' `id` ne' `nome`, mentre la stessa
+    integrazione vista da un'entita' (`_integration_of`) era gia' `{id, nome}`.
+
+    `domain` e' il dominio gia' normalizzato (`reference.normalize`).
+
+    - `corta` -- `id` (il dominio), `genere`, `nome`: il titolo dell'istanza
+      quando ce n'e' una sola, lo stesso che il riferimento di un'entita'
+      porta (`_integration_of`); con piu' istanze l'integrazione intera non e'
+      nessuna di loro e si chiama col dominio, e ogni entita' nomina la
+      propria (C-62);
+    - `media` e `completa` -- piu' le `voci`, le istanze con titolo, stato e
+      motivo. I conteggi delle entita' li aggiunge la scheda
+      (`queries._view_integration`)."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
+               for i in house.home_space.get("integrazioni") or []
+               if normalize(i.get("dominio") or "") == domain]
+    single = entries[0]["titolo"] if len(entries) == 1 else None
+    row: dict = {"id": domain, "genere": INTEGRATION, "nome": single or domain}
+    if depth == "corta":
+        return row
+    row["voci"] = entries
+    return row
 
 
 def _state_in_words(row: dict, entity_id: str, device_class, attributes: dict,

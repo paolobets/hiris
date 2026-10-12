@@ -818,6 +818,25 @@ def live_first(declared: str | None, live: str | None) -> str | None:
     return None
 
 
+def _area_node(area_id: str, name: str, entities: list[dict], disabled: list[dict],
+               hidden: list[dict], *, alias=(), labels=(), temperature=None,
+               humidity=None) -> dict:
+    """UN nodo area dell'albero, per le aree vere e per le pseudo-aree (C-43,
+    Tappa 9, F4): fino al 12/10/2026 le quattro pseudo-aree erano dizionari
+    scritti a mano, senza le entita' di riferimento -- una forma diversa per
+    lo stesso posto nell'albero (fondamenta 3).
+
+    `entita_temperatura`/`entita_umidita`: quale entita' e' LA temperatura (e
+    l'umidita') della stanza, dichiarata dall'utente in Home Assistant; `None`
+    per una pseudo-area, che non ne dichiara. `entita_disabilitate` ed
+    `entita_nascoste` non sono nei conteggi (vedi `hierarchy`), ma restano
+    raggiungibili nel dettaglio di un'area (`queries._view_area`)."""
+    return {"id": area_id, "nome": name, "alias": list(alias), "etichette": list(labels),
+            "entita_temperatura": temperature, "entita_umidita": humidity,
+            "entita": entities, "entita_disabilitate": disabled,
+            "entita_nascoste": hidden}
+
+
 def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = ()) -> list[dict]:
     """La casa in forma di albero: piani → aree → entita'.
 
@@ -970,23 +989,13 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     known_areas = set()
     for area in home_space.get("aree", []):
         known_areas.add(area["id"])
-        areas_per_floor.setdefault(area.get("piano_id"), []).append({
-            "id": area["id"],
-            "nome": area["nome"],
-            "alias": area.get("alias", []),
-            "etichette": area.get("etichette", []),
-            # Quale entita' e' LA temperatura (e l'umidita') di questa stanza,
-            # dichiarata dall'utente in Home Assistant.
-            "entita_temperatura": area.get("entita_temperatura"),
-            "entita_umidita": area.get("entita_umidita"),
-            "entita": per_area.get(area["id"], []),
-            # Non nei conteggi (vedi il docstring), ma raggiungibili nel
-            # dettaglio di un'area -- vedi `queries._view_area`.
-            "entita_disabilitate": per_area_disabled.get(area["id"], []),
-            # Stessa forma, per le nascoste: non nei conteggi, raggiungibili
-            # a parte -- vedi il docstring qui sopra.
-            "entita_nascoste": per_area_hidden.get(area["id"], []),
-        })
+        areas_per_floor.setdefault(area.get("piano_id"), []).append(_area_node(
+            area["id"], area["nome"],
+            per_area.get(area["id"], []), per_area_disabled.get(area["id"], []),
+            per_area_hidden.get(area["id"], []),
+            alias=area.get("alias", []), labels=area.get("etichette", []),
+            temperature=area.get("entita_temperatura"),
+            humidity=area.get("entita_umidita")))
 
     # Le entita' fuori dalle aree note si dividono per causa. Se le aree non
     # sono state lette, non possiamo fidarci nemmeno della distinzione fra
@@ -1050,28 +1059,21 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     # gruppo esiste.
     outside_areas = []
     if unloaded_area or unloaded_area_disabled or unloaded_area_hidden:
-        outside_areas.append({"id": _ID_UNLOADED_AREA, "nome": "Aree non lette",
-                                 "alias": [], "etichette": [], "entita": unloaded_area,
-                                 "entita_disabilitate": unloaded_area_disabled,
-                                 "entita_nascoste": unloaded_area_hidden})
+        outside_areas.append(_area_node(_ID_UNLOADED_AREA, "Aree non lette", unloaded_area,
+                                        unloaded_area_disabled, unloaded_area_hidden))
     if unknown_area or unknown_area_disabled or unknown_area_hidden:
-        outside_areas.append({"id": _ID_UNKNOWN_AREA, "nome": "Area sconosciuta",
-                                 "alias": [], "etichette": [], "entita": unknown_area,
-                                 "entita_disabilitate": unknown_area_disabled,
-                                 "entita_nascoste": unknown_area_hidden})
+        outside_areas.append(_area_node(_ID_UNKNOWN_AREA, "Area sconosciuta", unknown_area,
+                                        unknown_area_disabled, unknown_area_hidden))
     if without_area or without_area_disabled or without_area_hidden:
-        outside_areas.append({"id": _ID_WITHOUT_AREA, "nome": "Senza area",
-                                 "alias": [], "etichette": [], "entita": without_area,
-                                 "entita_disabilitate": without_area_disabled,
-                                 "entita_nascoste": without_area_hidden})
+        outside_areas.append(_area_node(_ID_WITHOUT_AREA, "Senza area", without_area,
+                                        without_area_disabled, without_area_hidden))
     if unloaded_device or unloaded_device_disabled or unloaded_device_hidden:
         # Stessa forma delle altre tre pseudo-aree "fuori dalle aree note":
         # le chiavi parallele ci sono sempre, anche vuote (R3, revisione
         # v3.22.2..HEAD -- prima di questa correzione mancavano del tutto).
-        outside_areas.append({"id": _ID_UNLOADED_DEVICE, "nome": "Dispositivi non letti",
-                                 "alias": [], "etichette": [], "entita": unloaded_device,
-                                 "entita_disabilitate": unloaded_device_disabled,
-                                 "entita_nascoste": unloaded_device_hidden})
+        outside_areas.append(_area_node(_ID_UNLOADED_DEVICE, "Dispositivi non letti",
+                                        unloaded_device, unloaded_device_disabled,
+                                        unloaded_device_hidden))
     if outside_areas:
         floors.append({"id": _ID_OUTSIDE_AREAS, "nome": "Fuori dalle aree", "livello": None,
                       "aree": outside_areas})

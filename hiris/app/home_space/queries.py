@@ -56,10 +56,11 @@ from .historian import home_space_zone, instant_epoch
 from .reference import normalize
 from .render import (
     MEMORY_KIND,
-    _add_labels,
+    render_area,
     render_behavior,
     render_device,
     render_entity,
+    render_integration,
     render_memory,
     rows_depth,
 )
@@ -287,8 +288,11 @@ def _view_area(house: House, memories: list[dict], reference,
                                    judgments=judgments)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
+    # L'area dalla resa (`render.render_area`, Tappa 9, F4): fino al
+    # 12/10/2026 si componeva qui, senza piano ne' alias. Le entita' di
+    # riferimento e le etichette sono della resa.
     detail = {
-        "esiste": True, "genere": "area", "id": area["id"], "nome": area["nome"],
+        "esiste": True, **render_area(house, area, "completa"),
         "entita": entity,
         "ricordi": _tethered_memories(memories, "area", reference),
     }
@@ -305,14 +309,6 @@ def _view_area(house: House, memories: list[dict], reference,
     _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
                             "(dominio, stato, classe): l'insieme si restringe, e "
                             "la porta lo pagina con `oltre` e `salta`")
-    # Le entita' di riferimento della stanza: solo quando l'utente le ha
-    # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
-    # indistinguibile da un registro delle aree caduto.
-    for key in ("entita_temperatura", "entita_umidita"):
-        value = (area.get(key) or "").strip()
-        if value:
-            detail[key] = value
-    _add_labels(detail, area, house.labels())
     if incomplete:
         detail["elenco_incompleto"] = incomplete
     return detail
@@ -629,10 +625,8 @@ def _view_integration(house: House, reference,
     domain = normalize(str(reference or ""))
     matching = [e for e in home_space.get("entita") or []
                 if normalize(e.get("piattaforma") or "") == domain]
-    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
-               for i in home_space.get("integrazioni") or []
-               if normalize(i.get("dominio") or "") == domain]
-    if not matching and not entries:
+    rendered = render_integration(house, domain, "completa")
+    if not matching and not rendered["voci"]:
         return _not_found_detail("integrazione", reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
     # D7: questa porta conta ogni classe tranne le disabilitate (i totali
@@ -643,8 +637,7 @@ def _view_integration(house: House, reference,
     mute = [e for e in own if mirror.state.get(e["id"]) == STATE_UNAVAILABLE]
     unknown = [e for e in own if mirror.state.get(e["id"]) == STATE_UNKNOWN]
     detail = {
-        "esiste": True, "genere": "integrazione", "dominio": domain,
-        "voci": entries,
+        "esiste": True, **rendered,
         "entita_totali": len(own),
         "entita_mute": len(mute),
         # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
