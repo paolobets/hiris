@@ -52,8 +52,9 @@ from __future__ import annotations
 # verificare.
 #
 # QUESTA tupla e' il vocabolario delle ancore: `memory/interpretation.
-# VOCABULARY["ancore"]` e `_TETHER_TYPES` in home_space/tools.py la chiedono
-# a `STORE_KEY_PER_TYPE` invece di riscriverla (Tappa 3, Task 9, B-51).
+# VOCABULARY["ancore"]`, `House` (home_space/house.py) e `_SEARCHED_STORES`
+# in home_space/tools.py la chiedono a `STORE_KEY_PER_TYPE` invece di
+# riscriverla (Tappa 3, Task 9, B-51).
 # Fino al 29/09/2026 `costruisci_indice()` le indicizzava per conto suo, per
 # la vecchia ricerca per nome (`queries.search`); uscita quella, nessun
 # chiamante le chiedeva piu' -- la porta della casa (`home_space/

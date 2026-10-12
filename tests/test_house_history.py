@@ -1279,7 +1279,7 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
         "lento", "zigbee giu'", "senza istante"]
     assert uscita["voci"][1] == {"livello": "ERROR", "messaggio": "zigbee giu'",
                                  "codice": "homeassistant/components/zha/core.py:10",
-                                 "integrazione": "zha", "volte": 12,
+                                 "integrazione": {"id": "zha", "nome": "Zha"}, "volte": 12,
                                  "prima": "2026-09-29T16:40:00+02:00",
                                  "ultima": "2026-09-29T18:30:00+02:00",
                                  "eccezione": "ValueError: boom"}
@@ -1407,7 +1407,9 @@ def test_le_librerie_di_un_integrazione_si_dichiarano_col_filtro():
     voci = [*_REGISTRO, {"name": "zigpy.application", "level": "ERROR",
                          "message": ["radio giu'"], "timestamp": T0 - 30}]
     tutte = hh.error_rows(_q(cosa="errori"), voci)
-    assert tutte["voci"][0]["integrazione"] == "zigpy"
+    # `{id, nome}` come da ogni porta (Tappa 9, chiusura): fino al 12/10/2026
+    # lo slug nudo. Mutazione ESEGUITA: di nuovo lo slug -- rossa.
+    assert tutte["voci"][0]["integrazione"] == {"id": "zigpy", "nome": "Zigpy"}
     assert "nota_integrazione" not in tutte
     zha = hh.error_rows(_q(cosa="errori", integrazione="zha"), voci)
     assert [v["messaggio"] for v in zha["voci"]] == ["zigbee giu'"]

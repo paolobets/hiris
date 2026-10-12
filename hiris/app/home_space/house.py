@@ -183,8 +183,11 @@ class House:
 
     def where(self, entity_id: str) -> dict | None:
         """DOVE sta un'entita' (spec §4.1; Tappa 3, Task 6, B-10, D3): area,
-        se l'area e' ereditata dal dispositivo, piano, dispositivo e
-        integrazione. `None` se il registro delle entita' non la conosce.
+        se l'area e' ereditata dal dispositivo, piano e dispositivo. `None` se
+        il registro delle entita' non la conosce. L'integrazione non e' un
+        posto: la rende `render.render_entity` come `{id, nome}`; fino al
+        12/10/2026 usciva anche di qui, come slug nudo che nessuno leggeva
+        (Tappa 9, chiusura).
 
         **Compone, non decide.** Il posto viene dall'albero di `hierarchy()`,
         che lo calcola con `topology.actual_area` -- l'area propria, altrimenti
@@ -219,7 +222,6 @@ class House:
             "dispositivo": ({"id": device_id,
                              "nome": topology.device_name(device) if device else None}
                             if device_id else None),
-            "integrazione": entry.get("piattaforma"),
         }
 
     def area_place(self, area_id: str | None) -> tuple[dict, dict | None] | None:

@@ -14,11 +14,12 @@ L'attesa a fine sprint e' zero disaccordi su ogni domanda (spec §5, §8).
 
 ## Una domanda si rompe quando la sua copia sparisce, ed e' voluto
 
-Le domande nominano funzioni private (`_entity_row`, `_enrich_entity`...):
-sono le copie. Quando una tappa ne cancella una, quella domanda solleva; `run`
-la dichiara «non eseguita» e il cancello la conta come un no. Chi cancella la
-copia toglie dalla sonda la domanda che ha chiuso. Una sonda che ricopiasse la
-regola per non rompersi confronterebbe il prodotto con se stesso di ieri.
+Le domande nominano funzioni private: sono le copie (cosi' erano `_entity_row`
+ed `_enrich_entity`, uscite con le loro domande). Quando una tappa ne cancella
+una, quella domanda solleva; `run` la dichiara «non eseguita» e il cancello la
+conta come un no. Chi cancella la copia toglie dalla sonda la domanda che ha
+chiuso. Una sonda che ricopiasse la regola per non rompersi confronterebbe il
+prodotto con se stesso di ieri.
 
 ## Cosa NON guarda, dichiarato
 

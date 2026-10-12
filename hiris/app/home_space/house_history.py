@@ -1293,13 +1293,17 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
             continue
         found = integration_of(str(entry.get("name") or ""))
         integration = found[1] if found else None
+        # `{id, nome}` come da ogni altra porta (fondamenta 3, vocabolario dei
+        # campi): fino al 12/10/2026 qui usciva lo slug nudo (Tappa 9,
+        # chiusura). Il nome e' quello del primo piano (`integration_of`).
         if query.who.platform and normalize(integration or "") != normalize(query.who.platform):
             continue
         last = _epoch(entry.get("timestamp"))
         if last is not None and not start_ts <= last <= end_ts:
             continue
         row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
-               "codice": _source(entry.get("source")), "integrazione": integration,
+               "codice": _source(entry.get("source")),
+               "integrazione": {"id": integration, "nome": found[0]} if found else None,
                "volte": entry.get("count"),
                "prima": instant_out(entry.get("first_occurred"), zone),
                "ultima": instant_out(entry.get("timestamp"), zone)}

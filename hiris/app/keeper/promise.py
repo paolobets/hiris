@@ -48,7 +48,7 @@ STATES_CONCLUSI = (KEPT, SKIPPED, CANCELLED, FAILED)
 #
 # Il difetto era entrato da una scorciatoia, non da una scelta: il filtro
 # non nominava gli stati conclusi, li ricavava come complemento di
-# `STATES_SOSPESO`. Il complemento e' comodo e non ha opinioni -- prende
+# `states.SUSPENDED`. Il complemento e' comodo e non ha opinioni -- prende
 # dentro tutto cio' che non e' in sospeso, `disdetta` compresa. Percio' qui
 # c'e' un elenco esplicito: e' l'unico modo perche' la domanda «questo e'
 # una notizia?» abbia una risposta scritta invece che dedotta.

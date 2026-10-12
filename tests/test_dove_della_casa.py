@@ -1,7 +1,7 @@
 """DOVE sta un'entita' (Tappa 3, Task 6: B-10, B-37, B-38, B-40; D3).
 
-`House.where(id)` risponde con area, area ereditata, piano, dispositivo e
-integrazione, componendo l'albero di `topology.hierarchy` (che usa
+`House.where(id)` risponde con area, area ereditata, piano e dispositivo,
+componendo l'albero di `topology.hierarchy` (che usa
 `topology.actual_area`); la scheda di `view("entita", ...)` lo porta come
 `dove`. La casa e' quella sintetica della sonda (`tests/_casa_sintetica.py`),
 che ha tre entita' che ereditano l'area dal dispositivo.
@@ -58,7 +58,6 @@ def test_l_area_ereditata_dal_dispositivo_arriva_col_suo_piano(house):
         "area_ereditata": True,
         "piano": {"id": "piano_terra", "nome": "Piano terra"},
         "dispositivo": {"id": "dev_a", "nome": "Sensore A"},
-        "integrazione": "marca_uno",
     }
 
 
@@ -68,7 +67,6 @@ def test_l_area_propria_non_e_ereditata(house):
         "area_ereditata": False,
         "piano": {"id": "piano_terra", "nome": "Piano terra"},
         "dispositivo": {"id": "dev_b", "nome": "Sensore B"},
-        "integrazione": "marca_uno",
     }
     assert house.where("light.luce_uno")["dispositivo"] is None
 
@@ -102,12 +100,12 @@ def test_la_scheda_di_un_entita_dice_dove_sta(house):
     detail = view(house, [], [], "entita", "sensor.sensore_a_temperatura",
                   judgments=None)
     where = house.where("sensor.sensore_a_temperatura")
-    # Tappa 9, F2 (C-05): il posto esce in chiaro, senza la busta `dove`, e
-    # l'integrazione e' `{id, nome}` come le altre parti.
+    # Tappa 9, F2 (C-05): il posto esce in chiaro, senza la busta `dove`.
+    # L'integrazione non e' un posto: `where` non la porta (chiusura).
     assert {k: detail.get(k) for k in ("area", "piano", "dispositivo")} == \
         {k: where[k] for k in ("area", "piano", "dispositivo")}
     assert detail.get("area_ereditata", False) is where["area_ereditata"]
-    assert detail["integrazione"]["id"] == where["integrazione"]
+    assert "integrazione" not in where
 
 
 # --- i cancelli: ogni regola dalla sua funzione ---------------------------
