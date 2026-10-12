@@ -3645,6 +3645,8 @@ stessi campi, stessi proprietari, stessi nomi tolti, nei due versi. Il cancello 
 | `significato` | cosa significa la classe, dal sapere | frase | `entita` | — | resta |
 | `membri` | di cosa e' fatto un gruppo, e cosa non e' di tutti | dizionario | `entita` | — | resta |
 | `comandi` | cosa si puo' chiedere a un'entita', con i limiti | `{servizio: parametri}` | `entita` | — | resta |
+| `somma` | il totale progressivo di un contatore nelle statistiche di Home Assistant (`sum`), che cresce anche oltre gli azzeramenti (misurato il 27/08/2026, `HAClient.hourly_statistics`): non e' il consumo dell'ora, che e' il `cambio` | numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda | `fascia` | — | resta (C-36, Tappa 9, 12/10/2026: usciva nei `punti` senza spiegazione) |
+| `cambio` | quanto e' cresciuto un contatore in quell'ora, calcolato da Home Assistant (`change`) e gia' corretto per gli azzeramenti (misurato il 27/08/2026: la somma dei `cambio` di un giorno e' `ultimo.somma - primo.somma`) | numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda | `fascia` | — | resta (C-36: la spiegazione di `somma` lo nomina) |
 
 Le righe da `nome` in giu' non sono di D1: sono campi che escono gia' oggi col loro nome e lo
 tengono (le ultime nove le ha aggiunte la Tappa 9, F2, l'08/10/2026). Stanno qui perche' il
@@ -3655,10 +3657,19 @@ stesso senso (`etichette -> labels`, `regola -> rule`, `significato -> meaning`)
 in «I nomi degli strumenti» come parola scartata per il nome di uno strumento (`comandi -> comando`),
 un altro oggetto; le altre cinque non hanno righe ne' citazioni con un altro senso.
 
+`somma` e `cambio` li ha aggiunti la Tappa 9, F4, il 12/10/2026 (C-36). Il controllo di
+collisione, eseguito lo stesso giorno: `somma` non ha righe nel glossario (c'e' `sommario`,
+un'altra parola), e nel codice `somma_periodo` e `somma_fra` sono nomi di operazioni delle ricette
+(`mind/operations.py`), un altro oggetto, mai nella stessa risposta; `cambio` ha la riga ordinaria
+`cambio -> change`, lo stesso senso. Nessuna collisione. **Una resta aperta, dentro la fascia:**
+la fascia porta anche `stato` (la `state` di Home Assistant a fine ora, un numero), che il
+vocabolario da' all'entita' come «lo stato grezzo»; lo stesso nome per due fatti, segnalato nel
+rapporto della F4.
+
 La colonna «di chi» usa i generi di `house_query.KINDS` (`entita`, `area`, `dispositivo`,
-`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e sei parole per cio' che non
+`automazione`, `script`, `ricordo`, `integrazione`), piu' `scena` e sette parole per cio' che non
 e' un oggetto della casa: `casa` (la cornice), `evento` e `misura` (una riga di storia o di
-un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto), `impegno` (un appuntamento di `calendar`, una voce di `impegni`: non una promessa di `agenda`, che la descrizione di `calendar` chiama anche lei «impegni di HIRIS»).
+un'istantanea), `finestra` (l'intervallo di una risposta), `lettura` (l'esito di un insieme letto), `fascia` (un'ora delle statistiche di Home Assistant, nei `punti` di `history`), `impegno` (un appuntamento di `calendar`, una voce di `impegni`: non una promessa di `agenda`, che la descrizione di `calendar` chiama anche lei «impegni di HIRIS»).
 
 **Due regole che vanno con il vocabolario** (D1, approvate in blocco):
 

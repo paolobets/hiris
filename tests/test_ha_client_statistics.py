@@ -81,6 +81,28 @@ async def test_stato_e_cambio_assenti_non_diventano_null():
 
 
 @pytest.mark.asyncio
+async def test_un_contatore_non_porta_media_minimo_e_massimo_nulli():
+    """C-36 (Tappa 9, F4): la fascia di un contatore arrivava al modello con
+    `minimo`, `massimo` e `media` a `null` -- tre campi che per un contatore
+    non esistono, scritti come se fossero valori mancanti. Ora seguono la
+    regola di `somma`, `stato` e `cambio`: si omettono quando Home Assistant
+    non li manda. La forma della fascia e' quella misurata il 27/08/2026
+    (prova qui sopra).
+
+    Rossa prima: le tre chiavi c'erano, a `None`. Mutazione ESEGUITA: il
+    ramo `is not None` tolto per `media` -- rossa."""
+    ha = _house(_STATS, {"sensor.energia_prodotta_oggi": [
+        {"start": 1787724000000, "end": 1787727600000,
+         "min": None, "max": None, "mean": None,
+         "sum": 173.77, "state": 0.27, "change": 0.27,
+         "last_reset": None}]})
+    out = await ha.hourly_statistics(["sensor.energia_prodotta_oggi"], _DA, _A)
+    [voce] = out["serie"]["sensor.energia_prodotta_oggi"]
+    assert not {"minimo", "massimo", "media"} & set(voce), voce
+    assert voce["cambio"] == 0.27
+
+
+@pytest.mark.asyncio
 async def test_statistiche_orarie_manda_la_finestra_esplicita():
     """`hourly_statistics` non calcola nessuna finestra da sola: prende
     `da_iso`/`a_iso` gia' pronti dal chiamante (come `history()`), e chiede

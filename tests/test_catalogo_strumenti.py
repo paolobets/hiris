@@ -69,7 +69,13 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # descrizione del `genere` di `fetch` non ripete «ometti per cercare su tutti
 # e tre», che la descrizione dello strumento dice gia'; `search` dice «una
 # voce nascosta (`fuori`)» invece di `nascosta: true` (G102-1). Misurato: 30.463.
-CATALOG_CEILING = 30463
+#
+# 12/10/2026 (Tappa 9, F4, C-36): `history` spiega `somma` e `cambio` delle
+# fasce; per non salire, la prima frase non ripete per esteso i quattro
+# `cosa`, e gli schemi di `ore` e `cosa` non ripetono cio' che la descrizione
+# dice gia' (`ore` non insieme a `da`/`a`; `stati` predefinito). Misurato:
+# 30.438.
+CATALOG_CEILING = 30438
 
 
 def catalog_chars(definitions) -> int:

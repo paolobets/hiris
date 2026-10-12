@@ -33,7 +33,7 @@ class Field:
     """Un campo: il fatto in una riga, la sua forma, e i generi che lo
     portano (`house_query.KINDS`, piu' `scena` e le parole per cio' che non e'
     un oggetto della casa: `casa`, `evento`, `misura`, `finestra`,
-    `lettura`). `replaces` sono i nomi che questo campo ha tolto: restano
+    `lettura`, `fascia`). `replaces` sono i nomi che questo campo ha tolto: restano
     qui perche' il cancello R3 riconosca chi torna a scriverli."""
     fact: str
     shape: str
@@ -130,4 +130,13 @@ FIELDS: dict[str, Field] = {
                      "dizionario", "entita"),
     "comandi": _field("cosa si puo' chiedere a un'entita', con i limiti",
                       "{servizio: parametri}", "entita"),
+    "somma": _field("il totale progressivo di un contatore nelle statistiche di Home "
+                    "Assistant (sum), che cresce anche oltre gli azzeramenti: non e' il "
+                    "consumo dell'ora, che e' il cambio",
+                    "numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda",
+                    "fascia"),
+    "cambio": _field("quanto e' cresciuto un contatore in quell'ora, calcolato da Home "
+                     "Assistant (change) e gia' corretto per gli azzeramenti",
+                     "numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda",
+                     "fascia"),
 }
