@@ -162,6 +162,10 @@ _NOTHING_RECOGNIZED_SUGGESTION = (
     "`riferimento` della cosa, chiedilo diretto."
 )
 
+#: Perche' una domanda sui ricordi puo' tornare vuota senza che siano vuoti.
+_MEMORY_UNREAD = ("l'archivio dei ricordi non e' ancora stato caricato: i ricordi non "
+                  "si sono potuti guardare.")
+
 #: I registri dell'anagrafe che la porta legge per rispondere: aree, entita' e
 #: dispositivi (i nomi) e i PIANI, perche' `piano` e' un filtro della porta
 #: (`house_query._place_matches`, `_area_rows`, `_device_rows`). Col registro
@@ -1677,10 +1681,15 @@ class ToolDispatcher:
             return self._full_detail_sync(kind, reference, house=house,
                                           translations=translations, masked=masked)
 
+        # I ricordi, tutti: `search` li trova per nome e li elenca per genere
+        # (D-45, 12/10/2026). Solo quando la domanda puo' arrivarci.
+        memories = (self._memory.fetch(limit=self._memory.count())
+                    if self._memory is not None and filters.kind in (None, "ricordo")
+                    and (filters.kind == "ricordo" or filters.only_by_name) else None)
         response = query_house(house, self._home_space.behavior(), filters,
                                detail=detail, timezone=self._timezone(),
                                translations=translations, judgments=self._judgments,
-                               deepest=deepest)
+                               deepest=deepest, memories=memories)
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
@@ -1692,6 +1701,8 @@ class ToolDispatcher:
             response["stato_non_letto"] = True
         if filters.name:
             self._declare_name_gaps(response, filters, house)
+        elif filters.kind == "ricordo" and self._memory is None:
+            response["non_ho_potuto_guardare"] = [_MEMORY_UNREAD]
         elif filters.floor and "piani" in house.unavailable:
             # Una domanda per `piano` senza nome: col registro dei piani
             # caduto nessuna area ha un piano, e `trovate: 0` sarebbe un
@@ -1771,6 +1782,8 @@ class ToolDispatcher:
         # E' un guasto di adesso: un corpo non letto nasconde cio' che
         # quell'automazione fa, sia che Home Assistant non abbia risposto,
         # sia che i segreti non si siano potuti controllare.
+        if self._memory is None:
+            entries.append((_MEMORY_UNREAD, False))
         unread_bodies = self._home_space.unread_bodies()
         if unread_bodies:
             message = (
