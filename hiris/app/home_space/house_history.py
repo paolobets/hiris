@@ -234,7 +234,7 @@ def parse_query(arguments: dict, *, now: float,
     run_id = a.get("esecuzione")
     if run_id is not None:
         if not isinstance(run_id, str) or not run_id.strip():
-            return {"errore": "esecuzione, se c'e', e' il run_id di una riga delle "
+            return {"errore": "esecuzione, se c'e', e' l'esecuzione di una riga delle "
                               "esecuzioni: un testo non vuoto"}
         run_id = run_id.strip()
     start, end = window
