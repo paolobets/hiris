@@ -82,7 +82,12 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 #
 # 12/10/2026 (Tappa 9, F6): esce `fetch`, i ricordi ancorati li porta la
 # scheda di `search`. Misurato: 29.247.
-CATALOG_CEILING = 29247
+#
+# 12/10/2026 (Tappa 9, C-36, giro 122): lo `stato` della fascia diventa
+# `a_fine_ora`, e `history` lo spiega accanto a `cambio` e `somma` (il
+# vocabolario lo pretende); quattro frasi della stessa descrizione si
+# accorciano per non salire. Misurato: 29.245.
+CATALOG_CEILING = 29245
 
 
 def catalog_chars(definitions) -> int:

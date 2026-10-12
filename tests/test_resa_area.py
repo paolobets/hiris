@@ -79,6 +79,26 @@ def test_la_stessa_area_da_view_e_da_search_ha_la_stessa_forma():
         scheda = _scheda(voce["id"])
         assert {k: scheda.get(k) for k in voce} == voce, (voce, scheda)
     assert next(v for v in voci if v["id"] == "cucina")["alias"] == ["angolo cottura"]
+    # La scheda e' alla completa, la voce sotto (N120-1, giro 120).
+    # Mutazione ESEGUITA: le voci alla completa -- rossa.
+    assert _scheda("cucina")["entita_temperatura"] == "sensor.cucina_t"
+    assert all("entita_temperatura" not in v for v in voci), voci
+
+
+def test_la_voce_di_una_pseudo_area_non_ha_piano():
+    """N120-1 (giro 120): «piano assente per una pseudo-area». Altrimenti la
+    voce di «Senza area» direbbe `piano: {id: "__fuori_dalle_aree__", ...}`,
+    la ripetizione che `House.where` evita.
+
+    Mutazione ESEGUITA: il piano dato anche a una pseudo-area -- rossa."""
+    from hiris.app.home_space import house_query as hq
+    filtri = hq.parse_filters({"genere": "area", "riferimento": "__senza_area__"})
+    uscita = hq.query_house(_casa_viva(), [], filtri,
+                            detail=lambda kind, ref: _scheda(ref), now=T0)
+    voci = uscita.get("voci") or [uscita]
+    senza = [v for v in voci if v.get("id") == "__senza_area__"]
+    assert senza, uscita
+    assert all("piano" not in v for v in senza), senza
 
 
 def test_le_profondita_dell_area_si_contengono():

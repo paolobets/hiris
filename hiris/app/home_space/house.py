@@ -120,6 +120,7 @@ class House:
         self.energy = energy
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
+        self._area_index: dict[str, tuple[dict, dict]] | None = None
         self._device_index: dict[str, dict] | None = None
         self._entities: dict[str, dict] | None = None
         self._visible: list[str] | None = None
@@ -204,14 +205,15 @@ class House:
         place = self._entity_places().get(entity_id)
         if place is None:
             return None
-        entry, area, floor = place
+        entry, area, _floor = place
         pseudo = topology.is_pseudo_area(area.get("id"))
+        area_ref, floor_ref = self.area_place(area.get("id"))
         device_id = entry.get("dispositivo_id")
         device = self._devices().get(device_id) if device_id else None
         return {
-            "area": {"id": area.get("id"), "nome": area.get("nome")},
+            "area": area_ref,
             "area_ereditata": not pseudo and not entry.get("area_id"),
-            "piano": None if pseudo else {"id": floor.get("id"), "nome": floor.get("nome")},
+            "piano": floor_ref,
             # Il nome col ripiego sull'id di `House.name` (A-16): lo stesso
             # dispositivo non ha due nomi a seconda della porta (fondamenta 3).
             "dispositivo": ({"id": device_id,
@@ -219,6 +221,34 @@ class House:
                             if device_id else None),
             "integrazione": entry.get("piattaforma"),
         }
+
+    def area_place(self, area_id: str | None) -> tuple[dict, dict | None] | None:
+        """IL POSTO DI UN'AREA (N119-3, 12/10/2026): l'area e il suo piano come
+        `{id, nome}`, dall'albero di `hierarchy()`. Una pseudo-area resta col
+        suo id e il piano e' `None` («Fuori dalle aree» ripeterebbe solo che
+        l'area non c'e'). Un `area_id` che l'albero non conosce e' la
+        pseudo-area della sua causa (`topology.outside_area`): «Area
+        sconosciuta», o «Aree non lette» se il registro delle aree non ha
+        risposto -- mai un silenzio, che si confonderebbe con «non ha area»
+        (N119-1). `None` per chi un'area non ce l'ha.
+
+        Fino al 12/10/2026 lo stesso posto si derivava in tre modi:
+        `render._area_and_floor`, la mappa `places` di
+        `house_query._device_rows` e `where`."""
+        if self._area_index is None:
+            self._area_index = {area.get("id"): (area, floor)
+                                for floor in self.hierarchy()
+                                for area in floor.get("aree") or []}
+        if not area_id:
+            return None
+        found = self._area_index.get(area_id)
+        if found is None:
+            return topology.outside_area(area_id, self.unavailable), None
+        area, floor = found
+        ref = {"id": area.get("id"), "nome": area.get("nome")}
+        if topology.is_pseudo_area(area_id):
+            return ref, None
+        return ref, {"id": floor.get("id"), "nome": floor.get("nome")}
 
     def _entity_places(self) -> dict[str, tuple[dict, dict, dict]]:
         if self._places is None:

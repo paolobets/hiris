@@ -648,11 +648,11 @@ def test_le_fasce_di_un_contatore_sommano_il_cambio_di_home_assistant():
     Mutazione ESEGUITA: consumato = ultimo stato - primo stato -- rossa."""
     fasce = {"sensor.energia": [
         {"inizio": "2026-09-28T22:00:00+00:00", "fine": "2026-09-28T23:00:00+00:00",
-         "minimo": None, "massimo": None, "media": None, "stato": 0.4, "cambio": 0.4},
+         "minimo": None, "massimo": None, "media": None, "a_fine_ora": 0.4, "cambio": 0.4},
         {"inizio": "2026-09-28T23:00:00+00:00", "fine": "2026-09-29T00:00:00+00:00",
-         "minimo": None, "massimo": None, "media": None, "stato": 0.9, "cambio": 0.5},
+         "minimo": None, "massimo": None, "media": None, "a_fine_ora": 0.9, "cambio": 0.5},
         {"inizio": "2026-09-29T00:00:00+00:00", "fine": "2026-09-29T01:00:00+00:00",
-         "minimo": None, "massimo": None, "media": None, "stato": 0.2, "cambio": 0.2}]}
+         "minimo": None, "massimo": None, "media": None, "a_fine_ora": 0.2, "cambio": 0.2}]}
     uscita = _valori(_q(cosa="valori", ore=48), ["sensor.energia"], fasce=fasce,
                      superfici={"sensor.energia": "oraria"},
                      classi={"sensor.energia": "total_increasing"})
@@ -669,8 +669,8 @@ def test_le_fasce_di_un_contatore_non_hanno_media():
     Mutazione ESEGUITA: rimettere `media` fra i conti delle fasce di un
     contatore -- rossa."""
     fasce = {"sensor.energia": [
-        {"inizio": "2026-09-28T22:00:00+00:00", "stato": 0.4, "cambio": 0.4},
-        {"inizio": "2026-09-28T23:00:00+00:00", "stato": 0.9, "cambio": 0.5}]}
+        {"inizio": "2026-09-28T22:00:00+00:00", "a_fine_ora": 0.4, "cambio": 0.4},
+        {"inizio": "2026-09-28T23:00:00+00:00", "a_fine_ora": 0.9, "cambio": 0.5}]}
     riga = _valori(_q(cosa="valori", ore=48), ["sensor.energia"], fasce=fasce,
                    superfici={"sensor.energia": "oraria"},
                    classi={"sensor.energia": "total_increasing"})["voci"][0]
@@ -767,9 +767,9 @@ def test_una_serie_nata_dopo_lo_dice_sulla_sua_riga():
     assert righe["sensor.temperatura"]["media"] == 20.5
 
 
-def _fascia(inizio: str, fine: str | None, stato: float, cambio: float) -> dict:
+def _fascia(inizio: str, fine: str | None, lettura: float, cambio: float) -> dict:
     fascia = {"inizio": inizio, "minimo": None, "massimo": None, "media": None,
-              "stato": stato, "cambio": cambio}
+              "a_fine_ora": lettura, "cambio": cambio}
     if fine is not None:
         fascia["fine"] = fine
     return fascia
@@ -1412,3 +1412,16 @@ def test_le_librerie_di_un_integrazione_si_dichiarano_col_filtro():
     zha = hh.error_rows(_q(cosa="errori", integrazione="zha"), voci)
     assert [v["messaggio"] for v in zha["voci"]] == ["zigbee giu'"]
     assert "zigpy" in zha["nota_integrazione"]
+
+
+def test_una_fascia_che_cambia_lettura_a_fine_ora_e_attivita():
+    """C-36 (giro 122): la lettura a fine ora si chiama `a_fine_ora`, e
+    `_band_activity` la legge con quel nome. Una serie senza `cambio` ne'
+    media, la cui lettura passa da 1 a 2, si e' mossa nella seconda ora.
+
+    Mutazione ESEGUITA: `_band_activity` che legge ancora `stato` -- rossa
+    (le due ore sembrano ferme, l'attivita' e' `None`)."""
+    fasce = [{"inizio": "2026-09-29T14:00:00+00:00", "a_fine_ora": 1.0},
+             {"inizio": "2026-09-29T15:00:00+00:00", "a_fine_ora": 2.0}]
+    assert hh._band_activity(fasce) == datetime.fromisoformat(
+        "2026-09-29T15:00:00+00:00").timestamp()

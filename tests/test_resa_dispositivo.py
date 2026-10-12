@@ -58,6 +58,11 @@ def test_lo_stesso_dispositivo_da_view_e_da_search_ha_la_stessa_forma():
         assert voce["area"] == {"id": "lavanderia", "nome": "Lavanderia"}
         scheda = _scheda(voce["id"])
         assert {k: scheda.get(k) for k in voce} == voce, (voce, scheda)
+        # La scheda e' alla completa, la voce sotto (N119-2, giro 119).
+        # Mutazioni ESEGUITE: la scheda alla media, le voci alla completa --
+        # rossa ognuna.
+        assert scheda["piano"] == {"id": "terra", "nome": "Piano terra"}
+        assert "piano" not in voce, voce
 
 
 def test_un_dispositivo_spento_dice_fuori_e_un_acceso_non_dice_niente():
@@ -82,3 +87,29 @@ def test_le_profondita_del_dispositivo_si_contengono():
     assert corta < media <= completa
     assert {"produttore", "modello"} <= media - corta
     assert "piano" in completa - media
+
+
+def test_un_area_che_l_albero_non_conosce_si_dice_come_per_l_entita():
+    """N119-1 (giro 119): un dispositivo con un `area_id` che l'albero non
+    conosce usciva SENZA `area` -- la forma di chi un'area non ce l'ha --
+    mentre la sua entita', che la eredita, diceva «Area sconosciuta». Lo
+    stesso posto, due forme (fondamenta 3). Con il registro delle aree caduto
+    la causa e' «Aree non lette», come nell'albero.
+
+    Rossa prima: `area` mancava."""
+    from hiris.app.home_space.render import render_entity
+
+    casa = _casa()
+    casa["dispositivi"][0]["area_id"] = "sparita"
+    casa["entita"] = [{"id": "sensor.lavatrice", "nome": "Lavatrice", "area_id": None,
+                       "dispositivo_id": "dev_lavatrice", "disabilitata": 0,
+                       "nascosta": 0, "piattaforma": "x"}]
+    viva = House(casa, Mirror({"sensor.lavatrice": "on"}))
+    sconosciuta = {"id": "__area_sconosciuta__", "nome": "Area sconosciuta"}
+    dispositivo = render_device(viva, casa["dispositivi"][0], "completa")
+    assert dispositivo["area"] == sconosciuta
+    assert "piano" not in dispositivo
+    assert render_entity(viva, "sensor.lavatrice", "corta")["area"] == sconosciuta
+    caduta = House(casa, Mirror({}), unavailable=("aree",))
+    assert render_device(caduta, casa["dispositivi"][0], "corta")["area"] == {
+        "id": "__aree_non_lette__", "nome": "Aree non lette"}

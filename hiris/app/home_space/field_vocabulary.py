@@ -135,6 +135,11 @@ FIELDS: dict[str, Field] = {
                     "consumo dell'ora, che e' il cambio",
                     "numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda",
                     "fascia"),
+    "a_fine_ora": _field("quanto segnava l'entita' alla fine di quell'ora, nelle "
+                         "statistiche di Home Assistant (state): per un contatore e' la "
+                         "lettura, non lo stato di adesso",
+                         "numero, nell'unita' dell'entita'; solo quando Home Assistant lo "
+                         "manda", "fascia"),
     "cambio": _field("quanto e' cresciuto un contatore in quell'ora, calcolato da Home "
                      "Assistant (change) e gia' corretto per gli azzeramenti",
                      "numero, nell'unita' dell'entita'; solo quando Home Assistant lo manda",

@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
-from ..home_space.house import House
+from ..home_space.house import SOURCE_LIVE, House
 from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
 from ..home_space.render import entity_line, tree_order
 from ..steering import OBSERVER_SPECIES, SPECIES, chain_answer, chain_turn, read_json
@@ -158,10 +158,6 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
             for entity_id in tree_order(house, ids)]
 
 
-#: Lo stato della fonte che parla (`House.source`, Tappa 3, Task 8).
-_LIVE = "viva"
-
-
 def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
     """I soggetti decisi DENTRO che la casa non mette piu' davanti
     all'osservatore e la cui fonte tace, con la fonte: `(id, fonte)`.
@@ -190,7 +186,7 @@ def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
         if domain_of(subject) in MOVING_DOMAINS:
             continue
         source = house.source(subject)
-        if source is None or source.get("stato") not in (None, _LIVE):
+        if source is None or source.get("stato") not in (None, SOURCE_LIVE):
             out.append((subject, source))
     return out
 

@@ -118,7 +118,7 @@ the `corpo` of an automation/script was exempt because it was "a local file the
 house owner edits, not something a network device or a compromised integration
 can write". Since 10/09/2026 the body comes from `automation/config` -- so also
 from a blueprint imported from a community address, which the owner did not
-write. The exemption is gone: `home_space/queries.py::_view_behavior` now puts
+write. The exemption is gone: `home_space/render.py::render_behavior` now puts
 it through `sanitize_structure`.
 
 It filters WHERE IT IS COMPOSED for the model, not where it is archived --

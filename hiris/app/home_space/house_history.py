@@ -698,13 +698,13 @@ def _detail_counts(points: list[dict], state_class, start_ts: float,
 
 
 def _band_counts(bands: list[dict], state_class) -> dict | None:
-    """I conti dalle fasce. Un contatore ha `stato` (a fine ora) e `cambio`
+    """I conti dalle fasce. Un contatore ha `a_fine_ora` (la lettura a fine ora) e `cambio`
     (gia' corretto per gli azzeramenti, misurato il 27/08/2026) e NESSUNA
     media: la media delle letture di fine ora di un contatore non dice niente
     (revisione del Task 4, 30/09/2026). Una misura ha `media`, `minimo`,
     `massimo` di ogni ora -- ore di peso uguale."""
     if state_class in _COUNTERS:
-        states = [x for x in (_number(b.get("stato")) for b in bands) if x is not None]
+        states = [x for x in (_number(b.get("a_fine_ora")) for b in bands) if x is not None]
         if not states:
             return None
         counts = {"primo": states[0], "ultimo": states[-1], "minimo": min(states),
@@ -728,7 +728,7 @@ def _band_activity(bands: list[dict]) -> float | None:
     da quelli dell'ora prima. Un'ora ferma non e' attivita'."""
     last, previous = None, _NOTHING
     for band in bands:
-        level = (_number(band.get("media")), _number(band.get("stato")))
+        level = (_number(band.get("media")), _number(band.get("a_fine_ora")))
         low, high = _number(band.get("minimo")), _number(band.get("massimo"))
         moved = (bool(_number(band.get("cambio")))
                  or (low is not None and high is not None and low != high)

@@ -40,6 +40,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from ..proxy.entity_cache import CAPABILITIES
+from .behavior import without_body
 from .ha_vocabulary import (
     config_entry_is_broken,
     config_entry_is_ignored,
@@ -1662,11 +1663,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # stesso insieme (`behavior.reread_behavior` mette in `unread` ogni voce
     # che archivia senza corpo). Si contano insieme, per chi arriva da una
     # strada sola.
-    without_body = ({v["id"] for v in behavior if v.get("corpo") is None}
-                    | set(unread_bodies or ()))
-    if without_body:
+    unknown = without_body(behavior, unread_bodies)
+    if unknown:
         notices.append(
-            f"di {len(without_body)} fra automazioni e script {BODY_UNKNOWN}: so "
+            f"di {len(unknown)} fra automazioni e script {BODY_UNKNOWN}: so "
             "che ci sono e come si chiamano, non cosa fanno.")
 
     if behavior_problems:

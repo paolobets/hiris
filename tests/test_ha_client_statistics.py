@@ -36,7 +36,7 @@ _A = "2026-08-27T00:00:00+00:00"
 # --------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stato_e_cambio_sono_tradotti():
+async def test_a_fine_ora_e_cambio_sono_tradotti():
     """**Misurato il 27/08/2026 sull'impianto vero**: senza `types` esplicito
     Home Assistant manda gia' `state`/`change` insieme a `min`/`max`/`mean`/
     `sum` -- prima di questa correzione il traduttore li scartava in
@@ -49,23 +49,23 @@ async def test_stato_e_cambio_sono_tradotti():
          "last_reset": None}]})
     out = await ha.hourly_statistics(["sensor.energia_prodotta_oggi"], _DA, _A)
     [voce] = out["serie"]["sensor.energia_prodotta_oggi"]
-    assert voce["stato"] == 0.27
+    assert voce["a_fine_ora"] == 0.27
     assert voce["cambio"] == 0.27
     assert voce["somma"] == 173.77
     assert voce["fine"] == "2026-08-26T07:00:00+00:00"
 
 
 @pytest.mark.asyncio
-async def test_stato_e_cambio_assenti_non_diventano_null():
+async def test_a_fine_ora_e_cambio_assenti_non_diventano_null():
     """Una misura istantanea (`state_class: measurement`, es. la potenza) non
     ha ne' `state` ne' `change` in HA -- **misurato**: entrambi tornano
     `None` dalla WS. Devono restare OMESSI dalla voce tradotta, come gia'
     vale per `somma`: un `None` esplicito direbbe "azzerato", un campo
     assente dice "non richiesto a questo statistic_id".
 
-    Mutazione ESEGUITA: `if f.get("state") is not None: voce["stato"] = ...`
-    sostituito con un'assegnazione incondizionata (`voce["stato"] =
-    f.get("state")`) in `_translate_statistics` -- arrossisce, perche' "stato"
+    Mutazione ESEGUITA: `if f.get("state") is not None: voce["a_fine_ora"] = ...`
+    sostituito con un'assegnazione incondizionata (`voce["a_fine_ora"] =
+    f.get("state")`) in `_translate_statistics` -- arrossisce, perche' "a_fine_ora"
     compare nella voce con valore `None` invece di mancare del tutto.
     Ripristinato subito dopo."""
     ha = _house(_STATS, {"sensor.potenza": [
@@ -74,7 +74,7 @@ async def test_stato_e_cambio_assenti_non_diventano_null():
          "sum": None, "state": None, "change": None}]})
     out = await ha.hourly_statistics(["sensor.potenza"], _DA, _A)
     [voce] = out["serie"]["sensor.potenza"]
-    assert "stato" not in voce
+    assert "a_fine_ora" not in voce
     assert "cambio" not in voce
     assert "somma" not in voce
     assert voce["media"] == 15.0
@@ -85,7 +85,7 @@ async def test_un_contatore_non_porta_media_minimo_e_massimo_nulli():
     """C-36 (Tappa 9, F4): la fascia di un contatore arrivava al modello con
     `minimo`, `massimo` e `media` a `null` -- tre campi che per un contatore
     non esistono, scritti come se fossero valori mancanti. Ora seguono la
-    regola di `somma`, `stato` e `cambio`: si omettono quando Home Assistant
+    regola di `somma`, `a_fine_ora` e `cambio`: si omettono quando Home Assistant
     non li manda. La forma della fascia e' quella misurata il 27/08/2026
     (prova qui sopra).
 

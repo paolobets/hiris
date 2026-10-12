@@ -176,6 +176,31 @@ _ID_PSEUDO_AREA = frozenset(
     {_ID_WITHOUT_AREA, _ID_UNLOADED_AREA, _ID_UNKNOWN_AREA, _ID_UNLOADED_DEVICE})
 
 
+#: I nomi delle tre pseudo-aree che dicono PERCHE' un `area_id` non e' fra
+#: le aree note (`outside_area`).
+_OUTSIDE_NAMES = {_ID_UNLOADED_AREA: "Aree non lette", _ID_UNKNOWN_AREA: "Area sconosciuta",
+                  _ID_WITHOUT_AREA: "Senza area"}
+
+
+def outside_area(area_id: str | None, unavailable=()) -> dict:
+    """La pseudo-area di un `area_id` che non e' fra le aree note, come
+    `{id, nome}`: «Aree non lette» se il registro delle aree non ha risposto
+    (allora nemmeno «assente» e «sconosciuta» si possono distinguere),
+    «Senza area» se manca, «Area sconosciuta» se l'albero non la conosce.
+
+    La regola e' una: la usa `hierarchy` per smistare le entita' e
+    `House.area_place` per l'area di un dispositivo (N119-1 e N119-3,
+    12/10/2026: il dispositivo con un'area ignota la taceva, mentre la sua
+    entita' diceva «Area sconosciuta»)."""
+    if "aree" in unavailable:
+        ident = _ID_UNLOADED_AREA
+    elif area_id is None:
+        ident = _ID_WITHOUT_AREA
+    else:
+        ident = _ID_UNKNOWN_AREA
+    return {"id": ident, "nome": _OUTSIDE_NAMES[ident]}
+
+
 def is_pseudo_area(area_id: str | None) -> bool:
     """Vero se `area_id` e' una pseudo-area generata da `hierarchy()` (non
     un'area vera di Home Assistant): chi la mostra per nome deve mostrare
@@ -997,11 +1022,10 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             temperature=area.get("entita_temperatura"),
             humidity=area.get("entita_umidita")))
 
-    # Le entita' fuori dalle aree note si dividono per causa. Se le aree non
-    # sono state lette, non possiamo fidarci nemmeno della distinzione fra
-    # "area_id assente" e "area_id sconosciuto": vanno tutte in un unico
-    # bucket "Aree non lette".
-    area_loaded = "aree" not in unavailable
+    # Le entita' fuori dalle aree note si dividono per causa, con la regola di
+    # `outside_area`. Se le aree non sono state lette, non possiamo fidarci
+    # nemmeno della distinzione fra "area_id assente" e "area_id
+    # sconosciuto": vanno tutte in un unico bucket "Aree non lette".
 
     def _outside_buckets(per_area_bucket: dict[str | None, list[dict]]
                           ) -> tuple[list[dict], list[dict], list[dict]]:
@@ -1013,17 +1037,13 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
         sconosciuta, o coi registri non letti) non venivano smistate affatto
         -- restavano nel dizionario e da li' non uscivano piu', il difetto
         delle 205 entita' della casa vera che questa fetta chiude."""
-        without, unloaded, unknown = [], [], []
+        buckets: dict[str, list[dict]] = {ident: [] for ident in _OUTSIDE_NAMES}
         for area_id, entries in per_area_bucket.items():
             if area_id in known_areas:
                 continue
-            if not area_loaded:
-                unloaded.extend(entries)
-            elif area_id is None:
-                without.extend(entries)
-            else:
-                unknown.extend(entries)
-        return without, unloaded, unknown
+            buckets[outside_area(area_id, unavailable)["id"]].extend(entries)
+        return (buckets[_ID_WITHOUT_AREA], buckets[_ID_UNLOADED_AREA],
+                buckets[_ID_UNKNOWN_AREA])
 
     without_area, unloaded_area, unknown_area = _outside_buckets(per_area)
     without_area_disabled, unloaded_area_disabled, unknown_area_disabled = \
@@ -1059,13 +1079,16 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     # gruppo esiste.
     outside_areas = []
     if unloaded_area or unloaded_area_disabled or unloaded_area_hidden:
-        outside_areas.append(_area_node(_ID_UNLOADED_AREA, "Aree non lette", unloaded_area,
+        outside_areas.append(_area_node(_ID_UNLOADED_AREA, _OUTSIDE_NAMES[_ID_UNLOADED_AREA],
+                                        unloaded_area,
                                         unloaded_area_disabled, unloaded_area_hidden))
     if unknown_area or unknown_area_disabled or unknown_area_hidden:
-        outside_areas.append(_area_node(_ID_UNKNOWN_AREA, "Area sconosciuta", unknown_area,
+        outside_areas.append(_area_node(_ID_UNKNOWN_AREA, _OUTSIDE_NAMES[_ID_UNKNOWN_AREA],
+                                        unknown_area,
                                         unknown_area_disabled, unknown_area_hidden))
     if without_area or without_area_disabled or without_area_hidden:
-        outside_areas.append(_area_node(_ID_WITHOUT_AREA, "Senza area", without_area,
+        outside_areas.append(_area_node(_ID_WITHOUT_AREA, _OUTSIDE_NAMES[_ID_WITHOUT_AREA],
+                                        without_area,
                                         without_area_disabled, without_area_hidden))
     if unloaded_device or unloaded_device_disabled or unloaded_device_hidden:
         # Stessa forma delle altre tre pseudo-aree "fuori dalle aree note":

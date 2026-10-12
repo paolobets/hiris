@@ -68,6 +68,19 @@ BEHAVIOR_NOT_LOADED = ("Home Assistant non ha nello stato nessuna automazione "
                        "(riavvio, safe mode)")
 
 
+def without_body(entries, unread_bodies) -> set[str]:
+    """Gli id di automazioni e script di cui HIRIS conosce il nome e non il
+    corpo: le voci col corpo `None` e quelle di `unread_bodies`, insieme.
+
+    Oggi sono lo stesso insieme (`reread` mette in `unread` ogni voce che
+    archivia senza corpo), ma il fatto e' uno e la formula una: fino al
+    12/10/2026 il nucleo contava l'unione e `/api/home-space` solo i corpi
+    `None` (N118-2, giro 118). `corpo is None` e non falsy: un corpo vuoto
+    e' un fatto diverso da un corpo assente."""
+    return ({entry["id"] for entry in entries if entry.get("corpo") is None}
+            | set(unread_bodies or ()))
+
+
 def automation_active(entity_id: str, row: dict | None) -> bool | None:
     """Se un'automazione e' attiva, dalla sua riga nello specchio; `None`
     quando non lo si puo' dire.

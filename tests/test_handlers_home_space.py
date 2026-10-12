@@ -90,7 +90,10 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
              "corpo": {}, "origine": "file"},
         ],
         problems=["automations.yaml: id 42 usato da 2 voci"],
-        unread_bodies={"scripts.yaml": "assente"},
+        # La forma di `behavior.reread`: una voce archiviata senza corpo e'
+        # anche in `unread_bodies`, per id (fino al 12/10/2026 qui c'era la
+        # chiave di un file, la forma di prima del 10/09/2026; N118-2).
+        unread_bodies={"automation.a_mano": "configurazione non letta da Home Assistant"},
     )
     app = web.Application()
     app["home_space_store"] = archivio
@@ -111,7 +114,8 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     # Le dichiarazioni costruite da comportamento.compose()/reread() devono
     # arrivare fin qui, non morire in un log (Important 3).
     assert comportamento["problemi"] == ["automations.yaml: id 42 usato da 2 voci"]
-    assert comportamento["corpi_non_letti"] == {"scripts.yaml": "assente"}
+    assert comportamento["corpi_non_letti"] == {
+        "automation.a_mano": "configurazione non letta da Home Assistant"}
     per_id = {v["id"]: v for v in comportamento["voci"]}
     assert per_id["automation.a_mano"]["corpo"] is None
     assert per_id["script.vuoto"]["corpo"] == {}
@@ -324,6 +328,40 @@ async def test_api_nucleo_riceve_i_problemi_e_i_corpi_non_letti_del_comportament
     avvisi = corpo["summary"]["notices"]
     assert any("problema" in a and "comportamento" in a for a in avvisi)
     assert any("non conosco il corpo" in a for a in avvisi)
+    archivio_casa.close()
+
+
+@pytest.mark.asyncio
+async def test_pagina_e_nucleo_contano_gli_stessi_corpi_mancanti(aiohttp_client, tmp_path):
+    """N118-2 (giro 118): «quante voci senza corpo» e' un fatto solo, e lo
+    contano tutte e due le porte con `behavior.without_body`. Una voce che sta
+    solo in `unread_bodies` conta per la pagina come per il nucleo.
+
+    Rossa prima: la pagina contava solo i corpi `None` (0), il nucleo
+    l'unione (1)."""
+    archivio_casa = HomeSpace(str(tmp_path))
+    archivio_casa.hold_registries({
+        "piani": [], "aree": [], "dispositivi": [], "entita": [], "etichette": [],
+        "categorie": [], "integrazioni": [],
+    })
+    archivio_casa.hold_behavior(
+        [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
+          "corpo": {"trigger": []}}],
+        unread_bodies={"script.muto": "configurazione non letta da Home Assistant"},
+    )
+    app = web.Application()
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = None
+    app["entity_cache"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    app.router.add_get("/api/briefing", handle_get_briefing)
+    client = await aiohttp_client(app)
+
+    pagina = await (await client.get("/api/home-space")).json()
+    nucleo = await (await client.get("/api/briefing")).json()
+    avviso = next(a for a in nucleo["summary"]["notices"] if "non conosco il corpo" in a)
+    assert pagina["comportamento"]["senza_corpo"] == 1
+    assert avviso.startswith("di 1 fra"), avviso
     archivio_casa.close()
 
 

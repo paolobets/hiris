@@ -300,12 +300,9 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
     come le entita'.
 
     `area` e `piano` dei filtri sono quelli dell'area del dispositivo, dallo
-    stesso albero delle entita' (`House.hierarchy`); `integrazione` e' quella
+    stesso albero delle entita' (`House.area_place`); `integrazione` e' quella
     di una delle sue entita' -- il registro dei dispositivi non la porta."""
     home_space = house.home_space
-    places = {area.get("id"): (area, floor)
-              for floor in house.hierarchy()
-              for area in floor.get("aree") or []}
     platforms: dict = {}
     for entity in home_space.get("entita") or []:
         if entity.get("dispositivo_id") and entity.get("piattaforma"):
@@ -320,7 +317,8 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
             continue
         if f.name and not name_matches(f.name, device.get("nome") or ""):
             continue
-        area, floor = places.get(device.get("area_id"), _NOWHERE[1:])
+        place = house.area_place(device.get("area_id"))
+        area, floor = (place[0], place[1] or {}) if place else _NOWHERE[1:]
         if not _place_matches(where, {}, area, floor):
             continue
         if f.platform and normalize(f.platform) not in platforms.get(device["id"], ()):
