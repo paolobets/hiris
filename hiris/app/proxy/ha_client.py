@@ -253,7 +253,7 @@ def _instant_from_ha(raw):
 #: I valori di una fascia oraria: la chiave di Home Assistant e la nostra.
 #: Ognuno esce solo quando Home Assistant lo manda (`_translate_statistics`).
 _STATISTIC_VALUES = (("min", "minimo"), ("max", "massimo"), ("mean", "media"),
-                     ("sum", "somma"), ("state", "stato"), ("change", "cambio"))
+                     ("sum", "somma"), ("state", "a_fine_ora"), ("change", "cambio"))
 
 
 def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
@@ -266,7 +266,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     traduzione sarebbe il doppione che questo progetto ha gia' pagato altrove
     (fondamenta 2).
 
-    `stato`/`cambio` (mandato «il bilancio dell'energia», 27/08/2026): prima
+    `a_fine_ora`/`cambio` (mandato «il bilancio dell'energia», 27/08/2026): prima
     di questa correzione il traduttore leggeva solo `min`/`max`/`mean`/`sum`
     -- **`state` era gia' nella risposta di HA** (misurato: senza `types`
     esplicito HA manda tutto cio' che sa calcolare) e veniva scartato in
@@ -277,6 +277,12 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     Dal 12/10/2026 (C-36, Tappa 9) la stessa regola vale per `minimo`,
     `massimo` e `media`: la fascia di un contatore li portava a `null`, tre
     campi che per un contatore non esistono.
+
+    La `state` di una fascia si chiama `a_fine_ora` (C-36, giro 122; il nome
+    l'ha confermato Paolo il 12/10/2026): e' quanto segnava l'entita' alla fine
+    dell'ora, non lo stato di adesso. Si chiamava `stato`, e nella stessa
+    risposta di `history` il soggetto porta il suo `stato` grezzo: lo stesso
+    nome per due fatti (fondamenta 3).
     """
     series: dict[str, list[dict]] = {}
     for ident, bands in raw.items():
@@ -1779,7 +1785,7 @@ class HAClient:
         sottraendo `somma` a mano.
 
         Ritorna `{"serie": {statistic_id: [{"inizio","fine",["minimo"],
-        ["massimo"],["media"],["somma"],["stato"],["cambio"]}]}}`, oppure
+        ["massimo"],["media"],["somma"],["a_fine_ora"],["cambio"]}]}}`, oppure
         `{"errore": str}` -- mai `{}`, che direbbe «non ci sono statistiche»
         anche quando il websocket e' giu'.
         """
