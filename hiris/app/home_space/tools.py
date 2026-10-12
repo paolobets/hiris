@@ -364,24 +364,21 @@ RELATED_TOOL_DEF = {
         "Richiede `genere` (uno fra: " + ", ".join(_OUR_LINK_TYPES) + ") e "
         "`riferimento`, l'identificatore ESATTO (usa `search` se hai solo un nome). "
         "Lo calcola Home Assistant su TUTTO cio' che ha caricato, ovunque sia "
-        "scritto -- pacchetti, `!include`, cartelle, scene, gruppi -- mentre "
-        "`search` con `riferimento` legge due soli file: qui i legami sono "
-        "completi, ma non c'e' il CORPO. Le due cose non si sostituiscono: per "
+        "scritto -- pacchetti, `!include`, cartelle, scene, gruppi: qui i "
+        "legami sono completi, ma non c'e' il CORPO. Le due cose non si sostituiscono: per "
         "sapere COSA FA un'automazione che trovi qui, aprila con `search` e il "
         "suo `riferimento`. "
-        "**Come si legge la risposta.** `related` e' un dizionario tipo -> "
+        "**Come si legge la risposta.** `legami` e' un dizionario genere -> "
         "identificatori. Per un'entita' mescola chi la USA (automazione, script, "
         "scena, gruppo, persona) con dove STA (area, dispositivo, piano, "
         "integrazione, etichetta): se la domanda e' «cosa smette di funzionare», "
         "guarda i primi -- un'area non smette di funzionare perche' le togli una "
         "luce. Per un'area, invece, le entita' elencate sono cio' che l'area "
-        "CONTIENE. I tipi usano gli stessi nomi di `search`, quindi un "
-        "riferimento letto qui si passa a `search` cosi' com'e' -- ma il "
-        "dettaglio si apre solo per area, entita, dispositivo, automazione e "
-        "script: sugli altri "
-        "risponde `non_so_guardare`, che significa «non lo so aprire», MAI «non "
-        "esiste». "
-        "Un `related` vuoto significa che Home Assistant non conosce nessun legame "
+        "CONTIENE. I generi usano gli stessi nomi di `search`, quindi un "
+        "riferimento letto qui si passa a `search` cosi' com'e' -- ma `search` "
+        "apre solo i generi del suo `genere`: una scena, un gruppo o una persona "
+        "che non apre esistono lo stesso. "
+        "Un `legami` vuoto significa che Home Assistant non conosce nessun legame "
         "per questa cosa. Se invece non ha potuto rispondere ricevi `errore`, che "
         "non e' la stessa cosa: NON concludere che non la tocca nessuno."
     ),
@@ -900,11 +897,11 @@ HISTORY_TOOL_DEF = {
         "`search`, QUANDO con `ore` oppure con `da`/`a` -- non entrambi. "
         "`cosa`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
         "nel tempo; `esecuzioni` le partenze di automazioni e script; `errori` "
-        "il registro, che accetta solo `integrazione` e `livello`. Un filtro "
+        "il registro (sempre `corta`), che accetta solo `integrazione` e `livello`. Un filtro "
         "che non vale per `cosa` torna `errore`, non e' ignorato. "
         + _depth_rule(
             "ogni cambio; la serie; le esecuzioni conservate, e con "
-            "`esecuzione` = il `run_id` di una riga la traccia passo per passo",
+            "l'`esecuzione` di una riga la traccia passo per passo",
             "ogni cambio con l'id; una riga per serie; le ultime 3 esecuzioni "
             "di ognuna",
             "una riga per soggetto")
@@ -968,7 +965,7 @@ HISTORY_TOOL_DEF = {
                                  "adesso. Vuole `da`."},
             "esecuzione": {"type": "string",
                            "description": "Solo con cosa=esecuzioni e UNA "
-                                          "automazione o script: il run_id di una "
+                                          "automazione o script: l'esecuzione di una "
                                           "riga, per la traccia passo per passo."},
             "livello": {"type": "string", "enum": list(LEVELS),
                         "description": "Solo con cosa=errori."},

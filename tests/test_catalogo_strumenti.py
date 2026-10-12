@@ -87,7 +87,12 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # `a_fine_ora`, e `history` lo spiega accanto a `cambio` e `somma` (il
 # vocabolario lo pretende); quattro frasi della stessa descrizione si
 # accorciano per non salire. Misurato: 29.245.
-CATALOG_CEILING = 29245
+#
+# 12/10/2026 (Tappa 9, F8, R9): `related` dice `legami` e non ripete piu' la
+# frase falsa sui «due soli file» ne' il `non_so_guardare` che `search` non
+# rende; `history` dice l'`esecuzione` di una riga invece di `run_id`, e che
+# gli `errori` sono sempre `corta`. Misurato: 29.141.
+CATALOG_CEILING = 29141
 
 
 def catalog_chars(definitions) -> int:

@@ -143,14 +143,36 @@ def _citazioni(testo: str):
             yield parola.removeprefix(_PREFISSO_MCP), frammento
 
 
-def _citazioni_false(testi) -> list:
+#: Lista di AMMISSIONE: le parole che sono state un nome di strumento e che
+#: oggi una definizione cita per un'altra ragione -- `{(strumento, parola):
+#: ragione}`. Che la parola sia davvero cio' che la ragione dice lo prova il
+#: cancello R9 (`tests/test_descrizioni_dicono_il_vero.py`), che fa girare lo
+#: strumento.
+_CITAZIONI_AMMESSE = {
+    ("related", "legami"): ("la chiave della risposta (`queries.related`, X-33): "
+                            "lo strumento `legami` e' `related` dal 02/09"),
+}
+
+
+def _citazioni_false(testi, strumento: str | None = None) -> list:
     catalogo = _catalogo()
     falsi = []
     for dove, testo in testi:
         for parola, frammento in _citazioni(testo):
-            if parola in _NOMI_MAI_STATI_STRUMENTO and parola not in catalogo:
+            if (parola in _NOMI_MAI_STATI_STRUMENTO and parola not in catalogo
+                    and (strumento, parola) not in _CITAZIONI_AMMESSE):
                 falsi.append((dove, parola, frammento))
     return falsi
+
+
+def test_ogni_citazione_ammessa_e_ancora_citata():
+    """Un'ammissione che nessuna definizione usa piu' e' una porta aperta che
+    nessuno guarda: esce."""
+    per_nome = {d["name"]: d for d in _DEFINIZIONI}
+    vive = {(nome, parola) for nome, parola in _CITAZIONI_AMMESSE
+            if any(p == parola for _dove, testo in _testi_definizione(per_nome[nome])
+                   for p, _f in _citazioni(testo))}
+    assert vive == set(_CITAZIONI_AMMESSE)
 
 
 @pytest.mark.parametrize("definizione", _DEFINIZIONI,
@@ -161,7 +183,7 @@ def test_nessuna_citazione_nomina_uno_strumento_che_non_esiste(definizione):
     non esiste: il dispatcher risponde "non e' fra quelli disponibili" e il
     turno si brucia, oppure -- peggio -- il modello se ne dimentica e
     racconta di aver guardato."""
-    falsi = _citazioni_false(_testi_definizione(definizione))
+    falsi = _citazioni_false(_testi_definizione(definizione), definizione["name"])
     assert not falsi, (
         f"la definizione di «{definizione['name']}» cita nomi di strumento "
         f"che il catalogo non espone: {falsi}. Il catalogo di oggi e' "
