@@ -959,7 +959,8 @@ HISTORY_TOOL_DEF = {
             "integrazione": {
                 **_SUBJECT_FILTERS["integrazione"],
                 "description": (_SUBJECT_FILTERS["integrazione"]["description"]
-                                + " Per gli errori, chi ha scritto la voce."),
+                                + " Per gli errori, chi ha scritto la voce: anche una "
+                                  "libreria, che non e' un'integrazione da cercare."),
             },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
                     "description": "Le ultime N ore, da adesso. Predefinito 24."},
