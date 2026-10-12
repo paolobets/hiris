@@ -129,7 +129,7 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
         "id", "nome", "produttore", "modello", "area_id",
         "disabilitato", "disabilitato_da", "etichette"}
     assert set(anagrafe["entita"][0]) == {
-        "id", "nome", "translation_key", "unique_id", "original_name",
+        "id", "nome", "translation_key", "unique_id",
         "area_id", "dispositivo_id", "piattaforma", "config_entry_id",
         "categoria", "classe", "unita", "disabilitata", "nascosta",
         "disabilitata_da", "nascosta_da", "alias", "etichette", "categorie"}
@@ -145,7 +145,8 @@ def test_cio_che_home_assistant_dichiara_non_si_butta():
     quasi ogni entita' -- misurato sulla casa vera il 10/09/2026: `unique_id`
     sul **100%** delle 833 entita' vive, `original_name` sull'**89%**,
     `translation_key` sul **64%**, e **nessuna e' priva di tutte e tre**. La
-    copia li buttava tutti e tre.
+    copia li buttava tutti e tre. `original_name` dal 12/10/2026 entra solo
+    come ripiego del nome (M-35): accanto non lo leggeva nessuno.
 
     `translation_key` e' il campo su cui si regge l'intero sprint: e' cio' che
     l'integrazione dichiara di se' (`energy_generating_today`), ed e' la
@@ -158,21 +159,7 @@ def test_cio_che_home_assistant_dichiara_non_si_butta():
 
     assert entita["translation_key"] == "energy_generating_today"
     assert entita["unique_id"] == "energy_generating_today-ZE1ES030N5E528"
-    assert entita["original_name"] == "Energia prodotta oggi"
-
-
-def test_il_nome_originale_non_diventa_il_nome_quando_l_utente_non_ha_rinominato():
-    """`nome` e `original_name` restano due campi: il primo e' come si chiama
-    questa cosa, il secondo e' **chi l'ha chiamata cosi'**. Su questa entita'
-    l'utente non ha rinominato niente (`name: null`), quindi i due coincidono
-    nel VALORE -- e devono restare due chiavi, o si perde la differenza fra
-    «l'ha chiamata l'integrazione» e «l'ha chiamata il proprietario».
-    """
-    entita = _entita(build_home_space(_REGISTRI),
-                     "sensor.ze1es030n5e528_energia_prodotta_oggi")
-
-    assert entita["nome"] == "Energia prodotta oggi"
-    assert entita["original_name"] == "Energia prodotta oggi"
+    assert "original_name" not in entita
 
 
 def test_il_nome_del_dispositivo_e_quello_scelto_dall_utente_se_c_e():

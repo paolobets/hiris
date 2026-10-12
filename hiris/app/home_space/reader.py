@@ -7,7 +7,8 @@ sopra quel dizionario: questo modulo ne e' il fornitore.
 
 **Perche' senza copia.** Una copia su disco buttava via cio' che Home
 Assistant dichiara:
-`translation_key`, `unique_id`, `original_name`. E soprattutto **non poteva
+`translation_key`, `unique_id`, `original_name` (questo, dal 12/10/2026, entra
+solo come ripiego del nome: accanto non lo leggeva nessuno, M-35). E soprattutto **non poteva
 tenere la classe**: `config/entity_registry/list` risponde con
 `RegistryEntry.as_partial_dict` (`helpers/entity_registry.py`), che
 `device_class` non ce l'ha — misurato il 10/09/2026 sulla casa vera,
@@ -206,12 +207,11 @@ def _entity(row: dict) -> dict:
         "nome": clean_name(row.get("name") or row.get("original_name")),
         # `translation_key` e' cio' che l'integrazione dichiara di se' --
         # `energy_generating_today`, non «Potenza autoconsumata» da
-        # indovinare. `original_name` accanto a `nome`
-        # dice CHI ha chiamato cosi' questa cosa: l'integrazione o il
-        # proprietario.
+        # indovinare. `original_name` non si tiene piu' (M-35, Tappa 9, F5,
+        # 12/10/2026): entra solo come ripiego di `nome`, e accanto a lui non
+        # lo leggeva nessuno -- usciva in `GET /api/home-space` su ogni entita'.
         "translation_key": row.get("translation_key"),
         "unique_id": row.get("unique_id"),
-        "original_name": clean_name(row.get("original_name")),
         "area_id": row.get("area_id"),
         "dispositivo_id": row.get("device_id"),
         "piattaforma": row.get("platform"),
