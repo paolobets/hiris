@@ -323,7 +323,8 @@ def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
     return page_rows(rows, f.offset, f.limit)
 
 
-def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen | dict:
+def choose(query: HistoryQuery, house: House, behavior, *, now: float,
+           deepest: str = "completa") -> Chosen | dict:
     """Di chi (la scelta di `search`, `House.select`) e quanto.
 
     Stati e valori guardano le entita'; le esecuzioni automazioni e script.
@@ -353,7 +354,7 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
     if query.run_id is not None and len(subjects) != 1:
         return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "
                           f"ne scelgono {len(subjects)}: restringi con riferimento"}
-    return Chosen(len(subjects), selection.excluded, depth_for(len(subjects)),
+    return Chosen(len(subjects), selection.excluded, depth_for(len(subjects), deepest),
                   subjects if f.limit > 0 else [])
 
 
@@ -1527,7 +1528,8 @@ async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
 
 async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
                        journal=None, now: float, translations: dict | None = None,
-                       judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+                       judgments: TypeJudgments = REPO_JUDGMENTS,
+                       deepest: str = "completa") -> dict:
     """La storia della casa per una domanda gia' validata (`parse_query`):
     sceglie di chi con la casa data (`choose`), legge a Home Assistant e
     rende le righe del genere. Una casa per tutta la chiamata: lo specchio
@@ -1544,7 +1546,7 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal)
     mirror, home = house.mirror, house.home_space
-    chosen = choose(query, house, behavior, now=now)
+    chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):
         return chosen
     if not chosen.subjects:

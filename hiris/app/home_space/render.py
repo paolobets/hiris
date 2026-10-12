@@ -115,11 +115,16 @@ def rows_depth(count: int) -> str:
     return "media" if count <= DETAIL_MEDIUM_MAX else "corta"
 
 
-def depth_for(count: int) -> str:
+def depth_for(count: int, deepest: str = "completa") -> str:
     """La profondita' di una risposta dal numero di voci trovate, per
     `search` e per `history` (spec §3): 1 -> completa, poi `rows_depth`. Una
-    regola sola (B-30, Tappa 5)."""
-    return "completa" if count == 1 else rows_depth(count)
+    regola sola (B-30, Tappa 5).
+
+    `deepest` e' la profondita' piu' piena che la risposta puo' avere: la
+    abbassa il tetto per risposta (`tools.ToolDispatcher`, D5 della Tappa 5:
+    prima scende la profondita', poi le righe)."""
+    depth = "completa" if count == 1 else rows_depth(count)
+    return DEPTHS[min(DEPTHS.index(depth), DEPTHS.index(deepest))]
 
 
 # --------------------------------------------------------------------------

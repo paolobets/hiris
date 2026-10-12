@@ -347,7 +347,7 @@ async def test_le_righe_della_storia_dicono_lo_stato_con_le_parole_della_casa(
     ha = _house(serie={"light.cucina_1": [{"quando": _ADESSO.isoformat(), "valore": "on"}]})
     dispatcher = _history_dispatcher(tmp_path, ha)
     dispatcher._translations = _TraduzioniLette()
-    monkeypatch.setattr(house_history, "depth_for", lambda _count: "corta")
+    monkeypatch.setattr(house_history, "depth_for", lambda _count, _deepest="completa": "corta")
     esito = await dispatcher.dispatch("history", {"area": "cucina"})
     riga = next(r for r in esito["voci"] if r["id"] == "light.cucina_1")
     assert riga["stato_leggibile"] == "Acceso"

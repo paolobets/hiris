@@ -100,6 +100,7 @@ from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
+from ..usage.giro import pesa_in_caratteri
 from . import historian
 from .appointments import merge_calendars, readable_calendars
 from .energy import energy_dashboard
@@ -117,6 +118,7 @@ from .house_query import (
     KINDS,
     ORDERS,
     ROWS_MAX,
+    page_rows,
     parse_filters,
     query_house,
 )
@@ -130,7 +132,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import depth_for, render_entity, render_memory
+from .render import DEPTHS, depth_for, render_entity, render_memory
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -1292,6 +1294,41 @@ class Permission:
     refusal: str | None = None
 
 
+def _rows_under(occurrence: dict, ceiling: Ceiling, *, offset: int) -> dict:
+    """Le `voci` dal fondo finche' la risposta sta sotto il tetto, con `oltre`
+    che conta anche quelle che la pagina aveva gia' lasciato fuori. La pagina
+    la taglia `page_rows`, la stessa di `search` e di `history`; `salta` e'
+    assoluto, come quello che lo strumento riceve."""
+    rows = occurrence.get("voci")
+    if not isinstance(rows, list) or len(rows) < 2:
+        return occurrence
+    before = (occurrence.get("oltre") or {}).get("restano", 0)
+    for keep in range(len(rows) - 1, 0, -1):
+        page, beyond = page_rows(rows, 0, keep)
+        trimmed = {**occurrence, "voci": page,
+                   "oltre": {"restano": before + beyond["restano"], "salta": offset + keep,
+                             "suggerimento": (
+                                 f"la risposta superava il tetto di {ceiling.chars} "
+                                 f"caratteri (la piu' grande misurata, il "
+                                 f"{ceiling.measured}): le altre voci si chiedono con "
+                                 "`salta`, o restringendo i filtri")}}
+        if pesa_in_caratteri(trimmed) <= ceiling.chars:
+            return trimmed
+    return trimmed
+
+
+@dataclass(frozen=True)
+class Ceiling:
+    """Il tetto in caratteri della risposta di uno strumento (R16; D3 della
+    Tappa 9, approvata l'08/10/2026): la risposta piu' grande MISURATA sulla
+    casa vera, con la data della misura. Non un ideale: la garanzia che quella
+    risposta non cresca. La misura e' dello Sprint, dai registri dei turni
+    (`consumi.db`, 24/09-07/10/2026), pesata come la pesa il registro
+    (`usage.giro.pesa_in_caratteri`)."""
+    chars: int
+    measured: str
+
+
 @dataclass(frozen=True)
 class Tool:
     """Una riga della tabella degli strumenti (`TOOLS`, Tappa 5, Task 2):
@@ -1314,7 +1351,11 @@ class Tool:
       difetto: uno strumento nuovo e' una scrittura finche' qualcuno non
       scrive che legge. Non si deduce da `permissions`: `cancel` scrive
       senza chiedere nessun gesto, e `history` legge
-      chiedendone uno.
+      chiedendone uno;
+    - `ceiling`: il tetto in caratteri della risposta (`Ceiling`), solo dove
+      c'e' una misura. Lo fa valere `ToolDispatcher._under_ceiling`, dopo il
+      gestore: prima scende la profondita', poi le righe (D5 della Tappa 5).
+      Chi ce l'ha riceve `deepest`, la profondita' piu' piena ammessa.
 
     Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
     fino al 05/10/2026 lo chiedevano sette punti dentro i gestori (D-23)."""
@@ -1325,6 +1366,7 @@ class Tool:
     permissions: tuple[Permission, ...] = ()
     mask: str | None = None
     read_only: bool = False
+    ceiling: Ceiling | None = None
 
     @property
     def name(self) -> str:
@@ -1572,6 +1614,12 @@ class ToolDispatcher:
         # che Home Assistant mostra solo a chi amministra, dove la compone.
         options = ({"masked": self._ceiling_denies(tool.mask)}
                    if tool.mask is not None else {})
+        occurrence = await self._call(tool, arguments, options)
+        if tool.ceiling is not None:
+            occurrence = await self._under_ceiling(tool, arguments, options, occurrence)
+        return occurrence
+
+    async def _call(self, tool: Tool, arguments: dict[str, Any], options: dict) -> dict:
         # Alcuni gestori sono coroutine (fanno rete, o scaldano il registro
         # dei servizi prima di verificarlo o di mostrarlo); gli altri no. Si
         # attende cio' che e' attendibile invece di rendere `async` anche i
@@ -1581,9 +1629,37 @@ class ToolDispatcher:
             occurrence = await occurrence
         return occurrence
 
+    async def _under_ceiling(self, tool: Tool, arguments: dict[str, Any], options: dict,
+                             occurrence: dict) -> dict:
+        """La risposta sotto il tetto dello strumento (R16), riducendola come
+        ha deciso la D5 della Tappa 5: **prima scende la profondita'**
+        (completa -> media -> corta: tutte le voci, piu' corte), **poi si
+        tolgono voci dal fondo**, con `oltre` che dice quante restano e come
+        chiederle. Mai un taglio a meta' di una voce: una voce sola piu' grande
+        del tetto esce intera.
+
+        Scendere di profondita' vuol dire chiedere di nuovo al gestore, con
+        `deepest`: la risposta la compone lui, non la si accorcia qui. Succede
+        solo sopra il tetto. Per `history` e' una seconda lettura a Home
+        Assistant, che in mezzo puo' aver scritto un cambio in piu'."""
+        ceiling = tool.ceiling
+        depth = occurrence.get("profondita")
+        if depth in DEPTHS:
+            for lower in reversed(DEPTHS[:DEPTHS.index(depth)]):
+                if pesa_in_caratteri(occurrence) <= ceiling.chars:
+                    return occurrence
+                shallower = await self._call(tool, arguments, {**options, "deepest": lower})
+                if "errore" in shallower or shallower.get("profondita") != lower:
+                    break
+                occurrence = shallower
+        if pesa_in_caratteri(occurrence) <= ceiling.chars:
+            return occurrence
+        return _rows_under(occurrence, ceiling, offset=int(arguments.get("salta") or 0))
+
     # -- search --------------------------------------------------------
 
-    async def _search(self, arguments: dict[str, Any], *, masked: bool) -> dict:
+    async def _search(self, arguments: dict[str, Any], *, masked: bool,
+                      deepest: str = "completa") -> dict:
         """La porta che interroga la casa (spec `2026-09-29-una-porta-sola-
         per-la-casa.md` §2): i filtri entrano, un insieme di voci esce, e la
         profondita' la decide `house_query.query_house` da quante sono.
@@ -1620,7 +1696,8 @@ class ToolDispatcher:
 
         response = query_house(house, self._home_space.behavior(), filters,
                                detail=detail, timezone=self._timezone(),
-                               translations=translations, judgments=self._judgments)
+                               translations=translations, judgments=self._judgments,
+                               deepest=deepest)
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
@@ -2471,7 +2548,8 @@ class ToolDispatcher:
 
     # -- la storia ------------------------------------------------------
 
-    async def _history(self, arguments: dict[str, Any]) -> dict:
+    async def _history(self, arguments: dict[str, Any], *,
+                       deepest: str = "completa") -> dict:
         """La storia della casa (spec `2026-09-30-la-storia.md`): compone le
         letture di `house_history` (`read_history`, `read_errors`) e mette il
         permesso SOPRA di loro.
@@ -2506,7 +2584,7 @@ class ToolDispatcher:
                                   self._home_space.behavior(), cache=self._cache,
                                   seal=self._seal(), journal=self._journal, now=now,
                                   translations=await self._read_translations(),
-                                  judgments=self._judgments)
+                                  judgments=self._judgments, deepest=deepest)
 
     # -- i calendari ------------------------------------------------------
 
@@ -2708,7 +2786,9 @@ TOOLS: tuple[Tool, ...] = (
     # accese» perche' l'archivio dei ricordi non e' pronto sarebbe un no a una
     # domanda che non lo tocca (review finale, M5, 30/09/2026).
     Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
-         mask="amministrare", read_only=True),
+         mask="amministrare", read_only=True,
+         # 71 campioni, il piu' grande il 02/10/2026 (misura M3 dello Sprint).
+         ceiling=Ceiling(39_134, "02/10/2026")),
     Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
          read_only=True),
     # Un ricordo entra nel nucleo di ogni turno, di ogni persona, e ci resta:
@@ -2743,7 +2823,9 @@ TOOLS: tuple[Tool, ...] = (
     Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
                                  refusal=ADMIN_READS_REFUSAL),),
-         read_only=True),
+         read_only=True,
+         # 13 campioni, il piu' grande il 01/10/2026 (misura M3 dello Sprint).
+         ceiling=Ceiling(29_376, "01/10/2026")),
     Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",),
          read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse

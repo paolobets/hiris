@@ -1868,7 +1868,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_33_with_179_fields():
+def test_product_dataclasses_are_34_with_182_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -2003,13 +2003,18 @@ def test_product_dataclasses_are_33_with_179_fields():
     (`hiris/app/home_space/field_vocabulary.py`) coi suoi quattro campi --
     `fact`, `shape`, `owners`, `replaces` -- un campo del vocabolario: il
     fatto, la forma, chi lo porta e i nomi che ha tolto.
+
+    **Trentaquattro e 182 dal 12/10/2026**, Tappa 9, F7: `Ceiling`
+    (`hiris/app/home_space/tools.py`) coi suoi due campi -- `chars`,
+    `measured` -- il tetto in caratteri di una risposta e la data della
+    misura; e l'ottavo campo di `Tool`, `ceiling`.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (33, 179), (classi, campi)
+    assert (classi, campi) == (34, 182), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

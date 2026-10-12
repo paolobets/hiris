@@ -437,7 +437,8 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
 def _select(f: HouseFilters, house: House, behavior, detail,
             now, excluded: dict, zone,
             translations: dict | None,
-            judgments: TypeJudgments) -> tuple[int, str, list[dict], dict | None]:
+            judgments: TypeJudgments,
+            deepest: str = "completa") -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
@@ -457,7 +458,7 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     found = len(matched) + len(behaving) + len(devices) + len(areas)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
-    depth = depth_for(found)
+    depth = depth_for(found, deepest)
     if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
@@ -490,7 +491,8 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                 detail, now: float | None = None,
                 timezone: str | None = None,
                 translations: dict | None = None,
-                judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+                judgments: TypeJudgments = REPO_JUDGMENTS,
+                deepest: str = "completa") -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -518,7 +520,7 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     # non si sa, e si resta in UTC con l'offset scritto.
     found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
                                          home_space_zone(timezone), translations,
-                                         judgments)
+                                         judgments, deepest)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     return envelope(found, depth, [redact_row(v) for v in page],
