@@ -35,9 +35,10 @@ import pytest
 
 from hiris.app.home_space import briefing
 from hiris.app.home_space.house import House
-from hiris.app.home_space.house_query import HouseFilters, _behavior_row
+from hiris.app.home_space.house_query import HouseFilters
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.render import render_behavior
 from hiris.app.home_space.topology import Mirror, visibility
 
 
@@ -157,8 +158,9 @@ def test_senza_specchio_il_nome_e_quello_del_registro():
 
 def test_un_automazione_senza_nome_esce_col_suo_id_da_search_come_dalla_storia():
     """D1: `search` la rendeva con `nome: null` e la storia col suo id."""
-    riga = _behavior_row({"id": "automation.x", "nome": None, "tipo": "automazione"},
-                         {}, Mirror(), medium=False, zone=UTC)
+    riga = render_behavior(House({}, Mirror()),
+                           {"id": "automation.x", "nome": None, "tipo": "automazione"},
+                           "corta", zone=UTC)
     assert riga["nome"] == "automation.x"
     casa = House({}, Mirror(names={"automation.y": "Luci del giardino"}))
     assert casa.name("automazione", "automation.y") == "Luci del giardino"

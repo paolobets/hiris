@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..action.registry import field_applies
+from ..proxy._sanitize import sanitize_structure
 from ..proxy.entity_cache import (
     ASSUMABLE,
     CAPABILITIES,
@@ -269,6 +270,63 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
     commands = commands_for(entity_id, registry, attributes, judgments=judgments)
     if commands:
         row["comandi"] = commands
+    return row
+
+
+# --------------------------------------------------------------------------
+# IL COMPORTAMENTO
+# --------------------------------------------------------------------------
+
+#: Cio' che lo specchio dice di un'automazione o di uno script alla media,
+#: con la sua parola: `mode` e `current` sono gli attributi di Home Assistant.
+_BEHAVIOR_MEDIUM = (("mode", "modalita"), ("current", "in_esecuzione"))
+
+
+def render_behavior(house: House, item: dict, depth: str, *, zone=None) -> dict:
+    """UN'AUTOMAZIONE O UNO SCRIPT, a una profondita': la sola funzione che
+    li compone (Tappa 9, F4; C-42 e «trovato 1» della Tappa 4).
+
+    Fino al 12/10/2026 la scheda di `view` (`queries._view_behavior`) e le
+    voci di `search` (`house_query._behavior_row`) li componevano ciascuna
+    per conto suo: la scheda senza `stato`, `attiva` ne' `ultima_esecuzione`,
+    e con `nome: null` dove le voci scrivevano il nome vivo.
+
+    `item` e' la voce di `HomeSpace.behavior()`: il corpo letto alla
+    rilettura, `nome` e `attiva` chiesti allo specchio adesso.
+
+    - `corta` -- `id`, `nome` (vivo, con l'id come ripiego: D1), `genere`,
+      `stato`, `attiva` (solo le automazioni: il fatto di C-57/D4),
+      `ultima_esecuzione`;
+    - `media` -- piu' `modalita` e `in_esecuzione`;
+    - `completa` -- piu' `corpo`, filtrato al confine (reperto B-1): `None`
+      quando HIRIS non l'ha, e il perche' lo dice `unread_bodies`.
+
+    Le assenze come in `render_entity`: `stato` manca se lo specchio non si
+    e' potuto leggere; `ultima_esecuzione` manca se lo specchio non porta
+    `last_triggered`, ed e' `null` se Home Assistant dice «mai» (D3, sorgente
+    tag 2026.9.4, `components/automation/__init__.py:515-526`)."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    mirror = house.mirror
+    ident = item["id"]
+    row: dict = {"id": ident, "nome": live_name(ident, item.get("nome"), mirror),
+                 "genere": item.get("tipo")}
+    if mirror.readable:
+        row["stato"] = mirror.state.get(ident)
+    if "attiva" in item:
+        row["attiva"] = item["attiva"]
+    values = (mirror.attributes.get(ident) or {}).get("values") or {}
+    if "last_triggered" in values:
+        row["ultima_esecuzione"] = instant_out(values["last_triggered"], zone)
+    if depth == "corta":
+        return row
+    for key, label in _BEHAVIOR_MEDIUM:
+        if key in values:
+            row[label] = values[key]
+    if depth == "media":
+        return row
+    row["corpo"] = (None if item.get("corpo") is None
+                    else sanitize_structure(item.get("corpo")))
     return row
 
 

@@ -329,8 +329,11 @@ def test_il_CORPO_di_un_automazione_non_arriva_piu_grezzo_al_modello():
 
     Mutazione ESEGUITA: rimesso `entry.get("corpo")` nudo -- rossa."""
     from hiris.app.home_space import queries
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.topology import Mirror
 
     visto = queries._view_behavior(
+        House({}, Mirror()),
         [{"id": "automation.x", "tipo": "automazione", "nome": "X",
           "corpo": {"alias": INIEZIONE}}],
         [], "automazione", "automation.x", {})
@@ -369,8 +372,11 @@ def test_un_corpo_ASSENTE_resta_assente():
 
     Mutazione ESEGUITA: `sanitize_structure(None)` che torna `""` -- rossa."""
     from hiris.app.home_space import queries
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.topology import Mirror
 
     visto = queries._view_behavior(
+        House({}, Mirror()),
         [{"id": "automation.x", "tipo": "automazione", "nome": "X", "corpo": None}],
         [], "automazione", "automation.x", {})
 
