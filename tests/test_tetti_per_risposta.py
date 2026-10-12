@@ -99,6 +99,30 @@ async def test_se_non_basta_la_profondita_si_tolgono_voci_e_oltre_lo_dice(tmp_pa
     assert "tetto" in risposta["oltre"]["suggerimento"]
 
 
+@pytest.mark.asyncio
+async def test_scesa_alla_corta_il_taglio_resta_alla_corta(tmp_path, monkeypatch):
+    """D5 della Tappa 5: prima la profondita', poi le righe. Dieci lettori
+    partono alla media; col tetto sotto la loro risposta corta, `dispatch`
+    scende alla corta e solo dopo taglia, e la pagina tagliata resta alla
+    corta: il `deepest` raggiunto passa al gestore richiamato con `limite`.
+
+    Mutazione ESEGUITA (N126-2, giro 126): la discesa che non porta avanti
+    `deepest` (`occurrence = shallower` senza aggiornare `options`) -- rossa,
+    la risposta tagliata esce alla media."""
+    d = _dispatcher(tmp_path, 10)
+    media = await d._search({"dominio": "media_player"}, masked=False)
+    corta = await d._search({"dominio": "media_player"}, masked=False, deepest="corta")
+    assert media["profondita"] == "media" and corta["profondita"] == "corta"
+    tetto = pesa_in_caratteri(corta) // 2
+    riga = tools._TOOL_PER_NAME["search"]
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "search",
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
+    risposta = await d.dispatch("search", {"dominio": "media_player"})
+    assert risposta["profondita"] == "corta", risposta["profondita"]
+    assert "oltre" in risposta and 0 < len(risposta["voci"]) < 10
+    assert pesa_in_caratteri(risposta) <= tetto
+
+
 def test_ogni_tetto_ha_la_sua_data_e_il_suo_strumento_sa_scendere():
     """D3: il tetto e' una misura, e porta la data. Uno strumento col tetto
     riceve `deepest`, cioe' sa rispondere a una profondita' piu' corta: senza,
