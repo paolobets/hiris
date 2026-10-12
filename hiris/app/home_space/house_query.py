@@ -19,11 +19,11 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from .behavior import BEHAVIOR_DOMAINS
-from .historian import home_space_zone, instant_epoch, instant_out
+from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .render import depth_for, render_entity
+from .render import depth_for, render_behavior, render_entity
 from .topology import (
     _ID_WITHOUT_AREA,
     Mirror,
@@ -276,27 +276,6 @@ def _behavior_matches(f: HouseFilters, behavior, mirror: Mirror, now,
     return out
 
 
-def _behavior_row(item, values, mirror: Mirror, medium: bool, zone) -> dict:
-    # Il nome di tutte le cose con un `entity_id` (D1): un'automazione senza
-    # nome esce col suo id, come dalla storia, non con `nome: null`.
-    row = {"id": item["id"], "nome": live_name(item["id"], item.get("nome"), mirror),
-           "genere": item.get("tipo"),
-           "stato": mirror.state.get(item["id"])}
-    # D3 (05/10/2026; prima l'UTC grezzo, o la parola «mai»): `last_triggered`
-    # c'e' SEMPRE fra gli attributi di automazioni e script, `None` se non
-    # sono mai partiti -- letto nel sorgente di Home Assistant, tag 2026.9.4,
-    # `components/automation/__init__.py:515-526`, `components/script/
-    # __init__.py:592-604`. Quindi `None` esce `null` («mai»), e la chiave
-    # assente (lo specchio non l'ha letta) resta assente: «non lo so».
-    if "last_triggered" in values:
-        row["ultima_esecuzione"] = instant_out(values["last_triggered"], zone)
-    if medium:
-        for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):
-            if key in values:
-                row[label] = values[key]
-    return row
-
-
 def _area_rows(f: HouseFilters, house: House):
     rows = []
     for floor in house.hierarchy():
@@ -495,8 +474,8 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     rows = ([render_entity(house, entry["id"], rows_at, zone=zone,
                            translations=translations, judgments=judgments)
              for entry, _area, _where in matched]
-            + [_behavior_row(item, values, house.mirror, medium, zone)
-               for item, values in behaving]
+            + [render_behavior(house, item, rows_at, zone=zone)
+               for item, _values in behaving]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
