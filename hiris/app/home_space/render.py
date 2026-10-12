@@ -31,6 +31,7 @@ from .topology import (
     categories_with_name,
     clean_text,
     decoded_capabilities,
+    device_name,
     labels_with_id,
     live_name,
     readable_state,
@@ -270,6 +271,68 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
     commands = commands_for(entity_id, registry, attributes, judgments=judgments)
     if commands:
         row["comandi"] = commands
+    return row
+
+
+# --------------------------------------------------------------------------
+# IL DISPOSITIVO
+# --------------------------------------------------------------------------
+
+#: Il genere di un dispositivo (`house_query.KINDS`).
+DEVICE = "dispositivo"
+
+
+def _area_and_floor(house: House, area_id) -> tuple[dict | None, dict | None]:
+    """L'area e il piano di un `area_id`, dall'albero della casa
+    (`House.hierarchy`), come `{id, nome}`. Un'area che l'albero non conosce
+    e' `(None, None)`: un id senza nome sarebbe un frammento."""
+    if not area_id:
+        return None, None
+    for floor in house.hierarchy():
+        for area in floor.get("aree") or []:
+            if area.get("id") == area_id:
+                return ({"id": area_id, "nome": area.get("nome")},
+                        {"id": floor.get("id"), "nome": floor.get("nome")})
+    return None, None
+
+
+def render_device(house: House, device: dict, depth: str) -> dict:
+    """UN DISPOSITIVO, a una profondita': la sola funzione che lo compone
+    (Tappa 9, F4; C-02 e M-50 della Tappa 4).
+
+    Fino al 12/10/2026 la scheda di `view` (`queries._view_device`) e le voci
+    di `search` (`house_query._device_rows`) lo componevano ciascuna per conto
+    suo: la voce con l'area come nome nudo, la scheda senza area e con
+    `disabilitato: false` su ogni dispositivo acceso.
+
+    `device` e' la riga dell'anagrafe (`reader._device`).
+
+    - `corta` -- `id`, `genere`, `nome` (col ripiego sull'id, A-16), `area`
+      come `{id, nome}` quando l'albero la conosce, `fuori` solo quando e'
+      spento (`{classe: "disabilitata", causa}`, la causa di Home Assistant:
+      `DeviceEntryDisabler`, D4);
+    - `media` -- piu' `produttore`, `modello` ed `etichette`, quando ci sono;
+    - `completa` -- piu' il `piano`. Le entita' del dispositivo le aggiunge
+      la scheda (`queries._view_device`), che ne decide la profondita'."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    row: dict = {"id": device["id"], "genere": DEVICE, "nome": device_name(device)}
+    area, floor = _area_and_floor(house, device.get("area_id"))
+    if area is not None:
+        row["area"] = area
+    if device.get("disabilitato"):
+        row["fuori"] = {"classe": "disabilitata", "causa": device.get("disabilitato_da")}
+    if depth == "corta":
+        return row
+    for key in ("produttore", "modello"):
+        value = (device.get(key) or "").strip()
+        if value:
+            row[key] = value
+    _add_labels(row, device, house.labels())
+    if depth == "media":
+        return row
+    if floor is not None:
+        row["piano"] = floor
     return row
 
 
