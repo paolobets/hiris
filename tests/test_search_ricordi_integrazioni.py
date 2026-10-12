@@ -180,3 +180,38 @@ async def test_senza_archivio_una_ricerca_di_entita_non_parla_dei_ricordi(tmp_pa
     assert not any("ricordi" in m for m in entita.get("non_ho_potuto_guardare", [])), entita
     assert entita.get("nulla_riconosciuto") is True, entita
     assert any("ricordi" in m for m in solo_nome["non_ho_potuto_guardare"]), solo_nome
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_il_solo_riferimento_dichiara_i_ricordi_non_letti(tmp_path):
+    """Giro 134, nota 2: il ramo senza nome. Il solo `riferimento` cerca in
+    tutti i generi, ricordi compresi (`HouseFilters.reaches_memories`), e
+    senza archivio lo deve dire.
+
+    Mutazione ESEGUITA: il ramo `elif` torna a `filters.kind == "ricordo"` --
+    rossa."""
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        store, app["memory_store"] = app["memory_store"], None
+        try:
+            risposta = await create_tool_dispatcher(
+                app, soffitto=consente(None, ruolo="amministratore")).dispatch(
+                "search", {"riferimento": "light.cucina"})
+        finally:
+            app["memory_store"] = store
+    assert any("ricordi" in m for m in risposta.get("non_ho_potuto_guardare", [])), risposta
+
+
+@pytest.mark.asyncio
+async def test_la_ricerca_legge_tutti_i_ricordi_non_gli_ultimi_venti(tmp_path):
+    """Giro 134, nota 3: `MemoryStore.fetch()` ne da' venti per difetto;
+    `_all_memories` li chiede tutti.
+
+    Mutazione ESEGUITA: `_all_memories` con `fetch()` senza limite -- rossa,
+    20 invece di 21."""
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        for i in range(21):
+            app["memory_store"].remember(f"Promemoria numero {i} sulla caldaia")
+        risposta = await create_tool_dispatcher(
+            app, soffitto=consente(None, ruolo="amministratore")).dispatch(
+            "search", {"genere": "ricordo"})
+    assert risposta["trovate"] == 21, risposta["trovate"]

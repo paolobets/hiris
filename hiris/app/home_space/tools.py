@@ -1896,8 +1896,7 @@ class ToolDispatcher:
             # I ricordi ancorati a questa cosa non si sono potuti leggere: si
             # dice, invece di un `ricordi: []` che direbbe «nessuno».
             del detail["ricordi"]
-            detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
-                                           "ancora stato caricato")
+            detail["ricordi_non_letti"] = _MEMORY_NOT_LOADED
         # Il corpo di automazioni e scene solo a chi amministra: la regola e la
         # sua ragione vivono in `privacy.cover_reserved_body`. Il nucleo della
         # chat non porta i corpi -- solo il nome e se il corpo c'e'. Il soffitto lo chiede
