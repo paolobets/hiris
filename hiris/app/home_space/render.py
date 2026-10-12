@@ -25,6 +25,7 @@ from ..proxy.entity_cache import (
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .ha_vocabulary import domain_of, entity_category_measure_rule
 from .historian import instant_out
+from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
     VISIBLE,
@@ -466,6 +467,41 @@ def _integration_of(house: House, entry: dict) -> dict | None:
         return None
     instance = house.instance(entry.get("config_entry_id")) or {}
     return {"id": platform, "nome": instance.get("titolo") or platform}
+
+
+#: Il genere di un'integrazione (`house_query.KINDS`).
+INTEGRATION = "integrazione"
+
+
+def render_integration(house: House, domain: str, depth: str) -> dict:
+    """UN'INTEGRAZIONE, a una profondita': la sola funzione che la compone
+    (Tappa 9, F4; C-02 della Tappa 4).
+
+    Fino al 12/10/2026 la scheda di `view` (`queries._view_integration`) la
+    chiamava `dominio` e non aveva ne' `id` ne' `nome`, mentre la stessa
+    integrazione vista da un'entita' (`_integration_of`) era gia' `{id, nome}`.
+
+    `domain` e' il dominio gia' normalizzato (`reference.normalize`).
+
+    - `corta` -- `id` (il dominio), `genere`, `nome`: il titolo dell'istanza
+      quando ce n'e' una sola, lo stesso che il riferimento di un'entita'
+      porta (`_integration_of`); con piu' istanze l'integrazione intera non e'
+      nessuna di loro e si chiama col dominio, e ogni entita' nomina la
+      propria (C-62);
+    - `media` e `completa` -- piu' le `voci`, le istanze con titolo, stato e
+      motivo. I conteggi delle entita' li aggiunge la scheda
+      (`queries._view_integration`)."""
+    if depth not in DEPTHS:
+        raise ValueError(f"profondita' sconosciuta: {depth!r}")
+    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
+               for i in house.home_space.get("integrazioni") or []
+               if normalize(i.get("dominio") or "") == domain]
+    single = entries[0]["titolo"] if len(entries) == 1 else None
+    row: dict = {"id": domain, "genere": INTEGRATION, "nome": single or domain}
+    if depth == "corta":
+        return row
+    row["voci"] = entries
+    return row
 
 
 def _state_in_words(row: dict, entity_id: str, device_class, attributes: dict,

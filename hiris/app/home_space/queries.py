@@ -60,6 +60,7 @@ from .render import (
     render_behavior,
     render_device,
     render_entity,
+    render_integration,
     render_memory,
     rows_depth,
 )
@@ -624,10 +625,8 @@ def _view_integration(house: House, reference,
     domain = normalize(str(reference or ""))
     matching = [e for e in home_space.get("entita") or []
                 if normalize(e.get("piattaforma") or "") == domain]
-    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
-               for i in home_space.get("integrazioni") or []
-               if normalize(i.get("dominio") or "") == domain]
-    if not matching and not entries:
+    rendered = render_integration(house, domain, "completa")
+    if not matching and not rendered["voci"]:
         return _not_found_detail("integrazione", reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
     # D7: questa porta conta ogni classe tranne le disabilitate (i totali
@@ -638,8 +637,7 @@ def _view_integration(house: House, reference,
     mute = [e for e in own if mirror.state.get(e["id"]) == STATE_UNAVAILABLE]
     unknown = [e for e in own if mirror.state.get(e["id"]) == STATE_UNKNOWN]
     detail = {
-        "esiste": True, "genere": "integrazione", "dominio": domain,
-        "voci": entries,
+        "esiste": True, **rendered,
         "entita_totali": len(own),
         "entita_mute": len(mute),
         # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
