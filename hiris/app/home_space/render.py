@@ -277,6 +277,11 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
 # IL COMPORTAMENTO
 # --------------------------------------------------------------------------
 
+#: La frase sola per il corpo che HIRIS non conosce (D-48, Tappa 9, F4): sulla
+#: riga del nucleo e nel suo avviso. Fino al 12/10/2026 erano tre frasi per lo
+#: stesso fatto, e due avvisi.
+BODY_UNKNOWN = "non conosco il corpo"
+
 #: Cio' che lo specchio dice di un'automazione o di uno script alla media,
 #: con la sua parola: `mode` e `current` sono gli attributi di Home Assistant.
 _BEHAVIOR_MEDIUM = (("mode", "modalita"), ("current", "in_esecuzione"))

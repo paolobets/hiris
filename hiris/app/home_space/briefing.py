@@ -48,6 +48,7 @@ from .ha_vocabulary import (
 )
 from .historian import home_space_zone, instant_epoch
 from .queries import sanitized_memories
+from .render import BODY_UNKNOWN
 from .topology import (
     PROBLEM_SEVERITY,
     VISIBLE,
@@ -885,7 +886,7 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
         if v.get("attiva") is False:
             line += " -- disabilitata"
         if v.get("corpo") is None:
-            line += " -- corpo non disponibile, solo il nome"
+            line += f" -- {BODY_UNKNOWN}, solo il nome"
         lines.append(line)
     return (lines, [1] * len(lines))
 
@@ -1646,19 +1647,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # sfondava il tetto del 94% da solo, e duplicava un'informazione gia'
     # visibile riga per riga in "Cio' che la casa fa gia' da sola"
     # (`_behavior_lines` marca ogni voce senza corpo in linea).
-    missing_bodies = [v for v in behavior if v.get("corpo") is None]
-    if missing_bodies:
-        n = len(missing_bodies)
-        entry = _plural(n, "voce di comportamento", "voci di comportamento")
-        notices.append(f"{n} {entry} senza corpo disponibile (solo il nome).")
-
-    if behavior_problems:
-        n = len(behavior_problems)
-        entry = _plural(n, "problema", "problemi")
-        notices.append(
-            f"{n} {entry} nella lettura del comportamento (id duplicati, voci "
-            "malformate: vedi /api/home-space per il dettaglio).")
-
+    #
     # Il limite vero, dal 10/09/2026: non «un file non letto» ma «di N
     # automazioni non conosco il corpo». Il soggetto e' cambiato con la fonte,
     # e con lui l'eccezione che questa sezione portava: un file genuinamente
@@ -1667,11 +1656,25 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # un'ignoranza che HIRIS non aveva. Un'entita' caricata da Home Assistant
     # di cui non si e' letto il corpo nasconde invece SEMPRE cio' che fa:
     # non c'e' piu' un caso da escludere.
-    if unread_bodies:
-        n = len(unread_bodies)
+    #
+    # UN avviso solo (D-48, Tappa 9, F4): fino al 12/10/2026 erano due, uno
+    # per le voci con il corpo `None` e uno per `unread_bodies`, e sono lo
+    # stesso insieme (`behavior.reread_behavior` mette in `unread` ogni voce
+    # che archivia senza corpo). Si contano insieme, per chi arriva da una
+    # strada sola.
+    without_body = ({v["id"] for v in behavior if v.get("corpo") is None}
+                    | set(unread_bodies or ()))
+    if without_body:
         notices.append(
-            f"di {n} fra automazioni e script non conosco il corpo: so che ci "
-            "sono e come si chiamano, non cosa fanno.")
+            f"di {len(without_body)} fra automazioni e script {BODY_UNKNOWN}: so "
+            "che ci sono e come si chiamano, non cosa fanno.")
+
+    if behavior_problems:
+        n = len(behavior_problems)
+        entry = _plural(n, "problema", "problemi")
+        notices.append(
+            f"{n} {entry} nella lettura del comportamento (id duplicati, voci "
+            "malformate: vedi /api/home-space per il dettaglio).")
 
     kept = _kept_behavior_notice(behavior_kept, reference_frame)
     if kept:

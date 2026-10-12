@@ -2,6 +2,7 @@ import re
 
 from hiris.app.home_space import briefing
 from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.render import BODY_UNKNOWN
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
@@ -451,8 +452,8 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
         for i in range(100)
     ]
     testo, riepilogo = compose(_CASA, comportamento, [], {})
-    avviso = next(a for a in riepilogo["notices"] if "senza corpo" in a)
-    assert avviso == "100 voci di comportamento senza corpo disponibile (solo il nome)."
+    avviso = next(a for a in riepilogo["notices"] if BODY_UNKNOWN in a)
+    assert avviso.startswith("di 100 fra automazioni e script ")
     # I nomi restano visibili riga per riga in "Cio' che la casa fa gia' da
     # sola" (`_behavior_lines` marca ogni voce senza corpo in linea):
     # e' l'AVVISO che non deve piu' duplicarli per esteso, non il nucleo
@@ -478,11 +479,33 @@ def test_un_corpo_non_letto_resta_un_limite_di_cio_che_hiris_sa():
     Mutazione che la uccide: non passare `unread_bodies` a `compose` -- il
     nucleo tacerebbe, e il modello crederebbe di sapere cosa fanno tutte le
     automazioni della casa."""
+    # Solo voci col corpo: l'avviso puo' venire soltanto da `unread_bodies`
+    # (dal 12/10/2026 i due si contano insieme, D-48).
+    leggibili = [v for v in _COMPORTAMENTO if v.get("corpo") is not None]
     _, summary = compose(
-        _CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+        _CASA, leggibili, _RICORDI, _STATO,
         unread_bodies={"script.muto": "configurazione non letta da Home Assistant"})
-    notice = next(a for a in summary["notices"] if "non conosco il corpo" in a)
-    assert "1" in notice
+    notice = next(a for a in summary["notices"] if BODY_UNKNOWN in a)
+    assert notice.startswith("di 1 ")
+
+
+def test_il_corpo_che_manca_si_dice_una_volta_con_una_frase_sola():
+    """D-48 (Tappa 9, F4): il nucleo lo diceva in tre modi -- «corpo non
+    disponibile, solo il nome» sulla riga, «N voci di comportamento senza
+    corpo disponibile» e «di N fra automazioni e script non conosco il
+    corpo» negli avvisi, due avvisi per lo stesso fatto (le voci senza corpo
+    SONO quelle di `unread_bodies`, `behavior.reread_behavior`). Ora la
+    frase e' una, `render.BODY_UNKNOWN`, e l'avviso uno.
+
+    Rossa prima della correzione: due avvisi, e nessuna riga con la frase.
+    Mutazione ESEGUITA: rimesso l'avviso «senza corpo disponibile» -- rossa."""
+    testo, riepilogo = compose(
+        _CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+        unread_bodies={"script.buonanotte": "configurazione non letta da Home Assistant"})
+    avvisi = [a for a in riepilogo["notices"] if "corpo" in a]
+    assert len(avvisi) == 1 and BODY_UNKNOWN in avvisi[0], avvisi
+    riga = next(r for r in testo.splitlines() if "Buonanotte" in r)
+    assert BODY_UNKNOWN in riga
 
 
 def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
