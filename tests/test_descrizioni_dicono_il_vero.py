@@ -17,8 +17,12 @@ rende. Un nome fra backtick e' in regola quando e':
 - un parametro o un valore di `enum` del suo schema (a qualunque profondita');
 - il nome di un ALTRO strumento -- il proprio no: nella propria descrizione
   e' una chiave (X-33 era esattamente questo);
-- una chiave o un valore di testo che lo strumento ha reso; `chiave: valore`
-  quando quella chiave e' uscita con quel valore;
+- un parametro di uno strumento che la descrizione nomina (fra backtick o
+  fra «»): serve a dire come chiamarlo;
+- una chiave o un valore di testo che lo strumento STESSO ha reso;
+  `chiave: valore` quando quella chiave e' uscita con quel valore. Le chiavi
+  di un altro strumento no, nemmeno se la descrizione lo nomina (N131-1):
+  sarebbe la classe di X-33;
 - oppure e' ammesso in `ADMITTED`, con la ragione.
 
 `ADMITTED` e' una lista di AMMISSIONE (CLAUDE.md, I-0): chiude per difetto, e
@@ -139,7 +143,9 @@ _HA_WORDS = {
 ADMITTED: dict[str, dict[str, str]] = {
     "search": {word: _HA_WORDS[word] for word in ("home", "not_home", "sensor")},
     "related": {"!include": _HA_WORDS["!include"]},
-    "execute": {word: _HA_WORDS[word] for word in ("brightness_pct", "label_id")},
+    "execute": {**{word: _HA_WORDS[word] for word in ("brightness_pct", "label_id")},
+                "comandi": "il campo della scheda di `search` che dice cosa un'entita' sa "
+                           "fare; `execute` lo cita per dire dove leggerlo"},
     "propose": {**{word: _HA_WORDS[word]
                    for word in ("trigger:", "action:", "entity_id", "fields")},
                 "dati": "la chiave di una voce di `helper`, che lo schema dichiara "
@@ -156,7 +162,7 @@ def _definition(name: str) -> dict:
 
 def named_tools(name: str) -> set[str]:
     """Gli ALTRI strumenti che la descrizione nomina, fra backtick o fra «»:
-    di loro parla, e i loro nomi valgono anche qui."""
+    i loro parametri valgono anche qui, le loro chiavi no."""
     texts = " ".join(descriptions(_definition(name)))
     return {tool["name"] for tool in KNOWLEDGE_TOOLS
             if tool["name"] != name
@@ -167,15 +173,14 @@ def unaccounted(name: str, rendered: dict[str, Rendered]) -> list[str]:
     """Le parole fra backtick della descrizione di `name` che non sono in
     regola (vedi il docstring del modulo)."""
     others = {tool["name"] for tool in KNOWLEDGE_TOOLS} - {name}
-    speakers = [name, *sorted(named_tools(name))]
     allowed = set().union(*(schema_words(_definition(tool)["input_schema"])
-                            for tool in speakers))
+                            for tool in (name, *named_tools(name))))
     admitted = ADMITTED.get(name, {})
     out = []
     for word in sorted(backticked(_definition(name))):
         if word in allowed or word in others or word in admitted:
             continue
-        if any(rendered[tool].says(word) for tool in speakers):
+        if rendered[name].says(word):
             continue
         out.append(word)
     return out
@@ -424,13 +429,15 @@ async def test_ogni_nome_fra_backtick_e_reso_dallo_strumento(rendered_by_tool):
 
 @pytest.mark.asyncio(loop_scope="module")
 @pytest.mark.parametrize(("name", "word"), [("search", "colore"), ("search", "tipo"),
-                                            ("related", "related")])
+                                            ("related", "related"), ("related", "trovate")])
 async def test_un_nome_che_la_risposta_non_porta_arrossisce_col_suo_nome(
         rendered_by_tool, monkeypatch, name, word):
     """La mutazione del piano, tenuta: `colore` in coda alla descrizione di
     `search` fa arrossire il cancello, col nome. `tipo` e' il nome che il
     vocabolario ha tolto (D7, X-16) e che nessuna risposta porta piu';
-    `related` lo strumento che nomina se' stesso (X-33).
+    `related` lo strumento che nomina se' stesso (X-33); `trovate` in `related`
+    una chiave che rende solo `search`, lo strumento che `related` nomina
+    (N131-1, giro 131: prima passava).
 
     Mutazioni ESEGUITE anche sul sorgente (12/10/2026): `colore` scritto
     nella descrizione di `search` in `tools.py` -- rossa la prova del
