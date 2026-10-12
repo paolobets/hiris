@@ -23,11 +23,10 @@ from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail
 from .reference import name_matches, normalize
-from .render import depth_for, render_behavior, render_entity
+from .render import depth_for, render_behavior, render_device, render_entity
 from .topology import (
     _ID_WITHOUT_AREA,
     Mirror,
-    device_name,
     is_pseudo_area,
     live_first,
     live_name,
@@ -295,13 +294,15 @@ def _area_rows(f: HouseFilters, house: House):
 
 
 def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
-    """I dispositivi del registro, per nome: il vecchio `search` trovava «la
-    lavatrice», la porta nuova non deve perderla (decisione 29/09/2026). I
-    disabilitati fuori e contati, come le entita'.
+    """I dispositivi del registro che passano i filtri, come righe
+    dell'anagrafe: li rende `render.render_device` quando si sa la
+    profondita'. Il vecchio `search` trovava «la lavatrice», la porta nuova
+    non deve perderla (decisione 29/09/2026). I disabilitati fuori e contati,
+    come le entita'.
 
-    `area` e `piano` sono quelli dell'area del dispositivo, dallo stesso
-    albero delle entita' (`House.hierarchy`); `integrazione` e' quella di
-    una delle sue entita' -- il registro dei dispositivi non la porta."""
+    `area` e `piano` dei filtri sono quelli dell'area del dispositivo, dallo
+    stesso albero delle entita' (`House.hierarchy`); `integrazione` e' quella
+    di una delle sue entita' -- il registro dei dispositivi non la porta."""
     home_space = house.home_space
     places = {area.get("id"): (area, floor)
               for floor in house.hierarchy()
@@ -328,8 +329,7 @@ def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
         if device.get("disabilitato"):
             excluded["disabilitate"] += 1
             continue
-        rows.append({"id": device["id"], "nome": device_name(device),
-                     "genere": "dispositivo", "area": _area_name(area)})
+        rows.append(device)
     return rows
 
 
@@ -449,18 +449,21 @@ def _select(f: HouseFilters, house: House, behavior, detail,
         excluded[key] += count
     matched, behaving = chosen.entities, chosen.behavior
     others: list[dict] = []
+    devices: list[dict] = []
     for kind in kinds:
         if kind == "area":
             others.extend(_area_rows(f, house))
         elif kind == "dispositivo":
-            others.extend(_device_rows(f, house, excluded))
-    found = len(matched) + len(behaving) + len(others)
+            devices.extend(_device_rows(f, house, excluded))
+    found = len(matched) + len(behaving) + len(devices) + len(others)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
     depth = depth_for(found)
     if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
+        if devices:
+            return 1, "completa", [detail("dispositivo", devices[0]["id"])], None
         item = behaving[0][0] if behaving else others[0]
         kind = item.get("tipo") if behaving else item["genere"]
         return 1, "completa", [detail(kind, item["id"])], None
@@ -476,6 +479,7 @@ def _select(f: HouseFilters, house: House, behavior, detail,
              for entry, _area, _where in matched]
             + [render_behavior(house, item, rows_at, zone=zone)
                for item, _values in behaving]
+            + [render_device(house, device, rows_at) for device in devices]
             + others)
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)

@@ -58,12 +58,12 @@ from .render import (
     MEMORY_KIND,
     _add_labels,
     render_behavior,
+    render_device,
     render_entity,
     render_memory,
     rows_depth,
 )
 from .topology import (
-    device_name,
     is_pseudo_area,
     visibility,
 )
@@ -387,10 +387,11 @@ def _view_device(house: House, memories: list[dict], reference,
     device_hidden_entities = _entity_rows(house, raw_hidden, depth, zone=zone,
                                           translations=translations,
                                           judgments=judgments)
+    # Il dispositivo dalla resa (`render.render_device`, Tappa 9, F4): fino
+    # al 12/10/2026 si componeva qui, senza area e con `disabilitato: false`
+    # su ogni dispositivo acceso. Marca, modello ed etichette sono della resa.
     detail = {
-        "esiste": True, "genere": "dispositivo", "id": device["id"],
-        "nome": device_name(device),
-        "disabilitato": bool(device.get("disabilitato")),
+        "esiste": True, **render_device(house, device, "completa"),
         "entita": device_entities,
         "ricordi": _tethered_memories(memories, "dispositivo", reference),
     }
@@ -404,14 +405,6 @@ def _view_device(house: House, memories: list[dict], reference,
                             "integrazione, area) per restringere l'insieme, o "
                             "con `riferimento` = l'id di un'entita' per il suo "
                             "dettaglio")
-    # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
-    # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
-    # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
-    for key in ("produttore", "modello"):
-        value = (device.get(key) or "").strip()
-        if value:
-            detail[key] = value
-    _add_labels(detail, device, house.labels())
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_view_area`.

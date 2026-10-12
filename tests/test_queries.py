@@ -299,7 +299,9 @@ def test_guarda_un_dispositivo_dice_se_e_spento_e_quante_entita_sono_morte():
              "dispositivo_id": "d1", "classe": "temperature", "unita": "C",
              "disabilitata": 1}])
     dettaglio = view(House(casa, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "dispositivo", "d1")
-    assert dettaglio["disabilitato"] is True
+    # `fuori` al posto di `disabilitato` (M-50, D4; Tappa 9, F4): la causa
+    # manca nella riga di prova, quindi e' `None`.
+    assert dettaglio["fuori"] == {"classe": "disabilitata", "causa": None}
     assert dettaglio["entita"] == []
     assert dettaglio["entita_disabilitate"] == 1
 
