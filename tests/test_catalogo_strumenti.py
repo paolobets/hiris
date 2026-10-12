@@ -93,10 +93,11 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # rende; `history` dice l'`esecuzione` di una riga invece di `run_id`, e che
 # gli `errori` sono sempre `corta`. Misurato: 29.141.
 #
-# 12/10/2026 (Tappa 9, chiusura, N138-1): l'`integrazione` di `history` dice
-# che per gli errori puo' essere una libreria, che non si cerca come
-# integrazione. Misurato: 29.200.
-CATALOG_CEILING = 29200
+# 12/10/2026 (Tappa 9, chiusura, N138-1 e N139-1): l'`integrazione` di
+# `history` dice che per gli errori puo' essere una libreria; per non salire,
+# la stessa descrizione non dice piu' «sola» della chiamata ne' «di Home
+# Assistant» del riavvio. Misurato: 29.138.
+CATALOG_CEILING = 29138
 
 
 def catalog_chars(definitions) -> int:
