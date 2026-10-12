@@ -2004,10 +2004,10 @@ def test_product_dataclasses_are_34_with_182_fields():
     `fact`, `shape`, `owners`, `replaces` -- un campo del vocabolario: il
     fatto, la forma, chi lo porta e i nomi che ha tolto.
 
-    **Trentaquattro e 182 dal 12/10/2026**, Tappa 9, F7: `Ceiling`
+    **Trentaquattro e 182 dal 12/10/2026**, Tappa 9, F7: `CharCap`
     (`hiris/app/home_space/tools.py`) coi suoi due campi -- `chars`,
     `measured` -- il tetto in caratteri di una risposta e la data della
-    misura; e l'ottavo campo di `Tool`, `ceiling`.
+    misura; e l'ottavo campo di `Tool`, `cap`.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):

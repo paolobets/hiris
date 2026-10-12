@@ -12,7 +12,7 @@ from dataclasses import replace
 import pytest
 
 from hiris.app.home_space import tools
-from hiris.app.home_space.tools import Ceiling, ToolDispatcher
+from hiris.app.home_space.tools import CharCap, ToolDispatcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.usage.giro import pesa_in_caratteri
 from tests.test_knowledge_tools import _semina_casa
@@ -55,9 +55,9 @@ async def test_oltre_il_tetto_search_scende_di_profondita_e_tiene_tutte_le_voci(
     le voci.
 
     Rossa prima: nessun tetto, la risposta usciva alla media. Mutazione
-    ESEGUITA: `_under_ceiling` che torna la risposta com'e' -- rossa, coi
+    ESEGUITA: `_under_cap` che torna la risposta com'e' -- rossa, coi
     caratteri nel messaggio."""
-    tetto = tools._TOOL_PER_NAME["search"].ceiling.chars
+    tetto = tools._TOOL_PER_NAME["search"].cap.chars
     d = _dispatcher(tmp_path, 10)
     piena = await d._search({"dominio": "media_player"}, masked=False)
     assert piena["profondita"] == "media" and pesa_in_caratteri(piena) > tetto, \
@@ -84,7 +84,7 @@ async def test_se_non_basta_la_profondita_si_tolgono_voci_e_oltre_lo_dice(tmp_pa
     tetto = pesa_in_caratteri(corta) // 2
     riga = tools._TOOL_PER_NAME["search"]
     monkeypatch.setitem(tools._TOOL_PER_NAME, "search",
-                        replace(riga, ceiling=Ceiling(tetto, "12/10/2026")))
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
     risposta = await d.dispatch("search", {"dominio": "media_player", "limite": 20,
                                            "salta": 5})
     assert pesa_in_caratteri(risposta) <= tetto
@@ -105,11 +105,11 @@ def test_ogni_tetto_ha_la_sua_data_e_il_suo_strumento_sa_scendere():
     import inspect
     import re
 
-    misurati = [t for t in tools.TOOLS if t.ceiling is not None]
+    misurati = [t for t in tools.TOOLS if t.cap is not None]
     assert misurati, "nessuno strumento ha un tetto: la derivazione si e' svuotata"
     for tool in misurati:
-        assert tool.ceiling.chars > 0 and re.fullmatch(r"\d\d/\d\d/\d{4}",
-                                                       tool.ceiling.measured), tool.name
+        assert tool.cap.chars > 0 and re.fullmatch(r"\d\d/\d\d/\d{4}",
+                                                   tool.cap.measured), tool.name
         assert "deepest" in inspect.signature(tool.handler).parameters, tool.name
 
 
@@ -181,7 +181,7 @@ async def test_traccia_troppo_grande_scende_media(tmp_path):
     Rossa prima: usciva intera, oltre il tetto. Con la mutazione della prova
     qui sopra si ferma alla corta: rossa anche questa."""
     from tests.test_history_tool import _history_dispatcher, _house
-    tetto = tools._TOOL_PER_NAME["history"].ceiling.chars
+    tetto = tools._TOOL_PER_NAME["history"].cap.chars
     traccia = _traccia_grande(passi=40)
     assert pesa_in_caratteri(traccia) > tetto, "la traccia di prova sta gia' sotto il tetto"
     ha = _house(answers={"trace/get": lambda extra: traccia})

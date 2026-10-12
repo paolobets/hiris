@@ -1250,7 +1250,7 @@ class Permission:
     refusal: str | None = None
 
 
-def _rows_under(occurrence: dict, ceiling: Ceiling, *, offset: int) -> dict:
+def _rows_under(occurrence: dict, cap: CharCap, *, offset: int) -> dict:
     """Le `voci` dal fondo finche' la risposta sta sotto il tetto, con `oltre`
     che conta anche quelle che la pagina aveva gia' lasciato fuori. La pagina
     la taglia `page_rows`, la stessa di `search` e di `history`; `salta` e'
@@ -1264,17 +1264,17 @@ def _rows_under(occurrence: dict, ceiling: Ceiling, *, offset: int) -> dict:
         trimmed = {**occurrence, "voci": page,
                    "oltre": {"restano": before + beyond["restano"], "salta": offset + keep,
                              "suggerimento": (
-                                 f"la risposta superava il tetto di {ceiling.chars} "
+                                 f"la risposta superava il tetto di {cap.chars} "
                                  f"caratteri (la piu' grande misurata, il "
-                                 f"{ceiling.measured}): le altre voci si chiedono con "
+                                 f"{cap.measured}): le altre voci si chiedono con "
                                  "`salta`, o restringendo i filtri")}}
-        if pesa_in_caratteri(trimmed) <= ceiling.chars:
+        if pesa_in_caratteri(trimmed) <= cap.chars:
             return trimmed
     return trimmed
 
 
 @dataclass(frozen=True)
-class Ceiling:
+class CharCap:
     """Il tetto in caratteri della risposta di uno strumento (R16; D3 della
     Tappa 9, approvata l'08/10/2026): la risposta piu' grande MISURATA sulla
     casa vera, con la data della misura. Non un ideale: la garanzia che quella
@@ -1308,8 +1308,8 @@ class Tool:
       scrive che legge. Non si deduce da `permissions`: `cancel` scrive
       senza chiedere nessun gesto, e `history` legge
       chiedendone uno;
-    - `ceiling`: il tetto in caratteri della risposta (`Ceiling`), solo dove
-      c'e' una misura. Lo fa valere `ToolDispatcher._under_ceiling`, dopo il
+    - `cap`: il tetto in caratteri della risposta (`CharCap`), solo dove
+      c'e' una misura. Lo fa valere `ToolDispatcher._under_cap`, dopo il
       gestore: prima scende la profondita', poi le righe (D5 della Tappa 5).
       Chi ce l'ha riceve `deepest`, la profondita' piu' piena ammessa.
 
@@ -1322,7 +1322,7 @@ class Tool:
     permissions: tuple[Permission, ...] = ()
     mask: str | None = None
     read_only: bool = False
-    ceiling: Ceiling | None = None
+    cap: CharCap | None = None
 
     @property
     def name(self) -> str:
@@ -1571,8 +1571,8 @@ class ToolDispatcher:
         options = ({"masked": self._ceiling_denies(tool.mask)}
                    if tool.mask is not None else {})
         occurrence = await self._call(tool, arguments, options)
-        if tool.ceiling is not None:
-            occurrence = await self._under_ceiling(tool, arguments, options, occurrence)
+        if tool.cap is not None:
+            occurrence = await self._under_cap(tool, arguments, options, occurrence)
         return occurrence
 
     async def _call(self, tool: Tool, arguments: dict[str, Any], options: dict) -> dict:
@@ -1585,7 +1585,7 @@ class ToolDispatcher:
             occurrence = await occurrence
         return occurrence
 
-    async def _under_ceiling(self, tool: Tool, arguments: dict[str, Any], options: dict,
+    async def _under_cap(self, tool: Tool, arguments: dict[str, Any], options: dict,
                              occurrence: dict) -> dict:
         """La risposta sotto il tetto dello strumento (R16), riducendola come
         ha deciso la D5 della Tappa 5: **prima scende la profondita'**
@@ -1598,19 +1598,19 @@ class ToolDispatcher:
         `deepest`: la risposta la compone lui, non la si accorcia qui. Succede
         solo sopra il tetto. Per `history` e' una seconda lettura a Home
         Assistant, che in mezzo puo' aver scritto un cambio in piu'."""
-        ceiling = tool.ceiling
+        cap = tool.cap
         depth = occurrence.get("profondita")
         if depth in DEPTHS:
             for lower in reversed(DEPTHS[:DEPTHS.index(depth)]):
-                if pesa_in_caratteri(occurrence) <= ceiling.chars:
+                if pesa_in_caratteri(occurrence) <= cap.chars:
                     return occurrence
                 shallower = await self._call(tool, arguments, {**options, "deepest": lower})
                 if "errore" in shallower or shallower.get("profondita") != lower:
                     break
                 occurrence = shallower
-        if pesa_in_caratteri(occurrence) <= ceiling.chars:
+        if pesa_in_caratteri(occurrence) <= cap.chars:
             return occurrence
-        return _rows_under(occurrence, ceiling, offset=int(arguments.get("salta") or 0))
+        return _rows_under(occurrence, cap, offset=int(arguments.get("salta") or 0))
 
     # -- search --------------------------------------------------------
 
@@ -2688,7 +2688,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
          mask="amministrare", read_only=True,
          # 71 campioni, il piu' grande il 02/10/2026 (misura M3 dello Sprint).
-         ceiling=Ceiling(39_134, "02/10/2026")),
+         cap=CharCap(39_134, "02/10/2026")),
     Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
          read_only=True),
     # Un ricordo entra nel nucleo di ogni turno, di ogni persona, e ci resta:
@@ -2723,7 +2723,7 @@ TOOLS: tuple[Tool, ...] = (
                                  refusal=ADMIN_READS_REFUSAL),),
          read_only=True,
          # 13 campioni, il piu' grande il 01/10/2026 (misura M3 dello Sprint).
-         ceiling=Ceiling(29_376, "01/10/2026")),
+         cap=CharCap(29_376, "01/10/2026")),
     Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",),
          read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
