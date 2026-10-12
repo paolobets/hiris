@@ -99,7 +99,7 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
-from .mind.proposer_round import proposer_round
+from .mind.proposer_round import proposer_beat
 from .mind.realignment import disconnection_recorder, reload_and_realign
 from .mind.recipes import (
     Recipe,
@@ -3448,9 +3448,10 @@ async def _on_startup(app: web.Application) -> None:
 
     # Il PROPONENTE (piano degli attori, Task 4.2): lo stesso battito
     # dell'analista, un giro per analisi. Il giro vive in
-    # `mind/proposer_round.py`; qui c'e' solo l'iscrizione.
+    # `mind/proposer_round.py`, spento finche' `ENABLED` e' falso; qui c'e'
+    # solo l'iscrizione.
     scheduler.add_job(
-        proposer_round, args=(app,),
+        proposer_beat, args=(app,),
         trigger="interval", minutes=60,
         id="hiris_mind_proposer", replace_existing=True,
         misfire_grace_time=1800,

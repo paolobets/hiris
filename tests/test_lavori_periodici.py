@@ -118,13 +118,35 @@ async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_ap
 
 async def test_il_proponente_gira_ogni_ora(started_app):
     """Il proponente (attori, Task 4.2): lo stesso battito
-    dell'analista, col giro che vive in `mind/proposer_round.py`."""
-    from hiris.app.mind.proposer_round import proposer_round
+    dell'analista, col giro che vive in `mind/proposer_round.py`, passando
+    dall'interruttore (`proposer_beat`)."""
+    from hiris.app.mind.proposer_round import proposer_beat
 
     job = _job(started_app, "hiris_mind_proposer")
     assert str(job.trigger) == "interval[1:00:00]"
-    assert job.func is proposer_round
+    assert job.func is proposer_beat
     assert job.args == (started_app,)
+
+
+async def test_il_proponente_e_spento_nella_3_78_0(started_app, monkeypatch):
+    """Il proprietario, 12/10/2026: la 3.78.0 esce col proponente «Fermo»; si
+    accende dopo la misura dal vivo dello strato 3. Il battito dello
+    schedulatore non arriva al giro: nessuna domanda al modello, nessun
+    turno in coda.
+
+    Mutazione ESEGUITA: `ENABLED = True` -- rossa (il giro viene chiamato)."""
+    from hiris.app.mind import proposer_round as modulo
+
+    chiamate = []
+
+    async def giro(app):
+        chiamate.append(app)
+        return {"giro": "fatto"}
+
+    monkeypatch.setattr(modulo, "proposer_round", giro)
+    job = _job(started_app, "hiris_mind_proposer")
+    assert await job.func(*job.args) is None
+    assert chiamate == []
 
 
 async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):

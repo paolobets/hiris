@@ -52,6 +52,24 @@ IN_FLIGHT = "proponente_in_volo"
 #: giro guarda solo i suoi.
 ROUND_KEY = "giorno"
 
+#: Il giro e' SPENTO nella 3.78.0 (il proprietario, 12/10/2026: «Fermo»): si
+#: accende dopo la misura dal vivo dello strato 3, come vuole il piano degli
+#: attori («Il proponente ... dopo lo strato 3»). Accenderlo e' un commit che
+#: scrive `True` qui, non un'opzione: un'impostazione che nessuna pagina
+#: mostra sarebbe configurabile solo a parole. Spento vuol dire che lo
+#: schedulatore non chiede niente al modello e non accoda niente; il
+#: «Rifalla» della pagina (`mind/proposal_redo.py`) resta, perche' parte da
+#: una persona.
+ENABLED = False
+
+
+async def proposer_beat(app) -> dict | None:
+    """Cio' che lo schedulatore chiama ogni ora: il giro, se e' acceso
+    (`ENABLED`); altrimenti niente, e non lo dice a ogni battito."""
+    if not ENABLED:
+        return None
+    return await proposer_round(app)
+
 
 async def proposer_round(app) -> dict | None:
     """Il giro: raccoglie la risposta del ponte, poi chiede per le
