@@ -370,20 +370,6 @@ def tree_order(house: House, entity_ids) -> list[str]:
 DEVICE = "dispositivo"
 
 
-def _area_and_floor(house: House, area_id) -> tuple[dict | None, dict | None]:
-    """L'area e il piano di un `area_id`, dall'albero della casa
-    (`House.hierarchy`), come `{id, nome}`. Un'area che l'albero non conosce
-    e' `(None, None)`: un id senza nome sarebbe un frammento."""
-    if not area_id:
-        return None, None
-    for floor in house.hierarchy():
-        for area in floor.get("aree") or []:
-            if area.get("id") == area_id:
-                return ({"id": area_id, "nome": area.get("nome")},
-                        {"id": floor.get("id"), "nome": floor.get("nome")})
-    return None, None
-
-
 def render_device(house: House, device: dict, depth: str) -> dict:
     """UN DISPOSITIVO, a una profondita': la sola funzione che lo compone
     (Tappa 9, F4; C-02 e M-50 della Tappa 4).
@@ -396,8 +382,9 @@ def render_device(house: House, device: dict, depth: str) -> dict:
     `device` e' la riga dell'anagrafe (`reader._device`).
 
     - `corta` -- `id`, `genere`, `nome` (col ripiego sull'id, A-16), `area`
-      come `{id, nome}` quando l'albero la conosce, `fuori` solo quando e'
-      spento (`{classe: "disabilitata", causa}`, la causa di Home Assistant:
+      come `{id, nome}` quando ne ha una (un'area che l'albero non conosce e'
+      la pseudo-area della causa, `House.area_place`: N119-1), `fuori` solo
+      quando e' spento (`{classe: "disabilitata", causa}`, la causa di Home Assistant:
       `DeviceEntryDisabler`, D4);
     - `media` -- piu' `produttore`, `modello` ed `etichette`, quando ci sono;
     - `completa` -- piu' il `piano`. Le entita' del dispositivo le aggiunge
@@ -405,7 +392,7 @@ def render_device(house: House, device: dict, depth: str) -> dict:
     if depth not in DEPTHS:
         raise ValueError(f"profondita' sconosciuta: {depth!r}")
     row: dict = {"id": device["id"], "genere": DEVICE, "nome": device_name(device)}
-    area, floor = _area_and_floor(house, device.get("area_id"))
+    area, floor = house.area_place(device.get("area_id")) or (None, None)
     if area is not None:
         row["area"] = area
     if device.get("disabilitato"):
@@ -457,10 +444,9 @@ def render_area(house: House, area: dict, depth: str) -> dict:
     if depth not in DEPTHS:
         raise ValueError(f"profondita' sconosciuta: {depth!r}")
     row: dict = {"id": area["id"], "genere": AREA, "nome": area.get("nome")}
-    if not is_pseudo_area(area["id"]):
-        _area, floor = _area_and_floor(house, area["id"])
-        if floor is not None:
-            row["piano"] = floor
+    _place, floor = house.area_place(area["id"])
+    if floor is not None:
+        row["piano"] = floor
     if depth == "corta":
         return row
     if area.get("alias"):
