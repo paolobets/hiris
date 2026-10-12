@@ -7,6 +7,8 @@ automazione ciascuna per conto suo: la scheda senza `stato`, `attiva` ne'
 `ultima_esecuzione`, e con `nome: null` dove le voci scrivevano il nome vivo
 con l'id come ripiego.
 """
+from zoneinfo import ZoneInfo
+
 from hiris.app.home_space import house_query as hq
 from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
@@ -14,6 +16,9 @@ from hiris.app.home_space.render import render_behavior
 from hiris.app.home_space.topology import Mirror
 
 T0 = 1_790_700_000.0
+#: Un fuso della casa diverso da UTC (N117-1): l'ora che la scheda e le voci
+#: dicono deve essere la stessa.
+_FUSO = "Europe/Rome"
 _ULTIMA = "2026-09-28T06:30:00+00:00"
 
 _CASA = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
@@ -37,13 +42,15 @@ def _specchio():
 
 
 def _scheda(ident):
-    return view(House(_CASA, _specchio()), _comportamento(), [], "automazione", ident)
+    return view(House(_CASA, _specchio()), _comportamento(), [], "automazione", ident,
+                zone=ZoneInfo(_FUSO))
 
 
 def _voci_medie():
     filtri = hq.parse_filters({"genere": "automazione"})
     return hq.query_house(House(_CASA, _specchio()), _comportamento(), filtri,
-                          detail=lambda kind, ref: _scheda(ref), now=T0)["voci"]
+                          detail=lambda kind, ref: _scheda(ref), now=T0,
+                          timezone=_FUSO)["voci"]
 
 
 def test_la_stessa_automazione_da_view_e_da_search_ha_lo_stesso_nome_e_gli_stessi_campi():
@@ -52,8 +59,13 @@ def test_la_stessa_automazione_da_view_e_da_search_ha_lo_stesso_nome_e_gli_stess
     `attiva`, `ultima_esecuzione`, `modalita`, `in_esecuzione`.
 
     Rossa prima della resa unica (12/10/2026: la scheda con `nome: None`).
-    Mutazione ESEGUITA: `render_behavior` col nome grezzo -- rossa."""
-    for voce in _voci_medie():
+    Mutazione ESEGUITA: `render_behavior` col nome grezzo -- rossa. Con il
+    fuso della casa fuori da UTC (N117-1, giro 117), mutazione ESEGUITA:
+    `view` che non passa il fuso alla scheda -- rossa su
+    `ultima_esecuzione`."""
+    voci = _voci_medie()
+    assert voci and all(v["ultima_esecuzione"].endswith("+02:00") for v in voci), voci
+    for voce in voci:
         scheda = _scheda(voce["id"])
         assert scheda["esiste"] is True
         assert {k: scheda.get(k) for k in voce} == voce, (voce, scheda)
@@ -74,3 +86,15 @@ def test_le_profondita_del_comportamento_si_contengono():
     assert {"id", "nome", "genere", "stato", "attiva", "ultima_esecuzione"} <= corta
     assert {"modalita", "in_esecuzione"} <= media - corta
     assert completa - media == {"corpo"}
+
+
+def test_con_lo_specchio_illeggibile_lo_stato_manca():
+    """N117-2 (giro 117): «`stato` manca se lo specchio non si e' potuto
+    leggere» -- la regola delle assenze di `render_entity`. `None` direbbe
+    «so che non ha stato».
+
+    Mutazione ESEGUITA: `stato` scritto anche con lo specchio illeggibile --
+    rossa."""
+    casa = House(_CASA, Mirror({}, readable=False))
+    for depth in ("corta", "media", "completa"):
+        assert "stato" not in render_behavior(casa, _comportamento()[1], depth), depth
