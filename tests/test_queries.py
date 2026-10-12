@@ -2,6 +2,7 @@ import pytest
 
 from hiris.app.home_space.behavior import BODY_NOT_READ, SECRETS_UNCHECKABLE
 from hiris.app.home_space.house import House
+from hiris.app.home_space.house_query import KINDS
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import Mirror
 from hiris.app.proxy.entity_cache import inherited_attributes
@@ -254,13 +255,6 @@ def test_guarda_un_area_sanifica_il_testo_dei_ricordi_ancorati():
     assert "[FILTERED]" in dettaglio["ricordi"][0]["testo"]
 
 
-def test_guarda_un_tipo_sconosciuto_non_solleva_e_lo_dice():
-    """Un tipo che il modello nomina ma che non conosciamo non e' un'eccezione
-    che gli spezza il turno: e' lo stesso "non esiste"."""
-    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "pianeta", "marte")
-    assert dettaglio["esiste"] is False
-
-
 def test_guarda_un_area_dichiara_se_l_elenco_puo_essere_incompleto():
     """Terza comparsa dello stesso Critical su questo ramo: senza propagare
     `non_disponibili`, `hierarchy()` crede che sia andato tutto bene. Con il
@@ -493,20 +487,6 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 
-def test_guarda_non_sa_aprire_un_piano():
-    """Requisito 2 del brief, il caso negativo che va scritto e non lasciato
-    implicito: `search` ora risolve un piano per nome, ma `view` non ha (e
-    non deve avere) un tipo "piano" -- un piano si ESEGUE
-    (`execute(piani=...)`, promesso da `claude_runner.py`), non si apre in
-    dettaglio come un'area. `view` lo dichiara con la stessa onesta' con
-    cui dichiara ogni altro tipo che non sa aprire (`non_so_guardare`),
-    invece di un `esiste: False` indistinguibile da "questo piano non
-    esiste"."""
-    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "piano", "terra")
-    assert dettaglio["esiste"] is False
-    assert dettaglio["non_so_guardare"] is True
-
-
 def test_guarda_un_area_conta_le_entita_disabilitate_invece_di_elencarle():
     """Le disabilitate di un'area non si tacciono: si CONTANO (30/09/2026,
     review finale della fetta «una porta sola», C2). Elencate una per una
@@ -650,17 +630,6 @@ def test_guarda_un_entita_mostra_il_label_id_accanto_al_nome():
     d = view(House(casa, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "entita",
              _CASA["entita"][0]["id"])
     assert d["etichette"] == ["Notturne (id: notturne)"]
-
-
-def test_guarda_non_sa_aprire_un_etichetta():
-    """Come per i piani (`test_guarda_non_sa_aprire_un_piano`): `search` da
-    T8 risolve un'etichetta per nome, ma un'etichetta non e' una cosa che
-    si apre in dettaglio -- e' un'ancora per `execute`. `view` lo dichiara
-    con la stessa onesta' di ogni altro tipo che non sa aprire, invece di
-    un `esiste: False` indistinguibile da "questa etichetta non esiste"."""
-    dettaglio = view(House(_CASA, _SPECCHIO), _COMPORTAMENTO, _RICORDI, "etichetta", "notturne")
-    assert dettaglio["esiste"] is False
-    assert dettaglio["non_so_guardare"] is True
 
 
 # --- Fetta "nascoste fuori dagli elenchi" (2026-08-25) ---------------------
@@ -947,23 +916,21 @@ def test_a_missing_integration_says_so_without_inventing():
 
     Le prime due assert non bastavano a provare QUESTO ramo (revisione
     indipendente, giro 1): senza il dispatch dentro `view()`, il tipo
-    `integrazione` cade nel fallback finale (`non_so_guardare: True`) e
-    quelle due assert passavano lo stesso -- `esiste` e' `False` li' pure, e
-    quel dict non ha mai portato `entita`. `suggerimento` e
-    `non_so_guardare` sono le uniche due chiavi che distinguono davvero i
-    due rami.
+    `integrazione` cadeva nel ripiego finale e quelle due assert passavano
+    lo stesso. `suggerimento` e' la chiave che distingue davvero il ramo
+    (dal 12/10/2026 il ripiego non c'e' piu': un genere sconosciuto e' un
+    errore, `test_view_apre_ogni_genere_di_search_e_nessun_altro`).
 
     Mutazione 1: aggiungere `"entita": []` al dict di `_not_found_detail` per
     il tipo `integrazione` -- rosso su `assert "entita" not in detail`.
     Mutazione 2: togliere `if kind == "integrazione": ...` dal dispatch --
-    rosso su `assert "suggerimento" in detail` (il fallback non lo porta)."""
+    rosso su `assert "suggerimento" in detail`."""
     house = {"entita": [], "integrazioni": [], "aree": [], "piani": [],
             "dispositivi": [], "etichette": [], "categorie": []}
     detail = view(House(house, Mirror()), [], [], "integrazione", "inesistente")
     assert detail["esiste"] is False
     assert "entita" not in detail
     assert "suggerimento" in detail
-    assert "non_so_guardare" not in detail
 
 
 def test_an_integer_reference_does_not_crash_the_integration_lookup():
@@ -1664,3 +1631,22 @@ def test_ogni_scheda_dice_il_suo_genere():
         scheda = view(house, _COMPORTAMENTO, _RICORDI, genere, riferimento)
         assert "tipo" not in scheda, (genere, riferimento)
         assert scheda["genere"] == genere, scheda
+
+
+def test_view_apre_ogni_genere_di_search_e_nessun_altro():
+    """Ogni genere che `search` accetta (`house_query.KINDS`, chiesto, non
+    ricopiato) ha il suo ramo in `view`; un altro genere e' un errore di
+    programma, non una risposta. Fino al 12/10/2026 rispondeva
+    `non_so_guardare`, un ramo che lo schema di `search` rendeva
+    irraggiungibile (Tappa 9, chiusura).
+
+    Mutazione ESEGUITA: il ramo `integrazione` tolto dal dispatch -- rossa
+    (`ValueError` sul genere `integrazione`)."""
+    house = House({"entita": [], "integrazioni": [], "aree": [], "piani": [],
+                   "dispositivi": [], "etichette": [], "categorie": []}, Mirror())
+    assert len(KINDS) >= 7, KINDS
+    for kind in KINDS:
+        reference = 1 if kind == "ricordo" else "inesistente"
+        assert view(house, [], [], kind, reference)["esiste"] is False, kind
+    with pytest.raises(ValueError, match="scena"):
+        view(house, [], [], "scena", "scene.serata")
