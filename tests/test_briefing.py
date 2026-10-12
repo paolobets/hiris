@@ -116,7 +116,7 @@ def test_il_taglio_non_e_mai_silenzioso():
     """Un nucleo troncato in silenzio e' un HIRIS che crede di sapere."""
     tanti = [dict(_RICORDI[0], id=i, testo=f"ricordo numero {i} " + "x" * 200)
              for i in range(200)]
-    testo, riepilogo = compose(_CASA, _COMPORTAMENTO, tanti, _STATO, ceiling=2000)
+    testo, riepilogo = compose(_CASA, _COMPORTAMENTO, tanti, _STATO, cap=2000)
     assert len(testo) <= 2000 * 1.1
     assert riepilogo["truncated"] is True
     assert riepilogo["excluded_memories"] > 0
@@ -356,7 +356,7 @@ def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
     # sezione (e la sua riserva), il tetto di prima torna a bastare; le due
     # asserzioni qui sotto dicono che taglio e sopravvissuto ci sono entrambi.
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, ricordi_in_ordine_sbagliato, _STATO,
-                               ceiling=1100)
+                               cap=1100)
     assert riepilogo["excluded_memories"] >= 1
     assert "RICORDO-VECCHISSIMO" not in testo
     assert "RICORDO-FRESCHISSIMO" in testo
@@ -523,7 +523,7 @@ def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
          "corpo": None, "origine": "solo_stato"}
         for i in range(100)
     ]
-    testo, riepilogo = compose(_CASA, comportamento, [], {}, ceiling=6000)
+    testo, riepilogo = compose(_CASA, comportamento, [], {}, cap=6000)
     assert len(testo) <= 6000 * 1.1
     assert riepilogo["truncated"] is True
 
@@ -579,7 +579,7 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
                for i in range(39)]
 
     _testo, riepilogo = compose(casa, [], ricordi, {"light.cucina_1": "off"},
-                                ceiling=2500)
+                                cap=2500)
 
     assert riepilogo["truncated"] is True, "il test presuppone che il tetto morda"
     esclusi = _esclusi_dichiarati(riepilogo)
@@ -589,7 +589,7 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
     # pinnano: cio' che non puo' succedere e' che l'avviso dichiari una voce
     # che non e' mai esistita.
     intero, riepilogo_intero = compose(casa, [], ricordi, {"light.cucina_1": "off"},
-                                       ceiling=100_000)
+                                       cap=100_000)
     assert riepilogo_intero["truncated"] is False
     assert "Nessuna automazione o script registrati." in intero
 
@@ -619,7 +619,7 @@ def test_il_taglio_non_dichiara_MAI_piu_elementi_di_quanti_ne_esistano():
     for nome, (casa, stato, comportamento) in case.items():
         for tetto in (900, 1100, 1500, 2000, 2500, 4000):
             _testo, riepilogo = compose(casa, comportamento, ricordi, stato,
-                                        ceiling=tetto)
+                                        cap=tetto)
             esclusi = _esclusi_dichiarati(riepilogo)
             assert esclusi["comportamento"] <= len(comportamento), (
                 f"casa «{nome}», tetto {tetto}: dichiarate "
@@ -671,7 +671,7 @@ def test_taglio_non_lascia_intestazioni_di_piano_orfane():
                     "detto_da": "paolo", "ancore": [], "condizioni": [], "forza": "preferenza"}
                for i in range(50)]
     for tetto_prova in (500, 800, 1200, 2000, 3000, 6000):
-        testo, _ = compose(casa, comportamento, ricordi, stato, ceiling=tetto_prova)
+        testo, _ = compose(casa, comportamento, ricordi, stato, cap=tetto_prova)
         sezione_casa = _sezione_casa(testo)
         righe = [r for r in sezione_casa.splitlines() if r.strip()][1:]  # senza "## La casa"
         for i, riga in enumerate(righe):

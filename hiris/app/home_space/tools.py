@@ -5,7 +5,6 @@
                 e con `riferimento` da' il dettaglio di una cosa sola
     related  -- chi tocca questa cosa, secondo Home Assistant
     remember -- salva cio' che l'utente ha detto, con le ancore alla casa
-    fetch    -- i ricordi che riguardano una parte della casa
     execute  -- chiama un servizio di Home Assistant, verificato prima e
                 riletto dopo: tocca la casa SUBITO
     promise  -- mette da parte un `fai` (verificato subito) o un `chiedi`
@@ -19,6 +18,8 @@
                 creata
     history  -- legge INDIETRO nel tempo: stati, valori, esecuzioni, errori
     calendar -- gli impegni dei calendari di questa casa
+    mind     -- cio' che il cervello di HIRIS guarda e ha capito, in sola
+                lettura
 
 **Chi scrive, e per quale porta.** `execute` scrive sul canale dei SERVIZI,
 per una sola strada: la porta (`action/actuator.py`), che verifica prima e
