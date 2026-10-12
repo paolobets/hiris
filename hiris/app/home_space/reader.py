@@ -231,9 +231,9 @@ def _entity(row: dict) -> dict:
         # `helpers/entity_registry.py`). Fino a quel giorno il lettore riduceva
         # tutto a 1/0, e «spenta dal proprietario» e «spenta dall'integrazione»
         # non si distinguevano piu' in nessun punto. E' la causa che
-        # `topology.visibility` porta accanto alla classe. I due booleani
-        # restano finche' la Tappa 4 non decide la resa: `GET /api/home-space`
-        # li espone, e toglierli e' un cambio di forma.
+        # `topology.visibility` porta accanto alla classe. I due booleani li
+        # legge `topology.visibility_classes`; dalla Tappa 9 (F5) nessuna
+        # risposta li porta, e chi guarda legge `fuori`.
         "disabilitata_da": row.get("disabled_by") or None,
         "nascosta_da": row.get("hidden_by") or None,
         "alias": clean_aliases(row.get("aliases")),

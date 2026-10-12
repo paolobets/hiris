@@ -199,10 +199,12 @@ def cover_reserved_body(entry: dict, *, kind: str) -> dict:
     uno script, una voce di cui il corpo non si conosce -- resta com'e':
     «coperto» e «non letto» sono due fatti diversi.
 
-    **Una regola, tre porte**: la chiamano lo strumento della chat
-    (`tools.py`, il dettaglio di `view`), la rotta `GET /api/home-space`, che
-    fino alla 3.73.0 consegnava i corpi a un servizio firmato «lettore», e --
-    con la sua frase, `BEFORE_ADMIN_ONLY` -- l'anteprima dell'officina.
+    **Una regola, due porte**: la chiamano lo strumento della chat
+    (`tools.py`, il dettaglio di `view`) e -- con la sua frase,
+    `BEFORE_ADMIN_ONLY` -- l'anteprima dell'officina. La rotta `GET
+    /api/home-space`, che fino alla 3.73.0 consegnava i corpi a un servizio
+    firmato «lettore», dalla Tappa 9 (F5, 12/10/2026) non li consegna a
+    nessuno.
     """
     if not body_is_admin_only(kind) or entry.get("corpo") is None:
         return entry

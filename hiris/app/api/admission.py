@@ -158,8 +158,8 @@ ADMISSION: tuple[Route, ...] = (
     # -- Da qui in giu' le rotte che chi non amministra non apre. --
     # Le letture delle pagine di configurazione: per una persona e' il
     # menu chiuso; un servizio firmato le legge, come prima del 07/10/2026.
-    # I corpi che Home Assistant riserva agli amministratori li copre la
-    # rotta stessa (`handlers_home_space`, `privacy.cover_reserved_body`).
+    # I corpi che Home Assistant riserva agli amministratori non escono da
+    # `GET /api/home-space` per nessuno (Tappa 9, F5, 12/10/2026).
     Route("GET", "/api/briefing", "leggere"),
     Route("GET", "/api/home-space", "leggere"),
     Route("GET", "/api/misure", "leggere"),

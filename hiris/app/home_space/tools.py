@@ -1899,9 +1899,8 @@ class ToolDispatcher:
             detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
                                            "ancora stato caricato")
         # Il corpo di automazioni e scene solo a chi amministra: la regola e la
-        # sua ragione vivono in `privacy.cover_reserved_body`, che chiama anche
-        # la rotta `GET /api/home-space`. Il nucleo della chat non porta i
-        # corpi -- solo il nome e se il corpo c'e'. Il soffitto lo chiede
+        # sua ragione vivono in `privacy.cover_reserved_body`. Il nucleo della
+        # chat non porta i corpi -- solo il nome e se il corpo c'e'. Il soffitto lo chiede
         # `dispatch`, una volta, dalla riga (`Tool.mask`).
         if isinstance(detail, dict) and masked:
             detail = cover_reserved_body(detail, kind=kind)
