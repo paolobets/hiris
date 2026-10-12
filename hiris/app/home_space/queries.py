@@ -730,12 +730,11 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     esclusive su questi tre rami: mai `suggerimento` insieme a
     `non_disponibile`.
 
-    E `esiste: False` ha due cause diverse, che da questa fetta si vedono:
-    il riferimento non c'e' (le funzioni `_view_*` qui sopra), oppure il TIPO
-    non e' fra quelli che HIRIS sa aprire -- e allora esce anche
-    `non_so_guardare: True`, perche' una scena o un gruppo che `related()`
-    ha appena mostrato esistono eccome, e dirne «non esiste» sarebbe una
-    risposta sbagliata detta con sicurezza.
+    `kind` e' uno dei generi di `search` (`house_query.KINDS`), e ognuno ha
+    il suo ramo: lo schema dello strumento rifiuta gli altri prima di
+    arrivare qui. Fino al 12/10/2026 un genere sconosciuto rispondeva
+    `non_so_guardare: True`, un ramo che nessuna domanda raggiungeva piu'
+    (Tappa 9, chiusura): ora e' un errore di programma, e lo si dice.
 
     `house.unavailable` (registri dell'anagrafe caduti: "aree", "dispositivi",
     "entita") e `unread_bodies` (i corpi non letti, stessa
@@ -849,23 +848,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     if kind == "integrazione":
         return _view_integration(house, reference, translations, zone,
                                  judgments=judgments)
-    # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
-    # stesso caso di "non l'ho trovato", solo con una causa diversa (il
-    # modello ha nominato un tipo che non esiste, non un riferimento che
-    # manca) -- e va dichiarato con la stessa onesta', non con un'eccezione
-    # che gli spezza il turno.
-    #
-    # `non_so_guardare`: la causa e' un LIMITE DI HIRIS, non un fatto sulla
-    # casa, e da quando esistono i legami quella differenza costa. `legami`
-    # restituisce identificatori veri di cose vere -- una scena, un gruppo,
-    # una persona -- che `view` non sa aprire: senza questa chiave il
-    # modello chiedeva `view("scena", ...)`, leggeva `esiste: false` e
-    # riferiva all'utente «quella scena non esiste», che e' una risposta
-    # sbagliata detta con sicurezza su una cosa che Home Assistant gli aveva
-    # appena mostrato. Stessa disciplina di `non_disponibile`: «non l'ho
-    # trovato» e «non ho potuto guardare» sono due fatti diversi.
-    return {"esiste": False, "genere": kind, "riferimento": reference,
-            "non_so_guardare": True}
+    raise ValueError(f"il dettaglio non sa aprire il genere {kind!r}")
 
 
 def related(answer: dict, kind: str, reference) -> dict:
