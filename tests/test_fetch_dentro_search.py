@@ -25,9 +25,13 @@ sintetica lo stesso giorno: `search(riferimento="dev_d")` risponde
 `trovate: 0, escluse.disabilitate: 1`, mentre `search(genere="dispositivo",
 riferimento="dev_d")` apre la scheda del dispositivo disabilitato e porta i
 suoi ricordi; per `sensor.sensore_d_spento` nemmeno `genere="entita"` apre la
-scheda (`trovate: 0`). Che il buco sia SOLO quello lo dice
-`test_cio_che_manca_sono_i_disabilitati`, che non e' un `xfail`: se il buco
-cambia forma, e' rossa lei.
+scheda (`trovate: 0`).
+
+**Il 12/10/2026 (Tappa 9, F6) il buco si chiude per scelta del proprietario**
+(«Sì, per id esatto»): `search` con `riferimento` uguale all'id di un
+disabilitato, e nessun altro filtro, ne apre la scheda. La regola D7 resta per
+gli insiemi. La prova di equivalenza e' verde, e
+`test_cio_che_manca_sono_i_disabilitati` (il buco misurato) e' uscita con lui.
 
 **Era cieca dal 07/10/2026 all'08/10/2026** (trovato dalla fetta F3 della
 Tappa 9): da `ce10f64` (gli attori dichiarano il loro soffitto)
@@ -49,7 +53,6 @@ import pytest
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
-from hiris.app.home_space.house import House
 from hiris.app.home_space.tools import TOOLS
 from tests._casa_sintetica import synthetic_inputs
 
@@ -94,27 +97,9 @@ async def _missing(app) -> dict[str, list[int]]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=_GAP)
 async def test_i_ricordi_di_fetch_escono_anche_da_search(tmp_path):
+    """Verde dal 12/10/2026 (Tappa 9, F6): `search` apre la scheda di un
+    disabilitato nominato per id esatto (`house_query._disabled_by_reference`,
+    scelta del proprietario)."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
         assert await _missing(app) == {}
-
-
-@pytest.mark.asyncio
-async def test_cio_che_manca_sono_i_disabilitati(tmp_path):
-    """Il buco di oggi, misurato e non atteso: i ricordi che `search` non porta
-    sono SOLO quelli di entita' e dispositivi disabilitati -- chiesti
-    all'anagrafe (`House.visibility`, la colonna `disabilitato`), non elencati.
-    Un ricordo di un oggetto visibile che sparisse da `search` sarebbe rosso
-    qui, e non nascosto dallo `xfail` qui sopra.
-
-    Mutazione ESEGUITA: la scheda di un comportamento che torna a cercare il
-    suo genere (M-32) -- rossa, con `automation.automazione_uno` fra le
-    mancanti."""
-    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        house = House.read(app["home_space_store"], app["entity_cache"])
-        disabled = ({e for e in house.entity_ids()
-                     if (house.visibility(e) or ("",))[0] == "disabilitata"}
-                    | {d["id"] for d in house.home_space["dispositivi"] if d["disabilitato"]})
-        assert disabled, "la casa sintetica non ha piu' disabilitati: la prova non guarda"
-        assert set(await _missing(app)) == disabled
