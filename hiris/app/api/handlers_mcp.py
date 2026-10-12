@@ -129,7 +129,7 @@ METHODS = ("initialize", "tools/list", "tools/call")
 #
 # **Perche' qui e non sulla riga di comando.** Il piano lo chiede come
 # mitigazione minima (progetto, §5.2): il modello puo' incatenare `search` ->
-# `related` -> `fetch` -> ancora, e il tetto giornaliero del ponte conta un
+# `related` -> `search` -> ancora, e il tetto giornaliero del ponte conta un
 # turno mentre ne consuma N. Quando questo tetto e' nato la CLI (`claude
 # 2.1.226`) NON aveva un `--max-turns` ne' alcun flag che limitasse i giri di
 # strumento (verificato allora su `claude --help`, decisione A.7 del
@@ -168,7 +168,7 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # nella stessa risposta costano una sola iterazione (vedi il for su
 # `response.content` in `claude_runner.chat()`). `MAX_TOOL_ROUNDS` (qui)
 # conta un giro per OGNI singola `tools/call` che arriva su questa rotta,
-# comprese quelle parallele della stessa risposta della CLI: 8 `fetch`
+# comprese quelle parallele della stessa risposta della CLI: 8 `search`
 # richiesti insieme dal modello costano comunque 8 giri qui, non 1. Stesso
 # tetto, contatori diversi -- e' per questo che `agent/prompts.py::
 # _GUIDE_WITH_TOOLS` insegna al ponte una parsimonia che

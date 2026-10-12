@@ -57,10 +57,10 @@ can enter the model's context calls one of the two functions below:
   for (I-1: a `remember()` call from an injected turn would otherwise plant a
   permanent backdoor). ONE shared function, called from `home_space/briefing.py::
   _memory_lines` (the always-on channel), `home_space/queries.py::view` (by id
-  or anchored to an area/entity/device), AND `home_space/tools.py::_recall`
-  (`MemoryStore.per_tether`, a THIRD read path -- it does not go through
-  `view`, so without it the same memory would come out filtered from
-  one door and raw from another). A single shared function, not three copies
+  or anchored to an area/entity/device), and until 12/10/2026 the `fetch`
+  tool (`MemoryStore.per_tether`, a THIRD read path that did not go through
+  `view`, so without it the same memory came out filtered from one door and
+  raw from another). A single shared function, not three copies
   of the same line, is what makes a fourth door impossible to forget: import
   it, do not re-derive it. Sanitized where the text becomes part of what the
   model reads, NOT in `memory/store.py` itself -- that archive's own

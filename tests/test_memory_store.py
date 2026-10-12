@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from hiris.app.home_space.queries import _tethered_memories
 from hiris.app.memory.store import MemoryStore
 
 _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa"
@@ -131,12 +132,15 @@ def test_un_ricordo_interpretato_conserva_tutto(memory):
 
 def test_si_trovano_i_ricordi_di_una_parte_della_casa(memory):
     """«Quali preferenze riguardano la sala da pranzo?» deve avere risposta:
-    e' il punto per cui le ancore esistono."""
+    e' il punto per cui le ancore esistono. Si chiede al filtro per ancora
+    della scheda (`queries._tethered_memories`): dal 12/10/2026 (Tappa 9, F6,
+    D-21) e' l'unico -- `MemoryStore.per_tether` e' uscito con `fetch`."""
     memory.remember(_PHRASE, detto_da="paolo",
                     ancore=[{"tipo": "area", "riferimento": "sala_pranzo", "nome_visto": "sala"}])
     memory.remember("in cucina niente luci dopo le 23", detto_da="paolo",
                     ancore=[{"tipo": "area", "riferimento": "cucina", "nome_visto": "cucina"}])
-    assert [r["testo"] for r in memory.per_tether("area", "sala_pranzo")] == [_PHRASE]
+    assert [r["testo"] for r in _tethered_memories(memory.fetch(), "area", "sala_pranzo")] \
+        == [_PHRASE]
 
 
 def test_correggere_l_interpretazione_non_tocca_il_testo(memory):
@@ -167,7 +171,8 @@ def test_dimenticare_toglie_anche_ancore_e_condizioni(memory):
                             conditions=[{"tipo": "stagione", "valore": "inverno"}])
     memory.dimentica(ident)
     assert memory.fetch() == []
-    assert memory.per_tether("area", "sala_pranzo") == []
+    for tabella in ("ancore", "condizioni"):
+        assert memory._conn.execute(f"SELECT count(*) FROM {tabella}").fetchone()[0] == 0
 
 
 def test_la_memoria_non_evapora(memory):
@@ -231,8 +236,11 @@ def test_per_ancora_distingue_il_tipo(memory):
                     ancore=[{"tipo": "area", "riferimento": "x", "nome_visto": "x"}])
     memory.remember("preferenza sull'entita'", detto_da="paolo",
                     ancore=[{"tipo": "entita", "riferimento": "x", "nome_visto": "x"}])
-    assert [r["testo"] for r in memory.per_tether("area", "x")] == ["preferenza sull'area"]
-    assert [r["testo"] for r in memory.per_tether("entita", "x")] == ["preferenza sull'entita'"]
+    tutti = memory.fetch()
+    assert [r["testo"] for r in _tethered_memories(tutti, "area", "x")] == \
+        ["preferenza sull'area"]
+    assert [r["testo"] for r in _tethered_memories(tutti, "entita", "x")] == \
+        ["preferenza sull'entita'"]
 
 
 def test_un_salvataggio_a_meta_non_lascia_un_ricordo_monco(memory):

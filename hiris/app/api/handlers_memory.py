@@ -95,7 +95,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         total = store.count()
     return web.json_response({
         "available": True,
-        # La resa del ricordo, la stessa di `search` e di `fetch`
+        # La resa del ricordo, la stessa di `search`
         # (`render_memory`, Tappa 9 F3): fino all'08/10/2026 la pagina
         # componeva la sua, ed era l'unica a dare `corretto_da_utente` come
         # booleano.

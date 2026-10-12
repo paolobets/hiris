@@ -876,7 +876,9 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # che falliva con AttributeError, cioe' per costruzione).
     guida = prompts._GUIDE_WITHOUT_TOOLS
     assert "`search`" in guida and "`view`" not in guida
-    assert "`remember`" in guida and "`fetch`" in guida
+    # `fetch` e' uscito come `view` (Tappa 9, F6, 12/10/2026): la guida non
+    # lo nomina piu' fra gli esempi.
+    assert "`remember`" in guida and "`fetch`" not in guida
     assert guida in system
 
 

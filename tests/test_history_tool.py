@@ -200,13 +200,14 @@ def _history_dispatcher(tmp_path, ha, *, ruolo=None, cache=None, journal=None, c
 
 # --- il catalogo e il cablaggio ---------------------------------------------
 
-def test_il_catalogo_ha_tredici_strumenti_e_la_storia_e_uno():
+def test_il_catalogo_ha_dodici_strumenti_e_la_storia_e_uno():
     """Spec §4: escono quattro, entra `history`; da 15 a 12. Da 12 a 13 il
-    06/10/2026: entra `mind` (Tappa 5, Task 8).
+    06/10/2026: entra `mind` (Tappa 5, Task 8). Da 13 a 12 il 12/10/2026:
+    esce `fetch` (Tappa 9, F6).
 
     Mutazione ESEGUITA: uno strumento `trend` rimesso nel catalogo -- rossa."""
     nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
-    assert len(KNOWLEDGE_TOOLS) == 13 and "history" in nomi
+    assert len(KNOWLEDGE_TOOLS) == 12 and "history" in nomi
     assert not nomi & {"trend", "logbook", "system_log", "automation_trace"}
 
 
@@ -247,7 +248,7 @@ def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
 
 
 _GESTORE_ATTESO = {"search": "_search", "related": "_related", "remember": "_remember",
-                   "fetch": "_recall", "execute": "_execute", "promise": "_promise",
+                   "execute": "_execute", "promise": "_promise",
                    "agenda": "_list_agenda", "cancel": "_cancel", "propose": "_propose",
                    "confirm": "_confirm", "history": "_history", "calendar": "_calendar",
                    "mind": "_read_mind"}

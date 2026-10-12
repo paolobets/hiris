@@ -216,26 +216,6 @@ class MemoryStore:
             (*params, limit)).fetchall()
         return self._compose([dict(r) for r in righe])
 
-    def per_tether(self, type: str, reference: str) -> list[dict]:
-        """I ricordi ancorati a `riferimento` con quel `tipo` (un'area,
-        un'entita', un dispositivo), i piu' recenti prima.
-
-        Il contratto di un'ancora e' la COPPIA tipo+riferimento (stessa
-        forma di `Lookup.verify()` in resolver.py): un `riferimento`
-        da solo non basta, o un'entita' e un'area con lo stesso id
-        letterale (capita raramente, ma capita) si mescolerebbero.
-
-        E' il punto per cui le ancore esistono: senza un modo per chiedere
-        "quali preferenze riguardano la sala da pranzo?", un'ancora sarebbe
-        solo un campo scritto e mai riletto.
-        """
-        righe = self._conn.execute(
-            "SELECT DISTINCT r.* FROM ricordi r "
-            "JOIN ancore a ON a.ricordo_id = r.id "
-            "WHERE a.tipo = ? AND a.riferimento = ? ORDER BY r.id DESC",
-            (type, reference)).fetchall()
-        return self._compose([dict(r) for r in righe])
-
     def get(self, id: int) -> dict | None:
         """Un ricordo per id, con ancore e condizioni gia' risolte, o
         `None` se non esiste.

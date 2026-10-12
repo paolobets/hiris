@@ -1100,7 +1100,8 @@ def render_memory(memory: dict, house: House, *, zone) -> dict:
     """La resa di UN ricordo: la stessa forma da ogni porta da cui un ricordo
     esce -- il dettaglio di `search` (`queries._view_memory`), i `ricordi`
     ancorati nelle schede di area, entita', dispositivo e comportamento,
-    `fetch` (`tools._recall`) e la pagina Memoria (`GET /api/memories`).
+    e la pagina Memoria (`GET /api/memories`); fino al 12/10/2026 anche
+    `fetch`.
     Fondamenta 3: fino all'08/10/2026 ogni porta lo componeva da se', e
     `corretto_da_utente` usciva dalla pagina (booleano), da `fetch` e dalle
     schede (l'intero della colonna), e dal dettaglio no (C-41).

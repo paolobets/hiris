@@ -148,8 +148,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            refuse_high: bool = False) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
-    Gli strumenti della chat (`home_space/tools.py`): quattro conoscono la casa (`search`,
-    `related`, `remember`, `fetch`), il quinto, `execute`, la comanda
+    Gli strumenti della chat (`home_space/tools.py`): tre conoscono la casa (`search`,
+    `related`, `remember`), il quarto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
     (`promise`, `agenda`, `cancel`, fetta «lo schedulatore») la impegnano
     per un momento futuro passando per l'archivio delle promesse

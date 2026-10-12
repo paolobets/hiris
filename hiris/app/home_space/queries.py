@@ -85,9 +85,11 @@ _BEHAVIOR_TYPES = frozenset(BEHAVIOR_DOMAINS.values())
 
 def _tethered_memories(memories: list[dict], kind: str, reference) -> list[dict]:
     """I ricordi di `memories` che portano un'ancora (tipo, riferimento)
-    uguale a quella cercata -- stessa chiave di `MemoryStore.per_tether`
-    (memory/store.py), ma su una lista gia' in memoria: `view` e'
-    pura, non interroga l'archivio da sola.
+    uguale a quella cercata, cioe' la COPPIA tipo+riferimento (stessa forma
+    di `Lookup.verify()`): un'entita' e un'area con lo stesso id non si
+    mescolano. Su una lista gia' in memoria: `view` e' pura, non interroga
+    l'archivio da sola. E' il solo filtro per ancora dal 12/10/2026 (Tappa 9,
+    F6, D-21): l'altro, `MemoryStore.per_tether`, e' uscito con `fetch`.
 
     E' il senso delle ancore: «quali preferenze riguardano questa stanza».
     Un tipo fuori dal vocabolario delle ancore (memory/interpretation.py:
@@ -449,7 +451,7 @@ def _view_memory(memories: list[dict], reference) -> dict:
     """Il dettaglio di un ricordo: la sua resa (`render.render_memory`, gia'
     fatta da `view` per tutti i ricordi), con `esiste`.
 
-    La forma e' PIATTA e una sola, la stessa di `fetch`, della pagina Memoria
+    La forma e' PIATTA e una sola, la stessa della pagina Memoria
     e dei `ricordi` che ogni altro ramo di `view` restituisce. Fino al
     05/10/2026 l'interpretazione era annidata sotto `interpretazione` e
     `detto_il` non usciva; fino all'08/10/2026 (Tappa 9, F3) il dettaglio era
@@ -472,8 +474,9 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
 
     C-2/I1 (L1-sicurezza.md, review indipendente del 25/08/2026): la prima
     versione di questa correzione sanificava il testo dentro `view()` ma
-    non dentro `tools.py::_recall` (che legge `MemoryStore.per_tether`
-    direttamente, senza passare da qui) -- lo stesso ricordo usciva filtrato
+    non dentro `tools.py::_recall` (lo strumento `fetch`, uscito il
+    12/10/2026, che leggeva `MemoryStore.per_tether` direttamente,
+    senza passare da qui) -- lo stesso ricordo usciva filtrato
     da una porta e grezzo dall'altra: la fondamenta 3 (consistenza fra porte)
     rotta dentro la correzione che doveva chiuderla. Un punto SOLO, importato
     da entrambe le porte, e' l'unico modo per cui questo non possa ripetersi

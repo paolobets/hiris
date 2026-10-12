@@ -95,7 +95,7 @@ from ..action.construction.advisor import STRUCTURES
 from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
-from ..memory.interpretation import VOCABULARY, validate
+from ..memory.interpretation import validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_value
@@ -128,24 +128,13 @@ from .privacy import (
     cover_reserved_body,
 )
 from .queries import related as _readable_links
-from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import DEPTHS, depth_for, render_entity, render_memory
+from .render import DEPTHS, depth_for, render_entity
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
-
-# I tipi di ancora che la memoria conosce, DERIVATI da
-# `memory/interpretation.VOCABULARY["ancore"]`, che a sua volta li chiede
-# all'anagrafe (`resolver.STORE_KEY_PER_TYPE`): un'ancora vale solo se
-# `Lookup.verify()` la sa verificare, quindi i due elenchi non «coincidono»
-# -- sono lo stesso fatto, e dalla Tappa 3 (Task 9, B-51) si scrive una
-# volta. Ordinati perche' un frozenset non promette un ordine stabile
-# fra due letture, ed e' l'ordine in cui `fetch` cerca quando il modello non
-# specifica un `tipo` -- vedi `_recall`.
-_TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 
 # Il suggerimento per una ricerca per nome che non riconosce niente
 # (`ToolDispatcher._declare_name_gaps`): «nessun nome combacia» non e' «questa
@@ -526,37 +515,6 @@ REMEMBER_TOOL_DEF = {
             },
         },
         "required": ["testo"],
-    },
-}
-
-FETCH_TOOL_DEF = {
-    "name": "fetch",
-    "description": (
-        "I ricordi gia' salvati che riguardano una parte della casa -- un'area, "
-        "un'entita' o un dispositivo -- dato il suo identificatore esatto "
-        "(`riferimento`; usa `search` per trovarlo se hai solo un nome). Serve a "
-        "rispondere a domande come 'cosa mi hai gia' detto sulla cucina?' senza "
-        "dover rileggere ogni ricordo uno per uno. Se `genere` non e' specificato, "
-        "cerca fra tutti e tre i tipi di ancora (area, entita', dispositivo); "
-        "specificalo solo se lo sai gia' con certezza. Se nessun ricordo e' "
-        "ancorato a quel riferimento, `ricordi` e' una lista vuota: non "
-        "significa che la casa non ha ricordi, significa solo che nessuno di "
-        "quelli salvati nomina proprio questa parte -- prova `fetch` senza "
-        "ancore su una parte piu' ampia, o chiedi a chi ti sta parlando."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "riferimento": {
-                "type": "string",
-                "description": "L'identificatore esatto di un'area, entita' o dispositivo.",
-            },
-            "genere": {
-                "type": "string",
-                "description": "area, entita o dispositivo.",
-            },
-        },
-        "required": ["riferimento"],
     },
 }
 
@@ -1944,7 +1902,7 @@ class ToolDispatcher:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
             # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,
             # che arriva al modello come «errore» generico e non gli insegna
-            # niente. Stessa scelta di `_recall` con le ancore.
+            # niente.
             available = ", ".join(_OUR_LINK_TYPES)
             return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
                               f"i legami ({available})."}
@@ -2014,62 +1972,6 @@ class ToolDispatcher:
             minimum=cleaned["minimo"], maximum=cleaned["massimo"], unit=cleaned["unita"],
         )
         return {"salvato": True, "id": memory_id, "problemi": problems, "correzioni": corrections}
-
-    # -- fetch ---------------------------------------------------------
-
-    def _recall(self, arguments: dict[str, Any]) -> dict:
-        reference = arguments.get("riferimento")
-        # Il controllo «"riferimento" e' obbligatorio» viveva QUI fino al
-        # giro di correzioni sul Task 1 di «rifiutare e importare» (§6b):
-        # tolto perche' `dispatch()` lo fa gia' PRIMA di chiamare questo
-        # gestore (`_bad_arguments`, che ora tratta un obbligatorio presente
-        # ma `None` come assente -- non solo un obbligatorio del tutto
-        # mancante), e il messaggio non diceva niente di piu' di quello
-        # centrale. Provato in positivo, non per assenza di rosso:
-        # `test_a_required_argument_present_but_null_is_missing_too`
-        # (`tests/test_knowledge_tools.py`) passa `riferimento: None` a
-        # `fetch` e vede il rifiuto centrale.
-        kind = arguments.get("genere")
-        # Fix E1-②: un `genere` fuori dal vocabolario delle ancore ("stanza",
-        # o "entita'" con l'accento -- plausibilissimo per un modello
-        # italiano che non lo sta copiando da uno schema) finiva silenzioso
-        # in `per_tether(tipo, riferimento)`, che semplicemente non trova
-        # mai nulla per un tipo che nessuna ancora usa: il risultato era
-        # `{"ricordi": []}`, indistinguibile da "nessun ricordo riguarda
-        # questa cosa" -- proprio quando invece il ricordo esiste. `queries.view`
-        # con un tipo ignoto almeno risponde `esiste: False`; qui si
-        # dichiara l'errore invece, cosi' un input non valido resta
-        # distinguibile da "non ti ho detto niente".
-        if kind is not None and kind not in _TETHER_TYPES:
-            available = ", ".join(_TETHER_TYPES)
-            return {"errore": f"«{kind}» non e' un tipo di ancora valido per «fetch» "
-                              f"({available})."}
-        kinds = (kind,) if kind else _TETHER_TYPES
-
-        # Il modello puo' non sapere se «cucina» e' un'area o un dispositivo
-        # (o, in teoria, un'entita'): senza `genere` si cerca su tutti e tre e
-        # si uniscono i risultati, invece di pretendere che lo specifichi
-        # sempre -- una ricerca che fallisce solo perche' il tipo indovinato
-        # era sbagliato sarebbe un "non ho trovato niente" bugiardo.
-        seen: set[int] = set()
-        memories: list[dict] = []
-        for t in kinds:
-            for memory in self._memory.per_tether(t, reference):
-                if memory["id"] in seen:
-                    continue
-                seen.add(memory["id"])
-                memories.append(memory)
-        memories.sort(key=lambda r: r["id"], reverse=True)
-        # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
-        # l'archivio direttamente, non passa da `queries.view` -- senza
-        # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
-        # `fetch`. Stessa funzione condivisa, un punto solo; poi la resa del
-        # ricordo, la stessa delle altre porte (`render_memory`, Tappa 9 F3),
-        # con le ancore risolte sulla casa del turno (G-21).
-        house = self._turn_house()
-        zone = historian.home_space_zone(self._timezone())
-        return {"ricordi": [render_memory(r, house, zone=zone)
-                            for r in _sanitized_memories(memories)]}
 
     # -- execute -------------------------------------------------------
 
@@ -2794,8 +2696,6 @@ TOOLS: tuple[Tool, ...] = (
     # (G83-1, giro 83; Paolo, 07/10/2026).
     Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria"),
          permissions=(Permission("comandare"),)),
-    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",),
-         read_only=True),
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
          permissions=(Permission("comandare"),
                       Permission("amministrare", applies=_reserved_core_service,

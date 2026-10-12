@@ -3,12 +3,13 @@ le porte (G-21, Tappa 8, Task 1, 08/10/2026).
 
 Fino a quel giorno la pagina Memoria riceveva per ogni ancora `nome_attuale`
 ed `esiste` (`handlers_memory._resolve_tether`), e il modello l'ancora grezza
--- da `view` (dettaglio di un ricordo, ricordi ancorati) e da `fetch` -- e non
+-- da `view` (dettaglio di un ricordo, ricordi ancorati) e da `fetch`, uscito il
+12/10/2026 -- e non
 poteva dire «quell'entita' non c'e' piu'». La regola vive in `House.tether`; i
 ricordi non si cancellano.
 
 Mutazione ESEGUITA: `sanitized_memories` che ignora la casa (nessuna
-risoluzione) -- rosse le prove di `view` e di `fetch`; `House.tether` che
+risoluzione) -- rosse le prove di `view` e (allora) di `fetch`; `House.tether` che
 risponde `esiste: False` anche col registro caduto -- rossa la prova del
 registro caduto.
 """
@@ -78,11 +79,13 @@ def test_view_porta_l_ancora_risolta_nel_dettaglio_e_fra_gli_ancorati(anagrafe, 
 
 
 @pytest.mark.asyncio
-async def test_fetch_porta_l_ancora_risolta(anagrafe, memoria):
-    memoria.remember("spegni la luce vecchia", detto_da="paolo", ancore=[_SPARITA])
+async def test_search_porta_l_ancora_risolta(anagrafe, memoria):
+    """La porta del modello, dal dispatcher: fino al 12/10/2026 la guardava
+    `fetch` (Tappa 9, F6), ora il dettaglio del ricordo in `search`."""
+    ident = memoria.remember("spegni la luce vecchia", detto_da="paolo", ancore=[_SPARITA])
     esito = await ToolDispatcher(anagrafe, memoria).dispatch(
-        "fetch", {"riferimento": "light.vecchia"})
-    assert esito["ricordi"][0]["ancore"][0]["esiste"] is False
+        "search", {"genere": "ricordo", "riferimento": str(ident)})
+    assert esito["voci"][0]["ancore"][0]["esiste"] is False
     # Il ricordo resta: sono parole del proprietario.
     assert memoria.count() == 1
 

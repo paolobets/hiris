@@ -199,10 +199,12 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     a 15, esce `view` -- il suo dettaglio e' la voce di `search` quando
     l'insieme ne ha una sola. La storia (30/09/2026): da 15 a 12, i quattro
     lettori del tempo diventano `history`. La Tappa 5, Task 8 (06/10/2026):
-    da 12 a 13, entra `mind`, le letture del cervello (R8)."""
+    da 12 a 13, entra `mind`, le letture del cervello (R8). La Tappa 9, F6
+    (12/10/2026): da 13 a 12, esce `fetch` -- i ricordi ancorati li porta la
+    scheda di `search`."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 12
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
@@ -595,11 +597,12 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     test e' cio' che glielo impedisce -- e fallirebbe **in stallo**, che e'
     l'unico modo onesto di fallire per questa proprieta'.
 
-    Si esercitano **tutti e tre** gli strumenti DI CONOSCENZA attraverso la
-    rotta, `fetch` compreso (Minor noto del Task 1: non l'aveva mai
-    attraversata), e il dettaglio di `search` -- fino al 29/09/2026 era lo
-    strumento `view` -- legge la `entity_cache` vera dell'app, che e'
-    l'argomento con cui il disegno ha scartato un sottoprocesso stdio."""
+    Si esercitano gli strumenti DI CONOSCENZA attraverso la rotta. Il
+    dettaglio di `search` rilegge cio' che `remember` ha appena scritto (fino
+    al 12/10/2026 lo faceva `fetch`, uscito nella Tappa 9, F6), e -- fino al
+    29/09/2026 era lo strumento `view` -- legge la `entity_cache` vera
+    dell'app, che e' l'argomento con cui il disegno ha scartato un
+    sottoprocesso stdio."""
     client, coda, app, intestazioni = ponte_produzione
     casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
     try:
@@ -652,8 +655,8 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
                 visto["remember"] = _chiama(
                     "remember", {"testo": "in cucina si cena alle 20",
                                 "ancore": [{"tipo": "area", "riferimento": "cucina"}]})
-                visto["fetch"] = _chiama("fetch", {"riferimento": "cucina",
-                                                         "genere": "area"})
+                visto["riletto"] = _chiama("search", {"genere": "area",
+                                                       "riferimento": "cucina"})
             return _ProcFelice()
 
         from hiris.app.reasoning.consegna import consegna
@@ -700,9 +703,9 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         finally:
             conn.close()
         assert righe == ["in cucina si cena alle 20"]
-        # `fetch` rilegge cio' che `remember` ha appena scritto, dalla stessa
-        # rotta e nello stesso turno
-        assert [r["testo"] for r in visto["fetch"]["ricordi"]] == [
+        # la scheda di `search` rilegge cio' che `remember` ha appena scritto,
+        # dalla stessa rotta e nello stesso turno
+        assert [r["testo"] for r in visto["riletto"]["voci"][0]["ricordi"]] == [
             "in cucina si cena alle 20"]
     finally:
         memoria.close()
@@ -913,7 +916,7 @@ def test_la_ridondanza_che_ha_permesso_di_togliere_le_due_clausole():
       puo' guardare adesso, e ordina di DIRLO quando servirebbe un valore
       corrente;
     - «cercalo li' dentro invece di rispondere che non puoi richiamarlo» ->
-      la compensazione dell'assenza di `fetch` resta detta due volte nello
+      la compensazione dell'assenza degli strumenti resta detta due volte nello
       stesso blocco del contesto («ricordi e sessioni precedenti compresi»,
       «Usala per rispondere»), e il divieto di negare la memoria e' intatto."""
     system, _u = prompts.build_chat_messages(

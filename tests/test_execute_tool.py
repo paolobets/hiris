@@ -82,10 +82,10 @@ async def test_senza_porta_lo_dichiara_invece_di_rompersi():
 async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
     """La modifica a dispatch() non deve rompere i gestori che non sono coroutine."""
     d = ToolDispatcher(None, None, cache=None, actuator=None)
-    # `fetch` e non piu' `search`: dal 29/09/2026 `search` e' una coroutine
-    # (assorbe il dettaglio, che scalda il registro), e con `{"testo": ...}`
-    # questa prova passava per l'argomento sconosciuto, non per l'archivio.
-    esito = await d.dispatch("fetch", {"riferimento": "salotto"})
+    # `remember` e non `search`: dal 29/09/2026 `search` e' una coroutine
+    # (assorbe il dettaglio, che scalda il registro); fino al 12/10/2026 qui
+    # c'era `fetch`, uscito nella Tappa 9, F6.
+    esito = await d.dispatch("remember", {"testo": "salotto"})
     assert "errore" in esito  # niente archivio: errore dichiarato, non eccezione
     assert "testo" not in esito["errore"]
 
