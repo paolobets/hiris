@@ -874,6 +874,14 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
         # `is False` e non `not`: la chiave manca sugli script e su ogni
         # voce letta prima che il campo esistesse, e «non lo so» non deve
         # diventare «disabilitata».
+        # La parola e' quella di Home Assistant, non una nostra (C-57, D4
+        # della Tappa 4, scelta di Paolo il 12/10/2026): il frontend chiama
+        # «Disabled» l'automazione in stato `off` (`ha-automation-picker.ts`,
+        # `ha-automation-editor.ts`, ramo dev letto l'11/10/2026), e in
+        # italiano l'editor dice «L'automazione è disabilitata»
+        # (`ui.panel.config.automation.editor.disabled`, misurato in casa
+        # l'11/10/2026, frontend 20260930.2). L'entita' spenta nel registro
+        # e' un altro fatto, e sta nel suo campo: `fuori`.
         if v.get("attiva") is False:
             line += " -- disabilitata"
         if v.get("corpo") is None:
