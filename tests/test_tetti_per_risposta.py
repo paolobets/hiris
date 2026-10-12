@@ -111,3 +111,84 @@ def test_ogni_tetto_ha_la_sua_data_e_il_suo_strumento_sa_scendere():
         assert tool.ceiling.chars > 0 and re.fullmatch(r"\d\d/\d\d/\d{4}",
                                                        tool.ceiling.measured), tool.name
         assert "deepest" in inspect.signature(tool.handler).parameters, tool.name
+
+
+#: Le chiavi che Home Assistant mette nella forma breve di una traccia
+#: (`ActionTrace.as_short_dict`, piu' `trigger` per le automazioni:
+#: `components/trace/models.py` e `components/automation/trace.py`, tag
+#: `2026.9.0`, letti il 12/10/2026).
+_BREVE = {"last_step": "action/1", "run_id": "r1", "state": "stopped",
+          "script_execution": "finished",
+          "timestamp": {"start": "2026-10-12T08:00:00+00:00",
+                        "finish": "2026-10-12T08:00:01+00:00"},
+          "domain": "automation", "item_id": "177131", "trigger": "state of sensor.x"}
+
+
+def _traccia_grande(passi: int = 12) -> dict:
+    """Una traccia nella forma di `trace/get` (`as_extended_dict`): ogni passo
+    nella forma di `TraceElement.as_dict` (`helpers/trace.py`, stesso tag),
+    con le variabili cambiate che ripetono uno stato intero -- quello di un
+    lettore con le sue sorgenti."""
+    stato = {"entity_id": "media_player.lettore_0", "state": "on",
+             "attributes": {"source_list": _SORGENTI}}
+    return {**_BREVE,
+            "trace": {f"action/{n}": [{"path": f"action/{n}",
+                                       "timestamp": "2026-10-12T08:00:00+00:00",
+                                       "changed_variables": {"trigger": {"to_state": stato}},
+                                       "result": {"params": {"domain": "light"}}}]
+                      for n in range(passi)},
+            "config": {"id": "177131", "alias": "Prova", "actions": []},
+            "blueprint_inputs": None,
+            "context": {"id": "c1", "parent_id": None, "user_id": None}}
+
+
+def _dettaglio(depth: str, traccia: dict) -> dict:
+    from hiris.app.home_space import house_history as hh
+    from tests.test_house_history import _NESSUNA, _q
+    chosen = hh.Chosen(1, dict(_NESSUNA), depth, [hh.Subject("automation.x", "X")])
+    return hh.run_detail(_q(cosa="esecuzioni", esecuzione="r1"), chosen, traccia)
+
+
+def test_traccia_porta_profondita_dichiarata():
+    """C-37: `run_detail` dichiarava la profondita' della scelta e rendeva la
+    traccia sempre intera -- `profondita: corta` su 90.000 caratteri, e il
+    tetto non aveva niente da chiedere. Le tre profondita' sono le forme di
+    Home Assistant: la completa e' `trace/get` intera; la media toglie ai
+    passi le `changed_variables` (le variabili, non cio' che il passo ha
+    fatto); la corta e' la forma breve che Home Assistant stesso da' di una
+    traccia (`as_short_dict`).
+
+    Rossa prima: la media e la corta erano la completa. Mutazione ESEGUITA:
+    la media che tiene le variabili -- rossa."""
+    traccia = _traccia_grande()
+    completa, media, corta = (_dettaglio(d, traccia)["voci"][0]
+                              for d in ("completa", "media", "corta"))
+    assert completa == traccia
+    assert set(media) == set(completa)
+    for elementi in media["trace"].values():
+        for elemento in elementi:
+            assert "changed_variables" not in elemento
+            assert {"path", "timestamp", "result"} <= set(elemento)
+    assert corta == _BREVE
+    assert pesa_in_caratteri(corta) < pesa_in_caratteri(media) < pesa_in_caratteri(completa)
+
+
+@pytest.mark.asyncio
+async def test_traccia_troppo_grande_scende_media(tmp_path):
+    """La traccia passo per passo sta sotto il tetto di `history` (C-37): oltre,
+    si richiede a una profondita' piu' corta.
+
+    Rossa prima: usciva intera, oltre il tetto. Con la mutazione della prova
+    qui sopra si ferma alla corta: rossa anche questa."""
+    from tests.test_history_tool import _history_dispatcher, _house
+    tetto = tools._TOOL_PER_NAME["history"].ceiling.chars
+    traccia = _traccia_grande(passi=40)
+    assert pesa_in_caratteri(traccia) > tetto, "la traccia di prova sta gia' sotto il tetto"
+    ha = _house(answers={"trace/get": lambda extra: traccia})
+    risposta = await _history_dispatcher(tmp_path, ha).dispatch(
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_vetro",
+                    "esecuzione": "r1"})
+    peso = pesa_in_caratteri(risposta)
+    assert peso <= tetto, f"{peso} caratteri, tetto {tetto}"
+    assert risposta["profondita"] == "media"
+    assert set(risposta["voci"][0]["trace"]) == set(traccia["trace"])
