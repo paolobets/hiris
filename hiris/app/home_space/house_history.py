@@ -1295,7 +1295,12 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
         integration = found[1] if found else None
         # `{id, nome}` come da ogni altra porta (fondamenta 3, vocabolario dei
         # campi): fino al 12/10/2026 qui usciva lo slug nudo (Tappa 9,
-        # chiusura). Il nome e' quello del primo piano (`integration_of`).
+        # chiusura). Il nome e' quello del primo piano (`integration_of`),
+        # dedotto dallo slug: da `search` e `related` la stessa integrazione
+        # porta il titolo della sua istanza (`render._integration_of`), e i
+        # due nomi possono differire. E' B-50, aperta: gli errori non leggono
+        # l'anagrafe. L'id di un logger di libreria (`aioamazondevices`) non e'
+        # un'integrazione che `search` ritrovi.
         if query.who.platform and normalize(integration or "") != normalize(query.who.platform):
             continue
         last = _epoch(entry.get("timestamp"))

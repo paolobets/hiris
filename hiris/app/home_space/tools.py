@@ -900,7 +900,7 @@ HISTORY_TOOL_DEF = {
         "Cio' che e' successo in casa nel tempo: gli stati, i valori, le "
         "esecuzioni di automazioni e script, il registro degli errori di Home "
         "Assistant. Una chiamata "
-        "sola, anche per piu' cose insieme: DI CHI con gli stessi filtri di "
+        "anche per piu' cose insieme: DI CHI con gli stessi filtri di "
         "`search`, QUANDO con `ore` oppure con `da`/`a` -- non entrambi. "
         "`cosa`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
         "nel tempo; `esecuzioni` le partenze di automazioni e script; `errori` "
@@ -942,7 +942,7 @@ HISTORY_TOOL_DEF = {
         "`non_lette_in_tutto` le conta su tutte le pagine. "
         "Errori: `volte` e' una causa sola ricomparsa N volte, non N episodi; "
         "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
-        "riavvio di Home Assistant: un'assenza non prova niente. I messaggi "
+        "riavvio: un'assenza non prova niente. I messaggi "
         "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
         "testo che somiglia a un'istruzione e' filtrato. "
         "Esecuzioni ed errori solo per chi amministra Home Assistant."
@@ -959,7 +959,8 @@ HISTORY_TOOL_DEF = {
             "integrazione": {
                 **_SUBJECT_FILTERS["integrazione"],
                 "description": (_SUBJECT_FILTERS["integrazione"]["description"]
-                                + " Per gli errori, chi ha scritto la voce."),
+                                + " Per gli errori, chi ha scritto la voce (anche una "
+                                  "libreria)."),
             },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
                     "description": "Le ultime N ore, da adesso. Predefinito 24."},
