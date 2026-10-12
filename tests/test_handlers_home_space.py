@@ -19,10 +19,12 @@ from hiris.app.api.handlers_home_space import handle_get_briefing, handle_get_ho
 from hiris.app.api.soffitto import consente
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
+from hiris.app.proxy.entity_cache import EntityCache
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
+from casa_finta import CasaFinta
 
 
 class _CacheFinta:
@@ -407,6 +409,39 @@ async def test_le_etichette_escono_col_nome_sull_entita_non_in_una_mappa(aiohttp
     # Il ramo e' l'area: non si ripete sull'entita'; le ceste dello stato non
     # le disegna nessuno.
     assert "area" not in luce and "attributi" not in luce
+
+
+@pytest.mark.asyncio
+async def test_l_albero_non_porta_gli_attributi_dello_stato(tmp_path):
+    """Gli `attributi` restano fuori dall'albero (`_TREE_DROPS`). Non e' solo
+    il peso: questa porta non passa dal filtro di riservatezza
+    (`privacy.redact_row`, che applica solo `query_house`) e la leggono anche
+    i servizi firmati «lettore» e «utente». Con le ceste, la posizione di una
+    persona uscirebbe di qui (N135-1, giro 135).
+
+    Mutazione ESEGUITA: `_TREE_DROPS = ("area",)` -- rossa (le ceste della
+    persona escono, con `latitude`)."""
+    specchio = EntityCache()
+    await specchio.load(CasaFinta({"states": [
+        {"entity_id": "person.inquilino", "state": "Lavoro",
+         "attributes": {"friendly_name": "Inquilino", "latitude": 45.1,
+                        "longitude": 9.2, "gps_accuracy": 10}}]}))
+    casa = HomeSpace(str(tmp_path))
+    casa.hold_registries({
+        "aree": [{"area_id": "ingresso", "name": "Ingresso"}],
+        "entita": [{"entity_id": "person.inquilino", "area_id": "ingresso"}],
+    }, [])
+    app = web.Application()
+    app["home_space_store"] = casa
+    app["entity_cache"] = specchio
+    risposta = await handle_get_home_space(
+        make_mocked_request("GET", "/api/home-space", app=app))
+    casa.close()
+    corpo = json.loads(risposta.text)
+    persona = corpo["piani"][0]["aree"][0]["entita"][0]
+    assert persona["id"] == "person.inquilino"
+    assert "attributi" not in persona, persona
+    assert "latitude" not in risposta.text and "45.1" not in risposta.text
 
 
 @pytest.mark.asyncio
