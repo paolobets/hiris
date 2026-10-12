@@ -492,7 +492,7 @@ def bridge_turn(series: dict, previous: list[dict] | None = None, *,
 #:   dei resoconti e le analisi (Tappa 5, Task 8).
 #:
 #: Fuori, per scelta (D5): `execute`, `remember`, `promise`, `propose`,
-#: `confirm`, `cancel` -- scrivono o impegnano -- e `fetch`, `calendar`, che
+#: `confirm`, `cancel` -- scrivono o impegnano -- e `calendar`, che
 #: nessuna osservazione dell'audit del 01/10/2026 ha chiesto. `compute` non
 #: e' un lettore della chat: lo serve il guardiano qui sotto.
 READERS = ("search", "related", "history", "mind")

@@ -1,9 +1,10 @@
 """La resa di un ricordo: una funzione sola, la stessa forma da ogni porta
 (Tappa 9, fetta F3, 08/10/2026; C-41, D6).
 
-Un ricordo esce da quattro vie: il dettaglio di `search` (`queries.
-_view_memory`), i `ricordi` ancorati nelle schede, `fetch` e la pagina Memoria
-(`GET /api/memories`). Fino a quel giorno ognuna lo componeva da se':
+Un ricordo esce da tre vie: il dettaglio di `search` (`queries.
+_view_memory`), i `ricordi` ancorati nelle schede e la pagina Memoria
+(`GET /api/memories`); fino al 12/10/2026 (Tappa 9, F6) anche da `fetch`.
+Fino all'08/10/2026 ognuna lo componeva da se':
 `corretto_da_utente` usciva dalla pagina come booleano, da `fetch` e dalle
 schede come l'intero della colonna, e dal dettaglio per niente (C-41).
 
@@ -46,7 +47,6 @@ _APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 #: qui non si scrive da quale porta la sua forma si confronta con le altre.
 _DOORS = {
     "home_space/queries.py": "search (dettaglio e schede)",
-    "home_space/tools.py": "fetch",
     "api/handlers_memory.py": "GET /api/memories",
 }
 
@@ -81,8 +81,8 @@ def test_una_chiave_assente_resta_assente():
 @pytest.mark.asyncio
 async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
     """Un ricordo corretto dal proprietario, ancorato a un'area: dalla pagina,
-    dal dettaglio di `search`, dalla scheda dell'area in `search` e da `fetch`
-    esce lo STESSO dizionario, ed e' quello di `render_memory`."""
+    dal dettaglio di `search` e dalla scheda dell'area in `search` esce lo
+    STESSO dizionario, ed e' quello di `render_memory`."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
         memory = app["memory_store"]
         area = app["home_space_store"].read()["aree"][0]["id"]
@@ -101,8 +101,6 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
         card = (await dispatcher.dispatch("search", {
             "genere": "area", "riferimento": area}))["voci"][0]
         from_card = next(m for m in card["ricordi"] if m["id"] == ident)
-        fetched = await dispatcher.dispatch("fetch", {"riferimento": area})
-        from_fetch = next(m for m in fetched["ricordi"] if m["id"] == ident)
 
         house = House.read(app["home_space_store"], app["entity_cache"])
         zone = home_space_zone(house_timezone(app["home_space_store"]))
@@ -112,9 +110,8 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
         # (11/10/2026: la pagina riceveva l'epoca, il modello l'ISO).
         assert isinstance(expected["detto_il"], str)
         assert expected["ancore"][0]["esiste"] is True
-        assert {"pagina": from_page, "dettaglio": detail, "scheda": from_card,
-                "fetch": from_fetch} == {"pagina": expected, "dettaglio": expected,
-                                         "scheda": expected, "fetch": expected}
+        assert {"pagina": from_page, "dettaglio": detail, "scheda": from_card} == {
+            "pagina": expected, "dettaglio": expected, "scheda": expected}
 
 
 def test_la_scheda_di_un_automazione_porta_i_ricordi_ancorati_a_lei():

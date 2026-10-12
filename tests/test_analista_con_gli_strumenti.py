@@ -49,7 +49,7 @@ async def test_il_guardiano_RIFIUTA_cio_che_non_e_un_lettore():
     Mutazione ESEGUITA (06/10/2026): il guardiano che lascia passare tutto
     al dispatcher della chat -- rossa (`execute` passa)."""
     sotto = _Sotto()
-    for nome in ("execute", "remember", "propose", "fetch"):
+    for nome in ("execute", "remember", "propose", "calendar"):
         esito = await _guardiano(sotto).dispatch(nome, {})
         assert "non e' disponibile mentre analizzo le misure" in esito["errore"]
     assert sotto.passati == []

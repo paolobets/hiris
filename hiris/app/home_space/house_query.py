@@ -391,6 +391,29 @@ def _missing_reference(f: HouseFilters, house: House, detail) -> dict:
                              bool(set(house.unavailable) & _REFERENCE_STORES))
 
 
+def _disabled_by_reference(f: HouseFilters, house: House, excluded: dict) -> str | None:
+    """Il genere dell'oggetto disabilitato che `riferimento` nomina per id
+    esatto, da solo, o `None`.
+
+    Le disabilitate restano fuori da ogni insieme, e contate (D7 della Tappa
+    3). Ma l'id esatto senza altri filtri non chiede un insieme: chiede quella
+    cosa, e la sua scheda dice con `fuori` perche' non e' fra le visibili
+    (Tappa 9, F6; il proprietario, 12/10/2026: «Sì, per id esatto»). E' la
+    regola delle nascoste: HIRIS non le considera, a meno che non gli vengano
+    chieste esplicitamente. Con lei i ricordi di un disabilitato si leggono
+    dalla sua scheda, e `fetch` non serve piu'."""
+    if not _only_the_reference(f) or {k for k, n in excluded.items() if n} != {"disabilitate"}:
+        return None
+    if f.kind in (None, "entita") and (house.visibility(f.reference) or ("",))[0] == \
+            "disabilitata":
+        return "entita"
+    if f.kind in (None, "dispositivo") and any(
+            d.get("id") == f.reference and d.get("disabilitato")
+            for d in house.home_space.get("dispositivi") or []):
+        return "dispositivo"
+    return None
+
+
 @dataclass(frozen=True)
 class Selection:
     """Chi hanno scelto i filtri di «di chi»: le entita' `(voce, area, dove)`,
@@ -437,7 +460,8 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
 def _select(f: HouseFilters, house: House, behavior, detail,
             now, excluded: dict, zone,
             translations: dict | None,
-            judgments: TypeJudgments) -> tuple[int, str, list[dict], dict | None]:
+            judgments: TypeJudgments,
+            deepest: str = "completa") -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
     if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
@@ -457,7 +481,11 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     found = len(matched) + len(behaving) + len(devices) + len(areas)
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
-    depth = depth_for(found)
+    disabled = _disabled_by_reference(f, house, excluded)
+    if found == 0 and disabled is not None:
+        excluded["disabilitate"] -= 1
+        return _one(detail(disabled, f.reference))
+    depth = depth_for(found, deepest)
     if depth == "completa" and f.limit > 0:
         if matched:
             return 1, "completa", [detail("entita", matched[0][0]["id"])], None
@@ -490,7 +518,8 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                 detail, now: float | None = None,
                 timezone: str | None = None,
                 translations: dict | None = None,
-                judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+                judgments: TypeJudgments = REPO_JUDGMENTS,
+                deepest: str = "completa") -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -518,7 +547,7 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     # non si sa, e si resta in UTC con l'offset scritto.
     found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
                                          home_space_zone(timezone), translations,
-                                         judgments)
+                                         judgments, deepest)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     return envelope(found, depth, [redact_row(v) for v in page],

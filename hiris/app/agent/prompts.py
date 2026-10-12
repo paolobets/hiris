@@ -46,7 +46,7 @@ _GUIDE_WITHOUT_TOOLS = (
     "guardare adesso lo stato della casa (entita', aree, dispositivi, meteo, "
     "storico) e non puoi salvare nuovi ricordi ne' andare a cercarne altri "
     "adesso. Se il prompt qui sopra nomina "
-    "degli strumenti (per esempio `search`, `remember`, `fetch`, "
+    "degli strumenti (per esempio `search`, `remember`, "
     "`execute`) o "
     "ti ordina di chiamarli, qui non ci sono: quelle istruzioni non si "
     "applicano. Non inventare stati, valori o entita', e non dire di aver "

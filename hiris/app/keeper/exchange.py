@@ -57,7 +57,10 @@ logger = logging.getLogger(__name__)
 # sera prima di un impegno». Deliberato, non automatico: questo elenco resta
 # di AMMISSIONE, e uno strumento nuovo non ci entra da solo finche' qualcuno
 # non scrive perche'.
-SOLA_LETTURA = ("search", "related", "fetch", "history", "calendar")
+#
+# `fetch` e' uscito il 12/10/2026 (Tappa 9, F6): non c'e' piu' come strumento,
+# e i ricordi ancorati li porta la scheda di `search`.
+SOLA_LETTURA = ("search", "related", "history", "calendar")
 
 #: Il tetto della risposta di un turno di promessa: il valore che il turno
 #: passava scritto nella chiamata, ora con un nome (Tappa 6, Task 7). La

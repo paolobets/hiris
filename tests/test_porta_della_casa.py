@@ -324,8 +324,8 @@ def _size(answer: dict) -> int:
 ])
 async def test_il_dettaglio_vero_di_una_cosa_grande_sta_sotto_la_soglia_del_ponte(
         big_door, arguments):
-    """Mutazione ESEGUITA: `_within_ceiling` che restituisce il dettaglio
-    intatto -- rossa su tutti e tre i casi (l'area a ~94.000 caratteri)."""
+    """Mutazione ESEGUITA: `_nested_rows` (allora `_within_ceiling`) che
+    restituisce il dettaglio intatto -- rossa su tutti e tre i casi (l'area a ~94.000 caratteri)."""
     r = await big_door.dispatch("search", arguments)
     voce, = r["voci"]
     assert voce["esiste"] is True

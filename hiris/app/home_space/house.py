@@ -666,7 +666,7 @@ class House:
         **Tutte le porte da cui un ricordo esce la chiedono qui** (G-21,
         Tappa 8, Task 1, 08/10/2026): la pagina Memoria, `view` (il dettaglio
         di un ricordo e i ricordi ancorati a un'area, un'entita', un
-        dispositivo) e `fetch`. Fino a quel giorno la risolveva solo la
+        dispositivo) e allora `fetch`. Fino a quel giorno la risolveva solo la
         pagina (`handlers_memory._resolve_tether`): il modello riceveva
         l'ancora grezza e non poteva dire «quell'entita' non c'e' piu'». Il
         ricordo non si tocca: sono parole del proprietario, e la memoria non

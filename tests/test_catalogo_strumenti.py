@@ -75,7 +75,14 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # `cosa`, e gli schemi di `ore` e `cosa` non ripetono cio' che la descrizione
 # dice gia' (`ore` non insieme a `da`/`a`; `stati` predefinito). Misurato:
 # 30.438.
-CATALOG_CEILING = 30438
+#
+# 12/10/2026 (Tappa 9, F7, C-38): `calendar` dichiara il taglio con `oltre`, e
+# cosa manca lo dice il `suggerimento` nella risposta: la descrizione non lo
+# spiega piu'. Misurato: 30.301.
+#
+# 12/10/2026 (Tappa 9, F6): esce `fetch`, i ricordi ancorati li porta la
+# scheda di `search`. Misurato: 29.247.
+CATALOG_CEILING = 29247
 
 
 def catalog_chars(definitions) -> int:

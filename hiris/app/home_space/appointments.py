@@ -207,6 +207,15 @@ def readable_calendars(listing: dict) -> list[dict]:
             if isinstance(entry, dict) and entry.get("entity_id")]
 
 
+#: Cio' che manca quando un calendario ha piu' impegni del tetto del client:
+#: i piu' lontani dall'inizio della finestra (`HAClient.calendar_events`
+#: taglia dalla testa ordinata), e con `giorni_indietro` possono essere
+#: proprio i prossimi.
+_BEYOND_CALENDARS = ("mancano gli impegni piu' lontani dall'inizio della finestra -- con "
+                     "`giorni_indietro` possono essere proprio i prossimi: restringi la "
+                     "finestra")
+
+
 def merge_calendars(calendars: list[dict], answers: list[dict], *,
                     timezone: str | None) -> dict:
     """I calendari provati e le loro risposte (`HAClient.calendar_events`,
@@ -232,7 +241,7 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     fetta precedente («le tracce e il log») ha trovato tre volte.
 
     **`calendari_guardati` esce SEMPRE, anche vuoto -- a differenza di
-    `non_letti`/`troncato`, che tacciono quando non hanno niente da
+    `non_letti`/`oltre`, che tacciono quando non hanno niente da
     dire.** Senza di lui, zero calendari e due calendari letti e
     VUOTI sono indistinguibili: entrambi tornerebbero `{"impegni": []}`,
     e il modello direbbe «non hai impegni segnati» quando la verita'
@@ -267,12 +276,15 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     risposta -- perderlo fondendo prima di annotarlo sarebbe
     un'informazione che avevamo in mano e abbiamo buttato via.
 
-    **`troncato` esce SOLO se almeno un calendario lo ha dichiarato**
+    **`oltre` esce SOLO se almeno un calendario lo ha dichiarato**
     (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
     tagliato non deve poter sembrare completo, stessa legge del client
     che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
-    difetto un livello piu' in alto. Non dice quale calendario (vedi la
-    `description` dello strumento).
+    difetto un livello piu' in alto. E' la forma delle altre risposte
+    (Tappa 9, F7, C-38; fino al 12/10/2026 `troncato: true`): `restano`
+    somma quelli di ogni calendario, e `suggerimento` dice quali mancano,
+    perche' il modello lo legga nella risposta e non debba saperlo dalla
+    descrizione. Non dice quale calendario.
 
     **Un evento che non si sa interpretare affonda il SUO calendario,
     non tutti quanti.** `read_appointment` puo' sollevare (un evento
@@ -292,25 +304,23 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     appointments: list[dict] = []
     examined: list[str] = []
     unreadable: list[str] = []
-    truncated = False
+    left_out = 0
     for entry, events in zip(calendars, answers, strict=True):
         name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
         examined.append(name)
         if "errore" in events:
             unreadable.append(name)
             continue
-        if events.get("troncato"):
-            # Non gestito, DICHIARATO: se questo STESSO calendario viene
-            # anche scartato qui sotto (un evento che non si sa
-            # interpretare, `unreadable_event`), `truncated` resta vero
-            # ma i suoi impegni finiscono comunque in `non_letti`, non in
-            # `impegni` -- `troncato: true` sopravvivrebbe su un elenco
-            # che non contiene piu' nessun impegno di QUESTO calendario.
-            # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato
-            # nello stesso calendario per innescarlo: visto, deciso di
-            # non trattarlo (il caso e' cosi' raro da non giustificare
-            # il costo di un secondo stato "troncato ma poi scartato").
-            truncated = True
+        # Non gestito, DICHIARATO: se questo STESSO calendario viene anche
+        # scartato qui sotto (un evento che non si sa interpretare,
+        # `unreadable_event`), le sue `restano` si contano lo stesso ma il
+        # calendario finisce in `non_letti` -- `oltre` sopravvivrebbe su un
+        # elenco che non contiene piu' nessun impegno di QUESTO calendario.
+        # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato nello
+        # stesso calendario per innescarlo: visto, deciso di non trattarlo
+        # (il caso e' cosi' raro da non giustificare un secondo stato
+        # "tagliato ma poi scartato").
+        left_out += (events.get("oltre") or {}).get("restano", 0)
         calendar_appointments: list[dict] = []
         unreadable_event = False
         for raw_event in events.get("eventi") or []:
@@ -340,6 +350,6 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
                     "calendari_guardati": examined}
     if unreadable:
         result["non_letti"] = unreadable
-    if truncated:
-        result["troncato"] = True
+    if left_out:
+        result["oltre"] = {"restano": left_out, "suggerimento": _BEYOND_CALENDARS}
     return result

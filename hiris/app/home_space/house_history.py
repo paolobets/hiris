@@ -323,7 +323,8 @@ def _page(rows: list, f: HouseFilters) -> tuple[list, dict | None]:
     return page_rows(rows, f.offset, f.limit)
 
 
-def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen | dict:
+def choose(query: HistoryQuery, house: House, behavior, *, now: float,
+           deepest: str = "completa") -> Chosen | dict:
     """Di chi (la scelta di `search`, `House.select`) e quanto.
 
     Stati e valori guardano le entita'; le esecuzioni automazioni e script.
@@ -353,7 +354,7 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float) -> Chosen
     if query.run_id is not None and len(subjects) != 1:
         return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "
                           f"ne scelgono {len(subjects)}: restringi con riferimento"}
-    return Chosen(len(subjects), selection.excluded, depth_for(len(subjects)),
+    return Chosen(len(subjects), selection.excluded, depth_for(len(subjects), deepest),
                   subjects if f.limit > 0 else [])
 
 
@@ -1167,17 +1168,48 @@ def _reduced(element, entity_id: str):
     return {**element, "result": result}
 
 
+#: Cio' che Home Assistant aggiunge alla forma breve di una traccia per farne
+#: quella estesa (`ActionTrace.as_extended_dict` contro `as_short_dict`,
+#: `components/trace/models.py`, tag `2026.9.0`, letto il 12/10/2026): la
+#: corta e' la forma breve di Home Assistant, non una scelta nostra.
+_EXTENDED_ONLY = ("trace", "config", "blueprint_inputs", "context")
+#: In un passo (`TraceElement.as_dict`, `helpers/trace.py`, stesso tag) le
+#: variabili che il passo ha cambiato: ripetono stati interi, e cio' che il
+#: passo ha fatto lo dicono `result` ed `error`.
+_STEP_VARIABLES = "changed_variables"
+
+
+def _trace_at(trace: dict, depth: str) -> dict:
+    """La traccia alla profondita' dichiarata (C-37, Tappa 9): la completa e'
+    `trace/get` intera, la media senza le variabili dei passi, la corta la
+    forma breve di Home Assistant."""
+    if depth == "completa":
+        return trace
+    if depth == "corta":
+        return {k: v for k, v in trace.items() if k not in _EXTENDED_ONLY}
+    steps = trace.get("trace")
+    if not isinstance(steps, dict):
+        return trace
+    return {**trace, "trace": {
+        path: ([{k: v for k, v in element.items() if k != _STEP_VARIABLES}
+                if isinstance(element, dict) else element for element in elements]
+               if isinstance(elements, list) else elements)
+        for path, elements in steps.items()}}
+
+
 def run_detail(query: HistoryQuery, chosen: Chosen, trace: dict) -> dict:
     """Una sola esecuzione passo per passo (`esecuzione` = il `run_id`): la
-    traccia intera di `trace/get`, gia' sigillata dal gestore, senza le
-    posizioni di chi si muove: `redact_nested` per gli stati annidati
-    (l'innesco e le variabili dei passi portano `to_state` interi), e
+    traccia di `trace/get` alla profondita' scelta (`_trace_at`), gia'
+    sigillata dal gestore, senza le posizioni di chi si muove:
+    `redact_nested` per gli stati annidati (l'innesco e le variabili dei
+    passi portano `to_state` interi), e
     `_redact_condition_results` per lo stato che le condizioni registrano
     senza `entity_id`. La zona configurata in un innesco (`trigger.zone`)
     resta: e' configurazione, e questo genere e' dei soli amministratori."""
     out = _frame(query, chosen)
     _name_subjects(out, chosen)
-    out["voci"] = [redact_nested(_redact_condition_results(trace))]
+    out["voci"] = [_trace_at(redact_nested(_redact_condition_results(trace)),
+                             chosen.depth)]
     return out
 
 
@@ -1527,7 +1559,8 @@ async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
 
 async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
                        journal=None, now: float, translations: dict | None = None,
-                       judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+                       judgments: TypeJudgments = REPO_JUDGMENTS,
+                       deepest: str = "completa") -> dict:
     """La storia della casa per una domanda gia' validata (`parse_query`):
     sceglie di chi con la casa data (`choose`), legge a Home Assistant e
     rende le righe del genere. Una casa per tutta la chiamata: lo specchio
@@ -1544,7 +1577,7 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal)
     mirror, home = house.mirror, house.home_space
-    chosen = choose(query, house, behavior, now=now)
+    chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):
         return chosen
     if not chosen.subjects:

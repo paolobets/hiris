@@ -95,11 +95,12 @@ from ..action.construction.advisor import STRUCTURES
 from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
-from ..memory.interpretation import VOCABULARY, validate
+from ..memory.interpretation import validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import states_by_id
+from ..usage.giro import pesa_in_caratteri
 from . import historian
 from .appointments import merge_calendars, readable_calendars
 from .energy import energy_dashboard
@@ -117,6 +118,7 @@ from .house_query import (
     KINDS,
     ORDERS,
     ROWS_MAX,
+    page_rows,
     parse_filters,
     query_house,
 )
@@ -126,24 +128,13 @@ from .privacy import (
     cover_reserved_body,
 )
 from .queries import related as _readable_links
-from .queries import sanitized_memories as _sanitized_memories
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import depth_for, render_entity, render_memory
+from .render import DEPTHS, depth_for, render_entity
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
-
-# I tipi di ancora che la memoria conosce, DERIVATI da
-# `memory/interpretation.VOCABULARY["ancore"]`, che a sua volta li chiede
-# all'anagrafe (`resolver.STORE_KEY_PER_TYPE`): un'ancora vale solo se
-# `Lookup.verify()` la sa verificare, quindi i due elenchi non «coincidono»
-# -- sono lo stesso fatto, e dalla Tappa 3 (Task 9, B-51) si scrive una
-# volta. Ordinati perche' un frozenset non promette un ordine stabile
-# fra due letture, ed e' l'ordine in cui `fetch` cerca quando il modello non
-# specifica un `tipo` -- vedi `_recall`.
-_TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 
 # Il suggerimento per una ricerca per nome che non riconosce niente
 # (`ToolDispatcher._declare_name_gaps`): «nessun nome combacia» non e' «questa
@@ -524,37 +515,6 @@ REMEMBER_TOOL_DEF = {
             },
         },
         "required": ["testo"],
-    },
-}
-
-FETCH_TOOL_DEF = {
-    "name": "fetch",
-    "description": (
-        "I ricordi gia' salvati che riguardano una parte della casa -- un'area, "
-        "un'entita' o un dispositivo -- dato il suo identificatore esatto "
-        "(`riferimento`; usa `search` per trovarlo se hai solo un nome). Serve a "
-        "rispondere a domande come 'cosa mi hai gia' detto sulla cucina?' senza "
-        "dover rileggere ogni ricordo uno per uno. Se `genere` non e' specificato, "
-        "cerca fra tutti e tre i tipi di ancora (area, entita', dispositivo); "
-        "specificalo solo se lo sai gia' con certezza. Se nessun ricordo e' "
-        "ancorato a quel riferimento, `ricordi` e' una lista vuota: non "
-        "significa che la casa non ha ricordi, significa solo che nessuno di "
-        "quelli salvati nomina proprio questa parte -- prova `fetch` senza "
-        "ancore su una parte piu' ampia, o chiedi a chi ti sta parlando."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "riferimento": {
-                "type": "string",
-                "description": "L'identificatore esatto di un'area, entita' o dispositivo.",
-            },
-            "genere": {
-                "type": "string",
-                "description": "area, entita o dispositivo.",
-            },
-        },
-        "required": ["riferimento"],
     },
 }
 
@@ -1085,9 +1045,7 @@ CALENDAR_TOOL_DEF = {
         "provato a leggere; vuoto vuol dire che la casa non ne ha. "
         "`non_letti` c'e' solo se qualcuno non l'ho potuto leggere, per "
         "qualunque causa: dillo, e non dire «non hai impegni» se un calendario "
-        "manca. `troncato: true`: almeno un calendario aveva piu' impegni di "
-        "quelli tornati, e mancano i piu' lontani dall'inizio della finestra "
-        "-- con `giorni_indietro` possono essere proprio i prossimi."
+        "manca. `oltre` dice quanti impegni non ci stanno, e quali."
     ),
     "input_schema": {
         "type": "object",
@@ -1292,6 +1250,45 @@ class Permission:
     refusal: str | None = None
 
 
+def _cap_note(occurrence: dict, cap: CharCap) -> dict:
+    """La risposta con la frase del tetto nel suo `oltre`, se ne ha uno: chi
+    legge sa perche' le voci si fermano li', e che le altre ci sono."""
+    beyond = occurrence.get("oltre")
+    if not isinstance(beyond, dict) or "restano" not in beyond:
+        return occurrence
+    return {**occurrence, "oltre": {
+        **beyond, "suggerimento": (f"la risposta superava il tetto di {cap.chars} "
+                                   f"caratteri (la piu' grande misurata, il "
+                                   f"{cap.measured}): le altre voci si chiedono con "
+                                   "`salta`, o restringendo i filtri")}}
+
+
+def _rows_fitting(occurrence: dict, cap: CharCap) -> int:
+    """Quante delle prime `voci` stanno sotto il tetto, con un `oltre` della
+    forma che il gestore scrivera'; almeno una. E' una stima per il
+    `limite` da chiedere al gestore: le voci di una pagina di N posizioni
+    sono al piu' N, e sono le prime di questa."""
+    rows = occurrence["voci"]
+    for keep in range(len(rows) - 1, 0, -1):
+        page, beyond = page_rows(rows, 0, keep)
+        if pesa_in_caratteri(_cap_note({**occurrence, "voci": page, "oltre": beyond},
+                                       cap)) <= cap.chars:
+            return keep
+    return 1
+
+
+@dataclass(frozen=True)
+class CharCap:
+    """Il tetto in caratteri della risposta di uno strumento (R16; D3 della
+    Tappa 9, approvata l'08/10/2026): la risposta piu' grande MISURATA sulla
+    casa vera, con la data della misura. Non un ideale: la garanzia che quella
+    risposta non cresca. La misura e' dello Sprint, dai registri dei turni
+    (`consumi.db`, 24/09-07/10/2026), pesata come la pesa il registro
+    (`usage.giro.pesa_in_caratteri`)."""
+    chars: int
+    measured: str
+
+
 @dataclass(frozen=True)
 class Tool:
     """Una riga della tabella degli strumenti (`TOOLS`, Tappa 5, Task 2):
@@ -1314,7 +1311,11 @@ class Tool:
       difetto: uno strumento nuovo e' una scrittura finche' qualcuno non
       scrive che legge. Non si deduce da `permissions`: `cancel` scrive
       senza chiedere nessun gesto, e `history` legge
-      chiedendone uno.
+      chiedendone uno;
+    - `cap`: il tetto in caratteri della risposta (`CharCap`), solo dove
+      c'e' una misura. Lo fa valere `ToolDispatcher._under_cap`, dopo il
+      gestore: prima scende la profondita', poi le righe (D5 della Tappa 5).
+      Chi ce l'ha riceve `deepest`, la profondita' piu' piena ammessa.
 
     Il soffitto si chiede in `ToolDispatcher.dispatch`, una volta, dalla riga:
     fino al 05/10/2026 lo chiedevano sette punti dentro i gestori (D-23)."""
@@ -1325,6 +1326,7 @@ class Tool:
     permissions: tuple[Permission, ...] = ()
     mask: str | None = None
     read_only: bool = False
+    cap: CharCap | None = None
 
     @property
     def name(self) -> str:
@@ -1572,6 +1574,12 @@ class ToolDispatcher:
         # che Home Assistant mostra solo a chi amministra, dove la compone.
         options = ({"masked": self._ceiling_denies(tool.mask)}
                    if tool.mask is not None else {})
+        occurrence = await self._call(tool, arguments, options)
+        if tool.cap is not None:
+            occurrence = await self._under_cap(tool, arguments, options, occurrence)
+        return occurrence
+
+    async def _call(self, tool: Tool, arguments: dict[str, Any], options: dict) -> dict:
         # Alcuni gestori sono coroutine (fanno rete, o scaldano il registro
         # dei servizi prima di verificarlo o di mostrarlo); gli altri no. Si
         # attende cio' che e' attendibile invece di rendere `async` anche i
@@ -1581,9 +1589,62 @@ class ToolDispatcher:
             occurrence = await occurrence
         return occurrence
 
+    async def _under_cap(self, tool: Tool, arguments: dict[str, Any], options: dict,
+                             occurrence: dict) -> dict:
+        """La risposta sotto il tetto dello strumento (R16), riducendola come
+        ha deciso la D5 della Tappa 5: **prima scende la profondita'**
+        (completa -> media -> corta: tutte le voci, piu' corte), **poi si
+        chiedono meno voci** (`_rows_under`), con `oltre` che dice quante
+        restano e come chiederle. Mai un taglio a meta' di una voce: una voce sola piu' grande
+        del tetto esce intera.
+
+        Scendere di profondita' vuol dire chiedere di nuovo al gestore, con
+        `deepest`: la risposta la compone lui, non la si accorcia qui. Succede
+        solo sopra il tetto. Per `history` e' una seconda lettura a Home
+        Assistant, che in mezzo puo' aver scritto un cambio in piu'."""
+        cap = tool.cap
+        depth = occurrence.get("profondita")
+        if depth in DEPTHS:
+            for lower in reversed(DEPTHS[:DEPTHS.index(depth)]):
+                if pesa_in_caratteri(occurrence) <= cap.chars:
+                    return occurrence
+                shallower = await self._call(tool, arguments, {**options, "deepest": lower})
+                if "errore" in shallower or shallower.get("profondita") != lower:
+                    break
+                occurrence, options = shallower, {**options, "deepest": lower}
+        if pesa_in_caratteri(occurrence) <= cap.chars:
+            return occurrence
+        return await self._rows_under(tool, arguments, options, occurrence)
+
+    async def _rows_under(self, tool: Tool, arguments: dict[str, Any], options: dict,
+                          occurrence: dict) -> dict:
+        """Meno voci, chieste al gestore con un `limite` piu' piccolo: la
+        pagina e `oltre` (`restano`, `salta`) li calcola lui con `page_rows`,
+        come fa per ogni pagina (N124-1, giro 124). Fino al 12/10/2026 le voci
+        si toglievano qui, e `salta` contava le voci tenute come posizioni:
+        per i valori di `history`, che tengono solo i soggetti con dei punti,
+        la pagina dopo ripeteva voci gia' lette.
+
+        Il `limite` di partenza e' la stima di `_rows_fitting`; se la pagina
+        del gestore non sta ancora sotto il tetto, si scende di uno. Una voce
+        sola esce comunque, intera."""
+        cap = tool.cap
+        if not isinstance(occurrence.get("voci"), list) or len(occurrence["voci"]) < 2:
+            return occurrence
+        limit = _rows_fitting(occurrence, cap)
+        while True:
+            smaller = await self._call(tool, {**arguments, "limite": limit}, options)
+            if "errore" in smaller:
+                return smaller
+            smaller = _cap_note(smaller, cap)
+            if pesa_in_caratteri(smaller) <= cap.chars or limit == 1:
+                return smaller
+            limit -= 1
+
     # -- search --------------------------------------------------------
 
-    async def _search(self, arguments: dict[str, Any], *, masked: bool) -> dict:
+    async def _search(self, arguments: dict[str, Any], *, masked: bool,
+                      deepest: str = "completa") -> dict:
         """La porta che interroga la casa (spec `2026-09-29-una-porta-sola-
         per-la-casa.md` §2): i filtri entrano, un insieme di voci esce, e la
         profondita' la decide `house_query.query_house` da quante sono.
@@ -1620,7 +1681,8 @@ class ToolDispatcher:
 
         response = query_house(house, self._home_space.behavior(), filters,
                                detail=detail, timezone=self._timezone(),
-                               translations=translations, judgments=self._judgments)
+                               translations=translations, judgments=self._judgments,
+                               deepest=deepest)
         if "errore" in response:
             return response
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
@@ -1869,7 +1931,7 @@ class ToolDispatcher:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
             # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,
             # che arriva al modello come «errore» generico e non gli insegna
-            # niente. Stessa scelta di `_recall` con le ancore.
+            # niente.
             available = ", ".join(_OUR_LINK_TYPES)
             return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
                               f"i legami ({available})."}
@@ -1939,62 +2001,6 @@ class ToolDispatcher:
             minimum=cleaned["minimo"], maximum=cleaned["massimo"], unit=cleaned["unita"],
         )
         return {"salvato": True, "id": memory_id, "problemi": problems, "correzioni": corrections}
-
-    # -- fetch ---------------------------------------------------------
-
-    def _recall(self, arguments: dict[str, Any]) -> dict:
-        reference = arguments.get("riferimento")
-        # Il controllo «"riferimento" e' obbligatorio» viveva QUI fino al
-        # giro di correzioni sul Task 1 di «rifiutare e importare» (§6b):
-        # tolto perche' `dispatch()` lo fa gia' PRIMA di chiamare questo
-        # gestore (`_bad_arguments`, che ora tratta un obbligatorio presente
-        # ma `None` come assente -- non solo un obbligatorio del tutto
-        # mancante), e il messaggio non diceva niente di piu' di quello
-        # centrale. Provato in positivo, non per assenza di rosso:
-        # `test_a_required_argument_present_but_null_is_missing_too`
-        # (`tests/test_knowledge_tools.py`) passa `riferimento: None` a
-        # `fetch` e vede il rifiuto centrale.
-        kind = arguments.get("genere")
-        # Fix E1-②: un `genere` fuori dal vocabolario delle ancore ("stanza",
-        # o "entita'" con l'accento -- plausibilissimo per un modello
-        # italiano che non lo sta copiando da uno schema) finiva silenzioso
-        # in `per_tether(tipo, riferimento)`, che semplicemente non trova
-        # mai nulla per un tipo che nessuna ancora usa: il risultato era
-        # `{"ricordi": []}`, indistinguibile da "nessun ricordo riguarda
-        # questa cosa" -- proprio quando invece il ricordo esiste. `queries.view`
-        # con un tipo ignoto almeno risponde `esiste: False`; qui si
-        # dichiara l'errore invece, cosi' un input non valido resta
-        # distinguibile da "non ti ho detto niente".
-        if kind is not None and kind not in _TETHER_TYPES:
-            available = ", ".join(_TETHER_TYPES)
-            return {"errore": f"«{kind}» non e' un tipo di ancora valido per «fetch» "
-                              f"({available})."}
-        kinds = (kind,) if kind else _TETHER_TYPES
-
-        # Il modello puo' non sapere se «cucina» e' un'area o un dispositivo
-        # (o, in teoria, un'entita'): senza `genere` si cerca su tutti e tre e
-        # si uniscono i risultati, invece di pretendere che lo specifichi
-        # sempre -- una ricerca che fallisce solo perche' il tipo indovinato
-        # era sbagliato sarebbe un "non ho trovato niente" bugiardo.
-        seen: set[int] = set()
-        memories: list[dict] = []
-        for t in kinds:
-            for memory in self._memory.per_tether(t, reference):
-                if memory["id"] in seen:
-                    continue
-                seen.add(memory["id"])
-                memories.append(memory)
-        memories.sort(key=lambda r: r["id"], reverse=True)
-        # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
-        # l'archivio direttamente, non passa da `queries.view` -- senza
-        # questa riga il testo uscirebbe filtrato dal dettaglio e grezzo da
-        # `fetch`. Stessa funzione condivisa, un punto solo; poi la resa del
-        # ricordo, la stessa delle altre porte (`render_memory`, Tappa 9 F3),
-        # con le ancore risolte sulla casa del turno (G-21).
-        house = self._turn_house()
-        zone = historian.home_space_zone(self._timezone())
-        return {"ricordi": [render_memory(r, house, zone=zone)
-                            for r in _sanitized_memories(memories)]}
 
     # -- execute -------------------------------------------------------
 
@@ -2471,7 +2477,8 @@ class ToolDispatcher:
 
     # -- la storia ------------------------------------------------------
 
-    async def _history(self, arguments: dict[str, Any]) -> dict:
+    async def _history(self, arguments: dict[str, Any], *,
+                       deepest: str = "completa") -> dict:
         """La storia della casa (spec `2026-09-30-la-storia.md`): compone le
         letture di `house_history` (`read_history`, `read_errors`) e mette il
         permesso SOPRA di loro.
@@ -2506,7 +2513,7 @@ class ToolDispatcher:
                                   self._home_space.behavior(), cache=self._cache,
                                   seal=self._seal(), journal=self._journal, now=now,
                                   translations=await self._read_translations(),
-                                  judgments=self._judgments)
+                                  judgments=self._judgments, deepest=deepest)
 
     # -- i calendari ------------------------------------------------------
 
@@ -2708,7 +2715,9 @@ TOOLS: tuple[Tool, ...] = (
     # accese» perche' l'archivio dei ricordi non e' pronto sarebbe un no a una
     # domanda che non lo tocca (review finale, M5, 30/09/2026).
     Tool(SEARCH_TOOL_DEF, ToolDispatcher._search, resources=("casa",),
-         mask="amministrare", read_only=True),
+         mask="amministrare", read_only=True,
+         # 71 campioni, il piu' grande il 02/10/2026 (misura M3 dello Sprint).
+         cap=CharCap(39_134, "02/10/2026")),
     Tool(RELATED_TOOL_DEF, ToolDispatcher._related, resources=("ha",),
          read_only=True),
     # Un ricordo entra nel nucleo di ogni turno, di ogni persona, e ci resta:
@@ -2716,8 +2725,6 @@ TOOLS: tuple[Tool, ...] = (
     # (G83-1, giro 83; Paolo, 07/10/2026).
     Tool(REMEMBER_TOOL_DEF, ToolDispatcher._remember, resources=("casa", "memoria"),
          permissions=(Permission("comandare"),)),
-    Tool(FETCH_TOOL_DEF, ToolDispatcher._recall, resources=("memoria",),
-         read_only=True),
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
          permissions=(Permission("comandare"),
                       Permission("amministrare", applies=_reserved_core_service,
@@ -2743,7 +2750,9 @@ TOOLS: tuple[Tool, ...] = (
     Tool(HISTORY_TOOL_DEF, ToolDispatcher._history, resources=("ha",),
          permissions=(Permission("amministrare", applies=_asks_admin_reads,
                                  refusal=ADMIN_READS_REFUSAL),),
-         read_only=True),
+         read_only=True,
+         # 13 campioni, il piu' grande il 01/10/2026 (misura M3 dello Sprint).
+         cap=CharCap(29_376, "01/10/2026")),
     Tool(CALENDAR_TOOL_DEF, ToolDispatcher._calendar, resources=("ha",),
          read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse

@@ -417,4 +417,19 @@ def test_merge_calendars_si_prova_senza_un_client_finto():
     assert result["non_letti"] == ["Rotto"]
     assert [(a["titolo"], a["calendario"]) for a in result["impegni"]] == [
         ("Allenamento", "Personale")]
-    assert "troncato" not in result
+    assert "troncato" not in result and "oltre" not in result
+
+
+def test_due_calendari_tagliati_sommano_le_restano():
+    """N125-1 (giro 125): `restano` somma gli eventi lasciati fuori da ogni
+    calendario (Tappa 9, F7, C-38).
+
+    Mutazione ESEGUITA: `left_out =` invece di `left_out +=` -- rossa con 4."""
+    calendars = readable_calendars({"calendari": [
+        {"entity_id": "calendar.personale", "name": "Personale"},
+        {"entity_id": "calendar.famiglia", "name": "Famiglia"},
+    ]})
+    answers = [{"eventi": [_timed_event()], "oltre": {"restano": 3}},
+               {"eventi": [_timed_event()], "oltre": {"restano": 4}}]
+    result = merge_calendars(calendars, answers, timezone="Europe/Rome")
+    assert result["oltre"]["restano"] == 7

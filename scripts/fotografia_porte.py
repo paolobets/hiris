@@ -441,8 +441,6 @@ def _tool_calls(home_space: dict) -> dict[str, tuple[str, dict]]:
         entity = ordered[position]
         calls[f"search(riferimento=#{position})"] = (
             "search", {"riferimento": entity["id"]})
-        calls[f"fetch(riferimento=#{position})"] = (
-            "fetch", {"riferimento": entity["id"]})
         if entity.get("nome"):
             calls[f"search(nome=#{position})"] = ("search", {"nome": entity["nome"]})
     return calls

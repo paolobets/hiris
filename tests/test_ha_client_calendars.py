@@ -381,7 +381,7 @@ async def test_an_empty_calendar_stays_empty_not_an_error():
 #
 # `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` (home_space/queries.py)
 # seguono gia' la stessa disciplina: le chiavi che non hanno niente da dire
-# non escono. Qui si applica alla stessa fetta: `troncato` esce SOLO quando
+# non escono. Qui si applica alla stessa fetta: `oltre` esce SOLO quando
 # il taglio e' avvenuto -- a differenza di `history()` in questo
 # stesso file, che lo dichiara SEMPRE (anche a falso). Le due meta' dello
 # stesso difetto si sorvegliano con due prove separate.
@@ -395,12 +395,17 @@ async def test_calendar_events_declares_the_cut_when_it_happens():
 
     Mutazione: non aggiungere mai la chiave `troncato` -- il test torna
     rosso su `assert "troncato" in outcome`.
+
+    Dalla Tappa 9 (F7, C-38) il taglio si dichiara con `oltre: {restano}`,
+    la forma delle altre risposte: quanti eventi sono rimasti fuori, che il
+    client conta perche' li ha in mano. Rossa prima: usciva `troncato`.
     """
     rows = [_event(uid=f"evt-{i}") for i in range(MAX_CALENDAR_EVENTS + 5)]
     c = _client([_FakeResponse(200, rows)])
     outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
                                       "2026-09-12T00:00:00+02:00")
-    assert outcome["troncato"] is True
+    assert outcome["oltre"] == {"restano": 5}
+    assert "troncato" not in outcome
     assert len(outcome["eventi"]) == MAX_CALENDAR_EVENTS
 
 
@@ -410,15 +415,15 @@ async def test_calendar_events_does_not_declare_a_cut_when_there_was_none():
     ha niente da dire e' rumore, e qui e' anche peggio -- lascerebbe
     credere che OGNI risposta sia potenzialmente incompleta.
 
-    Mutazione: dichiarare sempre `troncato` (es. sempre `False` quando non
+    Mutazione: dichiarare sempre `oltre` (es. `restano: 0` quando non
     scatta, invece di ometterla) -- il test torna rosso su
-    `assert "troncato" not in outcome`.
+    `assert "oltre" not in outcome`.
     """
     rows = [_event(uid=f"evt-{i}") for i in range(3)]
     c = _client([_FakeResponse(200, rows)])
     outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
                                       "2026-09-12T00:00:00+02:00")
-    assert "troncato" not in outcome
+    assert "oltre" not in outcome
     assert len(outcome["eventi"]) == 3
 
 

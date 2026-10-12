@@ -1355,10 +1355,10 @@ def _memory_lines(memories: list[dict]) -> list[str]:
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
         # tagliato «si raggiunge con `search(genere="ricordo", riferimento=id)`»
         # (allora `view("ricordo", id)`, uscito il 29/09/2026) -- ma l'id non
-        # era stampato da nessuna porta, e `fetch` esige un'ancora che i
-        # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
-        # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
-        # colmarla.
+        # era stampato da nessuna porta, e `fetch` (uscito il 12/10/2026)
+        # esigeva un'ancora che i ricordi come «mi piace il caffe'» non
+        # hanno. Il digesto dichiarava una lacuna («12 ricordi non inclusi»)
+        # e chiudeva l'unica strada per colmarla.
         lines.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {author_label})")
     return lines
 
