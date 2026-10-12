@@ -360,7 +360,7 @@ test('lo stato sta accanto al nome: le parole di Home Assistant, o il valore con
   const muto = riga('sensor.muto');
   assert.doesNotMatch(muto, /·\s*\(/, 'senza stato nessun segno davanti all’id');
   assert.match(muto, /unità W/, 'senza stato l’unità resta fra i dettagli');
-  assert.match(testo, /Gli stati mostrati sono quelli di quando hai aperto la pagina/);
+  assert.match(testo, /Gli stati mostrati sono quelli dell’ultimo aggiornamento, non quelli di adesso/);
 });
 
 test('il segno del `fuori` usa le parole di oggi, e «[di servizio]» per le entità di servizio', async () => {
@@ -372,10 +372,14 @@ test('il segno del `fuori` usa le parole di oggi, e «[di servizio]» per le ent
     { id: 'sensor.segnale', nome: 'Segnale', fuori: { classe: 'servizio', causa: 'diagnostic' },
       integrazione: { id: 'shelly', nome: 'Shelly' } },
     { id: 'sensor.strano', nome: 'Strano', fuori: { classe: 'nuova_classe', causa: null } });
-  const { document } = await rendi(casa);
+  const { document, testo } = await rendi(casa);
   const riga = (id) => [...document.querySelectorAll('#route-outlet li')]
     .find((li) => li.textContent.includes('(' + id + ')')).textContent;
   assert.match(riga('sensor.segnale'), /\[di servizio\]/);
+  assert.match(testo, /Le entità «di servizio» sono quelle che Home Assistant tiene/,
+    'il segno si spiega una volta');
+  const senza = (await rendi(casaCompleta())).testo;
+  assert.doesNotMatch(senza, /Le entità «di servizio»/, 'senza entità di servizio la riga non c’è');
   assert.match(riga('sensor.segnale'), /integrazione Shelly · categoria diagnostic/);
   assert.match(riga('sensor.vecchio'), /\[disabilitata\]/);
   assert.match(riga('sensor.strano'), /\[nuova_classe\]/, 'una classe sconosciuta non sparisce');

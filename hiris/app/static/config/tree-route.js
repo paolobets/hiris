@@ -193,9 +193,12 @@ window.HirisTreeRoute = (function () {
 
   /* Lo stato da scrivere accanto al nome: le parole di Home Assistant
      (`stato_leggibile`) quando ci sono, altrimenti il valore grezzo con la
-     sua unita'. Le parole di `unavailable`/`unknown` Home Assistant non le
-     pubblica (`proxy/state_translations.state_translation`): restano grezze,
-     come nella chat. Senza stato non si scrive niente. */
+     sua unita'. Le parole di `unavailable`/`unknown` non arrivano dal comando
+     che HIRIS legge (`frontend/get_translations`, vedi
+     `proxy/state_translations.state_translation`): Home Assistant le tiene
+     nel pacchetto di traduzioni del suo frontend (misurato dallo Sprint
+     l'11/10/2026). Restano grezze, come nella chat. Senza stato non si
+     scrive niente. */
   function stateText(e) {
     if (e.stato_leggibile) return e.stato_leggibile;
     if (e.stato == null) return '';
@@ -456,6 +459,18 @@ window.HirisTreeRoute = (function () {
     });
   }
 
+  function hasServiceEntities(floors) {
+    return floors.some(function (floor) {
+      return (floor.aree || []).some(function (area) {
+        return Object.keys(area).some(function (key) {
+          return Array.isArray(area[key]) && area[key].some(function (e) {
+            return e && e.fuori && e.fuori.classe === 'servizio';
+          });
+        });
+      });
+    });
+  }
+
   /* I nomi delle entita' dell'albero, per dire le divergenze per nome: ogni
      elenco di un'area (le attive, le nascoste, le disabilitate), senza
      ricopiare qui quali sono. */
@@ -553,9 +568,17 @@ window.HirisTreeRoute = (function () {
        funzione di formattazione. */
     line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
     /* Lo stato accanto a ogni entita' e' quello dello specchio quando la
-       pagina si e' aperta (Tappa 9, F5): invecchia mentre la si guarda. */
-    line(body, 'Gli stati mostrati sono quelli di quando hai aperto la pagina, non quelli di adesso.',
+       pagina si e' aperta (Tappa 9, F5): lo specchio segue gli eventi di Home
+       Assistant, ma con la connessione caduta resta fermo all'ultimo
+       aggiornamento -- e la pagina invecchia mentre la si guarda. */
+    line(body, 'Gli stati mostrati sono quelli dell’ultimo aggiornamento, non quelli di adesso.',
       TONE_CALM);
+    /* «di servizio» e' un segno, non una parola di Home Assistant: si spiega
+       una volta, solo se ce n'e' almeno una. */
+    if (hasServiceEntities(home_space.piani || [])) {
+      line(body, 'Le entità «di servizio» sono quelle che Home Assistant tiene per la configurazione ' +
+        'o la diagnostica di un dispositivo.', TONE_CALM);
+    }
 
     /* `non_disponibili` a tre stati: null = non si sa quali registri hanno
        risposto; [] = tutti hanno risposto; pieno = una lettura a metà, che
