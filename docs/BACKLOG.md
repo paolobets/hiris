@@ -3053,6 +3053,10 @@ e si chiude in una fetta sua, non come effetto collaterale di un giro di correzi
 
 `origine: il coordinatore del Task 1 di «i calendari», 06/09/2026` · `nessun documento`
 
+**Chiusa il 12/10/2026** (Tappa 9, F7, C-38): `calendar_events()` dichiara il taglio con
+`oltre: {restano}`, la forma delle risposte degli strumenti. `troncato` resta solo a `history()`
+(`logbook()` non c'e' piu'), con una semantica sola.
+
 `HAClient.history()` e `HAClient.logbook()` dichiarano `"troncato": bool` **sempre**, anche a
 falso — e' la loro scelta esplicita, motivata solo dalla coerenza reciproca fra i due ("non due
 modi di dire la stessa cosa", si legge nel docstring di `history()`). `HAClient.calendar_events()`,

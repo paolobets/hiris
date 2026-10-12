@@ -417,4 +417,4 @@ def test_merge_calendars_si_prova_senza_un_client_finto():
     assert result["non_letti"] == ["Rotto"]
     assert [(a["titolo"], a["calendario"]) for a in result["impegni"]] == [
         ("Allenamento", "Personale")]
-    assert "troncato" not in result
+    assert "troncato" not in result and "oltre" not in result

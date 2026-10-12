@@ -1938,7 +1938,12 @@ async def test_calendar_declares_truncation_when_a_calendar_was_cut():
     house = _calendar_house([_PERSONALE], {"calendar.personale": events})
     d = ToolDispatcher(None, None, ha=house)
     result = await d.dispatch("calendar", {})
-    assert result["troncato"] is True
+    # Tappa 9 (F7, C-38): il taglio si dichiara con `oltre`, la forma delle
+    # altre risposte, coi conti e con cio' che manca. Rossa prima: usciva
+    # `troncato: true`.
+    assert "troncato" not in result
+    assert result["oltre"]["restano"] == 1
+    assert "lontani" in result["oltre"]["suggerimento"]
     assert len(result["impegni"]) == MAX_CALENDAR_EVENTS
 
 
@@ -1956,7 +1961,7 @@ async def test_calendar_does_not_declare_truncation_when_none_happened():
     house = _calendar_house([_PERSONALE], {"calendar.personale": []})
     d = ToolDispatcher(None, None, ha=house)
     result = await d.dispatch("calendar", {})
-    assert "troncato" not in result
+    assert "troncato" not in result and "oltre" not in result
 
 
 @pytest.mark.asyncio

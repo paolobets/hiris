@@ -1516,16 +1516,12 @@ class HAClient:
         ricevuto; entrambi sarebbero stabili, e la stabilita' serve qui perche'
         a parita' di istante l'ordine con cui HA li ha mandati si conserva.
 
-        **Un elenco tagliato non deve poter sembrare completo.** A
-        differenza di `history()` qui sopra, che dichiara
-        `troncato` SEMPRE (anche a falso), qui la chiave `troncato` esce **SOLO quando
-        il taglio e' avvenuto** -- stessa disciplina di
-        `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in
-        `home_space/queries.py`: "le chiavi che non hanno niente da dire
-        non escono", una legge del prodotto piu' generale del "sempre" dei
-        due fratelli. E' una divergenza DICHIARATA fra le due convenzioni
-        (stessa chiave, presenza diversa) tracciata in `docs/BACKLOG.md` --
-        non corretta qui sui fratelli: e' fuori dal mio perimetro.
+        **Un elenco tagliato non deve poter sembrare completo.** Il taglio
+        si dichiara con `oltre: {restano: N}`, la forma delle risposte degli
+        strumenti (Tappa 9, F7, C-38): gli eventi lasciati fuori si contano,
+        perche' sono in mano. Esce **SOLO quando il taglio e' avvenuto**,
+        come ogni `oltre`. Fino al 12/10/2026 era `troncato: true`, la
+        stessa chiave di `history()` qui sopra con una presenza diversa.
         """
         if not is_entity_id(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
@@ -1551,7 +1547,7 @@ class HAClient:
         ordered = sorted(data, key=_chrono_key)
         result: dict = {"eventi": ordered[:MAX_CALENDAR_EVENTS]}
         if len(ordered) > MAX_CALENDAR_EVENTS:
-            result["troncato"] = True
+            result["oltre"] = {"restano": len(ordered) - MAX_CALENDAR_EVENTS}
         return result
 
     async def _ws_send(self, commands: list[tuple[str, dict | None]],

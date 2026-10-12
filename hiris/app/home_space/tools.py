@@ -1087,9 +1087,7 @@ CALENDAR_TOOL_DEF = {
         "provato a leggere; vuoto vuol dire che la casa non ne ha. "
         "`non_letti` c'e' solo se qualcuno non l'ho potuto leggere, per "
         "qualunque causa: dillo, e non dire «non hai impegni» se un calendario "
-        "manca. `troncato: true`: almeno un calendario aveva piu' impegni di "
-        "quelli tornati, e mancano i piu' lontani dall'inizio della finestra "
-        "-- con `giorni_indietro` possono essere proprio i prossimi."
+        "manca. `oltre` dice quanti impegni non ci stanno, e quali."
     ),
     "input_schema": {
         "type": "object",
