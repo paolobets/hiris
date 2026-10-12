@@ -664,7 +664,7 @@ _MAX_CAPABILITY_LIST_CHARS = 44
 #
 # Il nucleo di questa casa pesa gia' 5.676 caratteri su 6.000 e tronca gia'
 # (nove elementi notevoli esclusi -- corretto R4, revisione del tratto
-# v3.23.0..HEAD, 08/09/2026: questo commento diceva "7", `DEFAULT_CEILING`
+# v3.23.0..HEAD, 08/09/2026: questo commento diceva "7", `DEFAULT_CAP`
 # qui sotto diceva "nove" per la STESSA misura, 5.676 caratteri sulla STESSA
 # casa. «Nove» e' quello verificato riga per riga contro il nucleo vivo del
 # 3.23.0 -- vedi `.superpowers/sdd/tipi-di-entita/fetta-censore-report.md`
@@ -1026,7 +1026,7 @@ _SILENCED_PROBLEM_SEVERITIES = ("warning",)
 # avviso di millecinquecento caratteri che niente puo' accorciare, dentro un
 # nucleo che ne ha seimila in tutto. Cinque bastano a far capire di che
 # famiglia sono; il numero degli altri resta dichiarato.
-_LISTED_PROBLEMS_CEILING = 5
+_LISTED_PROBLEMS_CAP = 5
 
 # Dove si vanno a leggere per esteso. Il registro NON porta il testo del
 # problema -- porta una `translation_key` che vive nello `strings.json`
@@ -1127,7 +1127,7 @@ def _problems_notice(problems: dict | None) -> str | None:
         return (rank, p.get("domain") or "", p.get("issue_id") or "")
 
     to_report.sort(key=_severity_rank)
-    unlisted = max(0, len(to_report) - _LISTED_PROBLEMS_CEILING)
+    unlisted = max(0, len(to_report) - _LISTED_PROBLEMS_CAP)
 
     # Il numero dei taciuti esce SEMPRE che ce ne siano, anche quando non c'e'
     # nient'altro da dire. Un filtro silenzioso e' un altro modo di mentire, e
@@ -1160,7 +1160,7 @@ def _problems_notice(problems: dict | None) -> str | None:
                 f"versione di rottura dichiarata): {closing_phrase} in "
                 f"{_REPAIR_LOCATION}.")
 
-    entries = "; ".join(_problem_entry(p) for p in to_report[:_LISTED_PROBLEMS_CEILING])
+    entries = "; ".join(_problem_entry(p) for p in to_report[:_LISTED_PROBLEMS_CAP])
     count = len(to_report)
     entry = _plural(count, "problema", "problemi")
     unlisted_tail = ""
@@ -1177,18 +1177,18 @@ def _problems_notice(problems: dict | None) -> str | None:
 
 # Quanti `entity_id` si citano per area prima di tornare a CONTARE -- la
 # regola del modulo (docstring in cima) applicata anche qui, e per la stessa
-# ragione di `_LISTED_PROBLEMS_CEILING`: gli avvisi non passano per il taglio
+# ragione di `_LISTED_PROBLEMS_CAP`: gli avvisi non passano per il taglio
 # di `compose()`, quindi un'area che diverge di quaranta entita' scriverebbe
 # una riga che niente puo' accorciare. Quattro bastano a far capire di che
 # famiglia sono (una piattaforma sola? un dispositivo solo?); il numero degli
 # altri resta dichiarato.
-_COMPARISON_ENTITIES_CEILING = 4
+_COMPARISON_ENTITIES_CAP = 4
 
 
 def _cited_entities(identifiers: list[str]) -> str:
     """Gli id di un'area, tagliati al tetto e col resto DICHIARATO. Mai un
     elenco accorciato in silenzio: sarebbe la stessa bugia del filtro muto."""
-    cited = list(identifiers)[:_COMPARISON_ENTITIES_CEILING]
+    cited = list(identifiers)[:_COMPARISON_ENTITIES_CAP]
     rest = len(identifiers) - len(cited)
     text = ", ".join(cited)
     if rest == 1:
@@ -1370,7 +1370,7 @@ def _gap_lines(notices: list[str]) -> list[str]:
     return [f"- {a}" for a in notices]
 
 
-def _cut_notice(excluded_per_pool: dict[str, int], cut_order, ceiling: int) -> str:
+def _cut_notice(excluded_per_pool: dict[str, int], cut_order, cap: int) -> str:
     """La frase che dichiara il taglio DENTRO il nucleo -- non solo nel
     riepilogo. Ricostruita da zero ogni volta che `excluded_per_pool` cambia,
     cosi' non puo' mai restare disallineata da cio' che e' stato tagliato
@@ -1385,7 +1385,7 @@ def _cut_notice(excluded_per_pool: dict[str, int], cut_order, ceiling: int) -> s
         n = excluded_per_pool.get(pool_name, 0)
         if n:
             parts.append(f"{n} {_plural(n, singular, plural)}")
-    return f"Il nucleo superava il tetto di {ceiling} caratteri: " + "; ".join(parts) + "."
+    return f"Il nucleo superava il tetto di {cap} caratteri: " + "; ".join(parts) + "."
 
 
 def _assemble(sections: list[tuple[str, list[str]]]) -> str:
@@ -1435,11 +1435,11 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
 #: l'avviso di taglio, che dice quante voci mancano e con quale
 #: `search(genere=...)` si ritrovano -- un taglio dichiarato e raggiungibile,
 #: non un silenzio.
-DEFAULT_CEILING = 6800
+DEFAULT_CAP = 6800
 
 
 def compose(home_space: dict, behavior: list[dict], memories: list[dict],
-            state: dict, ceiling: int = DEFAULT_CEILING,
+            state: dict, cap: int = DEFAULT_CAP,
             unavailable: tuple[str, ...] = (),
             reliable_state: bool = True,
             behavior_problems: tuple[str, ...] = (),
@@ -1528,7 +1528,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     sostituito il comportamento, il nucleo lo dice con la data della replica
     che porta, invece di presentarla come fresca. Vedi `_kept_behavior_notice`.
 
-    Quando serve tagliare per stare sotto `ceiling`, si tagliano prima le
+    Quando serve tagliare per stare sotto `cap`, si tagliano prima le
     capacita', poi cio' che la casa fa da sola, poi -- fino a una riserva
     minima che non si tocca mai (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT
     ⑥) -- i conteggi della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
@@ -1855,7 +1855,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     faults_length = (len(_assemble([(_FAULTS_HEADING, list(home_space_faults))]))
                         if home_space_faults else 0)
     gap_reserve = max(_GAP_SECTION_RESERVE, known_gaps_length + _GAP_SECTION_RESERVE)
-    budget = max(0, ceiling - gap_reserve - faults_length)
+    budget = max(0, cap - gap_reserve - faults_length)
 
     for pool_name, pool_lines, pool_weights, reserve in cut_order:
         while len(pool_lines) > reserve and len(_assemble(print_order)) > budget:
@@ -1870,7 +1870,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # romperebbe silenziosamente se il taglio scattasse solo piu' avanti.
     cut_notice_index = None
     if truncated:
-        notices.append(_cut_notice(excluded_per_pool, cut_labels, ceiling))
+        notices.append(_cut_notice(excluded_per_pool, cut_labels, cap))
         cut_notice_index = len(notices) - 1
 
     gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
@@ -1909,7 +1909,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         ("casa", home_space_lines, home_space_weights, home_space_reserve),
     ]
 
-    while len(text) > int(ceiling * 1.1):
+    while len(text) > int(cap * 1.1):
         cut = False
         for pool_name, pool_lines, pool_weights, reserve in safety_pools:
             if len(pool_lines) > reserve:
@@ -1918,7 +1918,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
                 break
         if not cut:
             break
-        message = _cut_notice(excluded_per_pool, cut_labels, ceiling)
+        message = _cut_notice(excluded_per_pool, cut_labels, cap)
         if cut_notice_index is None:
             notices.append(message)
             cut_notice_index = len(notices) - 1

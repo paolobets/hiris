@@ -23,7 +23,7 @@ def test_il_comportamento_esce_intero_quando_c_e_spazio():
 
     **La mutazione che il piano dichiarava qui non la fa arrossire**, ed e'
     stata eseguita (29/09/2026): comportamento secondo nel taglio, riserva 0,
-    `DEFAULT_CEILING = 4000` -- VERDE. Diciassette nomi corti su una casa di
+    `DEFAULT_CAP = 4000` -- VERDE. Diciassette nomi corti su una casa di
     quattro entita' pesano meno di mille caratteri: nessun tetto di quelli
     provati li tocca, e l'ordine del taglio non si vede. La prova che quella
     mutazione fa davvero arrossire e' la seguente."""
@@ -41,7 +41,7 @@ def test_quando_il_tetto_morde_cadono_le_capacita_non_le_automazioni():
     capacita' (145 entita' senza), non una sola automazione.
 
     Mutazione ESEGUITA: in `compose()`, rimettere `("comportamento", ...)`
-    PRIMA di `("capacita", ...)` in `cut_order` (col `DEFAULT_CEILING` a
+    PRIMA di `("capacita", ...)` in `cut_order` (col `DEFAULT_CAP` a
     4.000, la forma dichiarata dal piano) -- rossa."""
     from hiris.app.proxy.entity_cache import CAPABILITIES
 
@@ -79,7 +79,7 @@ def test_se_il_comportamento_non_ci_sta_si_dice_come_averlo():
     ritrovarle -- rossa."""
     comportamento = [{"id": f"automation.a{i}", "tipo": "automazione",
                       "nome": "x" * 300} for i in range(60)]
-    testo, _ = compose(_CASA, comportamento, _RICORDI, _STATO, ceiling=3000)
+    testo, _ = compose(_CASA, comportamento, _RICORDI, _STATO, cap=3000)
     assert 'search(genere="automazione")' in testo or "genere=automazione" in testo
 
 

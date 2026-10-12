@@ -10,7 +10,7 @@ entita'): 19 firme di capacita' distinte per 1.096 caratteri, ridotte dal
 tetto della sezione a **12 firme e 671 caratteri**, che coprono 196 entita'
 su 205. Il tetto del nucleo era 6.000 e ne erano gia' occupati 5.676, con un
 taglio gia' in corso: e' il vincolo che ha deciso la forma di questa sezione.
-**Dall'08/09/2026 il tetto e' 6.800** (`briefing.DEFAULT_CEILING`), deciso dal
+**Dall'08/09/2026 il tetto e' 6.800** (`briefing.DEFAULT_CAP`), deciso dal
 proprietario proprio perche' a 6.000 questa sezione sfrattava «Notevole
 adesso» per intero. **Dal 29/09/2026 quella sezione non c'e' piu'** e le
 capacita' si tagliano PRIMA del comportamento -- vedi in fondo a questo file
@@ -208,8 +208,8 @@ def test_con_le_firme_dentro_il_nucleo_non_perde_nemmeno_un_area():
     `cut_order` DOPO quella `("casa", ...)` -- a tetto stretto le aree
     scendono da 12 a 3 (la riserva) e la prova arrossisce.
     """
-    senza, _ = compose(_CASA, [], [], _STATO, ceiling=1100)
-    con, riepilogo = compose(_CASA, [], [], _STATO, ceiling=1100,
+    senza, _ = compose(_CASA, [], [], _STATO, cap=1100)
+    con, riepilogo = compose(_CASA, [], [], _STATO, cap=1100,
                              attributes=_attributi_tutti_diversi())
     assert len(_righe_area(senza)) == 12, (
         "questa prova presuppone che senza le capacita' le aree ci stiano tutte")
@@ -228,7 +228,7 @@ def test_se_il_tetto_morde_il_nucleo_lo_DICE_invece_di_tacere():
     in `compose()` -- il taglio avviene lo stesso e nessuna frase lo dichiara;
     la prova arrossisce sull'avviso.
     """
-    _, riepilogo = compose(_CASA, [], [], _STATO, ceiling=900,
+    _, riepilogo = compose(_CASA, [], [], _STATO, cap=900,
                            attributes=_attributi())
     assert riepilogo["truncated"] is True
     avvisi = " ".join(riepilogo["notices"])
@@ -247,7 +247,7 @@ def test_la_sezione_ha_un_tetto_suo_e_dichiara_cio_che_ci_lascia_fuori():
     """
     tante = {f"light.luce{n}": {CAPABILITIES: {"effect_list": [f"effetto{n}"]}}
              for n in range(300)}
-    testo, _ = compose(_CASA, [], [], _STATO, ceiling=100000, attributes=tante)
+    testo, _ = compose(_CASA, [], [], _STATO, cap=100000, attributes=tante)
     sezione = _sezione(testo, "## Cosa si puo' chiedere")
     assert len(sezione) <= briefing._CAPABILITY_SECTION_BUDGET + 200
     assert "non elencate qui" in sezione
@@ -293,7 +293,7 @@ def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
     `if capabilities_are_countable`) -- a tetto stretto la riga sparisce e la
     prova arrossisce.
     """
-    testo, _ = compose(_CASA, [], [], _STATO, ceiling=900,
+    testo, _ = compose(_CASA, [], [], _STATO, cap=900,
                        reliable_state=False, attributes=_attributi())
     assert "non si puo' dire cosa le cose di questa casa sanno fare" in testo
 
@@ -316,7 +316,7 @@ def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
 #   a 6.800  tutto intero, nessun taglio.
 #
 # Sulla casa vera, il 29/09/2026 al tetto di 6.800: il comportamento usciva
-# 12 voci su 17, cinque automazioni tagliate (vedi `briefing.DEFAULT_CEILING`).
+# 12 voci su 17, cinque automazioni tagliate (vedi `briefing.DEFAULT_CAP`).
 
 _AREE_TETTO = 26
 _LUCI_TETTO = 156
@@ -344,8 +344,8 @@ _COMPORTAMENTO_TETTO = [
     for i in range(_AUTOMAZIONI_TETTO)]
 
 
-def _nucleo_tetto(ceiling=None):
-    extra = {} if ceiling is None else {"ceiling": ceiling}
+def _nucleo_tetto(cap=None):
+    extra = {} if cap is None else {"cap": cap}
     return compose(_CASA_TETTO, _COMPORTAMENTO_TETTO, [], _STATO_TETTO,
                    attributes=_ATTRIBUTI_TETTO, **extra)
 
@@ -370,13 +370,13 @@ def test_a_seimila_il_taglio_morde_le_capacita_e_non_il_comportamento():
     6.000 il taglio non mordeva piu' -- l'oracolo qui sopra l'ha detto. A
     5.600 morde di nuovo le capacita' (10 firme su 18).
     """
-    testo, riepilogo = _nucleo_tetto(ceiling=5600)
+    testo, riepilogo = _nucleo_tetto(cap=5600)
     assert riepilogo["truncated"] is True
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
     assert len(automazioni) == _AUTOMAZIONI_TETTO, (
         f"il comportamento deve restare intero: ne sono entrate {len(automazioni)}")
     firme = _sezione(testo, "## Cosa si puo' chiedere").splitlines()[1:]
-    intere = _sezione(_nucleo_tetto(ceiling=100_000)[0],
+    intere = _sezione(_nucleo_tetto(cap=100_000)[0],
                       "## Cosa si puo' chiedere").splitlines()[1:]
     assert len(firme) < len(intere), "il taglio deve aver morso le capacita'"
     assert "cosa sanno fare" in " ".join(riepilogo["notices"])
@@ -387,7 +387,7 @@ def test_al_tetto_di_adesso_comportamento_e_capacita_restano_interi():
     Senza chiamante che lo sovrascriva, e' questo numero a decidere quanto il
     modello sa della casa a ogni turno.
 
-    Mutazione ESEGUITA: `DEFAULT_CEILING = 5600` in `briefing.py` -- il taglio
+    Mutazione ESEGUITA: `DEFAULT_CAP = 5600` in `briefing.py` -- il taglio
     morde le capacita' e la prova arrossisce su `truncated`. (Era 6000 fino al
     30/09/2026: tolto il suffisso «(automazione)» dalle righe, questa casa pesa
     5.516 caratteri e a 6000 il taglio non morde piu'.)
@@ -403,12 +403,12 @@ def test_il_tetto_di_default_e_quello_che_compose_usa_davvero():
     """Un default dichiarato in una costante e non usato nella firma sarebbe
     una decisione scritta due volte, e la seconda potrebbe restare indietro.
 
-    Mutazione ESEGUITA: rimettere `ceiling: int = 6000` nella firma di
-    `compose()` lasciando `DEFAULT_CEILING = 6800` -- i due testi divergono e
+    Mutazione ESEGUITA: rimettere `cap: int = 6000` nella firma di
+    `compose()` lasciando `DEFAULT_CAP = 6800` -- i due testi divergono e
     la prova arrossisce.
     """
     predefinito, _ = _nucleo_tetto()
-    esplicito, _ = _nucleo_tetto(ceiling=briefing.DEFAULT_CEILING)
+    esplicito, _ = _nucleo_tetto(cap=briefing.DEFAULT_CAP)
     assert predefinito == esplicito
 
 
@@ -559,7 +559,7 @@ def test_r2_il_rinvio_ha_peso_e_l_avviso_non_sottostima_quando_cade():
     """
     attributi = _attributi_firme_rare(60)
     # Tetto stretto: abbastanza per un pugno di firme, non per tutte e 60.
-    testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, ceiling=1300,
+    testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, cap=1300,
                                attributes=attributi)
     assert riepilogo["truncated"] is True
     sezione = _sezione(testo, "## Cosa si puo' chiedere")
