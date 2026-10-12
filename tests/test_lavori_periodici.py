@@ -134,19 +134,28 @@ async def test_il_proponente_e_spento_nella_3_78_0(started_app, monkeypatch):
     schedulatore non arriva al giro: nessuna domanda al modello, nessun
     turno in coda.
 
-    Mutazione ESEGUITA: `ENABLED = True` -- rossa (il giro viene chiamato)."""
+    Gli avvisi delle proposte `alto` partono lo stesso (N141-1): il
+    «Rifalla» resta acceso e puo' farne nascere una.
+
+    Mutazioni ESEGUITE: `ENABLED = True` -- rossa (il giro viene chiamato);
+    tolto l'avviso dal ramo spento -- rossa (nessun avviso tentato)."""
     from hiris.app.mind import proposer_round as modulo
 
-    chiamate = []
+    chiamate, avvisi = [], []
 
     async def giro(app):
         chiamate.append(app)
         return {"giro": "fatto"}
 
+    async def avviso(app):
+        avvisi.append(app)
+
     monkeypatch.setattr(modulo, "proposer_round", giro)
+    monkeypatch.setattr(modulo, "_alert_high_safely", avviso)
     job = _job(started_app, "hiris_mind_proposer")
     assert await job.func(*job.args) is None
     assert chiamate == []
+    assert avvisi == [started_app]
 
 
 async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):

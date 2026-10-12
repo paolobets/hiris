@@ -65,8 +65,15 @@ ENABLED = False
 
 async def proposer_beat(app) -> dict | None:
     """Cio' che lo schedulatore chiama ogni ora: il giro, se e' acceso
-    (`ENABLED`); altrimenti niente, e non lo dice a ogni battito."""
+    (`ENABLED`); altrimenti niente, e non lo dice a ogni battito.
+
+    **Gli avvisi delle proposte `alto` partono anche a giro spento** (N141-1,
+    giro 141): il «Rifalla» resta acceso e firma come il proponente, quindi
+    una proposta su una serratura puo' nascere `alto` anche oggi, e la regola
+    del proprietario (D14, 06/10/2026: «si ritenta finche' arriva») vuole
+    l'avviso. Il ritentare lo fa questo battito."""
     if not ENABLED:
+        await _alert_high_safely(app)
         return None
     return await proposer_round(app)
 
