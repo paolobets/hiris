@@ -932,9 +932,9 @@ HISTORY_TOOL_DEF = {
     # profondita' e la lettura dei conti vengono da `_SUBJECT_FILTERS`,
     # `_depth_rule` e `_COUNT_RULE`, come per `search`.
     "description": (
-        "Cio' che e' successo in casa nel tempo: come sono cambiati gli stati, "
-        "come sono andati i valori, come sono andate automazioni e script, "
-        "cosa c'e' nel registro degli errori di Home Assistant. Una chiamata "
+        "Cio' che e' successo in casa nel tempo: gli stati, i valori, le "
+        "esecuzioni di automazioni e script, il registro degli errori di Home "
+        "Assistant. Una chiamata "
         "sola, anche per piu' cose insieme: DI CHI con gli stessi filtri di "
         "`search`, QUANDO con `ore` oppure con `da`/`a` -- non tutti e due. "
         "`cosa`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
@@ -964,8 +964,9 @@ HISTORY_TOOL_DEF = {
         "fuori dalla media. `consumato` c'e' solo per i contatori; "
         "`consumato_non_calcolato` dice perche' manca. `grana: dettaglio` sono "
         "i cambi veri (entro le 24 ore, o per chi non ha statistiche); "
-        "`grana: oraria` sono fasce di un'ora: una fascia non e' un punto, di' "
-        "«fra le 14 e le 15», non «alle 14». "
+        "`grana: oraria` sono fasce di un'ora: di' «fra le 14 e le 15», non "
+        "«alle 14»; `somma` e' il totale da quando Home Assistant conta, il "
+        "consumo dell'ora e' `cambio`. "
         "Stati: `per_mano_di: HIRIS` e' probabile (un mio atto nello stesso "
         "istante): dillo come probabile; senza, chi sia stato non lo so. "
         "`cronaca_non_letta`: non ho potuto controllare i miei atti. Di chi si "
@@ -986,7 +987,7 @@ HISTORY_TOOL_DEF = {
         "properties": {
             **_SUBJECT_FILTERS,
             "cosa": {"type": "string", "enum": list(HISTORY_KINDS),
-                     "description": "Che cosa chiedere; di norma stati."},
+                     "description": "Che cosa chiedere."},
             "riferimento": {"type": "string",
                             "description": "L'id esatto (es. "
                                            "'sensor.camera_temperatura')."},
@@ -996,8 +997,7 @@ HISTORY_TOOL_DEF = {
                                 + " Per gli errori, chi ha scritto la voce."),
             },
             "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
-                    "description": "Le ultime N ore, da adesso. Predefinito 24. "
-                                   "Non insieme a da/a."},
+                    "description": "Le ultime N ore, da adesso. Predefinito 24."},
             "da": {"type": "string",
                    "description": "L'inizio: «oggi», «ieri» (la loro mezzanotte, nel "
                                   "fuso della casa) o un istante ISO col fuso."},

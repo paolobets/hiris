@@ -250,6 +250,12 @@ def _instant_from_ha(raw):
         return raw
 
 
+#: I valori di una fascia oraria: la chiave di Home Assistant e la nostra.
+#: Ognuno esce solo quando Home Assistant lo manda (`_translate_statistics`).
+_STATISTIC_VALUES = (("min", "minimo"), ("max", "massimo"), ("mean", "media"),
+                     ("sum", "somma"), ("state", "stato"), ("change", "cambio"))
+
+
 def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     """`{statistic_id: [fascia HA, ...]}` -> lo stesso, in italiano.
 
@@ -267,6 +273,10 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     silenzio. Stessa regola di `somma`: si omette quando HA non lo manda
     (una misura senza contatore, es. la potenza istantanea), non si mette a
     `None`.
+
+    Dal 12/10/2026 (C-36, Tappa 9) la stessa regola vale per `minimo`,
+    `massimo` e `media`: la fascia di un contatore li portava a `null`, tre
+    campi che per un contatore non esistono.
     """
     series: dict[str, list[dict]] = {}
     for ident, bands in raw.items():
@@ -277,15 +287,10 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
             if not isinstance(f, dict):
                 continue
             entry = {"inizio": _instant_from_ha(f.get("start")),
-                     "fine": _instant_from_ha(f.get("end")),
-                     "minimo": f.get("min"),
-                     "massimo": f.get("max"), "media": f.get("mean")}
-            if f.get("sum") is not None:
-                entry["somma"] = f.get("sum")
-            if f.get("state") is not None:
-                entry["stato"] = f.get("state")
-            if f.get("change") is not None:
-                entry["cambio"] = f.get("change")
+                     "fine": _instant_from_ha(f.get("end"))}
+            for theirs, ours in _STATISTIC_VALUES:
+                if f.get(theirs) is not None:
+                    entry[ours] = f.get(theirs)
             translated.append(entry)
         series[ident] = translated
     return series
@@ -1757,7 +1762,8 @@ class HAClient:
         `start`/`end`/`min`/`max`/`mean`/`sum`/`state`/`change` sono il
         vocabolario di HA, e lasciarle passare significherebbe farle
         affiorare fino al modello (o al bilancio) mescolate a chiavi
-        italiane. `somma`/`stato`/`cambio` ci sono solo quando HA li manda
+        italiane. `minimo`/`massimo`/`media` (dal 12/10/2026, C-36) e
+        `somma`/`stato`/`cambio` ci sono solo quando HA li manda
         DAVVERO -- si omettono, invece di metterli a `None`: un valore nullo
         e un campo assente non sono lo stesso fatto (una somma nulla
         direbbe "azzerata", non "non richiesta a questo `statistic_id`").
@@ -1776,8 +1782,8 @@ class HAClient:
         «la forma ora per ora» del bilancio, senza doverlo ricostruire
         sottraendo `somma` a mano.
 
-        Ritorna `{"serie": {statistic_id: [{"inizio","fine","minimo",
-        "massimo","media",["somma"],["stato"],["cambio"]}]}}`, oppure
+        Ritorna `{"serie": {statistic_id: [{"inizio","fine",["minimo"],
+        ["massimo"],["media"],["somma"],["stato"],["cambio"]}]}}`, oppure
         `{"errore": str}` -- mai `{}`, che direbbe «non ci sono statistiche»
         anche quando il websocket e' giu'.
         """
