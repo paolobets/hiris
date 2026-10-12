@@ -204,8 +204,7 @@ def test_migration_3_adds_the_columns_to_an_old_archive(tmp_path):
 
 def test_a_log_condition_carries_first_occurred_as_a_float(tmp_path):
     """`first_occurred` e' un ISTANTE (Task 2, «le tracce e il log»), non un
-    testo: la colonna e' `TEXT` (stessa forma di `_add_missing_columns`, vedi
-    il suo docstring), ma `readings()` lo rilegge come `float | None` --
+    testo: la colonna e' `TEXT`, ma `readings()` lo rilegge come `float | None` --
     l'unica delle colonne nuove per cui serve una conversione, perche' e'
     l'unica numerica.
 

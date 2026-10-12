@@ -531,15 +531,15 @@ def _view_integration(house: House, reference,
     delle sole mute vere.
 
     `mute_da` esce quando le mute (`unavailable`, lo STESSO insieme di
-    `entita_mute` -- mai le `unknown`, altrimenti la data si riferirebbe a
-    un gruppo diverso dal numero accanto) condividono un istante ABBASTANZA
+    `entita_mute` -- mai le `unknown`, altrimenti la data si riferirebbe a un
+    gruppo diverso dal numero accanto) condividono un istante ABBASTANZA
     vicino (`_SYNCHRONY_WINDOW_SECONDS`, sopra) -- non identico: e' la firma
     della sincronia (§4) che distingue un'integrazione caduta da dispositivi
-    spenti uno per volta. Un'entita' muta SENZA `da_quando` continua a
-    impedire l'uscita del campo (non si puo' dire se e' dentro o fuori dalla
-    finestra senza saperlo): inventare un «da quando» quando non si e'
-    sicuri che sia sincrono sarebbe proprio la risposta sicura che questo
-    sprint toglie.
+    spenti uno per volta. Un'entita' muta senza l'istante del cambio
+    (`mirror.since`) continua a impedire l'uscita del campo (non si puo' dire
+    se e' dentro o fuori dalla finestra senza saperlo): inventare un «da
+    quando» quando non si e' sicuri che sia sincrono sarebbe proprio la
+    risposta sicura che questo sprint toglie.
 
     `avvio_home_assistant` esce accanto a `mute_da`, non a una seconda
     chiamata di distanza (spec §4 ③): e' lo stato di `sensor.uptime`, letto

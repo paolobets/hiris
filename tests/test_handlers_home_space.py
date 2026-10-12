@@ -506,7 +506,8 @@ async def test_il_corpo_delle_automazioni_non_esce_da_questa_porta(aiohttp_clien
     """Dalla 3.73.1 la rotta copriva il corpo a chi non amministra. Dalla
     Tappa 9 (F5, D3) le voci non escono per nessuno: nessuna pagina le
     leggeva, e il corpo la chat lo chiede a `search`, con la stessa regola
-    (`privacy.cover_reserved_body`)."""
+    (`privacy.cover_reserved_body`). Un ruolo per caso: un corpo rimesso
+    nella risposta per chi amministra (come la 3.73.1) arrossisce il suo."""
     app, archivio = _app_with_behavior(tmp_path, _servizio(ruolo))
     client = await aiohttp_client(app)
     risposta = await (await client.get("/api/home-space")).json()
@@ -517,11 +518,13 @@ async def test_il_corpo_delle_automazioni_non_esce_da_questa_porta(aiohttp_clien
 
 @pytest.mark.asyncio
 async def test_senza_corpo_conta_cio_che_HIRIS_non_sa_non_cio_che_copre(aiohttp_client, tmp_path):
-    """`senza_corpo` e' «quante voci HIRIS conosce solo di nome»: coprire un
-    corpo a chi guarda non cambia cio' che HIRIS sa.
+    """`senza_corpo` e' «quante voci HIRIS conosce solo di nome», anche per
+    chi non amministra.
 
-    Mutazione ESEGUITA: `senza_corpo` contato dopo la copertura -- rossa
-    (2 invece di 1)."""
+    Mutazione ESEGUITA il 12/10/2026 (Tappa 9, chiusura): `senza_corpo`
+    come numero di tutte le voci -- rossa (3 invece di 1). Quella di prima
+    («contato dopo la copertura») non si puo' piu' costruire: dalla F5 la
+    rotta non copre piu' niente, perche' le voci non escono."""
     app, archivio = _app_with_behavior(tmp_path, _servizio("lettore"))
     client = await aiohttp_client(app)
     risposta = await (await client.get("/api/home-space")).json()

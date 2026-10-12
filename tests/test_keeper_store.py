@@ -143,8 +143,8 @@ def test_il_tetto_delle_in_sospeso_rifiuta_nominandolo(archivio):
 
 
 def test_elenca_in_sospeso_include_anche_in_corso(archivio):
-    """Review finale, rilievo ②: l'insieme «in sospeso» e' `STATES_SOSPESO`
-    (`keeper/promise.py`), non solo `in_attesa` -- una promessa presa
+    """Review finale, rilievo ②: l'insieme «in sospeso» e' `states.SUSPENDED`
+    (`hiris/app/states.py`), non solo `in_attesa` -- una promessa presa
     dall'orologio (`in_corso`) non e' ancora conclusa (guida di disegno §1),
     e non deve sparire dall'elenco fra `prendi()` e `concludi()`.
 
@@ -167,7 +167,7 @@ def test_lo_stato_in_corso_conta_nel_tetto_delle_in_sospeso(archivio):
     `concludi`.
 
     Mutazione che deve farlo fallire: contare `stato='in_attesa'` invece di
-    `stato IN (STATES_SOSPESO)` in `create()`."""
+    `stato IN (states.SUSPENDED)` in `create()`."""
     for _ in range(CEILING_IN_SOSPESO - 1):
         archivio.create(_fai(), thread=PAOLO, now=ADESSO)
     ultima = archivio.create(_fai(),

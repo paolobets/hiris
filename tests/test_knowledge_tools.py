@@ -404,7 +404,7 @@ _THREAD = ChatThread("persona:paolo", "pannello")
 
 @pytest.mark.asyncio
 async def test_a_missing_required_argument_names_the_field():
-    """«related» dichiara `required: ["tipo", "riferimento"]`
+    """«related» dichiara `required: ["genere", "riferimento"]`
     (`RELATED_TOOL_DEF`). Fino a «rifiutare e importare» un obbligatorio
     mancante arrivava al gestore, che decideva da solo (misurato allora su
     `trend`, uscito con «la storia» il 30/09/2026). Un errore che NOMINA il
@@ -416,7 +416,7 @@ async def test_a_missing_required_argument_names_the_field():
     `assert "riferimento" in result["errore"]`.
     """
     d = ToolDispatcher(None, None, ha=object())
-    result = await d.dispatch("related", {"tipo": "area"})
+    result = await d.dispatch("related", {"genere": "area"})
     assert "errore" in result
     assert "riferimento" in result["errore"]
 
@@ -443,7 +443,7 @@ async def test_an_unknown_argument_is_an_error_not_a_silence():
     """
     d = ToolDispatcher(None, None, ha=object())
     result = await d.dispatch(
-        "related", {"tipo": "area", "riferimento": "cucina", "orario": 24})
+        "related", {"genere": "area", "riferimento": "cucina", "orario": 24})
     assert "errore" in result
     assert "orario" in result["errore"]
 
@@ -461,9 +461,9 @@ async def test_the_two_refusals_do_not_say_the_same_thing():
     `assert missing["errore"] != unknown["errore"]`.
     """
     d = ToolDispatcher(None, None, ha=object())
-    missing = await d.dispatch("related", {"tipo": "area"})
+    missing = await d.dispatch("related", {"genere": "area"})
     unknown = await d.dispatch(
-        "related", {"tipo": "area", "riferimento": "cucina", "orario": 24})
+        "related", {"genere": "area", "riferimento": "cucina", "orario": 24})
     assert missing["errore"] != unknown["errore"]
 
 
@@ -483,7 +483,7 @@ async def test_both_refusals_are_said_together_when_both_apply():
     tornerebbe soltanto «manca «riferimento».», senza traccia di `orario`.
     """
     d = ToolDispatcher(None, None, ha=object())
-    result = await d.dispatch("related", {"tipo": "area", "orario": 24})
+    result = await d.dispatch("related", {"genere": "area", "orario": 24})
     assert "errore" in result
     assert "riferimento" in result["errore"]
     assert "orario" in result["errore"]
@@ -537,24 +537,20 @@ async def test_a_required_argument_present_but_null_is_missing_too(archivio_casa
     (`if reference is None: ...`); ora e' `_bad_arguments`, una volta sola
     per tutti e tre.
 
-    Mutazione: in `_bad_arguments`, tornare a
-    `field not in arguments` senza `or arguments[field] is None`.
-    Verificato eseguendo, nome per nome, perche' i tre NON arrossiscono
-    nello stesso punto: `view` e `fetch` cadono su `assert "errore" in
-    result` -- non producono affatto un errore, tornano una risposta
-    PLAUSIBILE E SBAGLIATA (`{"esiste": False, ...}` e `{"ricordi": []}`) --
-    mentre `related` arriva fino a `assert "riferimento" in
-    result["errore"]`. Il ciclo si ferma al primo, quindi la mutazione
-    uccide comunque la prova; ma i due rossi sono di specie diversa, ed e'
-    proprio la risposta plausibile a dimostrare che quelle guardie erano
-    VIVE e non morte.
+    Mutazione ESEGUITA il 12/10/2026 (Tappa 9, chiusura): in
+    `_bad_arguments`, tornare a `field not in arguments` senza
+    `or arguments[field] is None` -- rossa su `assert "riferimento" in
+    result["errore"]`: la chiamata arriva al gestore, e l'errore e' quello
+    generico della rete di sicurezza. Fino a quel giorno la prova chiamava
+    `related` con `tipo`, rifiutato per il `genere` mancante, e restava
+    verde anche con la mutazione: discriminava solo grazie a `fetch`.
     """
     d = ToolDispatcher(archivio_casa, memoria, ha=object())
     # Dal 29/09/2026 `view` non e' piu' uno strumento (il suo dettaglio e'
     # una voce di `search`, che non ha obbligatori); dal 12/10/2026 (Tappa 9,
     # F6) nemmeno `fetch`: resta `related`.
     for name, arguments in (
-        ("related", {"tipo": "area", "riferimento": None}),
+        ("related", {"genere": "area", "riferimento": None}),
     ):
         result = await d.dispatch(name, arguments)
         assert "errore" in result, name

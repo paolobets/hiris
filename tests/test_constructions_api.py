@@ -641,9 +641,9 @@ async def test_una_proposta_a_mano_guasta_non_fa_cadere_l_elenco(tmp_path):
 async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path):
     """C-12 (Tappa 4, Task 5): «In attesa» o «Storico» lo decide il server.
 
-    Le costruzioni aspettano finche' stanno in `STATES_SOSPESO` -- `in_corso`
+    Le costruzioni aspettano finche' stanno in `states.SUSPENDED` -- `in_corso`
     compreso: rivendicata non vuol dire decisa --, le proposte a mano finche'
-    sono `PROPOSAL_PENDING`. La pagina legge `sospesa` e non sa piu' quali
+    sono `states.PENDING`. La pagina legge `sospesa` e non sa piu' quali
     parole lo dicano (`tests/js/constructions-route.test.mjs`). Anche la
     singola lo porta: la stessa costruzione ha la stessa forma dalle due porte.
 
