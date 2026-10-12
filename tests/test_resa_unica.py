@@ -37,11 +37,13 @@ nessuna chiave, e non e' toccata.
 **I limiti, dichiarati.** `handlers_home_space._with_live_kind` compone
 ancora la riga dell'entita' di `/api/home-space` (ammessa con la ragione: la
 chiude F5). Il cancello non vede le chiavi che arrivano da `dict(zip(...))`
-ne' da una collezione costruita a pezzi (giro 114). Le righe in TESTO per i modelli non sono
-dizionari: `observer.house_lines`, `recipe_turn.device_lines` e
-`keeper/exchange._domanda` compongono l'entita' in una stringa e il
-cancello non le vede. Al Task 9 diventano la resa in testo dello stesso
-dizionario (D8), e il cancello del testo nasce li'. `house_history._value_row`
+ne' da una collezione costruita a pezzi (giro 114). Le righe in TESTO per i
+modelli non sono dizionari: dalla Tappa 9, F4 (12/10/2026) quelle degli
+attori sono `render.entity_line`, la resa in testo dello stesso dizionario
+(D8), e il cancello del testo (`text_composers`, piu' sotto) ferma chi
+torna a comporle chiedendo i campi alla casa. `keeper/exchange._domanda`
+scrive l'istantanea di una promessa, gia' resa da `render_entity` quando la
+promessa e' nata: legge un dizionario, non la casa. `house_history._value_row`
 porta un solo campo dell'entita' (`unita`) oltre a id e nome: e' una serie,
 e la vede il Task 8 coi generi.
 """
@@ -341,6 +343,57 @@ def composers(modules: set[Path], fields: set[str]) -> dict[str, tuple[int, list
     return found
 
 
+def entity_questions() -> set[str]:
+    """Le domande che `House` sa fare su un'entita': i metodi il cui primo
+    parametro e' `entity_id`, chiesti alla firma."""
+    import inspect
+
+    from hiris.app.home_space.house import House
+
+    return {name for name, method in inspect.getmembers(House, inspect.isfunction)
+            if list(inspect.signature(method).parameters)[1:2] == ["entity_id"]}
+
+
+def _text_composer(function, questions: set[str], separator: str) -> bool:
+    """Una funzione che chiede alla casa i campi di un'entita' e li unisce in
+    una riga col separatore delle righe degli attori."""
+    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute)]
+    asks = any(call.func.attr in questions for call in calls)
+    joins = any(call.func.attr == "join" and isinstance(call.func.value, ast.Constant)
+                and call.func.value.value == separator for call in calls)
+    return asks and joins
+
+
+#: Lista di AMMISSIONE del cancello del testo: `modulo::funzione` -> perche'
+#: non e' la riga di un'entita'.
+TEXT_ADMITTED: dict[str, str] = {
+    "mind/recipes.py::muted_recipes": (
+        "unisce i MOTIVI dei rifiuti di una ricetta (`silence`, uno per "
+        "entita' che tace), non i campi di un'entita'"),
+}
+
+
+def text_composers(sources: dict[str, str], questions: set[str], separator: str) -> list[str]:
+    """`modulo::funzione` per ogni funzione fuori dalla resa che compone la
+    riga di testo di un'entita' (D8 della Tappa 4). `sources` e' `{modulo:
+    sorgente}`."""
+    found = []
+    for relative, source in sorted(sources.items()):
+        if relative in RENDER_MODULES:
+            continue
+        for function in ast.walk(ast.parse(source)):
+            if (isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and _text_composer(function, questions, separator)):
+                found.append(f"{relative}::{function.name}")
+    return found
+
+
+def app_sources() -> dict[str, str]:
+    return {path.relative_to(APP).as_posix(): path.read_text(encoding="utf-8")
+            for path in APP.rglob("*.py")}
+
+
 # ── le derivazioni non si sono svuotate ────────────────────────────────────
 
 def test_i_campi_dell_entita_si_chiedono_al_vocabolario():
@@ -422,3 +475,43 @@ def test_nessuna_porta_compone_un_entita_fuori_dalla_resa():
         f"{len(loose)} funzioni compongono un'entita' fuori dalla resa:\n"
         + "\n".join(f"  {name} (riga {line}): {', '.join(keys)}"
                     for name, (line, keys) in sorted(loose.items())))
+
+
+def test_il_cancello_del_testo_riconosce_una_riga_composta_a_mano():
+    """La derivazione del cancello del testo non si e' svuotata: le domande
+    della casa si chiedono alla firma di `House`, e la riga com'era fino al
+    12/10/2026 (`recipe_turn.device_lines`) si riconosce."""
+    from hiris.app.home_space.render import _LINE_SEPARATOR
+
+    questions = entity_questions()
+    assert {"kind_of", "where", "source"} <= questions, sorted(questions)
+    sample = (
+        "def device_lines(house, device_id):\n"
+        "    lines = []\n"
+        "    for entity_id in house.entities_of(device_id):\n"
+        "        kind = house.kind_of(entity_id) or {}\n"
+        "        lines.append(' · '.join([entity_id, kind.get('classe')]))\n"
+        "    return lines\n")
+    found = text_composers({"mind/prova.py": sample}, questions, _LINE_SEPARATOR)
+    assert found == ["mind/prova.py::device_lines"]
+
+
+def test_ogni_ammessa_del_testo_compone_ancora():
+    from hiris.app.home_space.render import _LINE_SEPARATOR
+
+    found = text_composers(app_sources(), entity_questions(), _LINE_SEPARATOR)
+    assert not set(TEXT_ADMITTED) - set(found), sorted(set(TEXT_ADMITTED) - set(found))
+
+
+def test_nessuno_compone_la_riga_di_un_entita_fuori_dalla_resa():
+    """Le righe degli attori sono `render.entity_line` (Tappa 9, F4; D8 della
+    Tappa 4): chi chiede alla casa i campi di un'entita' e li unisce in una
+    riga la compone fuori dalla resa.
+
+    Mutazione ESEGUITA: `recipe_turn.device_lines` com'era (i campi chiesti a
+    `House.kind_of` e uniti con « · ») -- rossa col nome della funzione."""
+    from hiris.app.home_space.render import _LINE_SEPARATOR
+
+    found = text_composers(app_sources(), entity_questions(), _LINE_SEPARATOR)
+    loose = [name for name in found if name not in TEXT_ADMITTED]
+    assert loose == [], loose

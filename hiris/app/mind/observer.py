@@ -30,7 +30,7 @@ import logging
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import House
 from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
-from ..home_space.topology import is_pseudo_area
+from ..home_space.render import entity_line, tree_order
 from ..steering import OBSERVER_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .scope import OBSERVER
 
@@ -130,18 +130,17 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     `config_entry_id`, `dispositivo_id`, `piattaforma` sono identificatori
     opachi che non aiutano nessun giudizio e costerebbero token su 381 righe.
 
-    **Ogni campo lo chiede alla casa** (Tappa 3, Task 12, 04/10/2026): il nome
-    a `House.name` (D1 «vivo»: quello che si vede in Home Assistant), il tipo a
-    `House.kind_of` (classe e unita' di adesso), l'area a `House.where` (D3:
-    anche quella ereditata dal dispositivo). Fino a quel giorno l'osservatore
-    scorreva l'anagrafe da se', col nome del registro e il solo `area_id`
-    proprio: 194 entita' guardate su 324 gli arrivavano senza area (cattura
-    del 01/10/2026).
+    **La riga e' la resa in testo dell'entita'** (`render.entity_line`, alla
+    profondita' `media`; Tappa 9, F4, D8 della Tappa 4), e le righe stanno
+    nell'ordine dell'albero (`render.tree_order`, D9): area, dispositivo, id.
+    Dal 04/10/2026 (Tappa 3, Task 12) ogni campo veniva dalla casa -- il nome
+    vivo, il tipo di adesso, l'area anche ereditata dal dispositivo; prima
+    l'osservatore scorreva l'anagrafe da se', e 194 entita' guardate su 324
+    gli arrivavano senza area (cattura del 01/10/2026).
 
     L'area si mostra col **nome**: un `area_id` grezzo in mezzo a un prompt in
-    italiano e' rumore. Una pseudo-area («Senza area», «Aree non lette») non
-    si mostra: non e' un luogo, e la riga dice gia' l'assenza tacendo. Un nome
-    che e' solo l'id ripetuto non si ripete.
+    italiano e' rumore. Una pseudo-area non si mostra. Un nome che e' solo
+    l'id ripetuto non si ripete.
 
     **Una persona o un dispositivo che la segue** (`presence_handles`) ha il
     segnaposto al posto dell'id, e niente nome ne' area -- il nome di
@@ -153,30 +152,10 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     giudicare, ma non parlera'. Una fonte viva, o che lo specchio non ha
     potuto guardare, non costa una parola.
     """
-    lines = []
     ids = watched_ids(house, only)
     handles = presence_handles(ids)
-    for entity_id in ids:
-        kind = house.kind_of(entity_id) or {}
-        if entity_id in handles:
-            lines.append(" · ".join(
-                [handles[entity_id]]
-                + [str(value) for value in (kind.get("classe"), kind.get("unita"),
-                                            kind.get("translation_key")) if value]))
-            continue
-        room = ((house.where(entity_id) or {}).get("area")) or {}
-        area_name = None if is_pseudo_area(room.get("id")) else room.get("nome")
-        name = house.name("entita", entity_id)
-        parts = [entity_id]
-        for value in (None if name == entity_id else name, kind.get("classe"),
-                      kind.get("unita"), area_name, kind.get("translation_key")):
-            if value:
-                parts.append(str(value))
-        state = (house.source(entity_id) or {}).get("stato")
-        if state not in (None, _LIVE):
-            parts.append(f"fonte: {state}")
-        lines.append(" · ".join(parts))
-    return lines
+    return [entity_line(house, entity_id, "media", subject=handles.get(entity_id))
+            for entity_id in tree_order(house, ids)]
 
 
 #: Lo stato della fonte che parla (`House.source`, Tappa 3, Task 8).

@@ -277,6 +277,82 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
 
 
 # --------------------------------------------------------------------------
+# LA RIGA DI TESTO DI UN'ENTITA', PER GLI ATTORI
+# --------------------------------------------------------------------------
+
+#: Il separatore dei campi di una riga.
+_LINE_SEPARATOR = " · "
+
+#: Lo stato della fonte che parla (`House.source`): non costa una parola.
+_LIVE_SOURCE = "viva"
+
+
+def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None = None) -> str:
+    """UN'ENTITA' IN UNA RIGA DI TESTO, per gli attori: la resa in testo del
+    dizionario di `render_entity` (Tappa 9, F4; D8 della Tappa 4).
+
+    Fino al 12/10/2026 `observer.house_lines` e `recipe_turn.device_lines`
+    componevano la riga ciascuna per conto suo, chiedendo i campi alla casa
+    uno per uno. Le righe restano quelle, carattere per carattere; cambia
+    l'ordine dell'osservatore (D9, `tree_order`).
+
+    Due profondita', la seconda contiene la prima:
+
+    - `corta` (le ricette) -- id, nome (quando non e' l'id ripetuto),
+      classe, unita';
+    - `media` (l'osservatore) -- piu' il nome dell'area (mai una pseudo-area:
+      non e' un luogo, e la riga dice gia' l'assenza tacendo), il
+      `translation_key` e la fonte quando tace (`fonte: <stato>`).
+
+    Il `translation_key` e' il solo campo che non viene da `render_entity`:
+    il vocabolario dei campi non lo ha, e lo legge solo l'osservatore. E' cio'
+    che l'integrazione dichiara di se' -- `energy_today`, non «Potenza» da
+    indovinare -- e lo si chiede a `House.kind_of`, la stessa fonte del tipo.
+
+    `subject` e' il segnaposto di una persona o di un dispositivo che la
+    segue (`observer.presence_handles`): prende il posto dell'id, e la riga
+    non porta ne' nome, ne' area, ne' fonte -- il nome di un'area puo' essere
+    quello di chi ci dorme."""
+    if depth not in ("corta", "media"):
+        raise ValueError(f"profondita' sconosciuta per una riga: {depth!r}")
+    # Senza registro la resa non compone i `comandi`, gli unici che leggono i
+    # giudizi: `None` lo dice, invece di ricadere in silenzio sul seme
+    # (`tests/test_judgments_passed_in_production.py`).
+    row = render_entity(house, entity_id, "media" if depth == "corta" else "completa",
+                        registry=None, judgments=None)
+    parts = [subject or row["id"]]
+    if subject is None and row.get("nome") != row["id"]:
+        parts.append(row.get("nome"))
+    parts += [row.get("classe"), row.get("unita")]
+    if depth == "media":
+        area = row.get("area") or {}
+        if subject is None and not is_pseudo_area(area.get("id")):
+            parts.append(area.get("nome"))
+        parts.append((house.kind_of(entity_id) or {}).get("translation_key"))
+        state = (row.get("fonte") or {}).get("stato")
+        if subject is None and state not in (None, _LIVE_SOURCE):
+            parts.append(f"fonte: {state}")
+    return _LINE_SEPARATOR.join(str(part) for part in parts if part)
+
+
+def tree_order(house: House, entity_ids) -> list[str]:
+    """Le entita' nell'ordine dell'albero (D9 della Tappa 4): l'area nell'ordine
+    di `House.hierarchy` (le pseudo-aree in fondo, come nell'albero), poi il
+    dispositivo, poi l'id. Stabile fra un giro e l'altro, qualunque sia
+    l'ordine in cui l'anagrafe le elenca."""
+    rank = {area["id"]: index for index, area in enumerate(
+        area for floor in house.hierarchy() for area in floor.get("aree") or [])}
+
+    def key(entity_id: str):
+        where = house.where(entity_id) or {}
+        area = (where.get("area") or {}).get("id")
+        device = (where.get("dispositivo") or {}).get("id") or ""
+        return (rank.get(area, len(rank)), device, entity_id)
+
+    return sorted(entity_ids, key=key)
+
+
+# --------------------------------------------------------------------------
 # IL DISPOSITIVO
 # --------------------------------------------------------------------------
 

@@ -51,6 +51,7 @@ from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
+from ..home_space.render import entity_line
 from ..home_space.type_judgments import DECLINED_FIELD, RECIPE_FIELD, UNDERSTOOD_FIELD
 from ..steering import RECIPES_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .knowledge import Fact
@@ -167,21 +168,12 @@ def device_lines(house: House, device_id: str) -> list[str]:
     esclude, su 1.400. Il nome e il tipo li dice la casa (`House.name`, D1;
     `House.kind_of`).
 
-    Stesso separatore di `observer.house_lines` e i suoi primi quattro campi,
-    ma NON e' la stessa riga: qui mancano l'area e il `translation_key`. Le
-    due rese le unifica la Tappa 4.
+    La riga e' la resa in testo dell'entita' alla profondita' `corta`
+    (`render.entity_line`; Tappa 9, F4, D8 della Tappa 4): l'inizio della riga
+    dell'osservatore, senza area, `translation_key` e fonte. Fino al
+    12/10/2026 le due righe si componevano ciascuna per conto suo.
     """
-    lines = []
-    for entity_id in house.entities_of(device_id):
-        parts = [entity_id]
-        kind = house.kind_of(entity_id) or {}
-        name = house.name("entita", entity_id)
-        for value in (None if name == entity_id else name, kind.get("classe"),
-                      kind.get("unita")):
-            if value:
-                parts.append(str(value))
-        lines.append(" · ".join(parts))
-    return lines
+    return [entity_line(house, entity_id, "corta") for entity_id in house.entities_of(device_id)]
 
 
 def _operations_catalogue() -> str:
