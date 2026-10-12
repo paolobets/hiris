@@ -504,6 +504,10 @@ def test_il_corpo_che_manca_si_dice_una_volta_con_una_frase_sola():
         unread_bodies={"script.buonanotte": "configurazione non letta da Home Assistant"})
     avvisi = [a for a in riepilogo["notices"] if "corpo" in a]
     assert len(avvisi) == 1 and BODY_UNKNOWN in avvisi[0], avvisi
+    # `script.buonanotte` sta in tutte e due le strade, la forma di
+    # produzione: e' UNA voce (N118-1, giro 118). Mutazione ESEGUITA: la
+    # somma delle due strade invece dell'unione -- rossa con «di 2 fra».
+    assert avvisi[0].startswith("di 1 fra"), avvisi
     riga = next(r for r in testo.splitlines() if "Buonanotte" in r)
     assert BODY_UNKNOWN in riga
 

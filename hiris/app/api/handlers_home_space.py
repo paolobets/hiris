@@ -17,6 +17,7 @@ import time
 
 from aiohttp import web
 
+from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.house import House
 from ..home_space.privacy import cover_reserved_body
@@ -137,7 +138,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         behavior_counts[v["tipo"]] = behavior_counts.get(v["tipo"], 0) + 1
     # Quante voci HIRIS conosce solo di nome: si conta PRIMA di coprire,
     # perche' dice cio' che HIRIS sa, non cio' che mostra a chi guarda.
-    without_body = sum(1 for v in behavior_entries if v["corpo"] is None)
+    unknown_bodies = len(without_body(behavior_entries, store.unread_bodies()))
     # Il corpo di automazioni e scene solo a chi amministra: la stessa regola dello
     # strumento della chat, dalla stessa funzione (3.73.1). Le persone che non
     # amministrano qui non arrivano (`admission.py`); ci arriva un servizio
@@ -224,7 +225,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # quanto sa davvero della casa. `corpo is None` e non falsy:
             # un corpo vuoto (`{}`, presente ma senza niente dentro) e' un
             # fatto diverso da un corpo assente, e non va confuso con esso.
-            "senza_corpo": without_body,
+            "senza_corpo": unknown_bodies,
             # Cio' che l'ultima lettura NON ha potuto concludere con
             # certezza (id duplicati, script vuoti, voci malformate) e i
             # file che non si sono letti, con la ragione. Li costruisce
