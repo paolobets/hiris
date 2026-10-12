@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from ..proxy.state_translations import read_for_house
 from .seed import HOUSE_PRIORITY, meanings_from_translations
 
 logger = logging.getLogger(__name__)
@@ -54,17 +55,9 @@ async def prime_state_translations(app) -> dict:
     ricostruzione dell'anagrafe (`mind/reconciliation.after_rebuild`). Il giro
     serve alla prima lettura fallita.
     """
-    cache = app.get("state_translations")
-    if cache is None:
-        return {"lette": False,
-                "motivo": "la lettura delle traduzioni non e' collegata a questa istanza"}
     store = app.get("home_space_store")
     frame = store.reference_frame() if store is not None else {}
-    try:
-        report = await cache.read(ha_version=frame.get("versione_ha"),
-                                  language=frame.get("lingua"))
-    except Exception as exc:
-        report = {"lette": False, "motivo": f"{type(exc).__name__}: {exc}"}
+    report = await read_for_house(app.get("state_translations"), frame)
     if not report.get("lette"):
         logger.info("traduzioni degli stati non lette: %s", report.get("motivo"))
         return report

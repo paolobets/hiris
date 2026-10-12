@@ -34,9 +34,7 @@ nessuna chiave, e non e' toccata.
   non cio' che si rende -- e la riga di un oggetto che non e' un'entita' ma
   porta due parole del vocabolario. Ognuna col suo perche'.
 
-**I limiti, dichiarati.** `handlers_home_space._with_live_kind` compone
-ancora la riga dell'entita' di `/api/home-space` (ammessa con la ragione: la
-chiude F5). Il cancello non vede le chiavi che arrivano da `dict(zip(...))`
+**I limiti, dichiarati.** Il cancello non vede le chiavi che arrivano da `dict(zip(...))`
 ne' da una collezione costruita a pezzi (giro 114). Le righe in TESTO per i
 modelli non sono dizionari: dalla Tappa 9, F4 (12/10/2026) quelle degli
 attori sono `render.entity_line`, la resa in testo dello stesso dizionario
@@ -136,12 +134,17 @@ ADMITTED: dict[str, str] = {
         "dell'entita'"),
     # N113-1 (giro 113, 12/10/2026): le comprensioni che prendono le chiavi
     # da una collezione di stringhe scritte, che il cancello prima non vedeva.
-    "api/handlers_home_space.py::_with_live_kind": (
-        "LIMITE DICHIARATO, non un altro oggetto: la riga dell'entita' di "
-        "`GET /api/home-space` e' il record dell'anagrafe con `classe` e "
-        "`unita` rilette dal vivo -- una composizione fuori dalla resa. La "
-        "chiude F5 (T3 della Tappa 9, C-23/M-35), che aspetta la foto "
-        "`forme` dal vivo (M1): quale campo legge ogni pagina"),
+    # Tappa 9, F5 (12/10/2026): `alias` entra nel vocabolario dei campi
+    # dell'entita', e due righe che non sono entita' lo portavano gia'.
+    "home_space/tools.py::_propose": (
+        "l'intento di una costruzione: `alias` e' il campo di Home Assistant "
+        "per il nome di un'automazione o di uno script, `dominio` quello di "
+        "cio' che si costruisce. Non e' un'entita' resa, e' cio' che si "
+        "chiedera' a Home Assistant di creare"),
+    "model_resolution.py::compose_panel": (
+        "la riga di un modello nella pagina Modelli: `alias` dice se il nome "
+        "e' un alias del fornitore, `fonte` da dove viene la scelta. Nessuna "
+        "cosa della casa"),
     "home_space/house_history.py::parse_query": (
         "i FILTRI di chi si chiede (`dominio`, `classe`, `integrazione` come "
         "parametri di `search`), copiati dagli argomenti per `parse_filters`: "

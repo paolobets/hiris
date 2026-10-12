@@ -3641,6 +3641,8 @@ stessi campi, stessi proprietari, stessi nomi tolti, nei due versi. Il cancello 
 | `stato_presunto` | Home Assistant non legge lo stato, lo presume (`assumed_state`) | vero, solo quando lo e' | `entita` | — | resta |
 | `etichette` | le etichette scritte dal proprietario | elenco «Nome (id: X)» | `entita` `dispositivo` `area` `automazione` `script` `scena` | — | resta |
 | `categorie` | le categorie scritte dal proprietario | `{ambito: nome}` | `entita` `automazione` `script` `scena` | — | resta |
+| `alias` | gli altri nomi che il proprietario ha dato in Home Assistant | elenco di stringhe | `entita` `area` | — | entra il 12/10/2026 (Tappa 9, F5, D1): l'area lo rendeva gia', l'entita' lo aveva solo nell'albero |
+| `translation_key` | cio' che l'integrazione dichiara dell'entita', il nome di Home Assistant | stringa di Home Assistant, mai tradotta | `entita` | — | entra il 12/10/2026 (Tappa 9, F5, D1): la chiave di Home Assistant, col suo nome come ogni valore che attraversa un confine |
 | `regola` | la regola di misura di un'entita' di servizio | frase | `entita` | — | resta |
 | `significato` | cosa significa la classe, dal sapere | frase | `entita` | — | resta |
 | `membri` | di cosa e' fatto un gruppo, e cosa non e' di tutti | dizionario | `entita` | — | resta |

@@ -124,6 +124,11 @@ FIELDS: dict[str, Field] = {
                         *_PLACED),
     "categorie": _field("le categorie scritte dal proprietario", "{ambito: nome}",
                         "entita", "automazione", "script", "scena"),
+    "alias": _field("gli altri nomi che il proprietario ha dato in Home Assistant",
+                    "elenco di stringhe", "entita", "area"),
+    "translation_key": _field("cio' che l'integrazione dichiara dell'entita', il nome di "
+                              "Home Assistant", "stringa di Home Assistant, mai tradotta",
+                              "entita"),
     "regola": _field("la regola di misura di un'entita' di servizio", "frase", "entita"),
     "significato": _field("cosa significa la classe, dal sapere", "frase", "entita"),
     "membri": _field("di cosa e' fatto un gruppo, e cosa non e' di tutti",

@@ -155,8 +155,9 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
       avere la forma di una lampadina accesa in nessuna riga. L'unita'
       pure (fondamenta 1: `72` senza unita' e' un frammento);
     - `media` -- piu' `classe`, `ruolo_energia`, `integrazione`, `capacita`,
-      `stato_presunto`, `etichette`, `categorie` e gli `attributi`
-      filtrati nelle loro ceste, come alla completa (C-34);
+      `stato_presunto`, `etichette`, `categorie`, `alias`,
+      `translation_key` e gli `attributi` filtrati nelle loro ceste, come
+      alla completa (C-34);
     - `completa` -- la scheda: piu' `piano`, `dispositivo`,
       `area_ereditata`, `fonte`, `regola`, `significato`, `membri`,
       `comandi`.
@@ -238,6 +239,13 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
         row["stato_presunto"] = True
     _add_labels(row, entry, house.labels())
     _add_categories(row, entry, house.categories())
+    # Gli altri nomi del proprietario e cio' che l'integrazione dichiara
+    # (Tappa 9, F5, D1): fino al 12/10/2026 li portava solo l'albero della
+    # pagina, con una voce sua. Solo quando ci sono.
+    if entry.get("alias"):
+        row["alias"] = list(entry["alias"])
+    if kind.get("translation_key"):
+        row["translation_key"] = kind["translation_key"]
     baskets = _baskets(mirror.attributes.get(entity_id))
     if baskets:
         row["attributi"] = baskets
@@ -305,10 +313,9 @@ def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None
       non e' un luogo, e la riga dice gia' l'assenza tacendo), il
       `translation_key` e la fonte quando tace (`fonte: <stato>`).
 
-    Il `translation_key` e' il solo campo che non viene da `render_entity`:
-    il vocabolario dei campi non lo ha, e lo legge solo l'osservatore. E' cio'
-    che l'integrazione dichiara di se' -- `energy_today`, non «Potenza» da
-    indovinare -- e lo si chiede a `House.kind_of`, la stessa fonte del tipo.
+    Il `translation_key` e' cio' che l'integrazione dichiara di se' --
+    `energy_today`, non «Potenza» da indovinare. Dal 12/10/2026 (Tappa 9, F5)
+    e' un campo della resa media, e la riga lo legge da li'.
 
     `subject` e' il segnaposto di una persona o di un dispositivo che la
     segue (`observer.presence_handles`): prende il posto dell'id, e la riga
@@ -333,7 +340,7 @@ def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None
         area = row.get("area") or {}
         if subject is None and not is_pseudo_area(area.get("id")):
             parts.append(area.get("nome"))
-        parts.append((house.kind_of(entity_id) or {}).get("translation_key"))
+        parts.append(row.get("translation_key"))
         state = (row.get("fonte") or {}).get("stato")
         if subject is None and state not in (None, SOURCE_LIVE):
             parts.append(f"fonte: {state}")

@@ -458,6 +458,28 @@ def published_device_classes(resources) -> dict[str, frozenset[str]]:
     return {domain: frozenset(classes) for domain, classes in per_domain.items()}
 
 
+async def read_for_house(cache, reference_frame: dict | None) -> dict:
+    """L'esito etichettato delle traduzioni per la casa di adesso: la coppia
+    `(versione_ha, lingua)` dal suo sistema di riferimento
+    (`home_space.topology.reference_frame`), mai una seconda idea di «lingua
+    della casa».
+
+    **Il motivo lo dichiara chi ha fallito.** Senza cache cablata, senza
+    lingua o con la lettura caduta torna «non lette» col motivo -- mai un
+    dizionario vuoto da interpretare. Una lettura sola per tre chiamanti (lo
+    strumento della chat, il giro che scalda la tabella, la pagina della
+    casa): fino al 12/10/2026 (Tappa 9, F5) erano due copie, e la terza
+    sarebbe nata con la pagina."""
+    if cache is None:
+        return {"lette": False, "motivo": "la lettura delle traduzioni non e' collegata"}
+    frame = reference_frame or {}
+    try:
+        return await cache.read(ha_version=frame.get("versione_ha"),
+                                language=frame.get("lingua"))
+    except Exception as error:
+        return {"lette": False, "motivo": f"{type(error).__name__}: {error}"}
+
+
 class StateTranslations:
     """La tabella delle traduzioni, letta da Home Assistant e tenuta in cache.
 

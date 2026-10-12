@@ -19,68 +19,66 @@ from aiohttp import web
 
 from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
+from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
-from ..home_space.privacy import cover_reserved_body
-from ..home_space.topology import category_names, label_names
-from .soffitto import denies, request_ceiling
+from ..home_space.render import render_entity
+from ..proxy.state_translations import read_for_house
+
+#: Cio' che l'albero toglie dalla resa media di un'entita' (Tappa 9, F5, D1),
+#: ognuno col suo perche': `area` e' il ramo in cui l'entita' sta, lo stesso
+#: fatto scritto due volte; `attributi` sono le ceste dello stato, che la
+#: pagina non disegna e che ripetute su ogni entita' della casa sarebbero la
+#: parte piu' pesante della risposta. Il resto e' la riga di `search`, con la
+#: stessa forma (fondamenta 3).
+#:
+#: Le ceste vanno fuori anche per un'altra ragione: questa porta non passa da
+#: `privacy.redact_row` (lo applica solo `query_house`) e la leggono anche i
+#: servizi firmati «lettore» e «utente». Con gli attributi uscirebbe la
+#: posizione delle persone (N135-1, prova in `test_handlers_home_space.py`).
+#: Lo `stato` invece esce senza filtro, e una `person` in «Lavoro» si legge
+#: «Lavoro»: il filtro esiste per i modelli cloud (spec del 29/09/2026, §3),
+#: e chi amministra lo vede uguale in Home Assistant. Non e' una svista da
+#: allineare a `search`.
+_TREE_DROPS = ("area", "attributi")
+#: Cio' che l'albero toglie dal nodo di un'area (D3): alias ed etichette
+#: dell'area non li disegna nessuna pagina, e la chat li ha da `render_area`.
+_AREA_DROPS = ("alias", "etichette")
+#: Le liste di entita' di un nodo d'area (`topology._area_node`).
+_ENTITY_LISTS = ("entita", "entita_nascoste", "entita_disabilitate")
 
 
-def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
-    """`{scope: {category_id: name}}` per chi disegna l'albero.
+def _tree(house: House, translations: dict, zone) -> list[dict]:
+    """L'albero della casa, con ogni entita' resa da `render.render_entity`
+    alla media (Tappa 9, F5, D1).
 
-    Esce la MAPPA e non il nome ripetuto su ogni entita' categorizzata: li'
-    sarebbe lo stesso fatto scritto mille volte. Stessa scelta delle
-    etichette, appena sopra.
-
-    La sorgente e' `topology.category_names`, la stessa che usano
-    gli strumenti della chat (`queries.py`): qui si cambia solo la FORMA (le chiavi a
-    coppia non attraversano JSON), mai il contenuto -- due mappe costruite
-    ognuna per conto proprio sarebbero due nomi diversi per la stessa
-    categoria a seconda della porta.
-    """
-    categories: dict[str, dict[str, str]] = {}
-    for (scope, category_id), name in category_names(home_space).items():
-        categories.setdefault(scope, {})[category_id] = name
-    return categories
-
-
-def _live_kinds(house: House) -> list[dict]:
-    """L'albero della casa con la classe e l'unita' DI ADESSO su ogni entita'
-    (B-17, Tappa 3, Task 7, 04/10/2026).
-
-    L'anagrafe porta solo cio' che il registro dichiara, e il registro la
-    classe quasi non la manda: fino a quel giorno la pagina mostrava quella
-    che la ricostruzione aveva copiato dallo specchio, ferma fino alla
-    ricostruzione dopo. Qui la si chiede a `House.kind_of`, come fanno
-    osservatore e ricette. Le voci dell'albero sono quelle dell'anagrafe e
-    non si toccano: escono copie."""
-    floors = house.hierarchy()
+    Fino al 12/10/2026 l'entita' era la voce dell'anagrafe, con la classe e
+    l'unita' rilette dal vivo (`_with_live_kind`, B-17): una forma sua, con
+    `piattaforma`, `nascosta` e le etichette per id, mentre la chat leggeva
+    `integrazione`, `fuori` e le etichette col nome. Ora e' la stessa resa,
+    meno `_TREE_DROPS`. Le voci dell'albero non si toccano: escono copie."""
     out = []
-    for floor in floors:
+    for floor in house.hierarchy():
         areas = []
         for area in floor.get("aree") or []:
-            area = dict(area)
-            for key in ("entita", "entita_nascoste", "entita_disabilitate"):
+            area = {key: value for key, value in area.items() if key not in _AREA_DROPS}
+            for key in _ENTITY_LISTS:
                 if key in area:
-                    area[key] = [_with_live_kind(house, entry) for entry in area[key]]
+                    area[key] = [_tree_entity(house, entry, translations, zone)
+                                 for entry in area[key]]
             areas.append(area)
         out.append({**floor, "aree": areas})
     return out
 
 
-def _with_live_kind(house: House, entry):
-    """La classe e l'unita' di adesso (`House.kind_of`), solo quando ci sono:
-    una chiave che manca e' la stessa forma di `render_entity` (C-63)."""
+def _tree_entity(house: House, entry, translations: dict, zone):
     if not isinstance(entry, dict) or not entry.get("id"):
         return entry
-    kind = house.kind_of(entry["id"]) or {}
-    out = {key: value for key, value in entry.items() if key not in _LIVE_KIND}
-    out.update({key: kind[key] for key in _LIVE_KIND if kind.get(key) is not None})
-    return out
+    # Alla media la resa non compone i `comandi`, gli unici che leggono i
+    # giudizi: `None` lo dice (`tests/test_judgments_passed_in_production.py`).
+    row = render_entity(house, entry["id"], "media", zone=zone, translations=translations,
+                        judgments=None)
+    return {key: value for key, value in row.items() if key not in _TREE_DROPS}
 
-
-#: Cio' che della riga dell'anagrafe si rilegge dal vivo.
-_LIVE_KIND = ("classe", "unita")
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:
@@ -110,14 +108,11 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # Un vocabolario, non un fatto della casa: esce anche qui, e la
             # risposta ha la stessa forma nei due rami.
             "nomi_misure": _MEASUREMENT_NAMES,
-            # `None` e non `{}`: qui non e' "la casa non ha etichette", e'
-            # "non abbiamo letto niente".
-            "etichette": None, "categorie": None,
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
-            # e senza archivio non lo sappiamo -- resta `None`. `conteggi` e
-            # `voci`, come `conteggi`/`piani` sopra, sono contenitori naturali
-            # e restano vuoti. `problemi`/`corpi_non_letti` restano `None` per
+            # e senza archivio non lo sappiamo -- resta `None`. `conteggi`,
+            # come `conteggi`/`piani` sopra, e' un contenitore naturale e
+            # resta vuoto. `problemi`/`corpi_non_letti` restano `None` per
             # lo stesso motivo di `senza_corpo`: un elenco vuoto affermerebbe
             # "nessun problema", e senza archivio non lo sappiamo.
             # `None` per lo stesso motivo di tutti gli altri qui sopra: un
@@ -126,7 +121,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             "confronto": None,
             "comportamento": {"letto_il": None, "conteggi": {}, "senza_corpo": None,
                               "problemi": None, "corpi_non_letti": None,
-                              "conservato": None, "voci": []},
+                              "conservato": None},
             "plance": {"lette_il": None, "non_disponibili": None, "conservato": None,
                        "voci": []},
         })
@@ -136,16 +131,15 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     behavior_counts: dict[str, int] = {}
     for v in behavior_entries:
         behavior_counts[v["tipo"]] = behavior_counts.get(v["tipo"], 0) + 1
-    # Quante voci HIRIS conosce solo di nome: si conta PRIMA di coprire,
-    # perche' dice cio' che HIRIS sa, non cio' che mostra a chi guarda.
+    # Quante voci HIRIS conosce solo di nome.
     unknown_bodies = len(without_body(behavior_entries, store.unread_bodies()))
-    # Il corpo di automazioni e scene solo a chi amministra: la stessa regola dello
-    # strumento della chat, dalla stessa funzione (3.73.1). Le persone che non
-    # amministrano qui non arrivano (`admission.py`); ci arriva un servizio
-    # firmato «lettore» o «utente».
-    if denies(request_ceiling(request), "amministrare", request.get("soggetto")):
-        behavior_entries = [cover_reserved_body(v, kind=v["tipo"])
-                            for v in behavior_entries]
+    # La casa di questa richiesta, letta come la leggono tutti
+    # (`House.read`): anagrafe, specchio e registri caduti in un posto. Le
+    # parole degli stati e il fuso, come nella ricerca della chat.
+    house = House.read(store, request.app.get("entity_cache"))
+    translations = await read_for_house(request.app.get("state_translations"),
+                                        store.reference_frame())
+    zone = home_space_zone(house_timezone(store))
     return web.json_response({
         "anagrafe_letta_il": store.updated_at(),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
@@ -166,37 +160,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # casa si legge: la tabella del nucleo, mandata a chi disegna l'albero
         # invece di ricopiata nel JavaScript (C-09, Tappa 4, Task 5).
         "nomi_misure": _MEASUREMENT_NAMES,
-        # La casa di questa richiesta, letta come la leggono tutti
-        # (`House.read`): anagrafe, specchio e registri caduti in un posto.
-        "piani": _live_kinds(House.read(store, request.app.get("entity_cache"))),
-        # I NOMI delle etichette, id -> nome.
-        #
-        # `hierarchy()` mette sulle aree e sulle entita' i soli `label_id` --
-        # e' cosi' che Home Assistant li manda -- e senza questa mappa chi
-        # legge il payload puo' solo mostrare lo slug: «da_controllare» invece
-        # di «Da controllare», una parola che l'utente non ha mai scritto e che
-        # non cambierebbe nemmeno rinominando l'etichetta.
-        #
-        # Gli strumenti della chat risolvono i nomi DENTRO la risposta
-        # perche' li' esce un
-        # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
-        # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
-        # mappa, una volta, e chi disegna la applica. La mappa e' quella di
-        # `topology.label_names`, la stessa dell'indice dei nomi e delle
-        # schede: fino al 04/10/2026 (B-38) era ricopiata qui riga per riga.
-        "etichette": label_names(home_space),
-        # Le CATEGORIE, con la stessa forma e per la stessa ragione -- ma
-        # annidate per AMBITO, perche' il registro di Home Assistant e'
-        # partizionato (`automation`, `script`, `scene`, `helpers`) e due
-        # categorie omonime in ambiti diversi sono cose diverse. Appiattirle
-        # su un id solo qui rimetterebbe in piedi l'ambiguita' che la chiave
-        # `(ambito, id)` dell'archivio esiste per chiudere.
-        #
-        # Perche' anche qui, e non solo negli strumenti
-        # (`topology.categories_with_name`, in `queries.py`): senza, la stessa
-        # categoria uscirebbe col nome dallo strumento e con l'id grezzo dalla
-        # pagina.
-        "categorie": _categories_by_scope(home_space),
+        # Ogni entita' e' la resa media, meno `_TREE_DROPS` (Tappa 9, F5).
+        "piani": _tree(house, translations, zone),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
         # (`server.tree_comparison_round`, verdetto in
@@ -237,7 +202,6 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # sostituita e di quando e'. Lo stesso oggetto che il nucleo
             # dice a parole.
             "conservato": store.behavior_kept(),
-            "voci": behavior_entries,
         },
         "plance": {
             "lette_il": store.dashboards_loaded_at(),
@@ -246,6 +210,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # applicato alle plance invece che ai registri.
             "non_disponibili": store.unavailable_dashboards(),
             "conservato": store.dashboards_kept(),
+            # Titolo e percorso soltanto (D3): li sceglie il lettore,
+            # `behavior.reread_dashboards`, la casa di questo fatto.
             "voci": store.dashboards(),
         },
     })

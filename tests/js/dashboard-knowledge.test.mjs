@@ -31,7 +31,6 @@ function casaLetta(modifiche = {}) {
       senza_corpo: 0,
       problemi: [],
       corpi_non_letti: {},
-      voci: [],
     },
     plance: { lette_il: '2026-08-10T09:02:00', non_disponibili: [], voci: [] },
   }, modifiche);
@@ -48,7 +47,7 @@ const CASA_ARCHIVIO_ASSENTE = {
   anagrafe_letta_il: null, non_disponibili: null, conteggi: {}, piani: [],
   comportamento: {
     letto_il: null, conteggi: {}, senza_corpo: null,
-    problemi: null, corpi_non_letti: null, voci: [],
+    problemi: null, corpi_non_letti: null,
   },
   plance: { lette_il: null, non_disponibili: null, voci: [] },
 };
@@ -69,7 +68,7 @@ const CASA_ARCHIVIO_VUOTO = {
   anagrafe_letta_il: null, non_disponibili: [], conteggi: {}, piani: [],
   comportamento: {
     letto_il: null, conteggi: {}, senza_corpo: 0,
-    problemi: [], corpi_non_letti: {}, voci: [],
+    problemi: [], corpi_non_letti: {},
   },
   plance: { lette_il: null, non_disponibili: [], voci: [] },
 };
@@ -381,4 +380,39 @@ test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette il" mostrano la data italia
   assert.ok(testo.indexOf('Letta il ' + attesoAnagrafe) >= 0, 'anagrafe: data formattata da fmtDateTime');
   assert.ok(testo.indexOf('Letto il ' + attesoComportamento) >= 0, 'comportamento: data formattata da fmtDateTime');
   assert.ok(testo.indexOf('Lette il ' + attesoPlance) >= 0, 'plance: data formattata da fmtDateTime');
+});
+
+/* La replica conservata (`conservato`, G-16; Tappa 9, F5, D2): l'ultima
+   lettura non e' riuscita, e i numeri sono quelli di prima. Lo dice dove si
+   leggono i numeri, al posto di «Letto il», e nessuna frase «tutto a posto»
+   accompagna numeri di una lettura precedente. */
+test('una replica conservata lo dice al posto di «Letto il», e non afferma «tutto a posto»', async () => {
+  const prima = '2026-10-03T12:20:00+00:00';
+  const casa = casaLetta({
+    comportamento: { ...casaLetta().comportamento, letto_il: prima,
+      conservato: { motivo: 'Home Assistant non le ha ancora caricate', letto_il: prima } },
+    plance: { lette_il: prima, non_disponibili: [], voci: [{ titolo: 'Cucina', percorso: 'cucina' }],
+      conservato: { motivo: 'nessuna plancia leggibile', letto_il: prima } },
+  });
+  const { testo } = await rendi(casa);
+  const quando = globalThis.fmtDateTime(prima);
+  assert.ok(testo.includes('L’ultima lettura non è riuscita: questi numeri sono quelli di una ' +
+    'lettura precedente, del ' + quando + '.'), testo);
+  assert.ok(testo.includes('L’ultima lettura non è riuscita: queste plance sono quelle di una ' +
+    'lettura precedente, del ' + quando + '.'), testo);
+  assert.doesNotMatch(testo, /Letto il|Lette il/, 'la data della replica non si presenta come una lettura riuscita');
+  for (const frase of FRASI_TUTTO_A_POSTO.slice(1)) {
+    assert.doesNotMatch(testo, frase, `«tutto a posto» su una replica conservata: ${frase}`);
+  }
+  assert.match(testo, /Cucina/, 'i conteggi e i titoli restano, subito dopo l’avviso');
+});
+
+test('una lettura fallita senza nessuna copia lo dice accanto a «non ancora letto»', async () => {
+  const casa = casaLetta({
+    comportamento: { letto_il: null, conteggi: {}, senza_corpo: 0, problemi: [], corpi_non_letti: {},
+      conservato: { motivo: 'Home Assistant non le ha ancora caricate', letto_il: null } },
+  });
+  const { testo } = await rendi(casa);
+  assert.match(testo, /Il comportamento non è ancora stato letto\./);
+  assert.match(testo, /L’ultima lettura non è riuscita e non c’è nessuna copia precedente\./);
 });

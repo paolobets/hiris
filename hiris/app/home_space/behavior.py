@@ -33,7 +33,7 @@ import logging
 from pathlib import Path
 
 from ..proxy.entity_cache import unreadable_inventory_error
-from .ha_vocabulary import LINK_NAME, domain_of, is_entity_id
+from .ha_vocabulary import LINK_NAME, domain_of
 from .redaction import SecretSeal
 
 logger = logging.getLogger(__name__)
@@ -213,41 +213,6 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
                     len(entries), len(unread))
 
 
-def _entities_in(config) -> list[str]:
-    """Le entita' nominate in una configurazione di plancia: ogni valore che
-    somiglia a un entity_id (dominio.oggetto), trovato nelle chiavi `entity`
-    e `entities`, in tutto l'albero della config (viste, card, card
-    annidate). E' una passeggiata ricorsiva: non esiste uno schema fisso
-    delle card di Lovelace da rispettare — le card custom inventano le
-    proprie chiavi — quindi si cerca la FORMA (quelle due chiavi), non un
-    tipo di card particolare.
-
-    Serve a rispondere «questa entita' la vedi gia' in Cucina» invece di
-    riproporla: e' il senso di leggere le plance."""
-    found: set[str] = set()
-
-    def _add_if_entity(value) -> None:
-        if is_entity_id(value):
-            found.add(value)
-
-    def _walk(node) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if key in ("entity", "entities"):
-                    if isinstance(value, list):
-                        for item in value:
-                            _add_if_entity(item)
-                    else:
-                        _add_if_entity(value)
-                _walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                _walk(item)
-
-    _walk(config)
-    return sorted(found)
-
-
 async def reread_dashboards(client, home_space) -> dict:
     """Rilegge le plance da HA (compresa la predefinita) e sostituisce.
 
@@ -291,9 +256,13 @@ async def reread_dashboards(client, home_space) -> dict:
     # chi legge le plance conosce
     # `percorso`/`titolo`/`modalita`, e una seconda forma sarebbe la
     # stessa cosa detta in due modi (fondamenta 3).
-    entries = [{"percorso": p.get("url_path"), "titolo": p.get("title"),
-                "modalita": p.get("mode"), "config": p.get("config"),
-                "entita": _entities_in(p.get("config"))}
+    #
+    # **Solo titolo e percorso** (Tappa 9, F5, D3, 12/10/2026): la modalita',
+    # la configurazione intera e le entita' che nomina si tenevano per un
+    # lettore che non e' mai arrivato -- le dava solo la pagina, e la pagina
+    # non le mostrava. Scritte e mai lette: escono, la configurazione resta a
+    # Home Assistant.
+    entries = [{"percorso": p.get("url_path"), "titolo": p.get("title")}
                for p in dashboards]
     home_space.hold_dashboards(entries, unavailable=unavailable)
     if unavailable:

@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.proxy.state_translations import StateTranslations, state_translation
+from hiris.app.proxy.state_translations import (
+    StateTranslations,
+    read_for_house,
+    state_translation,
+)
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -318,3 +322,33 @@ async def test_dopo_un_guasto_si_ritenta_alla_lettura_successiva():
     assert (await cache.read(ha_version="2026.9.1", language="it"))["lette"] is False
     assert (await cache.read(ha_version="2026.9.1", language="it"))["lette"] is True
     assert house.calls == [ASKED_IN_ITALIAN, ASKED_IN_ITALIAN]
+
+
+# -- `read_for_house`: una lettura sola per la casa di adesso (Tappa 9, F5) ---
+
+@pytest.mark.asyncio
+async def test_read_for_house_senza_cache_dichiara_il_motivo():
+    """Senza la lettura cablata non torna un dizionario vuoto da
+    interpretare: torna «non lette», col motivo (giro 135).
+
+    Mutazione ESEGUITA: `return {}` nel ramo senza cache -- rossa
+    (`KeyError: 'lette'`)."""
+    esito = await read_for_house(None, {"versione_ha": "2026.9.1", "lingua": "it"})
+    assert esito["lette"] is False
+    assert esito["motivo"]
+
+
+class _CacheCheCade:
+    async def read(self, *, ha_version, language):
+        raise RuntimeError("la rete e' caduta")
+
+
+@pytest.mark.asyncio
+async def test_read_for_house_con_la_lettura_caduta_dichiara_il_motivo():
+    """Un errore della lettura non sale alla pagina ne' alla chat: diventa
+    «non lette» col suo motivo (giro 135).
+
+    Mutazione ESEGUITA: senza `try`, l'errore sale -- rossa
+    (`RuntimeError`)."""
+    esito = await read_for_house(_CacheCheCade(), {"versione_ha": "2026.9.1", "lingua": "it"})
+    assert esito == {"lette": False, "motivo": "RuntimeError: la rete e' caduta"}

@@ -165,7 +165,9 @@ window.HirisDashboard = (function () {
     }
     var voci = format ? format(value) : value;
     if (!voci.length) {
-      line(body, sentences.vuoto, TONE_CALM);
+      /* Senza la frase del vuoto (una replica conservata) si tace: «tutto a
+         posto» su numeri di una lettura precedente non sarebbe vero. */
+      if (sentences.vuoto) line(body, sentences.vuoto, TONE_CALM);
       return;
     }
     line(body, sentences.pieno, TONE_PROBLEM);
@@ -201,6 +203,28 @@ window.HirisDashboard = (function () {
     return loaded == null ? null : value;
   }
 
+  /* La replica conservata (`conservato`, G-16): l'ultima lettura non e'
+     riuscita e i numeri sotto sono quelli di prima. Si dice al posto di
+     «Letto il», dove si leggono i numeri. `cosa` e' il soggetto della frase,
+     accordato («questi numeri sono quelli», «queste plance sono quelle»).
+     Torna vero se la sezione e' una replica conservata. */
+  function keptCopy(body, kept, loaded, cosa) {
+    if (!kept) return false;
+    if (loaded == null) {
+      line(body, 'L’ultima lettura non è riuscita e non c’è nessuna copia precedente.', TONE_UNKNOWN);
+    } else {
+      line(body, 'L’ultima lettura non è riuscita: ' + cosa + ' di una lettura precedente, del ' +
+        fmtDateTime(kept.letto_il || loaded) + '.', TONE_UNKNOWN);
+    }
+    return true;
+  }
+
+  /* Le frasi di `threeStates` senza quella del vuoto, per una replica
+     conservata. */
+  function withoutAllClear(sentences, kept) {
+    return kept ? { ignoto: sentences.ignoto, vuoto: null, pieno: sentences.pieno } : sentences;
+  }
+
   /* ---------------------------------------------------------------- casa */
 
   /* Collaudo 3.22 (A10): le tre "Letta/Letto/Lette il" qui sotto scrivevano
@@ -232,10 +256,14 @@ window.HirisDashboard = (function () {
 
     if (comp.letto_il == null) {
       line(behaviorBody, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
+      keptCopy(behaviorBody, comp.conservato, null);
     } else {
-      line(behaviorBody, 'Letto il ' + fmtDateTime(comp.letto_il) + '.', TONE_CALM);
+      if (!keptCopy(behaviorBody, comp.conservato, comp.letto_il, 'questi numeri sono quelli')) {
+        line(behaviorBody, 'Letto il ' + fmtDateTime(comp.letto_il) + '.', TONE_CALM);
+      }
       tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO);
     }
+    var behaviorKept = !!comp.conservato;
 
     /* `senza_corpo` e' il numero che dice quanto HIRIS sa DAVVERO: le voci di
        cui conosce il nome e non il corpo. A null non diventa «0»: sarebbe
@@ -245,7 +273,9 @@ window.HirisDashboard = (function () {
     if (withoutBody == null) {
       line(behaviorBody, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONE_UNKNOWN);
     } else if (withoutBody === 0) {
-      line(behaviorBody, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONE_CALM);
+      if (!behaviorKept) {
+        line(behaviorBody, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONE_CALM);
+      }
     } else {
       line(behaviorBody, 'Di ' + withoutBody + ' voci HIRIS conosce solo il nome, non il corpo.', TONE_PROBLEM);
     }
@@ -256,17 +286,17 @@ window.HirisDashboard = (function () {
        voci che sono state lette -- id duplicati, script vuoti, voci
        malformate -- e ora lo dice invece di promettere che non c'e' rimasto
        niente in sospeso in tutta la lettura. */
-    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.problemi), {
+    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.problemi), withoutAllClear({
       ignoto: 'Non si sa se nelle voci lette ci siano incongruenze: la lettura non è avvenuta.',
       vuoto: 'Nelle voci lette non c’è nessuna incongruenza.',
       pieno: 'Incongruenze nelle voci lette, che HIRIS non ha potuto sciogliere con certezza:'
-    });
+    }, behaviorKept));
 
-    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.corpi_non_letti), {
+    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.corpi_non_letti), withoutAllClear({
       ignoto: 'Non si sa di quali voci HIRIS non conosca il corpo: la lettura non è avvenuta.',
       vuoto: 'Di ogni voce letta HIRIS ha potuto leggere anche il corpo.',
       pieno: 'Voci di cui HIRIS non conosce il corpo, con la ragione:'
-    }, dictToEntries);
+    }, behaviorKept), dictToEntries);
 
     /* Plance */
     var dashboards = home_space.plance || {};
@@ -275,8 +305,12 @@ window.HirisDashboard = (function () {
 
     if (dashboards.lette_il == null) {
       line(dashboardsBody, 'Le plance non sono ancora state lette.', TONE_UNKNOWN);
+      keptCopy(dashboardsBody, dashboards.conservato, null);
     } else {
-      line(dashboardsBody, 'Lette il ' + fmtDateTime(dashboards.lette_il) + '.', TONE_CALM);
+      if (!keptCopy(dashboardsBody, dashboards.conservato, dashboards.lette_il,
+        'queste plance sono quelle')) {
+        line(dashboardsBody, 'Lette il ' + fmtDateTime(dashboards.lette_il) + '.', TONE_CALM);
+      }
       var voci = dashboards.voci || [];
       line(dashboardsBody, voci.length === 1 ? '1 plancia letta.' : voci.length + ' plance lette.', TONE_CALM);
       if (voci.length) {
@@ -286,11 +320,11 @@ window.HirisDashboard = (function () {
       }
     }
 
-    threeStates(dashboardsBody, onlyIfLoaded(dashboards.lette_il, dashboards.non_disponibili), {
+    threeStates(dashboardsBody, onlyIfLoaded(dashboards.lette_il, dashboards.non_disponibili), withoutAllClear({
       ignoto: 'Non si sa quali plance abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutte le plance hanno risposto.',
       pieno: 'Plance che l’ultima lettura non è riuscita a risolvere:'
-    });
+    }, !!dashboards.conservato));
   }
 
   /* -------------------------------------------------------------- nucleo */

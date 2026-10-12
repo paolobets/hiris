@@ -80,17 +80,12 @@ async def test_an_unreadable_dashboard_is_declared():
 async def test_dashboards_are_kept_and_reread(archivio):
     esito = await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
     entries = archivio.dashboards()
-    assert entries[0]["titolo"] == "Principale"
-    assert entries[0]["config"]["views"][0]["title"] == "Casa"
+    # Solo titolo e percorso (Tappa 9, F5, D3): la configurazione, la
+    # modalita' e le entita' nominate si tenevano per un lettore mai
+    # arrivato. Rossa prima: la voce portava anche `modalita`, `config` ed
+    # `entita`.
+    assert entries == [{"percorso": None, "titolo": "Principale"}]
     assert esito["conteggi"]["plance"] == 1
-
-
-@pytest.mark.asyncio
-async def test_the_shown_entities_are_extracted(archivio):
-    """A cosa serve davvero: sapere QUALI entita' una plancia mostra, per
-    poter dire «questa la vedi gia' in Cucina» invece di riproporla."""
-    await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
-    assert archivio.dashboards()[0]["entita"] == ["light.cucina"]
 
 
 @pytest.mark.asyncio
@@ -107,8 +102,7 @@ async def test_a_completely_failed_read_does_not_delete_the_dashboards(archivio,
     await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
     esito = await reread_dashboards(failed(), archivio)
     assert esito["conteggi"]["plance"] == 0
-    assert archivio.dashboards()[0]["titolo"] == "Principale"
-    assert archivio.dashboards()[0]["config"] == _CONFIG_DEFAULT
+    assert archivio.dashboards() == [{"percorso": None, "titolo": "Principale"}]
 
 
 @pytest.mark.asyncio
@@ -130,7 +124,7 @@ async def test_la_replica_conservata_delle_plance_lo_dice_coi_non_disponibili_di
     assert archivio.dashboards_kept() == {"motivo": "nessuna plancia leggibile",
                                           "letto_il": read_at}
     assert archivio.unavailable_dashboards() != []
-    assert archivio.dashboards()[0]["config"] == _CONFIG_DEFAULT
+    assert archivio.dashboards() == [{"percorso": None, "titolo": "Principale"}]
 
     await reread_dashboards(_house(_CONFIG_DEFAULT), archivio)
     assert archivio.dashboards_kept() is None
