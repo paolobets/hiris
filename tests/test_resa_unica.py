@@ -354,15 +354,36 @@ def entity_questions() -> set[str]:
             if list(inspect.signature(method).parameters)[1:2] == ["entity_id"]}
 
 
-def _text_composer(function, questions: set[str], separator: str) -> bool:
+def separator_names(tree, separator: str) -> set[str]:
+    """I nomi legati al separatore delle righe (`sep = " · "`), al primo
+    livello del modulo o della funzione che si passa."""
+    return {target.id for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+            and isinstance(node.value, ast.Constant) and node.value.value == separator
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            if isinstance(target, ast.Name)}
+
+
+def _text_composer(function, questions: set[str], separator: str,
+                   names: frozenset[str] = frozenset()) -> bool:
     """Una funzione che chiede alla casa i campi di un'entita' e li unisce in
-    una riga col separatore delle righe degli attori."""
+    una riga col separatore delle righe degli attori.
+
+    L'unione ha tre forme (N123-2, giro 123): `" · ".join(...)`, un `.join`
+    su un nome legato al separatore (`names`, del modulo o importato, piu'
+    quelli della funzione), e una f-string che porta il separatore fra le sue
+    parti scritte."""
+    names = names | separator_names(function, separator)
     calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)
              and isinstance(node.func, ast.Attribute)]
     asks = any(call.func.attr in questions for call in calls)
-    joins = any(call.func.attr == "join" and isinstance(call.func.value, ast.Constant)
-                and call.func.value.value == separator for call in calls)
-    return asks and joins
+    joins = any(call.func.attr == "join" and (
+        (isinstance(call.func.value, ast.Constant) and call.func.value.value == separator)
+        or (isinstance(call.func.value, ast.Name) and call.func.value.id in names))
+        for call in calls)
+    formats = any(isinstance(node, ast.JoinedStr) and any(
+        isinstance(part, ast.Constant) and separator in str(part.value) for part in node.values)
+        for node in ast.walk(function))
+    return asks and (joins or formats)
 
 
 #: Lista di AMMISSIONE del cancello del testo: `modulo::funzione` -> perche'
@@ -378,13 +399,22 @@ def text_composers(sources: dict[str, str], questions: set[str], separator: str)
     """`modulo::funzione` per ogni funzione fuori dalla resa che compone la
     riga di testo di un'entita' (D8 della Tappa 4). `sources` e' `{modulo:
     sorgente}`."""
+    from hiris.app.home_space import render
+
+    exported = separator_names(ast.parse(Path(render.__file__).read_text(encoding="utf-8")),
+                               separator)
     found = []
     for relative, source in sorted(sources.items()):
         if relative in RENDER_MODULES:
             continue
-        for function in ast.walk(ast.parse(source)):
+        tree = ast.parse(source)
+        imported = {alias.asname or alias.name for node in ast.walk(tree)
+                    if isinstance(node, ast.ImportFrom) for alias in node.names
+                    if alias.name in exported}
+        names = frozenset(separator_names(tree, separator) | imported)
+        for function in ast.walk(tree):
             if (isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and _text_composer(function, questions, separator)):
+                    and _text_composer(function, questions, separator, names)):
                 found.append(f"{relative}::{function.name}")
     return found
 
@@ -494,6 +524,37 @@ def test_il_cancello_del_testo_riconosce_una_riga_composta_a_mano():
         "    return lines\n")
     found = text_composers({"mind/prova.py": sample}, questions, _LINE_SEPARATOR)
     assert found == ["mind/prova.py::device_lines"]
+
+
+def test_il_cancello_del_testo_riconosce_f_string_e_separatore_in_un_nome():
+    """N123-2 (giro 123): la riga composta con una f-string, o con `.join` su
+    un nome legato al separatore (locale, del modulo, o `_LINE_SEPARATOR`
+    importato dalla resa), e' la stessa riga, e il cancello la vede.
+
+    Mutazione ESEGUITA: `_text_composer` senza le f-string e senza i nomi --
+    rossa su tutti e quattro i campioni. Mutazione ESEGUITA: senza i nomi
+    importati -- rossa su `mind/importato.py`."""
+    from hiris.app.home_space.render import _LINE_SEPARATOR
+
+    questions = entity_questions()
+    asks = "    kind = house.kind_of(entity_id) or {}\n"
+    samples = {
+        "mind/fstring.py": ("def riga(house, entity_id):\n" + asks
+                            + "    return f\"{entity_id} · {kind.get('classe')}\"\n"),
+        "mind/locale.py": ("def riga(house, entity_id):\n" + asks + "    sep = ' · '\n"
+                           "    return sep.join([entity_id, kind.get('classe')])\n"),
+        "mind/modulo.py": ("SEP = ' · '\n\ndef riga(house, entity_id):\n" + asks
+                           + "    return SEP.join([entity_id, kind.get('classe')])\n"),
+        "mind/importato.py": ("from ..home_space.render import _LINE_SEPARATOR\n\n"
+                              "def riga(house, entity_id):\n" + asks
+                              + "    return _LINE_SEPARATOR.join([entity_id, "
+                                "kind.get('classe')])\n"),
+    }
+    found = text_composers(samples, questions, _LINE_SEPARATOR)
+    assert found == sorted(f"{module}::riga" for module in samples), found
+    other = {"mind/altro.py": ("def riga(house, entity_id):\n" + asks
+                               + "    return f\"{entity_id}: {kind.get('classe')}\"\n")}
+    assert text_composers(other, questions, _LINE_SEPARATOR) == []
 
 
 def test_ogni_ammessa_del_testo_compone_ancora():

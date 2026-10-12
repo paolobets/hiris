@@ -76,3 +76,48 @@ def test_l_osservatore_legge_la_casa_nell_ordine_dell_albero():
     ordine = [riga.split(" · ")[0] for riga in observer.house_lines(_casa())]
     assert ordine == ["light.studio", "sensor.z_cucina", "sensor.b_cucina",
                       "sensor.a_cucina", "sensor.senza_area"]
+
+
+def test_il_segnaposto_non_porta_ne_area_ne_fonte():
+    """N123-3 (giro 123, riservatezza): il nome di un'area puo' essere quello
+    di chi ci dorme. Una presenza con un'area dal nome riconoscibile e una
+    fonte che tace esce come segnaposto, senza l'area e senza `fonte:`.
+
+    Mutazioni ESEGUITE: `subject is None` tolto dalla condizione dell'area --
+    rossa con «Camera di Marco»; tolto da quella della fonte -- rossa con
+    «fonte: non_disponibile»."""
+    entita = [_entita("person.marco", "Marco", "camera_marco", None),
+              _entita("device_tracker.telefono_marco", "Telefono", "camera_marco", None)]
+    casa = House({"entita": entita, "aree": [{"id": "camera_marco", "nome": "Camera di Marco"}],
+                  "dispositivi": []},
+                 Mirror(state={"person.marco": "unavailable",
+                               "device_tracker.telefono_marco": "unavailable"}))
+    assert casa.source("person.marco")["stato"] == "non_disponibile"
+    assert render.entity_line(casa, "person.marco", "media") == (
+        "person.marco · Marco · Camera di Marco · fonte: non_disponibile")
+    for ident in ("person.marco", "device_tracker.telefono_marco"):
+        assert render.entity_line(casa, ident, "media", subject="persona_1") == "persona_1"
+    righe = observer.house_lines(casa)
+    assert righe and not any("Marco" in riga or "fonte:" in riga for riga in righe), righe
+
+
+def test_un_nome_che_ripeterebbe_l_id_non_si_scrive():
+    """N123-4 (giro 123): un'entita' senza nome si chiama col suo id
+    (`live_name`), e la riga non lo ripete due volte.
+
+    Mutazione ESEGUITA: il nome aggiunto anche quando e' l'id -- rossa."""
+    entita = [_entita("sensor.anonimo", None, "studio", None, classe="temperature",
+                      unita="°C")]
+    casa = House({"entita": entita, "aree": [{"id": "studio", "nome": "Studio"}],
+                  "dispositivi": []}, Mirror(state={"sensor.anonimo": "21"}))
+    assert render.entity_line(casa, "sensor.anonimo", "media") == (
+        "sensor.anonimo · temperature · °C · Studio")
+
+
+def test_le_ricette_leggono_la_riga_corta():
+    """N123-4 (giro 123): `device_lines` chiede la profondita' corta, senza
+    area ne' chiave di traduzione.
+
+    Mutazione ESEGUITA: `device_lines` alla `media` -- rossa."""
+    assert recipe_turn.device_lines(_casa(), "dev_forno") == [
+        "sensor.b_cucina · Forno · energy · kWh"]

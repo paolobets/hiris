@@ -288,10 +288,6 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
 #: Il separatore dei campi di una riga.
 _LINE_SEPARATOR = " · "
 
-#: Lo stato della fonte che parla (`House.source`): non costa una parola.
-_LIVE_SOURCE = "viva"
-
-
 def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None = None) -> str:
     """UN'ENTITA' IN UNA RIGA DI TESTO, per gli attori: la resa in testo del
     dizionario di `render_entity` (Tappa 9, F4; D8 della Tappa 4).
@@ -318,6 +314,10 @@ def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None
     segue (`observer.presence_handles`): prende il posto dell'id, e la riga
     non porta ne' nome, ne' area, ne' fonte -- il nome di un'area puo' essere
     quello di chi ci dorme."""
+    # La fonte che parla non costa una parola. `house` importa `house_query`,
+    # che importa questo modulo: in testa al file l'import sarebbe circolare.
+    from .house import SOURCE_LIVE
+
     if depth not in ("corta", "media"):
         raise ValueError(f"profondita' sconosciuta per una riga: {depth!r}")
     # Senza registro la resa non compone i `comandi`, gli unici che leggono i
@@ -335,7 +335,7 @@ def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None
             parts.append(area.get("nome"))
         parts.append((house.kind_of(entity_id) or {}).get("translation_key"))
         state = (row.get("fonte") or {}).get("stato")
-        if subject is None and state not in (None, _LIVE_SOURCE):
+        if subject is None and state not in (None, SOURCE_LIVE):
             parts.append(f"fonte: {state}")
     return _LINE_SEPARATOR.join(str(part) for part in parts if part)
 
@@ -344,7 +344,12 @@ def tree_order(house: House, entity_ids) -> list[str]:
     """Le entita' nell'ordine dell'albero (D9 della Tappa 4): l'area nell'ordine
     di `House.hierarchy` (le pseudo-aree in fondo, come nell'albero), poi il
     dispositivo, poi l'id. Stabile fra un giro e l'altro, qualunque sia
-    l'ordine in cui l'anagrafe le elenca."""
+    l'ordine in cui l'anagrafe le elenca.
+
+    Il ripiego in fondo (`len(rank)`) vale solo per un id che la casa non
+    conosce, quando `where` non risponde: un'area che l'albero non conosce
+    e' la pseudo-area «Area sconosciuta», che sta gia' fra le sue aree
+    (verificato il 12/10/2026, N123-4)."""
     rank = {area["id"]: index for index, area in enumerate(
         area for floor in house.hierarchy() for area in floor.get("aree") or [])}
 
