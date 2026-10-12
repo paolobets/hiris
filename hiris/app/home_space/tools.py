@@ -162,9 +162,11 @@ _NOTHING_RECOGNIZED_SUGGESTION = (
     "`riferimento` della cosa, chiedilo diretto."
 )
 
+#: L'archivio dei ricordi che non c'e': una frase sola, per lo strumento che
+#: non parte, per il dettaglio di un ricordo e per la ricerca (giro 133).
+_MEMORY_NOT_LOADED = "l'archivio della memoria non e' ancora stato caricato"
 #: Perche' una domanda sui ricordi puo' tornare vuota senza che siano vuoti.
-_MEMORY_UNREAD = ("l'archivio dei ricordi non e' ancora stato caricato: i ricordi non "
-                  "si sono potuti guardare.")
+_MEMORY_UNREAD = f"{_MEMORY_NOT_LOADED}: i ricordi non si sono potuti guardare."
 
 #: I registri dell'anagrafe che la porta legge per rispondere: aree, entita' e
 #: dispositivi (i nomi) e i PIANI, perche' `piano` e' un filtro della porta
@@ -1491,6 +1493,14 @@ class ToolDispatcher:
         # dettaglio che solleva perche' nessuno gli ha passato l'istantanea.
         self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
+    def _all_memories(self) -> list[dict] | None:
+        """Tutti i ricordi, non solo gli ultimi venti (il default di
+        `fetch()`); `None` senza archivio. Li chiedono la ricerca e il
+        dettaglio (giro 133: la lettura era scritta due volte)."""
+        if self._memory is None:
+            return None
+        return self._memory.fetch(limit=self._memory.count())
+
     def _missing_resource(self, tool: Tool) -> str | None:
         """Quale archivio serve a questo strumento (`Tool.resources`) e non
         c'e'."""
@@ -1498,7 +1508,7 @@ class ToolDispatcher:
             if which == "casa" and self._home_space is None:
                 return "la conoscenza della casa non e' ancora stata caricata"
             if which == "memoria" and self._memory is None:
-                return "l'archivio della memoria non e' ancora stato caricato"
+                return _MEMORY_NOT_LOADED
             if which == "porta" and self._actuator is None:
                 return "il collegamento con Home Assistant non e' disponibile"
             if which == "ha" and self._ha is None:
@@ -1683,9 +1693,7 @@ class ToolDispatcher:
 
         # I ricordi, tutti: `search` li trova per nome e li elenca per genere
         # (D-45, 12/10/2026). Solo quando la domanda puo' arrivarci.
-        memories = (self._memory.fetch(limit=self._memory.count())
-                    if self._memory is not None and filters.kind in (None, "ricordo")
-                    and (filters.kind == "ricordo" or filters.only_by_name) else None)
+        memories = self._all_memories() if filters.reaches_memories else None
         response = query_house(house, self._home_space.behavior(), filters,
                                detail=detail, timezone=self._timezone(),
                                translations=translations, judgments=self._judgments,
@@ -1701,7 +1709,7 @@ class ToolDispatcher:
             response["stato_non_letto"] = True
         if filters.name:
             self._declare_name_gaps(response, filters, house)
-        elif filters.kind == "ricordo" and self._memory is None:
+        elif filters.reaches_memories and self._memory is None:
             response["non_ho_potuto_guardare"] = [_MEMORY_UNREAD]
         elif filters.floor and "piani" in house.unavailable:
             # Una domanda per `piano` senza nome: col registro dei piani
@@ -1727,7 +1735,8 @@ class ToolDispatcher:
         adesso contro limite stabile) sono quelle di prima: vedi il suo
         docstring."""
         found_nothing = response["trovate"] == 0
-        entries = self._blind_spots(house, found_nothing=found_nothing)
+        entries = self._blind_spots(house, found_nothing=found_nothing,
+                                    memories=filters.reaches_memories)
         current_gap = any(not stable for _message, stable in entries)
         only_the_name = replace(filters, kind=None).only_by_name
         if (found_nothing and not any(response["escluse"].values())
@@ -1737,8 +1746,8 @@ class ToolDispatcher:
         if entries:
             response["non_ho_potuto_guardare"] = [message for message, _s in entries]
 
-    def _blind_spots(self, house: House, *,
-                     found_nothing: bool = True) -> list[tuple[str, bool]]:
+    def _blind_spots(self, house: House, *, found_nothing: bool = True,
+                     memories: bool = False) -> list[tuple[str, bool]]:
         """Perche' una ricerca per nome potrebbe non trovare SENZA che la cosa
         manchi.
 
@@ -1782,7 +1791,10 @@ class ToolDispatcher:
         # E' un guasto di adesso: un corpo non letto nasconde cio' che
         # quell'automazione fa, sia che Home Assistant non abbia risposto,
         # sia che i segreti non si siano potuti controllare.
-        if self._memory is None:
+        # L'archivio dei ricordi solo quando la domanda ci arriva
+        # (`HouseFilters.reaches_memories`, N133-1): una ricerca di entita'
+        # non lo guarda, e dirlo spegnerebbe `nulla_riconosciuto`.
+        if memories and self._memory is None:
             entries.append((_MEMORY_UNREAD, False))
         unread_bodies = self._home_space.unread_bodies()
         if unread_bodies:
@@ -1849,7 +1861,7 @@ class ToolDispatcher:
         if kind == "ricordo" and self._memory is None:
             return {"esiste": False, "genere": "ricordo", "riferimento": reference,
                     "non_disponibile": True,
-                    "motivo": "l'archivio della memoria non e' ancora stato caricato"}
+                    "motivo": _MEMORY_NOT_LOADED}
         if kind == "ricordo" and not isinstance(reference, int):
             try:
                 reference = int(reference)
@@ -1859,8 +1871,7 @@ class ToolDispatcher:
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_home_space.handle_get_briefing`.
-        memories = ([] if self._memory is None
-                    else self._memory.fetch(limit=self._memory.count()))
+        memories = self._all_memories() or []
         detail = _view_detail(house, self._home_space.behavior(),
                               memories, kind, reference,
                               unread_bodies=self._home_space.unread_bodies(),

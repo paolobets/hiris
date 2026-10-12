@@ -138,3 +138,45 @@ async def test_dal_dispatcher_un_ricordo_si_trova_per_nome(tmp_path):
             app["memory_store"] = store
         assert cieco["trovate"] == 0
         assert any("ricordi" in m for m in cieco["non_ho_potuto_guardare"]), cieco
+
+
+def test_i_ricordi_elencati_si_ordinano_per_testo(tmp_path):
+    """Un ricordo non ha `nome`: la chiave dell'ordine e' il suo `testo`
+    (giro 133, nota: senza questa prova l'ordine per id passava).
+
+    Mutazione ESEGUITA: `testo` tolto dalla chiave di `_select` -- rossa."""
+    store = MemoryStore(str(tmp_path / "m.db"))
+    store.remember("Zucchine nell'orto dietro casa")
+    store.remember("Acqua calda dalla caldaia a gas")
+    righe = store.fetch(limit=store.count())
+    store.close()
+    testi = [v["testo"] for v in _cerca(righe, genere="ricordo")["voci"]]
+    assert testi == sorted(testi, key=str.lower), testi
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_una_ricerca_di_entita_non_parla_dei_ricordi(tmp_path,
+                                                                         monkeypatch):
+    """N133-1 (giro 133): senza archivio dei ricordi, `genere=entita` col nome
+    diceva «i ricordi non si sono potuti guardare» -- e quel guasto di adesso
+    spegneva `nulla_riconosciuto` su una ricerca che aveva guardato tutto.
+    Il solo nome, invece, arriva ai ricordi e lo deve dire.
+
+    Rossa prima della correzione, col messaggio dei ricordi nella prima
+    risposta e senza `nulla_riconosciuto`. La casa sintetica ha un corpo non
+    letto, un altro guasto di adesso: qui non ce n'e', come nella prova del
+    revisore."""
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        monkeypatch.setattr(app["home_space_store"], "unread_bodies", dict)
+        store, app["memory_store"] = app["memory_store"], None
+        try:
+            dispatcher = create_tool_dispatcher(
+                app, soffitto=consente(None, ruolo="amministratore"))
+            entita = await dispatcher.dispatch("search", {"genere": "entita",
+                                                          "nome": "zzqqxx"})
+            solo_nome = await dispatcher.dispatch("search", {"nome": "zzqqxx"})
+        finally:
+            app["memory_store"] = store
+    assert not any("ricordi" in m for m in entita.get("non_ho_potuto_guardare", [])), entita
+    assert entita.get("nulla_riconosciuto") is True, entita
+    assert any("ricordi" in m for m in solo_nome["non_ho_potuto_guardare"]), solo_nome

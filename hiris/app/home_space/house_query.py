@@ -55,7 +55,7 @@ _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
 #: cercano per nome e si elencano, come le entita': un dispositivo come
 #: faceva il vecchio `search` («la lavatrice»), ricordi e integrazioni dal
 #: 12/10/2026 (D-45, «Sì, cercarli»).
-_DETAIL_ONLY_KINDS = ("dispositivo", "ricordo", "integrazione")
+_DETAIL_BY_REFERENCE_KINDS = ("dispositivo", "ricordo", "integrazione")
 
 #: Il nome di ogni filtro nella lingua dello strumento, per dirlo nell'errore.
 _PARAMETER_OF = {"name": "nome", "reference": "riferimento", "domain": "dominio",
@@ -117,6 +117,15 @@ class HouseFilters:
             self.changed_within_s is not None,
             self.above is not None, self.below is not None,
             self.running is not None))
+
+    @property
+    def reaches_memories(self) -> bool:
+        """La domanda arriva ai ricordi: `genere=ricordo`, o il solo nome
+        (D-45). La chiedono la lettura dei ricordi e cio' che la risposta
+        dichiara di non aver potuto guardare (`tools.ToolDispatcher._search`):
+        una ricerca di entita' non guarda i ricordi, e non deve dire che non
+        ha potuto (N133-1, giro 133)."""
+        return self.kind == "ricordo" or self.only_by_name
 
 
 def parse_filters(arguments: dict) -> HouseFilters | dict:
@@ -499,7 +508,7 @@ def _select(f: HouseFilters, house: House, behavior, detail,
             deepest: str = "completa",
             memories: list[dict] | None = None) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
-    if f.kind in _DETAIL_ONLY_KINDS and f.reference:
+    if f.kind in _DETAIL_BY_REFERENCE_KINDS and f.reference:
         return _one(detail(f.kind, f.reference))
     kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
     chosen = house.select(f, kinds, behavior, now=now)
