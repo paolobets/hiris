@@ -34,7 +34,9 @@ nessuna chiave, e non e' toccata.
   non cio' che si rende -- e la riga di un oggetto che non e' un'entita' ma
   porta due parole del vocabolario. Ognuna col suo perche'.
 
-**I limiti, dichiarati.** Le righe in TESTO per i modelli non sono
+**I limiti, dichiarati.** `handlers_home_space._with_live_kind` compone
+ancora la riga dell'entita' di `/api/home-space` (ammessa con la ragione: la
+chiude F5). Le righe in TESTO per i modelli non sono
 dizionari: `observer.house_lines`, `recipe_turn.device_lines` e
 `keeper/exchange._domanda` compongono l'entita' in una stringa e il
 cancello non le vede. Al Task 9 diventano la resa in testo dello stesso
@@ -129,6 +131,18 @@ ADMITTED: dict[str, str] = {
         "una misura della ricetta: `valore` e `unita` sono quelli calcolati "
         "dall'operazione (`outcome.value`, `outcome.unit`), non lo stato "
         "dell'entita'"),
+    # N113-1 (giro 113, 12/10/2026): le comprensioni che prendono le chiavi
+    # da una collezione di stringhe scritte, che il cancello prima non vedeva.
+    "api/handlers_home_space.py::_with_live_kind": (
+        "LIMITE DICHIARATO, non un altro oggetto: la riga dell'entita' di "
+        "`GET /api/home-space` e' il record dell'anagrafe con `classe` e "
+        "`unita` rilette dal vivo -- una composizione fuori dalla resa. La "
+        "chiude F5 (T3 della Tappa 9, C-23/M-35), che aspetta la foto "
+        "`forme` dal vivo (M1): quale campo legge ogni pagina"),
+    "home_space/house_history.py::parse_query": (
+        "i FILTRI di chi si chiede (`dominio`, `classe`, `integrazione` come "
+        "parametri di `search`), copiati dagli argomenti per `parse_filters`: "
+        "una domanda, non un'entita'"),
     "mind/store.py::proposals": (
         "la riga di una proposta: `stato` e `stato_leggibile` sono quelli "
         "della proposta, con la stessa frase delle costruzioni (C-10)"),
@@ -208,12 +222,61 @@ def _string_keys(node: ast.Dict) -> set[str]:
             if isinstance(key, ast.Constant) and isinstance(key.value, str)}
 
 
-def _built_dicts(function) -> list[tuple[int, set[str]]]:
+def _string_constants(node) -> set[str] | None:
+    """Le stringhe di una tupla, lista o insieme di sole costanti; `None` se
+    il nodo non e' una collezione di stringhe scritte."""
+    if not isinstance(node, (ast.Tuple, ast.List, ast.Set)) or not node.elts:
+        return None
+    values = {element.value for element in node.elts
+              if isinstance(element, ast.Constant) and isinstance(element.value, str)}
+    return values if len(values) == len(node.elts) else None
+
+
+def module_constants(tree) -> dict[str, set[str]]:
+    """I nomi del modulo legati a una collezione di stringhe scritte
+    (`_LIVE_KIND = ("classe", "unita")`): le chiavi che una comprensione
+    puo' prendere da li'."""
+    found: dict[str, set[str]] = {}
+    for node in tree.body:
+        targets, value = ((node.targets, node.value) if isinstance(node, ast.Assign)
+                          else ([node.target], node.value) if isinstance(node, ast.AnnAssign)
+                          else ([], None))
+        strings = _string_constants(value) if value is not None else None
+        for target in targets:
+            if strings is not None and isinstance(target, ast.Name):
+                found[target.id] = strings
+    return found
+
+
+def _comprehension_keys(node: ast.DictComp, constants: dict[str, set[str]]) -> set[str]:
+    """Le chiavi di `{k: ... for k in COSTANTI}`: la chiave e' la variabile
+    del ciclo, e il ciclo scorre una collezione di stringhe scritte, nel
+    modulo o in linea (N113-1, giro 113: `_with_live_kind` sfuggiva cosi').
+
+    Mutazione ESEGUITA: in `queries.py` una `_CAMPI = ("stato", "unita")` e
+    una funzione `{k: ... for k in _CAMPI}` -- il cancello rosso col nome.
+    Mutazione ESEGUITA: comprensioni non lette -- rossa
+    `test_ogni_ammessa_compone_ancora`, con le due ammesse di N113-1."""
+    if len(node.generators) != 1 or not isinstance(node.key, ast.Name):
+        return set()
+    loop = node.generators[0]
+    if not isinstance(loop.target, ast.Name) or loop.target.id != node.key.id:
+        return set()
+    if isinstance(loop.iter, ast.Name):
+        return set(constants.get(loop.iter.id, set()))
+    return _string_constants(loop.iter) or set()
+
+
+def _built_dicts(function, constants: dict[str, set[str]] | None = None
+                 ) -> list[tuple[int, set[str]]]:
     """Ogni dizionario che la funzione costruisce, con le sue chiavi: i
-    letterali, e per ogni variabile le chiavi del letterale che le si assegna
-    piu' quelle scritte con `x["chiave"] = ...`."""
+    letterali, le comprensioni che prendono le chiavi da una collezione di
+    stringhe scritte, e per ogni variabile le chiavi del letterale che le si
+    assegna piu' quelle scritte con `x["chiave"] = ...`."""
     built = [(node.lineno, _string_keys(node)) for node in ast.walk(function)
              if isinstance(node, ast.Dict)]
+    built += [(node.lineno, _comprehension_keys(node, constants or {}))
+              for node in ast.walk(function) if isinstance(node, ast.DictComp)]
     by_name: dict[str, tuple[int, set[str]]] = {}
     for node in ast.walk(function):
         if not isinstance(node, ast.Assign):
@@ -239,10 +302,11 @@ def composers(modules: set[Path], fields: set[str]) -> dict[str, tuple[int, list
         if relative in RENDER_MODULES:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        constants = module_constants(tree)
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            for line, keys in _built_dicts(function):
+            for line, keys in _built_dicts(function, constants):
                 common = sorted(keys & fields)
                 name = f"{relative}::{function.name}"
                 if len(common) >= 2 and name not in found:
