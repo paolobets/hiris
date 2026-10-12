@@ -36,7 +36,8 @@ nessuna chiave, e non e' toccata.
 
 **I limiti, dichiarati.** `handlers_home_space._with_live_kind` compone
 ancora la riga dell'entita' di `/api/home-space` (ammessa con la ragione: la
-chiude F5). Le righe in TESTO per i modelli non sono
+chiude F5). Il cancello non vede le chiavi che arrivano da `dict(zip(...))`
+ne' da una collezione costruita a pezzi (giro 114). Le righe in TESTO per i modelli non sono
 dizionari: `observer.house_lines`, `recipe_turn.device_lines` e
 `keeper/exchange._domanda` compongono l'entita' in una stringa e il
 cancello non le vede. Al Task 9 diventano la resa in testo dello stesso
@@ -143,6 +144,11 @@ ADMITTED: dict[str, str] = {
         "i FILTRI di chi si chiede (`dominio`, `classe`, `integrazione` come "
         "parametri di `search`), copiati dagli argomenti per `parse_filters`: "
         "una domanda, non un'entita'"),
+    "mind/report.py::_entry": (
+        "una riga della cronaca del resoconto: l'ancora di un episodio "
+        "passato (`classe`, `dominio`, `attributi` dal corpo dell'episodio, "
+        "`mind/facts.close`) -- un fatto passato, non la casa di adesso. "
+        "Visto dal giro 114 (N114-1), coi cicli su costanti"),
     "mind/store.py::proposals": (
         "la riga di una proposta: `stato` e `stato_leggibile` sono quelli "
         "della proposta, con la stessa frase delle costruzioni (C-10)"),
@@ -233,9 +239,10 @@ def _string_constants(node) -> set[str] | None:
 
 
 def module_constants(tree) -> dict[str, set[str]]:
-    """I nomi del modulo legati a una collezione di stringhe scritte
-    (`_LIVE_KIND = ("classe", "unita")`): le chiavi che una comprensione
-    puo' prendere da li'."""
+    """I nomi legati a una collezione di stringhe scritte
+    (`_LIVE_KIND = ("classe", "unita")`), al primo livello del modulo o
+    della funzione che si passa: le chiavi che una comprensione o un ciclo
+    possono prendere da li'."""
     found: dict[str, set[str]] = {}
     for node in tree.body:
         targets, value = ((node.targets, node.value) if isinstance(node, ast.Assign)
@@ -273,11 +280,31 @@ def _built_dicts(function, constants: dict[str, set[str]] | None = None
     letterali, le comprensioni che prendono le chiavi da una collezione di
     stringhe scritte, e per ogni variabile le chiavi del letterale che le si
     assegna piu' quelle scritte con `x["chiave"] = ...`."""
+    # Le costanti del modulo, piu' quelle legate a un nome dentro la funzione
+    # (N114-1, giro 114).
+    constants = {**(constants or {}), **module_constants(function)}
     built = [(node.lineno, _string_keys(node)) for node in ast.walk(function)
              if isinstance(node, ast.Dict)]
-    built += [(node.lineno, _comprehension_keys(node, constants or {}))
+    built += [(node.lineno, _comprehension_keys(node, constants))
               for node in ast.walk(function) if isinstance(node, ast.DictComp)]
     by_name: dict[str, tuple[int, set[str]]] = {}
+    # `for k in COSTANTI: x[k] = ...` (N114-1): la variabile del ciclo usata
+    # come chiave porta le stringhe della collezione. Mutazioni ESEGUITE in
+    # `queries.py`: una tupla locale con una comprensione, e un ciclo su una
+    # tupla in linea con `riga[k] = ...` -- rosso il cancello, col nome.
+    for loop in ast.walk(function):
+        if not isinstance(loop, ast.For) or not isinstance(loop.target, ast.Name):
+            continue
+        keys = (constants.get(loop.iter.id) if isinstance(loop.iter, ast.Name)
+                else _string_constants(loop.iter))
+        if not keys:
+            continue
+        for node in ast.walk(loop):
+            for target in getattr(node, "targets", ()):
+                if (isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == loop.target.id):
+                    by_name.setdefault(target.value.id, (node.lineno, set()))[1].update(keys)
     for node in ast.walk(function):
         if not isinstance(node, ast.Assign):
             continue
