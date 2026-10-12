@@ -30,6 +30,15 @@ from ..proxy.state_translations import read_for_house
 #: pagina non disegna e che ripetute su ogni entita' della casa sarebbero la
 #: parte piu' pesante della risposta. Il resto e' la riga di `search`, con la
 #: stessa forma (fondamenta 3).
+#:
+#: Le ceste vanno fuori anche per un'altra ragione: questa porta non passa da
+#: `privacy.redact_row` (lo applica solo `query_house`) e la leggono anche i
+#: servizi firmati «lettore» e «utente». Con gli attributi uscirebbe la
+#: posizione delle persone (N135-1, prova in `test_handlers_home_space.py`).
+#: Lo `stato` invece esce senza filtro, e una `person` in «Lavoro» si legge
+#: «Lavoro»: il filtro esiste per i modelli cloud (spec del 29/09/2026, §3),
+#: e chi amministra lo vede uguale in Home Assistant. Non e' una svista da
+#: allineare a `search`.
 _TREE_DROPS = ("area", "attributi")
 #: Cio' che l'albero toglie dal nodo di un'area (D3): alias ed etichette
 #: dell'area non li disegna nessuna pagina, e la chat li ha da `render_area`.
@@ -70,11 +79,6 @@ def _tree_entity(house: House, entry, translations: dict, zone):
                         judgments=None)
     return {key: value for key, value in row.items() if key not in _TREE_DROPS}
 
-
-#: Cio' che della voce di una plancia esce (D3): il titolo e il percorso,
-#: quelli che la pagina mostra. La configurazione intera resta a Home
-#: Assistant.
-_DASHBOARD_FIELDS = ("titolo", "percorso")
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:
@@ -206,8 +210,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # applicato alle plance invece che ai registri.
             "non_disponibili": store.unavailable_dashboards(),
             "conservato": store.dashboards_kept(),
-            "voci": [{key: entry.get(key) for key in _DASHBOARD_FIELDS}
-                     for entry in store.dashboards()],
+            # Titolo e percorso soltanto (D3): li sceglie il lettore,
+            # `behavior.reread_dashboards`, la casa di questo fatto.
+            "voci": store.dashboards(),
         },
     })
 

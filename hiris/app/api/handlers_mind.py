@@ -20,7 +20,7 @@ pagina esiste perche' il proprietario possa vedere «cosa sto guardando e
 perche'» in ogni momento -- un `{"watching": []}` direbbe «HIRIS non guarda
 niente», mentre l'osservatore assente e' un'altra cosa (l'add-on e' partito
 senza di lui). E' la stessa distinzione a tre stati che il resto del prodotto
-difende ovunque (`casa.non_disponibili`, `casa.etichette`, eccetera): un
+difende ovunque (`casa.non_disponibili`, `plance.non_disponibili`, eccetera): un
 guasto non si appiattisce su un'assenza.
 
 Le rotte GET non hanno `csrf_middleware` da rispettare (sono metodi "safe",
