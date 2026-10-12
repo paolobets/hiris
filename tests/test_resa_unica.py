@@ -369,6 +369,36 @@ def test_i_moduli_che_rispondono_si_chiedono_al_router_e_al_catalogo():
     assert len(modules) >= 60, len(modules)
 
 
+def test_il_cancello_legge_costanti_cicli_e_comprensioni():
+    """N115-1 (giro 115): nessuna funzione del prodotto usa oggi una tupla
+    locale, quindi la sola prova del cancello non direbbe se la lettura si
+    e' rotta. Qui le tre forme, scritte apposta, e le chiavi pretese.
+
+    Mutazione ESEGUITA: `_built_dicts` senza le costanti locali -- rossa
+    (`locale` senza chiavi). Mutazione ESEGUITA: senza i cicli `x[k] = ...`
+    -- rossa (`ciclo`). Mutazione ESEGUITA: senza le comprensioni -- rossa
+    (`modulo`)."""
+    tree = ast.parse(
+        'CAMPI = ("stato", "unita")\n'
+        'def modulo(e):\n'
+        '    return {k: e for k in CAMPI}\n'
+        'def locale(e):\n'
+        '    nomi = ("classe", "integrazione")\n'
+        '    return {k: e for k in nomi}\n'
+        'def ciclo(e):\n'
+        '    riga = {}\n'
+        '    for k in ("stato_leggibile", "ultimo_cambio"):\n'
+        '        riga[k] = e\n'
+        '    return riga\n')
+    constants = module_constants(tree)
+    keys = {function.name: set().union(*(found for _line, found
+                                         in _built_dicts(function, constants)))
+            for function in tree.body if isinstance(function, ast.FunctionDef)}
+    assert keys == {"modulo": {"stato", "unita"},
+                    "locale": {"classe", "integrazione"},
+                    "ciclo": {"stato_leggibile", "ultimo_cambio"}}, keys
+
+
 def test_ogni_ammessa_compone_ancora():
     """Un'ammissione che non compone piu' niente e' un elenco invecchiato:
     esce con la funzione."""
