@@ -1250,27 +1250,31 @@ class Permission:
     refusal: str | None = None
 
 
-def _rows_under(occurrence: dict, cap: CharCap, *, offset: int) -> dict:
-    """Le `voci` dal fondo finche' la risposta sta sotto il tetto, con `oltre`
-    che conta anche quelle che la pagina aveva gia' lasciato fuori. La pagina
-    la taglia `page_rows`, la stessa di `search` e di `history`; `salta` e'
-    assoluto, come quello che lo strumento riceve."""
-    rows = occurrence.get("voci")
-    if not isinstance(rows, list) or len(rows) < 2:
+def _cap_note(occurrence: dict, cap: CharCap) -> dict:
+    """La risposta con la frase del tetto nel suo `oltre`, se ne ha uno: chi
+    legge sa perche' le voci si fermano li', e che le altre ci sono."""
+    beyond = occurrence.get("oltre")
+    if not isinstance(beyond, dict) or "restano" not in beyond:
         return occurrence
-    before = (occurrence.get("oltre") or {}).get("restano", 0)
+    return {**occurrence, "oltre": {
+        **beyond, "suggerimento": (f"la risposta superava il tetto di {cap.chars} "
+                                   f"caratteri (la piu' grande misurata, il "
+                                   f"{cap.measured}): le altre voci si chiedono con "
+                                   "`salta`, o restringendo i filtri")}}
+
+
+def _rows_fitting(occurrence: dict, cap: CharCap) -> int:
+    """Quante delle prime `voci` stanno sotto il tetto, con un `oltre` della
+    forma che il gestore scrivera'; almeno una. E' una stima per il
+    `limite` da chiedere al gestore: le voci di una pagina di N posizioni
+    sono al piu' N, e sono le prime di questa."""
+    rows = occurrence["voci"]
     for keep in range(len(rows) - 1, 0, -1):
         page, beyond = page_rows(rows, 0, keep)
-        trimmed = {**occurrence, "voci": page,
-                   "oltre": {"restano": before + beyond["restano"], "salta": offset + keep,
-                             "suggerimento": (
-                                 f"la risposta superava il tetto di {cap.chars} "
-                                 f"caratteri (la piu' grande misurata, il "
-                                 f"{cap.measured}): le altre voci si chiedono con "
-                                 "`salta`, o restringendo i filtri")}}
-        if pesa_in_caratteri(trimmed) <= cap.chars:
-            return trimmed
-    return trimmed
+        if pesa_in_caratteri(_cap_note({**occurrence, "voci": page, "oltre": beyond},
+                                       cap)) <= cap.chars:
+            return keep
+    return 1
 
 
 @dataclass(frozen=True)
@@ -1590,8 +1594,8 @@ class ToolDispatcher:
         """La risposta sotto il tetto dello strumento (R16), riducendola come
         ha deciso la D5 della Tappa 5: **prima scende la profondita'**
         (completa -> media -> corta: tutte le voci, piu' corte), **poi si
-        tolgono voci dal fondo**, con `oltre` che dice quante restano e come
-        chiederle. Mai un taglio a meta' di una voce: una voce sola piu' grande
+        chiedono meno voci** (`_rows_under`), con `oltre` che dice quante
+        restano e come chiederle. Mai un taglio a meta' di una voce: una voce sola piu' grande
         del tetto esce intera.
 
         Scendere di profondita' vuol dire chiedere di nuovo al gestore, con
@@ -1607,10 +1611,35 @@ class ToolDispatcher:
                 shallower = await self._call(tool, arguments, {**options, "deepest": lower})
                 if "errore" in shallower or shallower.get("profondita") != lower:
                     break
-                occurrence = shallower
+                occurrence, options = shallower, {**options, "deepest": lower}
         if pesa_in_caratteri(occurrence) <= cap.chars:
             return occurrence
-        return _rows_under(occurrence, cap, offset=int(arguments.get("salta") or 0))
+        return await self._rows_under(tool, arguments, options, occurrence)
+
+    async def _rows_under(self, tool: Tool, arguments: dict[str, Any], options: dict,
+                          occurrence: dict) -> dict:
+        """Meno voci, chieste al gestore con un `limite` piu' piccolo: la
+        pagina e `oltre` (`restano`, `salta`) li calcola lui con `page_rows`,
+        come fa per ogni pagina (N124-1, giro 124). Fino al 12/10/2026 le voci
+        si toglievano qui, e `salta` contava le voci tenute come posizioni:
+        per i valori di `history`, che tengono solo i soggetti con dei punti,
+        la pagina dopo ripeteva voci gia' lette.
+
+        Il `limite` di partenza e' la stima di `_rows_fitting`; se la pagina
+        del gestore non sta ancora sotto il tetto, si scende di uno. Una voce
+        sola esce comunque, intera."""
+        cap = tool.cap
+        if not isinstance(occurrence.get("voci"), list) or len(occurrence["voci"]) < 2:
+            return occurrence
+        limit = _rows_fitting(occurrence, cap)
+        while True:
+            smaller = await self._call(tool, {**arguments, "limite": limit}, options)
+            if "errore" in smaller:
+                return smaller
+            smaller = _cap_note(smaller, cap)
+            if pesa_in_caratteri(smaller) <= cap.chars or limit == 1:
+                return smaller
+            limit -= 1
 
     # -- search --------------------------------------------------------
 

@@ -76,7 +76,10 @@ async def test_se_non_basta_la_profondita_si_tolgono_voci_e_oltre_lo_dice(tmp_pa
     ripartire, contando anche quelle che la pagina aveva gia' lasciato fuori.
 
     Mutazione ESEGUITA: `_rows_under` senza le `restano` della pagina --
-    rossa."""
+    rossa (12/10/2026, quando il taglio lo faceva `tools`). Dal giro 124
+    (N124-1) pagina e `oltre` li calcola il gestore, richiamato con un
+    `limite` piu' piccolo: la mutazione equivalente e' `_rows_under` che
+    non passa `limite` al gestore -- rossa."""
     d = _dispatcher(tmp_path, 30)
     corta = await d._search({"dominio": "media_player", "limite": 20, "salta": 5},
                             masked=False)
@@ -192,3 +195,135 @@ async def test_traccia_troppo_grande_scende_media(tmp_path):
     assert peso <= tetto, f"{peso} caratteri, tetto {tetto}"
     assert risposta["profondita"] == "media"
     assert set(risposta["voci"][0]["trace"]) == set(traccia["trace"])
+
+
+#: Dieci sonde (la media), e i punti solo alle pari: i valori tengono solo i soggetti
+#: con dei punti, quindi le voci sono una SOTTOSEQUENZA delle posizioni della
+#: pagina (N124-1, giro 124).
+_SONDE = [f"sensor.sonda_{n:02d}" for n in range(10)]
+
+
+def _storia_sonde(tmp_path):
+    import copy
+    from datetime import timedelta
+
+    from tests.test_history_tool import (
+        _ADESSO,
+        _CASA,
+        _history_dispatcher,
+        _history_mirror,
+        _house,
+        _riga,
+        _voce,
+    )
+    casa = copy.deepcopy(_CASA)
+    casa["entita"] += [_voce(eid, f"Sonda {eid[-2:]}", "cucina") for eid in _SONDE]
+    specchio = _history_mirror()
+    specchio._righe += [_riga(eid, "20", unit="°C", state_class="measurement")
+                        for eid in _SONDE]
+    # Un punto prima della finestra: la serie c'e', ma nella finestra non e'
+    # successo niente, e i soggetti si ordinano per id, pari e dispari
+    # alternati (`house_history._activity`).
+    quando = (_ADESSO - timedelta(hours=30)).isoformat()
+    serie = {eid: [{"quando": quando, "valore": "20"}]
+             for n, eid in enumerate(_SONDE) if n % 2 == 0}
+    return _history_dispatcher(tmp_path, _house(serie=serie), cache=specchio, casa=casa)
+
+
+async def _pagine(d, argomenti: dict) -> list[list[str]]:
+    """Le pagine di una domanda, seguendo `oltre.salta` finche' c'e'."""
+    pagine, salta = [], 0
+    while salta is not None and len(pagine) < 20:
+        risposta = await d.dispatch("history", {**argomenti, "salta": salta})
+        assert "errore" not in risposta, risposta
+        pagine.append([v["id"] for v in risposta["voci"]])
+        salta = (risposta.get("oltre") or {}).get("salta")
+    return pagine
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("meno", [300, 600])
+async def test_la_pagina_dopo_il_taglio_non_ripete_voci(tmp_path, monkeypatch, meno):
+    """N124-1: oltre il tetto `history` toglieva voci dal fondo e diceva
+    `salta = offset + tenute`, come se ogni voce fosse una posizione della
+    pagina. Per i valori non lo e': la pagina dopo ripeteva `s02` e `s04`.
+    Ora il taglio lo fa il gestore, richiamato con un `limite` piu' piccolo,
+    e `oltre` lo calcola lui.
+
+    Rossa prima, coi doppioni nel messaggio (lo scenario del revisore)."""
+    d = _storia_sonde(tmp_path)
+    argomenti = {"cosa": "valori", "nome": "sonda"}
+    intera = await d._history(argomenti)
+    attese = [v["id"] for v in intera["voci"]]
+    assert attese == _SONDE[::2] and "oltre" not in intera
+    tetto = pesa_in_caratteri(intera) - meno
+    riga = tools._TOOL_PER_NAME["history"]
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "history",
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
+    pagine = await _pagine(d, argomenti)
+    lette = [ident for pagina in pagine for ident in pagina]
+    assert len(pagine) > 1, "il tetto non ha tagliato: la prova non guarda"
+    assert lette == attese, pagine
+
+
+@pytest.mark.asyncio
+async def test_il_taglio_tiene_tutte_le_voci_che_entrano(tmp_path, monkeypatch):
+    """N124-3: il taglio tiene il massimo di voci sotto il tetto, non una
+    pagina qualunque piu' piccola: con una voce in piu', alla stessa
+    profondita' e con la stessa frase, passerebbe il tetto.
+    Mutazione ESEGUITA: `_rows_fitting` che parte da una voce -- rossa."""
+    d = _dispatcher(tmp_path, 30)
+    argomenti = {"dominio": "media_player", "limite": 20}
+    corta = await d._search(argomenti, masked=False)
+    tetto = pesa_in_caratteri(corta) // 2
+    riga = tools._TOOL_PER_NAME["search"]
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "search",
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
+    risposta = await d.dispatch("search", argomenti)
+    date = len(risposta["voci"])
+    eccedente = tools._cap_note(
+        await d._search({**argomenti, "limite": date + 1}, masked=False),
+        CharCap(tetto, "12/10/2026"))
+    assert pesa_in_caratteri(risposta) <= tetto < pesa_in_caratteri(eccedente)
+
+
+@pytest.mark.asyncio
+async def test_si_scende_fino_alla_corta_se_la_media_non_basta(tmp_path, monkeypatch):
+    """N124-3: un lettore solo e' una scheda completa; alla media porta ancora
+    le sue sorgenti, alla corta no. Col tetto fra le due la risposta scende di
+    DUE gradini.
+
+    Mutazione ESEGUITA: un gradino solo (completa -> media) -- rossa."""
+    d = _dispatcher(tmp_path, 1)
+    argomenti = {"riferimento": "media_player.lettore_0"}
+    media = await d._search(argomenti, masked=False, deepest="media")
+    corta = await d._search(argomenti, masked=False, deepest="corta")
+    tetto = (pesa_in_caratteri(media) + pesa_in_caratteri(corta)) // 2
+    riga = tools._TOOL_PER_NAME["search"]
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "search",
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
+    risposta = await d.dispatch("search", argomenti)
+    assert risposta["profondita"] == "corta" and pesa_in_caratteri(risposta) <= tetto
+
+
+@pytest.mark.asyncio
+async def test_history_scende_di_profondita(tmp_path, monkeypatch):
+    """N124-3: la discesa di `history` passa `deepest` fino a
+    `house_history.choose`. Una sonda sola e' alla completa; col tetto sotto
+    la completa e sopra la media, la risposta e' la media.
+
+    Mutazione ESEGUITA: `_history` che non inoltra `deepest` a
+    `read_history` -- rossa; `read_history` che non lo inoltra a `choose` --
+    rossa."""
+    d = _storia_sonde(tmp_path)
+    argomenti = {"cosa": "valori", "riferimento": "sensor.sonda_00"}
+    completa = await d._history(argomenti)
+    media = await d._history(argomenti, deepest="media")
+    assert completa["profondita"] == "completa"
+    assert pesa_in_caratteri(media) < pesa_in_caratteri(completa)
+    tetto = pesa_in_caratteri(media)
+    riga = tools._TOOL_PER_NAME["history"]
+    monkeypatch.setitem(tools._TOOL_PER_NAME, "history",
+                        replace(riga, cap=CharCap(tetto, "12/10/2026")))
+    risposta = await d.dispatch("history", argomenti)
+    assert risposta["profondita"] == "media" and pesa_in_caratteri(risposta) <= tetto
