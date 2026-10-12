@@ -207,8 +207,12 @@ ROWS_MAX = 50
 _NESTED_ROWS = ("entita", "entita_nascoste")
 
 
-def _within_ceiling(detail: dict, hint: str) -> dict:
-    """Il dettaglio completo sotto il tetto della porta, per costruzione.
+def _nested_rows(house: House, groups: dict[str, list[dict]], depth: str, hint: str, *,
+                 zone=None, translations: dict | None = None,
+                 judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
+    """Le righe annidate del dettaglio completo, sotto il tetto della porta
+    per costruzione: `entita` (sempre, anche vuota), `entita_nascoste` (solo
+    se ne entra almeno una) e `oltre` (solo se qualcosa resta fuori).
 
     **Il tetto sta nella regola** (spec §2.3): fino al 30/09/2026 il dettaglio
     di un'area elencava ogni sua entita' -- Telecamere 287, ~64.000
@@ -216,24 +220,27 @@ def _within_ceiling(detail: dict, hint: str) -> dict:
     25.000 token che la CLI accetta, e diventava un rimando a un file che il
     modello non puo' leggere (spec §1, causa 2). Qui le righe annidate si
     fermano a `ROWS_MAX` IN TUTTO, visibili prima; cio' che resta si dichiara
-    in `oltre` con il modo di chiederlo -- mai tagliato in silenzio."""
+    in `oltre` con il modo di chiederlo -- mai tagliato in silenzio.
+
+    **Si sceglie prima, si rende dopo** (Tappa 9, F7; D-53): fino al
+    12/10/2026 si rendevano tutte e poi se ne tenevano `ROWS_MAX` -- su
+    Telecamere 237 rese per niente. La profondita' resta quella del conto
+    intero (`rows_depth`), che chi chiama passa."""
     budget = ROWS_MAX
+    out: dict = {}
     left: dict = {}
     for key in _NESTED_ROWS:
-        rows = detail.get(key)
-        if not rows:
-            continue
+        rows = groups.get(key) or []
         kept = rows[:budget]
         budget -= len(kept)
         if len(rows) > len(kept):
             left[key] = len(rows) - len(kept)
         if kept or key == "entita":
-            detail[key] = kept
-        else:
-            del detail[key]
+            out[key] = _entity_rows(house, kept, depth, zone=zone,
+                                    translations=translations, judgments=judgments)
     if left:
-        detail["oltre"] = {**left, "suggerimento": hint}
-    return detail
+        out["oltre"] = {**left, "suggerimento": hint}
+    return out
 
 
 def _view_area(house: House, memories: list[dict], reference,
@@ -266,9 +273,6 @@ def _view_area(house: House, memories: list[dict], reference,
     # il dettaglio a ~64.000 caratteri, oltre il limite del ponte. E' la
     # regola della porta per ogni insieme («disabilitate sempre escluse e
     # contate», spec §2.4), e `_view_integration` la applicava gia'.
-    depth = rows_depth(len(area["entita"]) + len(area.get("entita_nascoste") or []))
-    entity = _entity_rows(house, area["entita"], depth, zone=zone, translations=translations,
-                          judgments=judgments)
     disabled_count = len(area.get("entita_disabilitate") or [])
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
@@ -283,9 +287,16 @@ def _view_area(house: House, memories: list[dict], reference,
     # un campo. Restano pero' COMPLETE e raggiungibili qui, per la stessa
     # domanda esplicita -- "cosa hai nascosto?" -- che il campo `nascosta`
     # serviva gia' quando l'entita' si guarda da sola (`_view_entity`).
-    hidden_entities = _entity_rows(house, area.get("entita_nascoste", []), depth,
-                                   zone=zone, translations=translations,
-                                   judgments=judgments)
+    #
+    # Il filtro della porta si scrive col nome che il nucleo usa: le
+    # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
+    where = "senza area" if is_pseudo_area(area["id"]) else area["id"]
+    nested = _nested_rows(
+        house, {"entita": area["entita"], "entita_nascoste": area.get("entita_nascoste")},
+        rows_depth(len(area["entita"]) + len(area.get("entita_nascoste") or [])),
+        f"chiedi «search» con area=\"{where}\" e un filtro (dominio, stato, classe): "
+        "l'insieme si restringe, e la porta lo pagina con `oltre` e `salta`",
+        zone=zone, translations=translations, judgments=judgments)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
     # L'area dalla resa (`render.render_area`, Tappa 9, F4): fino al
@@ -293,22 +304,17 @@ def _view_area(house: House, memories: list[dict], reference,
     # riferimento e le etichette sono della resa.
     detail = {
         "esiste": True, **render_area(house, area, "completa"),
-        "entita": entity,
+        "entita": nested.pop("entita"),
         "ricordi": _tethered_memories(memories, "area", reference),
     }
-    # Solo quando ce n'e' almeno una: `entita_nascoste: []` su ogni area
+    # `entita_nascoste` solo quando ce n'e' almeno una: `[]` su ogni area
     # (la stragrande maggioranza non ne ha) sarebbe rumore in ogni risposta
     # -- stessa disciplina di `unita`/`etichette`/`categorie` in questo file.
-    if hidden_entities:
-        detail["entita_nascoste"] = hidden_entities
+    if "entita_nascoste" in nested:
+        detail["entita_nascoste"] = nested.pop("entita_nascoste")
     if disabled_count:
         detail["entita_disabilitate"] = disabled_count
-    # Il filtro della porta si scrive col nome che il nucleo usa: le
-    # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
-    where = "senza area" if is_pseudo_area(area["id"]) else area["id"]
-    _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
-                            "(dominio, stato, classe): l'insieme si restringe, e "
-                            "la porta lo pagina con `oltre` e `salta`")
+    detail.update(nested)
     if incomplete:
         detail["elenco_incompleto"] = incomplete
     return detail
@@ -377,30 +383,28 @@ def _view_device(house: House, memories: list[dict], reference,
     # Le righe dalla resa, come quelle dell'area: la stessa entita' e' la
     # stessa cosa da tutte le porte (fino all'08/10/2026 qui la riga visibile
     # si componeva in linea, una terza copia del dizionario base).
-    depth = rows_depth(len(raw_visible) + len(raw_hidden))
-    device_entities = _entity_rows(house, raw_visible, depth, zone=zone,
-                                   translations=translations, judgments=judgments)
-    device_hidden_entities = _entity_rows(house, raw_hidden, depth, zone=zone,
-                                          translations=translations,
-                                          judgments=judgments)
+    # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
+    nested = _nested_rows(
+        house, {"entita": raw_visible, "entita_nascoste": raw_hidden},
+        rows_depth(len(raw_visible) + len(raw_hidden)),
+        "chiedi «search» con un filtro (dominio, stato, integrazione, area) per "
+        "restringere l'insieme, o con `riferimento` = l'id di un'entita' per il "
+        "suo dettaglio",
+        zone=zone, translations=translations, judgments=judgments)
     # Il dispositivo dalla resa (`render.render_device`, Tappa 9, F4): fino
     # al 12/10/2026 si componeva qui, senza area e con `disabilitato: false`
     # su ogni dispositivo acceso. Marca, modello ed etichette sono della resa.
     detail = {
         "esiste": True, **render_device(house, device, "completa"),
-        "entita": device_entities,
+        "entita": nested.pop("entita"),
         "ricordi": _tethered_memories(memories, "dispositivo", reference),
     }
     # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
-    if device_hidden_entities:
-        detail["entita_nascoste"] = device_hidden_entities
+    if "entita_nascoste" in nested:
+        detail["entita_nascoste"] = nested.pop("entita_nascoste")
     if disabled_count:
         detail["entita_disabilitate"] = disabled_count
-    # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
-    _within_ceiling(detail, "chiedi «search» con un filtro (dominio, stato, "
-                            "integrazione, area) per restringere l'insieme, o "
-                            "con `riferimento` = l'id di un'entita' per il suo "
-                            "dettaglio")
+    detail.update(nested)
     # L'elenco sopra viene da "entita" grezzo: se quel registro non ha
     # risposto, l'elenco puo' essere incompleto (o vuoto) senza che si veda
     # -- stesso principio di `_view_area`.
@@ -642,13 +646,13 @@ def _view_integration(house: House, reference,
         "entita_mute": len(mute),
         # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
         # ha gia' tolto le disabilitate qualche riga sopra.
-        "entita": _entity_rows(house, mute, rows_depth(len(mute)), zone=zone,
-                               translations=translations, judgments=judgments),
+        # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
+        **_nested_rows(house, {"entita": mute}, rows_depth(len(mute)),
+                       f"chiedi «search» con integrazione=\"{domain}\" e "
+                       "stato=\"unavailable\": la porta pagina l'insieme con "
+                       "`oltre` e `salta`",
+                       zone=zone, translations=translations, judgments=judgments),
     }
-    # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
-    _within_ceiling(detail, f"chiedi «search» con integrazione=\"{domain}\" e "
-                            "stato=\"unavailable\": la porta pagina l'insieme con "
-                            "`oltre` e `salta`")
     if unknown:
         detail["entita_stato_ignoto"] = len(unknown)
     if disabled:
