@@ -21,9 +21,17 @@ from typing import TYPE_CHECKING
 from .behavior import BEHAVIOR_DOMAINS
 from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
-from .queries import ROWS_MAX, _not_found_detail
+from .queries import ROWS_MAX, _not_found_detail, sanitized_memories
 from .reference import name_matches, normalize
-from .render import depth_for, render_area, render_behavior, render_device, render_entity
+from .render import (
+    depth_for,
+    render_area,
+    render_behavior,
+    render_device,
+    render_entity,
+    render_integration,
+    render_memory,
+)
 from .topology import (
     _ID_WITHOUT_AREA,
     Mirror,
@@ -42,10 +50,12 @@ KINDS = ("entita", "area", "dispositivo", "automazione", "script",
 ORDERS = ("nome", "ultimo_cambio", "valore")
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
 _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
-#: I generi che si chiedono per `riferimento` e rispondono col dettaglio
-#: completo di `queries.view`. Un dispositivo senza `riferimento` si cerca
-#: invece per nome, come faceva il vecchio `search` («la lavatrice»).
-_DETAIL_ONLY_KINDS = ("dispositivo", "ricordo", "integrazione")
+#: I generi che col `riferimento` rispondono col dettaglio completo di
+#: `queries.view` anche quando nessuna riga lo prende. Senza `riferimento` si
+#: cercano per nome e si elencano, come le entita': un dispositivo come
+#: faceva il vecchio `search` («la lavatrice»), ricordi e integrazioni dal
+#: 12/10/2026 (D-45, «Sì, cercarli»).
+_DETAIL_BY_REFERENCE_KINDS = ("dispositivo", "ricordo", "integrazione")
 
 #: Il nome di ogni filtro nella lingua dello strumento, per dirlo nell'errore.
 _PARAMETER_OF = {"name": "nome", "reference": "riferimento", "domain": "dominio",
@@ -107,6 +117,15 @@ class HouseFilters:
             self.changed_within_s is not None,
             self.above is not None, self.below is not None,
             self.running is not None))
+
+    @property
+    def reaches_memories(self) -> bool:
+        """La domanda arriva ai ricordi: `genere=ricordo`, o il solo nome
+        (D-45). La chiedono la lettura dei ricordi e cio' che la risposta
+        dichiara di non aver potuto guardare (`tools.ToolDispatcher._search`):
+        una ricerca di entita' non guarda i ricordi, e non deve dire che non
+        ha potuto (N133-1, giro 133)."""
+        return self.kind == "ricordo" or self.only_by_name
 
 
 def parse_filters(arguments: dict) -> HouseFilters | dict:
@@ -292,6 +311,38 @@ def _area_rows(f: HouseFilters, house: House):
     return rows
 
 
+def _integration_domains(house: House) -> set[str]:
+    """I domini delle integrazioni di questa casa, normalizzati: quelli delle
+    voci di configurazione e le piattaforme delle entita' (una piattaforma
+    senza voce, come `template`, e' un'integrazione che `queries.view` sa
+    aprire). Un posto solo per chi le apre e per chi le elenca."""
+    home_space = house.home_space
+    return ({normalize(e.get("piattaforma") or "") for e in home_space.get("entita") or []}
+            | {normalize(i.get("dominio") or "")
+               for i in home_space.get("integrazioni") or []}) - {""}
+
+
+def _integration_rows(f: HouseFilters, house: House) -> list[str]:
+    """I domini che passano `riferimento` e `nome`: il nome e' il dominio o
+    il titolo di una delle sue istanze."""
+    titles: dict[str, list[str]] = {}
+    for entry in house.home_space.get("integrazioni") or []:
+        titles.setdefault(normalize(entry.get("dominio") or ""), []).append(
+            entry.get("titolo"))
+    return [domain for domain in sorted(_integration_domains(house))
+            if (not f.reference or domain == normalize(f.reference))
+            and (not f.name or _any_name_matches(f.name, domain, titles.get(domain)))]
+
+
+def _memory_rows(f: HouseFilters, memories: list[dict] | None) -> list[dict]:
+    """I ricordi che passano `riferimento` (il numero) e `nome` (nel testo),
+    col testo gia' passato dal sanitizzatore: e' quello che il modello legge,
+    e quello su cui si cerca."""
+    return [memory for memory in sanitized_memories(memories)
+            if (not f.reference or str(memory.get("id")) == f.reference.strip())
+            and (not f.name or name_matches(f.name, memory.get("testo") or ""))]
+
+
 def _device_rows(f: HouseFilters, house: House, excluded: dict) -> list[dict]:
     """I dispositivi del registro che passano i filtri, come righe
     dell'anagrafe: li rende `render.render_device` quando si sa la
@@ -347,7 +398,7 @@ def _sort_key(order_by: str):
             except (TypeError, ValueError):
                 return (1, 0.0)
         return key
-    return lambda r: (r.get("nome") or r.get("id") or "").lower()
+    return lambda r: str(r.get("nome") or r.get("testo") or r.get("id") or "").lower()
 
 
 def _one(voice: dict) -> tuple[int, str, list[dict], None]:
@@ -378,12 +429,7 @@ def _missing_reference(f: HouseFilters, house: House, detail) -> dict:
         return detail(f.kind, reference)
     if reference.strip().isdigit():
         return detail("ricordo", reference)
-    wanted = normalize(reference)
-    home_space = house.home_space
-    platforms = ({normalize(e.get("piattaforma") or "") for e in home_space.get("entita") or []}
-                 | {normalize(i.get("dominio") or "")
-                    for i in home_space.get("integrazioni") or []})
-    if wanted in platforms - {""}:
+    if normalize(reference) in _integration_domains(house):
         return detail("integrazione", reference)
     return _not_found_detail(None, reference,
                              bool(set(house.unavailable) & _REFERENCE_STORES))
@@ -459,11 +505,11 @@ def _select(f: HouseFilters, house: House, behavior, detail,
             now, excluded: dict, zone,
             translations: dict | None,
             judgments: TypeJudgments,
-            deepest: str = "completa") -> tuple[int, str, list[dict], dict | None]:
+            deepest: str = "completa",
+            memories: list[dict] | None = None) -> tuple[int, str, list[dict], dict | None]:
     """(trovate, profondita, voci NON ancora filtrate, oltre)."""
-    if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
-        # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
-        return _one(detail(f.kind, f.reference or f.name or ""))
+    if f.kind in _DETAIL_BY_REFERENCE_KINDS and f.reference:
+        return _one(detail(f.kind, f.reference))
     kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
     chosen = house.select(f, kinds, behavior, now=now)
     for key, count in chosen.excluded.items():
@@ -471,12 +517,19 @@ def _select(f: HouseFilters, house: House, behavior, detail,
     matched, behaving = chosen.entities, chosen.behavior
     areas: list[dict] = []
     devices: list[dict] = []
+    domains: list[str] = []
+    remembered: list[dict] = []
     for kind in kinds:
         if kind == "area":
             areas.extend(_area_rows(f, house))
         elif kind == "dispositivo":
             devices.extend(_device_rows(f, house, excluded))
-    found = len(matched) + len(behaving) + len(devices) + len(areas)
+        elif kind == "integrazione":
+            domains.extend(_integration_rows(f, house))
+        elif kind == "ricordo":
+            remembered.extend(_memory_rows(f, memories))
+    found = (len(matched) + len(behaving) + len(devices) + len(areas)
+             + len(domains) + len(remembered))
     if found == 0 and _only_the_reference(f) and not any(excluded.values()):
         return _one(_missing_reference(f, house, detail))
     disabled = _disabled_by_reference(f, house, excluded)
@@ -492,6 +545,10 @@ def _select(f: HouseFilters, house: House, behavior, detail,
             return 1, "completa", [detail(item.get("tipo"), item["id"])], None
         if devices:
             return 1, "completa", [detail("dispositivo", devices[0]["id"])], None
+        if domains:
+            return 1, "completa", [detail("integrazione", domains[0])], None
+        if remembered:
+            return 1, "completa", [detail("ricordo", remembered[0]["id"])], None
         return 1, "completa", [detail("area", areas[0]["id"])], None
     # Con `limite` 0 la voce sola non si apre: chi chiede zero righe vuole
     # solo il conto, e la profondita' resta quella di un elenco.
@@ -506,7 +563,10 @@ def _select(f: HouseFilters, house: House, behavior, detail,
             + [render_behavior(house, item, rows_at, zone=zone)
                for item, _values in behaving]
             + [render_device(house, device, rows_at) for device in devices]
-            + [render_area(house, area, rows_at) for area in areas])
+            + [render_area(house, area, rows_at) for area in areas]
+            + [render_integration(house, domain, rows_at) for domain in domains]
+            # Un ricordo ha una profondita' sola (`render_memory`).
+            + [render_memory(memory, house, zone=zone) for memory in remembered])
     rows.sort(key=_sort_key(f.order_by))
     page, beyond = page_rows(rows, f.offset, f.limit)
     return found, rows_at, page, beyond
@@ -517,7 +577,8 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                 timezone: str | None = None,
                 translations: dict | None = None,
                 judgments: TypeJudgments = REPO_JUDGMENTS,
-                deepest: str = "completa") -> dict:
+                deepest: str = "completa",
+                memories: list[dict] | None = None) -> dict:
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
@@ -545,7 +606,7 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     # non si sa, e si resta in UTC con l'offset scritto.
     found, depth, page, beyond = _select(f, house, behavior, detail, now, excluded,
                                          home_space_zone(timezone), translations,
-                                         judgments, deepest)
+                                         judgments, deepest, memories)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
     return envelope(found, depth, [redact_row(v) for v in page],
