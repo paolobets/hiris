@@ -2,12 +2,11 @@
 
 Lo scheletro del cancello R3 dello sprint «Una fonte sola di verita'» (spec
 `docs/design/2026-10-01-una-fonte-sola-di-verita.md`, R3; piano della Tappa 4,
-Task 1, passo 4). Oggi e' ROSSO, e deve esserlo: le funzioni che compongono
-«un'entita' col suo stato» ciascuna per conto suo sono circa quattordici
-(registro, C-01). La prova principale e' marcata `xfail(strict=True)`: rossa
-oggi per la ragione giusta -- il messaggio le elenca --, e il giorno in cui
-diventasse verde senza che qualcuno tolga il marcatore, la suite si ferma. Il
-marcatore esce al Task 11, quando la resa e' unica.
+Task 1, passo 4). Nato ROSSO, con `xfail(strict=True)`, quando le funzioni
+che componevano «un'entita' col suo stato» ciascuna per conto suo erano circa
+quattordici (registro, C-01). Verde e senza marcatore dalla Tappa 9 (F2,
+12/10/2026): i renditori chiamano `render.render_entity`, e chi compone un
+altro oggetto sta in `ADMITTED` con la sua ragione.
 
 **La proprieta', non la forma** (CLAUDE.md, I-0). Una funzione COMPONE
 un'entita' quando costruisce un dizionario -- letterale, o una variabile
@@ -35,15 +34,6 @@ nessuna chiave, e non e' toccata.
   non cio' che si rende -- e la riga di un oggetto che non e' un'entita' ma
   porta due parole del vocabolario. Ognuna col suo perche'.
 
-**Cosa trova oggi, oltre a C-01** (05/10/2026): `mind/analyst_turn._enrich`
-e `mind/report._measurements` (un'entita' col suo valore e l'unita', verso
-il modello), `topology.hierarchy` (le righe annidate dell'albero, che
-`/api/home-space` manda). E tre che il Task 11 deve giudicare prima di
-togliere il marcatore: `house_history.error_rows` (`fonte` e `integrazione`
-di una riga d'errore: con D5 `fonte` diventa `codice` e la riga esce da
-sola), `mind/facts.build_episodes` e `mind/facts.close` (gli episodi del
-sapere, che portano classe e stato dell'entita' nell'archivio).
-
 **I limiti, dichiarati.** Le righe in TESTO per i modelli non sono
 dizionari: `observer.house_lines`, `recipe_turn.device_lines` e
 `keeper/exchange._domanda` compongono l'entita' in una stringa e il
@@ -56,8 +46,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-
-import pytest
 
 from hiris.app.home_space.field_vocabulary import FIELDS
 
@@ -98,6 +86,52 @@ ADMITTED: dict[str, str] = {
         "costruzione (in attesa, confermata...) e `dominio` quello della voce "
         "di configurazione che costruisce. Due parole del vocabolario, un "
         "altro oggetto"),
+    # Tappa 9, F2 (12/10/2026): gli undici che restavano, giudicati uno per
+    # uno. Nessuno rende l'entita' viva della casa: sono altri oggetti che
+    # portano due parole del vocabolario, o un fatto passato.
+    "api/handlers_mind.py::_fact_row": (
+        "la riga di un fatto del sapere: `valore` e' cio' che il fatto afferma "
+        "(un significato, un attributo utile), `fonte` da dove l'ha imparato. "
+        "Un altro oggetto, `specie` + `soggetto` lo dicono"),
+    "home_space/energy.py::describe": (
+        "un ruolo della dashboard Energia (C-61): `id` e `unita` della "
+        "statistica li chiede a `House.kind_of`, la fonte unica; "
+        "`statistiche` e' se il giro ne tiene le serie. Il ruolo dell'entita' "
+        "nella resa e' `ruolo_energia` (D13)"),
+    "home_space/house.py::source": (
+        "il fatto «la fonte» di `House` (D6), che la resa LEGGE e mette in "
+        "`fonte`: `stato` e' lo stato della fonte (viva, sparita, ferma...), "
+        "non quello dell'entita'"),
+    "home_space/topology.py::hierarchy": (
+        "le chiavi `disabilitata`/`nascosta` sono le classi di "
+        "`topology.visibility` in una tabella di smistamento verso le liste "
+        "parallele: nessuna riga esce con quei nomi. Le righe smistate sono "
+        "i record dell'anagrafe (`reader._entity`)"),
+    "keeper/promise.py::serializza": (
+        "l'unica forma di una promessa: `stato` e `stato_leggibile` sono "
+        "quelli della promessa (in attesa, mantenuta, disdetta...)"),
+    "mind/analyst_turn.py::_enrich": (
+        "un'osservazione dell'analista: `valore` e `unita` sono quelli della "
+        "MISURA della ricetta (l'ultimo valore della serie calcolata), non lo "
+        "stato dell'entita'"),
+    "mind/facts.py::_absences": (
+        "un episodio del resoconto (un'assenza): `stato`, `classe` e `dominio` "
+        "sono quelli scritti nel grezzo quando l'entita' e' sparita -- un "
+        "fatto PASSATO, che vive piu' dei cambi. La resa dice la casa di adesso"),
+    "mind/facts.py::_episodes": (
+        "un episodio aperto del resoconto: lo `stato` e la `classe` del cambio "
+        "che l'ha aperto, dal grezzo -- un fatto passato, non la casa di adesso"),
+    "mind/facts.py::close": (
+        "il corpo di un episodio chiuso del resoconto: `stato`, `classe`, "
+        "`dominio` e gli `attributi` cambiati come li scriveva il grezzo in "
+        "quell'istante -- un fatto passato, non la casa di adesso"),
+    "mind/report.py::_measurements": (
+        "una misura della ricetta: `valore` e `unita` sono quelli calcolati "
+        "dall'operazione (`outcome.value`, `outcome.unit`), non lo stato "
+        "dell'entita'"),
+    "mind/store.py::proposals": (
+        "la riga di una proposta: `stato` e `stato_leggibile` sono quelli "
+        "della proposta, con la stessa frase delle costruzioni (C-10)"),
 }
 
 
@@ -254,16 +288,13 @@ def test_ogni_ammessa_compone_ancora():
 
 # ── il cancello ────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "R3 non e' ancora vero: le funzioni che compongono un'entita' per conto "
-    "proprio sono quelle di C-01, e la resa unica (`home_space/render.py`) "
-    "nasce al Task 7 della Tappa 4. Il marcatore esce al Task 11"))
 def test_nessuna_porta_compone_un_entita_fuori_dalla_resa():
-    """Mutazione ESEGUITA (oggi, per vedere il verde del giorno dopo): con
-    `ADMITTED` allargato a ogni compositore trovato, la prova passa e
-    `strict=True` la fa fallire come XPASS. Il rosso di oggi elenca, fra le
-    altre, `queries.py::_view_device` (il dizionario base in linea, la
-    mutazione che il piano chiede di eseguire al Task 11)."""
+    """Verde dalla Tappa 9 (F2, 12/10/2026): i renditori di C-01 chiamano
+    `render_entity`, e chi resta compone un altro oggetto (`ADMITTED`).
+
+    Mutazione ESEGUITA: una funzione di `home_space/queries.py` che torna a
+    scrivere `da_quando` accanto a `stato` in una riga sua -- rossa, col nome
+    della funzione e le due chiavi."""
     found = composers(responding_modules(), entity_fields())
     loose = {name: place for name, place in found.items() if name not in ADMITTED}
     assert not loose, (
