@@ -1270,7 +1270,8 @@ class ObservationsStore:
 
     # -- il resoconto --------------------------------------------------
 
-    def replace_report(self, day: str, report: dict) -> None:
+    def replace_report(self, day: str, report: dict, *,
+                       when_ts: float | None = None) -> None:
         """Scrive il resoconto di un giorno, **sostituendo** quello che c'era.
 
         **Rifare un giorno lo sostituisce e non lo accoda.** Sbagliare un
@@ -1282,6 +1283,10 @@ class ObservationsStore:
         `{"id", "testo", "scritto_ts"}` resta `{"id"}`, perche' il testo vive
         nella tabella `objective` per sempre e una copia accanto sarebbe un
         doppione. `report` e `reports` lo risolvono.
+
+        `when_ts` e' l'istante della scrittura, come per le altre scritture di
+        questo archivio (`decide_scope`, `record_attempt`...): chi chiama
+        passa il suo orologio (G-14, Chiusura); senza, vale adesso.
         """
         aim = _objective_ref(report)
         if aim is not None:
@@ -1291,7 +1296,8 @@ class ObservationsStore:
                 "INSERT INTO resoconto(giorno, corpo_json, scritto_ts) "
                 "VALUES(?,?,?) ON CONFLICT(giorno) DO UPDATE SET "
                 "corpo_json=excluded.corpo_json, scritto_ts=excluded.scritto_ts",
-                (day, json.dumps(report, ensure_ascii=False), _time.time()))
+                (day, json.dumps(report, ensure_ascii=False),
+                 float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
 
     def reseal(self, seal_text) -> dict[str, int]:
@@ -1902,18 +1908,21 @@ class ObservationsStore:
 
     # -- l'analisi (spec §10) ------------------------------------------
 
-    def replace_analysis(self, day: str, analysis: dict) -> None:
+    def replace_analysis(self, day: str, analysis: dict, *,
+                         when_ts: float | None = None) -> None:
         """Scrive l'analisi di un giorno, sostituendo quella che c'era.
 
         Stessa disciplina di `replace_report`: rifare un giorno lo RIFA', non
         lo accoda -- e un'analisi accodata darebbe due verita' sullo stesso
-        giorno, che e' il difetto che «costruire» ha gia' pagato.
+        giorno, che e' il difetto che «costruire» ha gia' pagato. Anche
+        `when_ts` come `replace_report` (G-14).
         """
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO analisi(giorno,corpo_json,scritto_ts) "
                 "VALUES(?,?,?)",
-                (day, json.dumps(analysis, ensure_ascii=False), _time.time()))
+                (day, json.dumps(analysis, ensure_ascii=False),
+                 float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
 
     def report_stamps(self, *, limit: int = 30) -> list[tuple[str, float]]:

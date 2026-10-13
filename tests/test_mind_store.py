@@ -1700,3 +1700,19 @@ def test_i_giri_del_rifalla_chiedono_gli_esiti_alla_foglia_e_non_li_ricopiano(tm
                                      turn="t2", now_ts=3.0)
     finally:
         store.close()
+
+
+def test_resoconto_e_analisi_ricevono_l_istante_da_chi_chiama(tmp_path):
+    """G-14 (Chiusura): `replace_report` e `replace_analysis` prendevano
+    l'orologio da se', mentre le altre scritture di questo archivio ricevono
+    `when_ts`. Mutazione ESEGUITA (13/10/2026): `when_ts` ignorato in
+    `replace_report` -- rossa."""
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        store.replace_report("2026-09-21", {"giorno": "2026-09-21"}, when_ts=1_790_000_000.0)
+        store.replace_analysis("2026-09-21", {"osservazioni": []}, when_ts=1_790_000_060.0)
+        righe = {t: store._conn.execute(f"SELECT scritto_ts FROM {t}").fetchone()[0]
+                 for t in ("resoconto", "analisi")}
+    finally:
+        store.close()
+    assert righe == {"resoconto": 1_790_000_000.0, "analisi": 1_790_000_060.0}
