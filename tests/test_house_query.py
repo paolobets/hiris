@@ -730,8 +730,8 @@ def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():
     for salta in (10, 20):
         pagina, oltre = hq.page_rows(righe, salta, 4)
         assert pagina == []
-        assert oltre["disponibili"] == 10
-        assert f"salta={salta} supera le 10 righe" in oltre["salta_oltre_la_fine"]
+        assert oltre["disponibili"] == 10 and oltre["restano"] == 0
+        assert f"salta={salta} supera le 10 righe" in oltre["suggerimento"]
     assert hq.page_rows(righe, 20, 0) == ([], None)
     assert hq.page_rows([], 0, 4) == ([], None)
     risposta = _chiedi(dominio="light", salta=5)
@@ -819,3 +819,21 @@ def test_si_ordina_per_stato_col_nome_del_campo():
     righe = [{"id": "b", "stato": "21.5"}, {"id": "c", "stato": "off"},
              {"id": "a", "stato": "3"}]
     assert [r["id"] for r in sorted(righe, key=hq._sort_key("stato"))] == ["a", "b", "c"]
+
+
+def test_oltre_ha_una_forma_sola():
+    """C-66: `oltre` aveva sei forme -- `{restano, salta}`, piu' `consiglio`
+    nella storia, `{disponibili, salta_oltre_la_fine}` oltre la fine,
+    `{restano, suggerimento}` nei calendari, `{restano}` nell'agenda,
+    `{entita, entita_nascoste, suggerimento}` nelle righe annidate. Ora le
+    compone `queries.rows_left`: `restano` sempre, e solo le chiavi di
+    `BEYOND_KEYS`."""
+    from hiris.app.home_space.queries import BEYOND_KEYS, rows_left
+
+    assert rows_left(3) == {"restano": 3}
+    assert rows_left(3, skip=7, hint="restringi") == {
+        "restano": 3, "salta": 7, "suggerimento": "restringi"}
+    _, oltre = hq.page_rows(list(range(10)), 20, 4)
+    assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 0
+    _, oltre = hq.page_rows(list(range(10)), 0, 4)
+    assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 6

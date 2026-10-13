@@ -49,8 +49,7 @@ def test_righe_eccedenti_non_rese(monkeypatch):
         tenute = scheda["entita"] + scheda.get("entita_nascoste", [])
         assert len(tenute) == queries.ROWS_MAX
         lasciate = scheda["oltre"]
-        assert sum(v for k, v in lasciate.items() if k != "suggerimento") == \
-            QUANTE - queries.ROWS_MAX
+        assert lasciate["restano"] == QUANTE - queries.ROWS_MAX
         monkeypatch.undo()
 
 

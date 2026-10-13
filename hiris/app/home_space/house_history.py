@@ -476,9 +476,11 @@ def _declare_gaps(out: dict, idents: list[str], series: dict, *, truncated: bool
 
 
 def _oltre(beyond: dict) -> dict:
-    """`oltre` della storia: quello di `page_rows`, e il consiglio di
-    restringere solo quando restano righe davvero (non oltre la fine)."""
-    return {**beyond, "consiglio": _NARROW} if beyond.get("restano") else beyond
+    """`oltre` della storia: quello di `page_rows`, e il suggerimento di
+    restringere solo quando restano righe davvero (non oltre la fine, dove il
+    suggerimento e' gia' come tornare indietro). Era `consiglio` fino al
+    13/10/2026 (C-66): la stessa cosa con un altro nome."""
+    return {**beyond, "suggerimento": _NARROW} if beyond.get("restano") else beyond
 
 
 def _activity(tie: str, epoch: float | None) -> tuple:

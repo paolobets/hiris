@@ -311,7 +311,7 @@ def test_un_entita_rumorosa_si_ferma_a_cinquanta_righe_dal_piu_recente():
     assert uscita["voci"][0] == {"id": "light.soggiorno_2",
                                  "quando": "2026-09-29T05:19:00+02:00", "stato": "on"}
     assert uscita["oltre"]["restano"] == 151 and uscita["oltre"]["salta"] == 50
-    assert "restringi" in uscita["oltre"]["consiglio"]
+    assert "restringi" in uscita["oltre"]["suggerimento"]  # C-66: una forma sola
     assert set(uscita["soggetti"]) == {"light.soggiorno_1", "light.soggiorno_2"}
     assert uscita["escluse"]["nascoste"] == 2 and "nota" in uscita
 
@@ -1369,7 +1369,7 @@ def test_gli_errori_si_impaginano_con_oltre():
     prima = hh.error_rows(_q(cosa="errori", limite=1), _REGISTRO, Manifest())
     assert [v["messaggio"] for v in prima["voci"]] == ["lento"]
     assert prima["oltre"]["restano"] == 2 and prima["oltre"]["salta"] == 1
-    assert "consiglio" in prima["oltre"]
+    assert "suggerimento" in prima["oltre"] and "consiglio" not in prima["oltre"]
     fuori = hh.error_rows(_q(cosa="errori", salta=9), _REGISTRO, Manifest())
     assert fuori["voci"] == [] and fuori["oltre"]["disponibili"] == 3
 

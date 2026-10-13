@@ -133,6 +133,7 @@ from .privacy import (
     redact_row,
 )
 from .queries import related as _readable_links
+from .queries import rows_left
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
@@ -263,7 +264,7 @@ _COUNT_RULE = (
     "richiama con `includi_nascoste` -- «nessuna luce accesa» e' falso se le "
     "accese sono nascoste. Con `oltre` ne restano: **prima restringi** con un "
     "filtro, scorri col suo `salta` solo se ti servono tutte (ogni pagina e' "
-    "un giro); `salta_oltre_la_fine` vuol dire che hai saltato oltre "
+    "un giro); `disponibili` vuol dire che hai saltato oltre "
     "l'ultima, e le voci ci sono. "
 )
 
@@ -1263,7 +1264,7 @@ def _cap_note(occurrence: dict, cap: CharCap) -> dict:
     """La risposta con la frase del tetto nel suo `oltre`, se ne ha uno: chi
     legge sa perche' le voci si fermano li', e che le altre ci sono."""
     beyond = occurrence.get("oltre")
-    if not isinstance(beyond, dict) or "restano" not in beyond:
+    if not isinstance(beyond, dict) or not beyond.get("restano"):
         return occurrence
     return {**occurrence, "oltre": {
         **beyond, "suggerimento": (f"la risposta superava il tetto di {cap.chars} "
@@ -2264,7 +2265,7 @@ class ToolDispatcher:
             # C-39: le promesse che la pagina non mostra si dichiarano, nella
             # forma di `oltre` delle altre risposte (`restano`). Niente
             # `salta`: lo strumento non ha un argomento per la pagina dopo.
-            answer["oltre"] = {"restano": left}
+            answer["oltre"] = rows_left(left)
         return answer
 
     def _cancel(self, arguments: dict[str, Any]) -> dict:

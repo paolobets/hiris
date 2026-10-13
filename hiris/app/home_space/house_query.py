@@ -22,7 +22,7 @@ from .behavior import BEHAVIOR_DOMAINS
 from .ha_vocabulary import domain_of
 from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
-from .queries import ROWS_MAX, _not_found_detail, sanitized_memories
+from .queries import ROWS_MAX, _not_found_detail, rows_left, sanitized_memories
 from .reference import name_matches, normalize
 from .render import (
     depth_for,
@@ -500,20 +500,19 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     `salta` oltre la fine (revisione del Task 3 della storia, 30/09/2026):
     una pagina vuota senza segnale si legge «non c'e' niente», che e' falso
     -- le righe ci sono, prima. `oltre` lo dice: `disponibili` e' quante
-    righe ci sono in tutto, `salta_oltre_la_fine` la frase.
+    righe ci sono in tutto, `suggerimento` la frase, `restano` zero.
 
     Solo se ci SONO righe (revisione finale della fetta, 30/09/2026): con
     zero righe la frase diceva «le righe si leggono da salta=0», e non ce
     n'e' nessuna. Allora la pagina vuota dice il vero, e `oltre` non c'e'."""
     page = rows[offset:offset + min(limit, ROWS_MAX)]
     if limit > 0 and offset > 0 and offset >= len(rows) > 0:
-        return page, {"disponibili": len(rows),
-                      "salta_oltre_la_fine": (
-                          f"salta={offset} supera le {len(rows)} righe disponibili: "
-                          "questa pagina e' vuota, le righe si leggono da salta=0")}
+        return page, rows_left(
+            0, disponibili=len(rows),
+            hint=(f"salta={offset} supera le {len(rows)} righe disponibili: "
+                  "questa pagina e' vuota, le righe si leggono da salta=0"))
     left = len(rows) - offset - len(page)
-    beyond = ({"restano": left, "salta": offset + len(page)}
-              if left > 0 and limit > 0 else None)
+    beyond = rows_left(left, skip=offset + len(page)) if left > 0 and limit > 0 else None
     return page, beyond
 
 

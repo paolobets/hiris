@@ -104,6 +104,7 @@ from functools import cache
 # `tests/test_import_boundary.py`.
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from .historian import home_space_zone, instant_epoch, instant_out
+from .queries import rows_left
 
 logger = logging.getLogger(__name__)
 
@@ -341,5 +342,5 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     if unreadable:
         result["non_letti"] = unreadable
     if left_out:
-        result["oltre"] = {"restano": left_out, "suggerimento": _BEYOND_CALENDARS}
+        result["oltre"] = rows_left(left_out, hint=_BEYOND_CALENDARS)
     return result

@@ -333,7 +333,7 @@ async def test_il_dettaglio_vero_di_una_cosa_grande_sta_sotto_la_soglia_del_pont
     righe = len(voce["entita"]) + len(voce.get("entita_nascoste", []))
     assert righe == 50
     # Cio' che resta si dichiara, col modo di chiederlo: mai un taglio muto.
-    assert sum(v for k, v in voce["oltre"].items() if k != "suggerimento") > 0
+    assert voce["oltre"]["restano"] > 0
     assert "search" in voce["oltre"]["suggerimento"]
 
 
@@ -348,8 +348,9 @@ async def test_le_disabilitate_di_un_area_grande_si_contano(big_door):
     assert not any(e.get("disabilitata") for e in voce["entita"])
     # 137 visibili dell'area + 60 del NVR, che ne eredita l'area, e 30
     # nascoste: 50 righe, il resto in `oltre`.
-    assert voce["oltre"]["entita"] == 147
-    assert voce["oltre"]["entita_nascoste"] == 30
+    # La forma di `oltre` e' una (C-66): `restano`, e di quali gruppi.
+    assert voce["oltre"]["restano"] == 177
+    assert voce["oltre"]["gruppi"] == {"entita": 147, "entita_nascoste": 30}
 
 
 def test_il_dettaglio_vero_senza_area_sta_sotto_la_soglia_del_ponte(big_door):
@@ -361,6 +362,6 @@ def test_il_dettaglio_vero_senza_area_sta_sotto_la_soglia_del_ponte(big_door):
         "area", "__senza_area__", house=big_door._turn_house(),
         translations={"lette": False, "motivo": "prova"}, masked=False))
     assert voce["esiste"] is True
-    assert len(voce["entita"]) == 50 and voce["oltre"]["entita"] > 0
+    assert len(voce["entita"]) == 50 and voce["oltre"]["gruppi"]["entita"] > 0
     assert 'area=\\"senza area\\"' in json.dumps(voce, ensure_ascii=False)
     assert _size(voce) < BRIDGE_CEILING_CHARS
