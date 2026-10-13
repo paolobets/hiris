@@ -52,8 +52,8 @@ diff in due file, e una revisione la vede.
   a runtime, ne' un client passato sotto un'altra interfaccia, ne' il
   riferimento nudo a un nome che altrove e' un campo (`problems`).
 - Non vede chi parla con Home Assistant o col Supervisor con una sessione
-  propria, senza il client: e' la voce E-06 del registro, e si chiude alla
-  Tappa 7 (capitolo E: sono scritture o il Supervisor, non letture).
+  propria, senza il client: lo guarda `tests/test_un_client_solo.py` (E-06,
+  Chiusura F5).
 - Non vede due funzioni che rispondono alla stessa domanda con codice diverso
   senza toccare questi tre segnali: quello resta alla sonda di parita' e agli
   occhi.
@@ -241,9 +241,17 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         "proxy/state_translations.py",
         "i significati degli stati, letti da chi li tiene"),
     "panels": (
-        "panel_visibility.py",
-        ("la voce di menu dell'add-on: legge i pannelli per sapere se scriverla "
-         "(E-01, una delle due scritture dichiarate fuori dalle porte)")),
+        "action/installation.py",
+        ("la voce di menu dell'add-on: rilegge i pannelli dopo averla scritta, "
+         "nella porta dell'installazione (E-01, Chiusura F5)")),
+    "lovelace_resources": (
+        "action/installation.py",
+        ("la disinstallazione della vecchia card: le risorse Lovelace che "
+         "l'add-on aveva registrato (E-01, Chiusura F5)")),
+    "own_slug": (
+        "action/installation.py",
+        ("lo slug di HIRIS secondo il Supervisor, per scrivere la voce di menu "
+         "(E-06: fino alla Chiusura un client suo in `panel_visibility.py`)")),
     "users": (
         "api/soffitto.py",
         "«chi sei e cosa puoi»: i ruoli dagli utenti di Home Assistant (F-01)"),

@@ -132,9 +132,9 @@ tocca i servizi né la configurazione di automazioni, script e scene. Un quarto 
 Home Assistant fuori da queste tre porte è un difetto, non un'ottimizzazione. Spec:
 `docs/design/2026-08-22-costruire-in-home-assistant.md` §2.1.
 
-La terza porta è **ancora a metà** (Tappa 7, Task 4): la scrittura della voce di menu vive in
-`panel_visibility.py`, che l'installazione avvia, e la card apre ancora una sua sessione WebSocket
-invece di passare da `HAClient`.
+La terza porta è finita con la Chiusura dello sprint (F5, E-01 ed E-06): voce di menu e card
+vivono in `action/installation.py` e parlano con Home Assistant e col Supervisor solo da `HAClient`,
+in un compito che parte dopo l'avvio.
 
 **Non si scrive mai `automations.yaml`, `scripts.yaml` o `scenes.yaml` in proprio.** Scrive Home
 Assistant, attraverso l'API di configurazione, trovando la voce per `id` e sostituendola. È questa
@@ -263,7 +263,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── steering.py       # chi risponde a questo turno: il ponte, o la catena (e il registro dei turni)
     ├── model_resolution.py · model_activation.py · provider_occurrences.py
     ├── chat_store.py · chat_thread.py · chat_settings.py
-    ├── panel_visibility.py · options_migration.py
+    ├── options_migration.py
     ├── config.py · storage.py · version.py
     ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
     │                   servizi, credenziali: chi entra e cosa puo'

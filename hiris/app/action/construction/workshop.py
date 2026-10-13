@@ -1140,7 +1140,15 @@ class Workshop:
         «e' cambiato da quando te l'ho proposto», che e' falso. Altrimenti si
         rimette come per un'`applicata`, e se la casa non ha nemmeno il `dopo`
         di allora la conferma rifiuta come sempre.
+
+        **Solo da una persona, dalla pagina** (M-75, Chiusura F5): il ramo che
+        dalla chat preparava un ripristino da confermare in un altro turno non
+        aveva chiamanti -- nessuno strumento della chat chiama `restore` -- ed
+        e' uscito. Se la chat dovra' ripristinare, sara' una fetta con la sua
+        spec, non un ramo dormiente.
         """
+        if actor not in HUMAN_ACTORS:
+            return refused("un ripristino si conferma dalla pagina Costruzioni.")
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))
@@ -1181,34 +1189,18 @@ class Workshop:
             stakes=stakes_of({}, domain, row["dopo"], dopo), now=now)
         if "errore" in proposal:
             return refused(proposal["errore"])
-        if actor in HUMAN_ACTORS:
-            # **`subject` va inoltrato**, e per una fetta non lo e' stato: il
-            # parametro arrivava fin qui e si fermava, quindi ogni ripristino
-            # scriveva in cronaca una riga senza soggetto -- mentre la nota di
-            # chiusura di A-1 dichiarava che il filo arriva «fino all'atto:
-            # `execute`, `apply`, `restore`». Misurato il 23/09/2026 su un
-            # ripristino vero, guardando la riga che ne era uscita: nessuna
-            # prova lo vedeva, perche' provavano il `Journal` da solo.
-            #
-            # Disfare e' l'atto su cui «chi e' stato?» pesa di piu': toglie
-            # qualcosa che c'era.
-            return await self.apply(proposal["id"], actor=actor, exchange=exchange,
-                                      now=now, subject=subject)
-        # Dalla chat il ripristino e' un giro in due tempi come tutto il
-        # resto (spec §7): applicarlo subito con lo STESSO `turno` che ha
-        # appena creato la proposta farebbe rifiutare SEMPRE dal cancello (e'
-        # letteralmente lo stesso turno), e la riga resterebbe `in_attesa` a
-        # bruciare un posto del tetto di 20 per sette giorni -- venti
-        # tentativi bloccherebbero le proposte di tutto il prodotto.
-        if not exchange:
-            # Senza un turno riconoscibile questa proposta non sara' MAI
-            # confermabile da un'origine non umana (`_cancello`, IMPORTANT 1
-            # del round 2): l'unica strada e' la pagina, e l'anteprima
-            # restituita deve dirlo -- lo stesso messaggio che `apply` da'
-            # gia' in quel caso, non un'anteprima muta su un vicolo cieco.
-            preview += ("\nSenza un turno riconoscibile non potro' confermare da "
-                         "qui: apri la pagina Costruzioni e conferma di la'.")
-        return {"proposta_id": proposal["id"], "anteprima": preview}
+        # **`subject` va inoltrato**, e per una fetta non lo e' stato: il
+        # parametro arrivava fin qui e si fermava, quindi ogni ripristino
+        # scriveva in cronaca una riga senza soggetto -- mentre la nota di
+        # chiusura di A-1 dichiarava che il filo arriva «fino all'atto:
+        # `execute`, `apply`, `restore`». Misurato il 23/09/2026 su un
+        # ripristino vero, guardando la riga che ne era uscita: nessuna
+        # prova lo vedeva, perche' provavano il `Journal` da solo.
+        #
+        # Disfare e' l'atto su cui «chi e' stato?» pesa di piu': toglie
+        # qualcosa che c'era.
+        return await self.apply(proposal["id"], actor=actor, exchange=exchange,
+                                now=now, subject=subject)
 
 
 def form_refusal(intent: dict, domains, helper_domains) -> str | None:

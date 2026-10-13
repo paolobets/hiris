@@ -151,6 +151,7 @@ import aiohttp
 from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
+from hiris.app.proxy import ha_client as _ha_client
 from hiris.app.proxy.ha_client import HAClient
 
 #: Un indirizzo che rifiuta subito: chi parla con Home Assistant o col
@@ -561,6 +562,9 @@ class _HouseSession(SilentConnection):
         return self._house._input("config_entries/subscribe", "registries.integrazioni")
 
     def get(self, url: str, **kwargs):
+        supervisor = _ha_client.SUPERVISOR_URL
+        if url.startswith(f"{supervisor}/"):
+            return self._house._supervisor_reply(url.removeprefix(supervisor))
         return self._house._rest_reply(self._house._house_path("GET", url))
 
     def post(self, url: str, **kwargs):
@@ -775,6 +779,23 @@ class CasaFinta(HAClient):
             raise UnservedCommand(bare)
         return _Response(200, self._input(bare, self._REST_SERVED[bare]), url=url,
                          delay=self._delay.get(bare))
+
+    def _supervisor_reply(self, path: str) -> _Response:
+        """Una `GET` al Supervisor (`HAClient.own_slug`, E-06). La chiave di
+        `answers=`, `refuse=` e `silence=` e' `"supervisor <percorso>"`, e in
+        `calls` va la stessa. Gli ingressi non portano niente del Supervisor:
+        senza una risposta iniettata la domanda non e' servita. La forma vera
+        e' `api_return_ok`, `{"result": "ok", "data": {...}}` (sorgente del
+        Supervisor 2026.09.2, il modulo `utils` della sua API)."""
+        key = f"supervisor {path.split('?', 1)[0]}"
+        self.connections.append(("rest", key))
+        self.calls.append((key, None))
+        url = f"{_ha_client.SUPERVISOR_URL}{path}"
+        response = self._rest_outcome(key, (path,), method="GET", url=url)
+        if response is None:
+            raise UnservedCommand(key, "il Supervisor della casa finta risponde solo "
+                                       "a cio' che la prova inietta (`answers=`)")
+        return response
 
     def _house_path(self, method: str, url: str) -> str:
         """Il percorso di una richiesta HTTP, tolto l'indirizzo della casa. Una

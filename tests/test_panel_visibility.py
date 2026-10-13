@@ -36,17 +36,39 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from aiohttp import web
 
-from hiris.app import panel_visibility, server
+from hiris.app import server
+from hiris.app.action import installation
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.proxy import ha_client
+from hiris.app.proxy.ha_client import HAClient
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from casa_finta import CasaFinta
+from casa_finta import SILENT, CasaFinta, Refused
 
 HOUSE_SLUG = "6354e165_hiris"   # lo slug vero sulla casa, 27/09/2026
+LOGGER = "hiris.app.action.installation"
+#: La domanda dello slug, come la casa finta la registra (`own_slug`).
+SLUG_ASKED = "supervisor /addons/self/info"
+
+
+#: Il Supervisor finto della prova in corso: la fixture `supervisor` lo
+#: scrive, la casa finta lo legge a ogni domanda (`_supervisore`).
+_SUPERVISORE: dict = {}
+
+
+def _supervisore(path):
+    """La risposta del Supervisor finto, dallo stato della fixture: un rifiuto
+    col suo stato HTTP, il silenzio se la fixture non c'e', il corpo
+    altrimenti."""
+    if not _SUPERVISORE:
+        return SILENT
+    _SUPERVISORE["chieste"].append(path)
+    if _SUPERVISORE["status"] != 200:
+        return Refused(_SUPERVISORE["status"])
+    return _SUPERVISORE["corpo"]
 
 
 def _filo_appeso(sospeso: str) -> CasaFinta:
@@ -57,7 +79,8 @@ def _filo_appeso(sospeso: str) -> CasaFinta:
     Tappa 2 era `_FiloAppeso`, un `HAClient` col `_ws_send` sostituito a mano,
     che restava appeso anche oltre il tetto del vero."""
     ha = CasaFinta({}, answers={sospeso: lambda extra: None,
-                                "get_panels": lambda extra: _PANNELLI},
+                                "get_panels": lambda extra: _PANNELLI,
+                                SLUG_ASKED: _supervisore},
                    delay={sospeso: math.inf})
     ha.ws_ready.set()
     return ha
@@ -81,33 +104,83 @@ def _casa(pannelli=None, *, refuse=None, silence=(), pronto: bool = True) -> Cas
     il websocket di lunga vita, che queste prove non aprono."""
     pannelli = _PANNELLI if pannelli is None else pannelli
     ha = CasaFinta({}, answers={"frontend/update_panel": lambda extra: None,
-                                "get_panels": lambda extra: pannelli},
+                                "get_panels": lambda extra: pannelli,
+                                SLUG_ASKED: _supervisore},
                    refuse=refuse, silence=silence)
     if pronto:
         ha.ws_ready.set()
     return ha
 
 
-@pytest_asyncio.fixture
-async def supervisor(aiohttp_server, monkeypatch):
-    """Un Supervisor finto sul filo HTTP vero. `stato["corpo"]` e
-    `stato["status"]` decidono la risposta; `stato["chieste"]` registra
-    percorso e intestazione d'autorizzazione di ogni richiesta."""
+def _nucleo(ha):
+    """Le chiamate al nucleo di Home Assistant, senza la domanda dello slug al
+    Supervisor: quella la guardano le prove dello slug."""
+    return [c for c in ha.calls if c[0] != SLUG_ASKED]
+
+
+@pytest.fixture
+def supervisor(monkeypatch):
+    """Il Supervisor finto della casa finta. `stato["corpo"]` e
+    `stato["status"]` decidono la risposta; `stato["chieste"]` registra i
+    percorsi chiesti. Il filo HTTP vero, con il gettone, lo prova
+    `test_own_slug_chiede_al_supervisor_col_suo_gettone`."""
     stato = {"status": 200, "chieste": [],
              "corpo": {"result": "ok", "data": {"slug": HOUSE_SLUG}}}
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
+    _SUPERVISORE.clear()
+    _SUPERVISORE.update(stato)
+    yield _SUPERVISORE
+    _SUPERVISORE.clear()
+
+
+@pytest.mark.asyncio
+async def test_own_slug_chiede_al_supervisor_col_suo_gettone(aiohttp_server, monkeypatch):
+    """Il filo vero: `HAClient.own_slug` chiede `/addons/self/info` al
+    Supervisor, con il gettone della sessione, e rende lo slug (E-06)."""
+    chieste = []
 
     async def info(request):
-        stato["chieste"].append((request.path, request.headers.get("Authorization")))
-        return web.json_response(stato["corpo"], status=stato["status"])
+        chieste.append((request.path, request.headers.get("Authorization")))
+        return web.json_response({"result": "ok", "data": {"slug": HOUSE_SLUG}})
 
     app = web.Application()
     app.router.add_get("/addons/self/info", info)
     srv = await aiohttp_server(app)
-    monkeypatch.setattr(panel_visibility, "SUPERVISOR_URL",
-                        str(srv.make_url("")).rstrip("/"))
-    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
-    return stato
+    monkeypatch.setattr(ha_client, "SUPERVISOR_URL", str(srv.make_url("")).rstrip("/"))
+    vero = HAClient("http://127.0.0.1:9/core", "token-del-supervisor")
+    await vero.start()
+    try:
+        assert await vero.own_slug() == {"slug": HOUSE_SLUG}
+    finally:
+        await vero.stop()
+    assert chieste == [("/addons/self/info", "Bearer token-del-supervisor")]
 
+
+
+@pytest.mark.asyncio
+async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, monkeypatch):
+    """Il rifiuto di `own_slug` nomina il Supervisor, non Home Assistant: il
+    registro della voce di menu manderebbe a cercare nel sistema sbagliato
+    (giro 148).
+
+    Mutazione ESEGUITA (13/10/2026): in `_rest_get` il nome fisso «Home
+    Assistant» -- rossa."""
+    async def info(request):
+        return web.json_response({"result": "error"}, status=403)
+
+    app = web.Application()
+    app.router.add_get("/addons/self/info", info)
+    srv = await aiohttp_server(app)
+    supervisore = str(srv.make_url("")).rstrip("/")
+    monkeypatch.setattr(ha_client, "SUPERVISOR_URL", supervisore)
+    vero = HAClient(f"{supervisore}/core", "token-del-supervisor")
+    await vero.start()
+    try:
+        esito = await vero.own_slug()
+    finally:
+        await vero.stop()
+    assert esito["errore"] == "il Supervisor ha risposto 403", esito
+    assert esito["codice"] == 403
 
 def _app(accesso: bool, ha):
     return {"non_admin_access": accesso, "ha_client": ha}
@@ -189,9 +262,9 @@ async def test_opzione_accesa_la_voce_si_apre_a_tutti(supervisor):
     `show_in_sidebar` -- HIRIS tocca solo cio' che l'opzione decide."""
     ha = _casa()
 
-    await panel_visibility.sync_panel_visibility(_app(True, ha))
+    await installation.sync_panel_visibility(_app(True, ha))
 
-    assert ha.calls == [
+    assert _nucleo(ha) == [
         ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False}),
         ("get_panels", None),
     ]
@@ -203,9 +276,9 @@ async def test_opzione_spenta_toglie_l_override(supervisor):
     Assistant senza lasciare tracce. Mutazione: mandare `True` -- rossa."""
     ha = _casa()
 
-    await panel_visibility.sync_panel_visibility(_app(False, ha))
+    await installation.sync_panel_visibility(_app(False, ha))
 
-    assert ha.calls[0] == (
+    assert _nucleo(ha)[0] == (
         "frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": None})
 
 
@@ -216,11 +289,10 @@ async def test_lo_slug_e_quello_che_dice_il_supervisor(supervisor):
     supervisor["corpo"] = {"result": "ok", "data": {"slug": "abc123_hiris"}}
     ha = _casa()
 
-    await panel_visibility.sync_panel_visibility(_app(True, ha))
+    await installation.sync_panel_visibility(_app(True, ha))
 
-    assert ha.calls[0][1]["url_path"] == "abc123_hiris"
-    assert supervisor["chieste"] == [
-        ("/addons/self/info", "Bearer token-del-supervisor")]
+    assert _nucleo(ha)[0][1]["url_path"] == "abc123_hiris"
+    assert supervisor["chieste"] == ["/addons/self/info"]
 
 
 @pytest.mark.asyncio
@@ -242,10 +314,10 @@ async def test_uno_slug_che_non_si_sa_non_tocca_niente(supervisor, caplog, corpo
     supervisor["corpo"], supervisor["status"] = corpo, status
     ha = _casa()
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
-    assert ha.calls == []
+    assert _nucleo(ha) == []
     assert any("slug" in r.getMessage() for r in caplog.records), caplog.text
 
 
@@ -254,25 +326,25 @@ async def test_un_supervisor_che_non_risponde_non_ferma_niente(monkeypatch, capl
     """Nessun Supervisor raggiungibile (sviluppo, o rete giu'): una riga nel
     registro, nessuna eccezione, nessun comando a Home Assistant. Il token
     c'e': senza, non si chiama nessuno (la prova qui sotto)."""
-    monkeypatch.setattr(panel_visibility, "SUPERVISOR_URL", "http://127.0.0.1:9")
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     ha = _casa()
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
-    assert ha.calls == []
+    assert _nucleo(ha) == []
     assert any("slug" in r.getMessage() for r in caplog.records), caplog.text
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("token", [None, ""])
 async def test_senza_supervisor_non_si_chiama_nessuno(supervisor, monkeypatch, caplog,
-                                                      token):
+                                                      token, tmp_path):
     """Review finale, punto 4: senza `SUPERVISOR_TOKEN` (sviluppo locale,
     `.smoke-test`) non c'e' un Supervisor da chiamare. Una riga `info` che lo
     dice, nessuna richiesta a `http://supervisor`, nessun comando a Home
-    Assistant -- e non l'avviso sullo slug a ogni avvio.
+    Assistant -- e non l'avviso sullo slug a ogni avvio. Dalla Chiusura (F5)
+    vale per tutta l'installazione: anche la card aspetta il Supervisor.
 
     Mutazione ESEGUITA: tolto il ritorno anticipato sul token vuoto in
     `_sync` -- rossa (la richiesta parte e la riga e' l'avviso sullo slug)."""
@@ -281,14 +353,16 @@ async def test_senza_supervisor_non_si_chiama_nessuno(supervisor, monkeypatch, c
     else:
         monkeypatch.setenv("SUPERVISOR_TOKEN", token)
     ha = _casa()
+    app = {**_app(True, ha), "data_dir": str(tmp_path)}
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.install(app)
 
     assert supervisor["chieste"] == []
     assert ha.calls == []
     righe = [(r.levelname, r.getMessage()) for r in caplog.records]
-    assert righe == [("INFO", "nessun Supervisor: la voce di menu non si tocca")], righe
+    attesa = "nessun Supervisor: la voce di menu e la card non si toccano"
+    assert righe == [("INFO", attesa)], righe
 
 
 # ── Gli esiti di Home Assistant: detti una volta, mai ritentati ─────────────
@@ -300,10 +374,10 @@ async def test_home_assistant_troppo_vecchio_lo_dice_e_prosegue(supervisor, capl
     ha = _casa(refuse={"frontend/update_panel":
                        {"code": "unknown_command", "message": "Unknown command."}})
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
-    assert [t for t, _ in ha.calls].count("frontend/update_panel") == 1
+    assert [t for t, _ in _nucleo(ha)].count("frontend/update_panel") == 1
     righe = [r.getMessage() for r in caplog.records]
     assert any("2026.3" in r and "amministratori" in r for r in righe), righe
 
@@ -321,10 +395,10 @@ async def test_un_altro_errore_si_dice_una_volta(supervisor, caplog, rifiuto, mo
     ha = (_casa(silence={"frontend/update_panel"}) if rifiuto is None else
           _casa(refuse={"frontend/update_panel": rifiuto}))
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
-    assert [t for t, _ in ha.calls].count("frontend/update_panel") == 1
+    assert [t for t, _ in _nucleo(ha)].count("frontend/update_panel") == 1
     assert any(motivo in r.getMessage() for r in caplog.records), caplog.text
 
 
@@ -336,8 +410,8 @@ async def test_il_registro_dice_lo_stato_vero_della_sola_voce_di_hiris(superviso
     ha = _casa({**_PANNELLI,
                 HOUSE_SLUG: {**_PANNELLI[HOUSE_SLUG], "require_admin": True}})
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
     righe = [r.getMessage() for r in caplog.records]
     stato = [r for r in righe if HOUSE_SLUG in r and "amministratori" in r]
@@ -349,8 +423,8 @@ async def test_il_registro_dice_lo_stato_vero_della_sola_voce_di_hiris(superviso
 async def test_la_voce_aperta_si_dice_aperta(supervisor, caplog):
     ha = _casa()
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
     righe = [r.getMessage() for r in caplog.records]
     assert any(HOUSE_SLUG in r and "tutti" in r for r in righe), righe
@@ -364,7 +438,7 @@ async def test_nessun_segreto_del_supervisor_finisce_nel_registro(supervisor, ca
         supervisor["corpo"] = {"result": "ok", "data": {
             "slug": slug, "options": {"claude_api_key": "sk-TEST-LEAK"}}}
         with caplog.at_level(logging.DEBUG):
-            await panel_visibility.sync_panel_visibility(
+            await installation.sync_panel_visibility(
                 _app(True, _casa()))
 
     assert "sk-TEST-LEAK" not in caplog.text
@@ -396,10 +470,10 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     resp = await client.get("/api/health")
     assert resp.status == 200
     for _ in range(100):
-        if ha.calls:
+        if _nucleo(ha):
             break
         await asyncio.sleep(0.01)
-    assert ha.calls == [
+    assert _nucleo(ha) == [
         ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False})]
     # Niente arresto a mano: la sincronia appesa la ferma `_on_cleanup`,
     # alla chiusura del client (la prova qui sotto).
@@ -410,7 +484,7 @@ def test_il_cancello_non_dipende_dalla_voce_di_menu():
     soggetto non legge l'esito della sincronia."""
     auth = (ROOT / "hiris" / "app" / "api" / "middleware_internal_auth.py").read_text(
         encoding="utf-8")
-    assert "panel_visibility" not in auth
+    assert "installation" not in auth
 
 
 # ── L'attesa del nucleo: una chiamata sola, dopo che Home Assistant c'e' ─────
@@ -421,14 +495,14 @@ async def test_la_chiamata_aspetta_che_home_assistant_ci_sia(supervisor):
     solo quando il WebSocket di HIRIS si e' autenticato, e parte una volta.
     Mutazione: non aspettare `ws_ready` -- rossa (il comando parte subito)."""
     ha = _casa(pronto=False)
-    task = asyncio.create_task(panel_visibility.sync_panel_visibility(_app(True, ha)))
+    task = asyncio.create_task(installation.sync_panel_visibility(_app(True, ha)))
     await asyncio.sleep(0.2)
-    assert ha.calls == []
+    assert _nucleo(ha) == []
 
     ha.ws_ready.set()
     await asyncio.wait_for(task, timeout=5)
 
-    assert ha.calls == [
+    assert _nucleo(ha) == [
         ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False}),
         ("get_panels", None),
     ]
@@ -438,14 +512,14 @@ async def test_la_chiamata_aspetta_che_home_assistant_ci_sia(supervisor):
 async def test_un_nucleo_che_non_arriva_si_dice_e_non_si_chiama(supervisor, caplog,
                                                                  monkeypatch):
     """Oltre il tetto: una riga che lo dice, nessun comando, nessuna eccezione."""
-    monkeypatch.setattr(panel_visibility, "SYNC_CEILING_S", 0.2)
+    monkeypatch.setattr(installation, "SYNC_CEILING_S", 0.2)
     ha = _casa(pronto=False)
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+    with caplog.at_level(logging.INFO, logger=LOGGER):
         await asyncio.wait_for(
-            panel_visibility.sync_panel_visibility(_app(True, ha)), timeout=5)
+            installation.sync_panel_visibility(_app(True, ha)), timeout=5)
 
-    assert ha.calls == []
+    assert _nucleo(ha) == []
     righe = [r.getMessage() for r in caplog.records]
     assert len(righe) == 1 and "non si è collegato" in righe[0], righe
 
@@ -459,14 +533,14 @@ async def test_un_nucleo_collegato_che_non_risponde_si_dice_e_non_solleva(
 
     Mutazione ESEGUITA: i due rami del tetto scambiati (`if
     ha.ws_ready.is_set()`) -- rossa (la riga dice «non si è collegato»)."""
-    monkeypatch.setattr(panel_visibility, "SYNC_CEILING_S", 0.2)
+    monkeypatch.setattr(installation, "SYNC_CEILING_S", 0.2)
     ha = _filo_appeso("frontend/update_panel")
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+    with caplog.at_level(logging.INFO, logger=LOGGER):
         await asyncio.wait_for(
-            panel_visibility.sync_panel_visibility(_app(True, ha)), timeout=5)
+            installation.sync_panel_visibility(_app(True, ha)), timeout=5)
 
-    assert ha.calls == [
+    assert _nucleo(ha) == [
         ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False})]
     righe = [r.getMessage() for r in caplog.records]
     assert len(righe) == 1 and "non ha risposto" in righe[0], righe
@@ -478,7 +552,8 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     l'attesa lasciava un compito pendente distrutto a chiusura. `_on_cleanup`
     lo ferma e lo aspetta.
 
-    Mutazione ESEGUITA: tolto l'arresto di `panel_sync_task` da
+    Mutazione ESEGUITA: tolto l'arresto di `panel_sync_task` (oggi
+    `installation_task`) da
     `_on_cleanup` -- rossa (il compito e' ancora vivo dopo la chiusura).
 
     **Rieseguita il 04/10/2026 (Tappa 2, Task 12), ed era VERDE** -- anche
@@ -491,18 +566,18 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     il tetto del client vero sul comando appeso (10 s) -- rossa."""
     ha = _filo_appeso("frontend/update_panel")
     app = _app(True, ha)
-    await server.start_panel_sync(app)
+    await installation.start_installation(app)
     for _ in range(100):
-        if ha.calls:
+        if _nucleo(ha):
             break
         await asyncio.sleep(0.01)
-    assert ha.calls, "precondizione: la sincronia e' appesa su update_panel"
+    assert _nucleo(ha), "precondizione: la sincronia e' appesa su update_panel"
 
     start = time.monotonic()
     await server._on_cleanup(app)
 
     assert time.monotonic() - start < 1.0, "la chiusura ha aspettato la sincronia appesa"
-    assert app["panel_sync_task"].done()
+    assert app["installation_task"].done()
 
 
 @pytest.mark.asyncio
@@ -511,8 +586,8 @@ async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog
     dice in UNA riga: due righe separate si leggono come due guasti."""
     ha = _casa(silence={"frontend/update_panel", "get_panels"})
 
-    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
-        await panel_visibility.sync_panel_visibility(_app(True, ha))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        await installation.sync_panel_visibility(_app(True, ha))
 
     righe = [r.getMessage() for r in caplog.records]
     assert len(righe) == 1, righe
@@ -520,9 +595,9 @@ async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog
 
 
 def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
-    """`start_panel_sync` legge `app["ha_client"]`, che nasce in `_on_startup`:
+    """`start_installation` legge `app["ha_client"]`, che nasce in `_on_startup`:
     l'ordine dei due e' un fatto, e si pinna."""
     app = server.create_app()
     hooks = list(app.on_startup)
-    assert server._on_startup in hooks and server.start_panel_sync in hooks
-    assert hooks.index(server.start_panel_sync) > hooks.index(server._on_startup)
+    assert server._on_startup in hooks and installation.start_installation in hooks
+    assert hooks.index(installation.start_installation) > hooks.index(server._on_startup)

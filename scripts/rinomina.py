@@ -449,6 +449,7 @@ _METODI_HA_CLIENT = frozenset({
     "save_configuration", "delete_configuration", "validate_config",
     "_ws_occurrence", "create_helper", "delete_helper",
     "create_label", "add_label_to", "extract_from_target",
+    "lovelace_resources", "delete_lovelace_resource", "own_slug",
     "read_dashboards", "update_panel", "panels", "users", "_user_row",
     "history", "_history_piece", "recorded_changes", "_ws_send", "_rest_get",
     "hourly_statistics",
