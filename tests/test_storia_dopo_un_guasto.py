@@ -57,3 +57,29 @@ async def test_un_turno_riuscito_scrive_domanda_e_risposta(
         aiohttp_client, tmp_path, monkeypatch):
     scritti = await _written_after(aiohttp_client, tmp_path, monkeypatch)
     assert scritti == [["user"], ["assistant"]]
+
+
+@pytest.mark.asyncio
+async def test_dopo_un_turno_sincrono_caduto_il_turno_dopo_non_manda_due_domande_di_fila(
+        aiohttp_client, tmp_path):
+    """Trovato dal revisore (giro 153): il ramo sincrono leggeva la cronologia
+    PRIMA di scrivere la domanda. La domanda del turno caduto restava ultima
+    nella storia passata al runner, e il runner ci accodava la nuova: due
+    turni utente di fila, che l'API di Claude rifiuta. Ora il ramo sincrono
+    scrive e poi legge, come il ponte, e passa la storia senza la domanda di
+    adesso.
+
+    Rossa sul codice di prima: la storia del secondo turno finiva con
+    «accendi la luce»."""
+    from unittest.mock import AsyncMock
+    client, runner = await _build_chat_client(aiohttp_client, tmp_path)
+    riuscito = runner.chat
+    runner.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    assert (await client.post("/api/chat", json={"message": "accendi la luce"})).status == 200
+
+    runner.chat = riuscito
+    assert (await client.post("/api/chat", json={"message": "e adesso?"})).status == 200
+    kwargs = runner.chat.call_args.kwargs
+    storia = kwargs["conversation_history"]
+    assert not storia or storia[-1]["role"] != "user"
+    assert kwargs["user_message"].startswith("e adesso?")

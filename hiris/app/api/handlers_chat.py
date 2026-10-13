@@ -1041,27 +1041,32 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (`handlers_chat_history._reply_in_flight`). Rileggere il contesto da
     # una conversazione e scrivere la risposta in un'altra sarebbe peggio.
     with _sync_turn(request.app, thread):
+        # La domanda si scrive PRIMA del turno, come fanno il ponte e il suo
+        # ripiego (D-15, Chiusura 13/10/2026): la risposta, dopo, solo se il
+        # turno ha risposto davvero. Si scrive e POI si legge, come il ponte:
+        # cosi' una domanda rimasta sola da un turno caduto e' seguita da
+        # questa, e la lettura la toglie (`chat_store._purge_toxic_turns`).
+        # Letta prima, restava l'ultima della storia passata al runner, che ci
+        # accodava questa: due turni utente di fila, rifiutati dall'API di
+        # Claude (trovato dal revisore, giro 153).
+        append_messages([{"role": "user", "content": message}], data_dir,
+                        thread=thread)
+
         # Load server-side history (client-sent history field is ignored).
         # Task 12: `retention_days` fa qui il suo SECONDO lavoro -- non solo
         # la potatura notturna, ma anche quanto di questa conversazione HIRIS
         # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
         # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
         # all'avvio: un utente che lo abbassa in `#/settings` lo vede avere
-        # effetto dal messaggio successivo, senza riavviare.
-        history = load_history(data_dir, thread=thread, days=settings.retention_days)
+        # effetto dal messaggio successivo, senza riavviare. L'ultima voce e'
+        # la domanda appena scritta: il turno la riceve come messaggio, non
+        # come storia.
+        history = load_history(data_dir, thread=thread, days=settings.retention_days)[:-1]
 
         # (max-turns check now runs above, before the subscription branch — see
         # Fix 1 comment there.)
 
         context_history = _trim_history(history)
-
-        # La domanda si scrive PRIMA del turno, come fanno il ponte e il suo
-        # ripiego (D-15, Chiusura 13/10/2026): la risposta, dopo, solo se il
-        # turno ha risposto davvero. Letta la cronologia qui sopra, cosi' il
-        # turno non la riceve due volte; se il turno cade, la domanda rimasta
-        # sola la toglie la lettura (`chat_store._purge_toxic_turns`).
-        append_messages([{"role": "user", "content": message}], data_dir,
-                        thread=thread)
 
         # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
         # restituisce mai). Dalla fetta «le chat divise»
