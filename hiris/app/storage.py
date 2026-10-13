@@ -4,16 +4,20 @@ Every HIRIS store should open its connection via connect() and initialise via
 init_schema() so all DBs get WAL/busy_timeout/foreign_keys and a consistent,
 data-safe migration path across add-on upgrades.
 
-E la scrittura di un file JSON in `/data` (`write_json_atomic`), una sola."""
+E la scrittura di un file JSON in `/data` (`write_json_atomic`), una sola; e
+la lettura di una colonna JSON con la sua guardia (`json_column`), una sola."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Migration callable: receives the connection, transforms schema from version k-1 to k.
 Migration = Callable[[sqlite3.Connection], None]
@@ -37,6 +41,45 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
+
+#: Cio' che `json_column` torna per un corpo che non si legge. Un oggetto e
+#: non `None`: `null` e' un JSON valido, e una riga che lo porta non e' guasta.
+UNREADABLE = object()
+
+#: Le righe guaste gia' dette nel log, `(archivio, tabella, chiave)`: una
+#: pagina che si ricarica ogni pochi secondi non deve ripetere la stessa riga a
+#: ogni giro.
+_unreadable_told: set[tuple[str, str, str]] = set()
+
+
+def json_column(raw, *, archive: str, table: str, key) -> object:
+    """Il corpo JSON di una colonna, o `UNREADABLE` se non si legge.
+
+    **La guardia delle letture JSON degli archivi, una sola** (C-48 e C-68,
+    Tappa 8 e Chiusura). Nata in `mind/store.py` per `osservazioni.db`: fino
+    alla Tappa 8 quattro letture avevano la guardia e sette no, e con una riga
+    storta `proposals()` faceva cadere l'intera `GET /api/constructions`. Le
+    costruzioni (`action/construction/revisions.py`) leggevano le loro senza
+    guardia, con lo stesso effetto sulla stessa rotta. **Chi legge un elenco
+    salta la riga guasta**, chi legge una riga sola la tratta come assente, e
+    il log lo dice una volta per riga, con l'archivio, la tabella e la chiave
+    per ritrovarla. `None` resta `None`: una colonna vuota non e' guasta.
+
+    Le migrazioni tengono i loro `json.loads`: devono dire fra due anni la
+    stessa cosa, e una riga guasta la' e' un motivo per fermarsi.
+    """
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        told = (archive, table, str(key))
+        if told not in _unreadable_told:
+            _unreadable_told.add(told)
+            logger.warning("%s: la riga %s di `%s` ha un corpo JSON "
+                           "illeggibile, e chi legge la salta", archive, key, table)
+        return UNREADABLE
 
 
 def add_missing_columns(conn: sqlite3.Connection, table: str,

@@ -26,8 +26,8 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-# Base: il set di default della versione appuntata in hiris/requirements.txt.
-# Il pin `<0.17.0` esiste per questo: un linter che cambia da solo il proprio
+# Base: il set di default della versione appuntata in hiris/requirements-dev.txt.
+# Il tetto al minor successivo esiste per questo: un linter che cambia da solo il proprio
 # default trasforma un CI verde in rosso senza che nessuno abbia toccato una riga.
 # `A` (flake8-builtins) e `W291` entrano il 01/09, e non per gusto: la famiglia
 # di `A` ha prodotto un GUASTO VIVO in produzione. `richiesta -> request` dentro
@@ -42,13 +42,23 @@ line-length = 100
 # numero.** Sono 72 violazioni, tutte auto-correggibili -- il costo non e'
 # quello. `ruff` le implementa solo in `preview`, e `preview = true` e' un
 # interruttore GLOBALE: accenderebbe insieme il comportamento sperimentale di
-# ogni altra regola gia' selezionata, cioe' esattamente la cosa che il pin
-# `<0.17.0` poche righe piu' su esiste per impedire -- un linter che cambia da
+# ogni altra regola gia' selezionata, cioe' esattamente la cosa che il tetto
+# del minor poche righe piu' su esiste per impedire -- un linter che cambia da
 # solo il proprio giudizio. Si pagherebbe un interruttore globale per una
 # classe cosmetica: no. Misurato il 01/09 (39 E302, 12 E306, 10 E305, 9 E303,
 # 2 E301). L'unico sito che questo giro aveva sporcato e' stato messo a posto a
 # mano (`scripts/rinomina.py`, due righe bianche fra due «def» di modulo).
-extend-select = ["E501", "A", "W291"]  # E501: le righe lunghe non sono nel default
+# I sette `DTZ` entrano scritti il 13/10/2026 (Chiusura, F5b), col tetto che
+# sale a `<0.18.0`: la 0.17.0 li ha tolti dal proprio default (CHANGELOG di
+# ruff, «Update the default rule set»), e senza scriverli il salto avrebbe
+# spento in silenzio le regole sugli orari senza fuso -- proprio quelle che
+# difendono l'ora della casa. Misurato lo stesso giorno: con questa riga la
+# 0.17.0 accende le 420 regole della 0.16.8 piu' `F406` (un errore di sintassi),
+# e su `hiris scripts tests conftest.py .smoke-test` non trova niente.
+extend-select = [
+    "E501", "A", "W291",  # E501: le righe lunghe non sono nel default
+    "DTZ001", "DTZ005", "DTZ006", "DTZ007", "DTZ011", "DTZ012", "DTZ901",
+]
 
 ignore = [
     # BLE001 (blind-except) — 103 casi, 99 in produzione.

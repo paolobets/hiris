@@ -117,7 +117,7 @@ async def test_un_turno_che_finisce_senza_concludere_fa_fallire_la_promessa(cons
     risposta = await _consegna(client, job, {
         "reply": "Ho letto le otto stanze, ma da qui non posso mandarti una notifica."})
 
-    assert risposta == "promessa_senza_conclusione"
+    assert risposta is True
     p = promesse.read(ident)
     assert p["stato"] == "fallita"
     assert "non ha concluso" in p["motivo"]

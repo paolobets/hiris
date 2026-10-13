@@ -56,6 +56,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from ..home_space.counts import hourly_consumed, hourly_mean_min_max
 from ..home_space.house import SOURCE_LIVE, SOURCE_STATES
 
 #: Sotto questa copertura un risultato di periodo diventa «non calcolabile».
@@ -740,7 +741,9 @@ def _sum_period(series, *, unit: str, expected_parts: int | None = None) -> Resu
                                    points=len(series or []))
     if refusal is not None:
         return refusal
-    return Measurement(round(sum(p["valore"] for p in known), 2),
+    # La regola del consumato e' in `home_space/counts.py` (B-13): qui restano
+    # la copertura e l'arrotondamento di chi rende.
+    return Measurement(round(hourly_consumed(p["valore"] for p in known), 2),
                   unit=unit, coverage=coverage)
 
 
@@ -894,15 +897,13 @@ def _average_min_max(series, *, unit: str,
                                    points=len(series or []))
     if refusal is not None:
         return refusal
-    values = [p["valore"] for p in known]
     # **Il minimo del giorno e' il piu' piccolo dei minimi ORARI, non il piu'
-    # piccolo delle medie.** Home Assistant li manda gia' tutti e due, e il
-    # docstring qui sopra dice perche' conta: una stanza che scende a 14 gradi
-    # alle sei del mattino ha una media oraria di 16, e prendere il minimo
-    # delle medie direbbe 16 -- nascondendo esattamente cio' che si cercava.
-    return Measurement({"media": round(sum(values) / len(values), 2),
-                   "minimo": min(p["minimo"] for p in known),
-                   "massimo": max(p["massimo"] for p in known)},
+    # piccolo delle medie**: la regola, con la sua ragione, vive in
+    # `home_space/counts.py` (B-13), la stessa della storia della chat. Qui
+    # restano la copertura e l'arrotondamento di chi rende.
+    found = hourly_mean_min_max((p["valore"], p["minimo"], p["massimo"]) for p in known)
+    return Measurement({"media": round(found["media"], 2),
+                   "minimo": found["minimo"], "massimo": found["massimo"]},
                   unit=unit, coverage=coverage)
 
 

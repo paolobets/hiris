@@ -273,7 +273,7 @@ async def test_la_CONSEGNA_scrive_il_giro_una_volta_sola(ponte):
     redo.deliver(casa, coda.get(turno["job_id"]), decisione)
 
     riga = _proposta(casa, ident)
-    assert esito == "rifalla_a_mano"
+    assert esito is True
     assert riga["testo"] == "Spegni lo scaldabagno alle 23"
     assert len(riga["giri"]) == 1 and riga["giri"][0]["turno"] == turno["job_id"]
     assert redo.state(casa, riga) is None, "un giro scritto non e' piu' in corso"
@@ -295,7 +295,7 @@ async def test_una_proposta_DECISA_mentre_il_giro_e_in_volo_scarta_la_risposta(p
 
     esito = await consegna(casa, turno["job_id"], turno["nonce"], decisione, time.time())
 
-    assert esito == "rifalla_" + redo.DISCARDED
+    assert esito is True
     assert _proposta(casa, ident)["giri"] == []
 
 

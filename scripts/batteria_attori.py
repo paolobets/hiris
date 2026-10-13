@@ -322,7 +322,7 @@ def main() -> None:
     watching = json.loads(casa.hiris_get("/api/mind/watching")).get("watching") or []
     reports = json.loads(casa.hiris_get("/api/mind/report")).get("resoconti") or []
     analyses = json.loads(casa.hiris_get("/api/mind/analysis")).get("analisi") or []
-    states = asyncio.run(casa.ha_read("get_states", []))
+    states = asyncio.run(casa.ha_read("get_states"))
     # La finestra in giorni di calendario, col fuso di chi la lancia (il PC di
     # casa, lo stesso della casa): `--giorni 1` e' oggi.
     today = datetime.now().astimezone().date()

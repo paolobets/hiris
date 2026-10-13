@@ -837,7 +837,8 @@ def _capability_lines(attributes: dict[str, dict] | None,
     return (lines, weights, True)
 
 
-def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
+def _behavior_lines(behavior: list[dict],
+                    unknown: set[str] = frozenset()) -> tuple[list[str], list[int]]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `name_with_id` in `topology.py`: fetta "i riferimenti",
     incidente 2026-08-20) -- `search(riferimento=...)` pretende l'id
@@ -850,6 +851,11 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
     fondamenta, rilievo 4). Fino all'08/09/2026 i pesi si costruivano dal
     di fuori con `[1] * len(righe)`: una regola scritta lontano da chi la
     conosce, che contava anche la frase segnaposto come una voce vera.
+
+    `unknown` sono gli id senza corpo (`behavior.without_body`): la riga lo
+    dichiara con la stessa regola dell'avviso e di `/api/home-space` (B-39, F1
+    della Chiusura, 13/10/2026; fino ad allora la riga guardava il solo corpo
+    `None`, l'avviso anche `unread_bodies`).
     """
     if not behavior:
         # Peso ZERO: il peso di una riga e' «quanti elementi questa riga
@@ -883,7 +889,7 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
         # e' un altro fatto, e sta nel suo campo: `fuori`.
         if v.get("attiva") is False:
             line += " -- disabilitata"
-        if v.get("corpo") is None:
+        if id_ in unknown:
             line += f" -- {BODY_UNKNOWN}, solo il nome"
         lines.append(line)
     return (lines, [1] * len(lines))
@@ -1736,7 +1742,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "e' potuto guardare.")
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, digest_visible_entity_ids(home_space))
-    behavior_lines, behavior_weights = _behavior_lines(behavior)
+    behavior_lines, behavior_weights = _behavior_lines(behavior, unknown)
     memory_lines = _memory_lines(memories)
 
     # Peso 0 al riferimento: l'intestazione somma i pesi per dire quante righe

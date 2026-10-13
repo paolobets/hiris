@@ -187,7 +187,7 @@ async def test_la_risposta_del_ponte_arriva_nel_filo_di_chi_ha_chiesto(tmp_path)
         assert preso["thread"] == PAOLO
         esito = await consegna(app, preso["job_id"], preso["nonce"],
                                {"reply": "Sono le cinque."}, time.time())
-        assert esito == "chat_reply_recorded"
+        assert esito is True
 
     assert load_history(data_dir, thread=PAOLO) == [
         {"role": "user", "content": "che ore sono?"},
@@ -206,7 +206,7 @@ async def test_un_job_senza_filo_non_scrive_da_nessuna_parte(tmp_path, caplog):
     with caplog.at_level("WARNING"):
         esito = await consegna(app, "VECCHIO", preso["nonce"],
                                {"reply": "risposta orfana"}, 10.0)
-    assert esito == "chat_reply_senza_filo"
+    assert esito is True
 
     from hiris.app.chat_store import _get_store
 

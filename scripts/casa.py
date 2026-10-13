@@ -241,7 +241,7 @@ async def _read_all(house, hiris) -> dict[str, object]:
     registries, unread = await house.read_registries()
     if unread:
         _stop(f"Registri non letti: {', '.join(unread)}.")
-    states = await house.get_states([])
+    states = await house.get_states()
     if isinstance(states, dict):
         _stop(f"Gli stati non sono stati letti: {states.get('errore')}.")
     if not states:

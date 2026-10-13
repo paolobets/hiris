@@ -82,9 +82,8 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
-from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..providers import SUBSCRIPTION
-from ..proxy._sanitize import MASK
+from ..proxy._sanitize import MASK, truncate_with_marker
 from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens, pesa_carico
 from . import prompts
@@ -94,13 +93,24 @@ log = logging.getLogger("hiris.agent")
 # Tool LOCALI del CLI sempre vietati (il modello non deve toccare shell/fs del
 # container addon).
 #
-# fetta "il ponte riceve gli strumenti" (parita' B, Task 3): questa stringa NON
-# guadagna `ToolSearch`, e l'assenza e' deliberata. La CLI inserisce un
-# passaggio `ToolSearch` per RISOLVERE gli schemi degli strumenti MCP (progetto
-# 3.4/5): vietarlo qui renderebbe gli strumenti visibili nell'elenco e
-# IRRAGGIUNGIBILI -- il modo peggiore di non averli, perche' il prompt li
-# afferma e la chiamata non arriva mai. E' esattamente il genere di stringa che
-# qualcuno "completa" leggendo l'elenco: non si completa.
+# **Dalla Chiusura (L1, 13/10/2026) non e' piu' la prima serratura.** La prima
+# e' `--tools ""` in `_chat_claude_args`: la CLI non offre al modello NESSUNO
+# strumento suo, e restano solo quelli di HIRIS (`--mcp-config` +
+# `--allowedTools`). Questo elenco resta come seconda: vieta per nome cio' che
+# la prima gia' non offre, nel caso una versione della CLI smettesse di
+# rispettare `--tools`. E' un elenco ricopiato dalla CLI, e lo si sa: invecchia
+# a ogni versione che aggiunge uno strumento (misurato il 13/10/2026 sulla
+# 2.1.286: `Workflow`, `ScheduleWakeup`, `Skill`, `CronCreate`... offerti al
+# modello e non elencati qui). Per questo NON e' lui la difesa, e non va
+# «completato».
+#
+# `ToolSearch` non c'e', ed era deliberato finche' gli strumenti di HIRIS
+# arrivavano RINVIATI: la CLI ci passava per risolverne gli schemi, e vietarlo
+# li avrebbe resi visibili e irraggiungibili. Con `--tools ""` il rinvio si
+# spegne da se' e gli schemi arrivano subito (rapporto FM, v2 contro v4: la
+# stessa richiesta con e senza `ENABLE_TOOL_SEARCH`). Resta fuori lo stesso:
+# questo elenco serve proprio se `--tools` non venisse rispettato, e in quel
+# caso il rinvio torna, e con lui il bisogno di `ToolSearch` (giro 147).
 _LOCAL_TOOLS_DENY = (
     "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
 )
@@ -654,10 +664,20 @@ def _chat_claude_args(system_file: str, model: str, *,
 
     Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
     `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
-    strumenti resta vero per costruzione invece che per fortuna."""
+    strumenti resta vero per costruzione invece che per fortuna.
+
+    `--tools ""` (L1 della Chiusura, 13/10/2026) sta anch'esso su ENTRAMBI i
+    rami, per la stessa ragione di `--strict-mcp-config`: toglie, non concede.
+    Senza, la CLI offre al modello i suoi strumenti (sette definizioni e un
+    blocco d'ambiente, circa 24.100 caratteri a ogni giro, misurati con la
+    2.1.286) e rinvia quelli di HIRIS dietro `ToolSearch`, che costa un giro in
+    ogni domanda con strumenti."""
     argv = [CLI_PONTE, "-p", "--model", model,
             "--system-prompt-file", system_file,
             "--exclude-dynamic-system-prompt-sections",
+            # Nessuno strumento della CLI, su entrambi i rami (L1): vedi il
+            # commento sopra `_LOCAL_TOOLS_DENY`.
+            "--tools", "",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
             # Su entrambi i rami: vedi I-1 nel docstring.
@@ -688,13 +708,13 @@ def cli_model(resolved_model: str) -> str:
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
     name = (resolved_model or "").lower()
-    # I tre alias vengono da `model_resolution.SUBSCRIPTION_ALIAS`, che e' anche
+    # I tre alias vengono da `providers.SUBSCRIPTION.aliases`, che e' anche
     # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
     # in ordine diverso e senza nessun test che li legasse. Un quarto alias
     # aggiunto la' sarebbe stato offerto all'utente, scelto, e poi ARCHIVIATO
     # COME `sonnet` da questa funzione, con un warning che nessuno legge: il
     # radio sarebbe tornato indietro da solo, senza spiegazione.
-    for alias, _descrizione in SUBSCRIPTION_ALIAS:
+    for alias, _descrizione in SUBSCRIPTION.aliases:
         if alias in name:
             return alias
     log.warning(
@@ -793,11 +813,11 @@ MAX_INVOCATIONS_PER_EXCHANGE = 2
 class StreamOccurrence:
     """Cio' che si ricava da uno stdout `stream-json`.
 
-    - `testo`: il campo `result` dell'evento finale `{"type": "result"}`;
+    - `text`: il campo `result` dell'evento finale `{"type": "result"}`;
     - `init`: l'evento `{"type": "system", "subtype": "init"}` INTERO (o
-      `None`). Porta `mcp_servers` e la lista `tools` risolta: in questo task
-      si logga soltanto -- ci decidera' sopra il Task 4, e per farlo gli serve
-      il dato intero, non un riassunto;
+      `None`). Porta `mcp_servers` e la lista `tools` risolta: ci decide
+      sopra `verify_init` (gli strumenti attesi ci sono davvero?), e per
+      farlo gli serve il dato intero, non un riassunto;
     - `usage`: il blocco `usage` del risultato (o `{}`) -- la misura che chiude
       la domanda aperta 2 (costo del prefisso) dopo la prima settimana di UAT,
       invece di lasciarla a un'opinione;
@@ -806,23 +826,23 @@ class StreamOccurrence:
       di rumore senza che la risposta vada persa, ma il fatto non sparisce;
     - `lines_read`: quante righe non vuote sono arrivate (distingue un flusso
       VUOTO da un flusso pieno di rumore);
-    - `risultato`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
+    - `result`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
       silenzio dichiarato (3) della fetta e non deve mai diventare una stringa
       vuota in silenzio: sarebbe indistinguibile da "il modello non ha risposto
       niente";
     - `tools_called`: fetta "il ponte riceve gli strumenti" (parita' B, Task 5).
       I blocchi `tool_use` degli eventi `assistant`, NELL'ORDINE in cui la CLI
       li ha emessi -- `[{"tool": nome, "input": argomenti}, ...]`, la STESSA
-      forma di `handlers_chat.py` (ramo sincrono): una lista sola da rendere
-      per la UI della E5, non due. Lista VUOTA (mai `None`) quando nessuno
-      strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
-      dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
-      (`mcp__hiris__remember`), MAI normalizzato: normalizzarlo nasconderebbe il
-      caso -- il solo che conta per questo task -- in cui il modello chiama
-      qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
+      forma di `handlers_chat.py` (ramo sincrono): una lista sola, che la
+      chat rende e i raccoglitori degli attori leggono, non due. Lista VUOTA
+      (mai `None`) quando nessuno strumento e' stato chiamato: `None` direbbe
+      "non lo so", una lista vuota dice "nessuno". Il nome e' quello GREZZO
+      che il modello ha usato (`mcp__hiris__remember`), MAI normalizzato:
+      normalizzarlo nasconderebbe il caso in cui il modello chiama qualcosa
+      che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
-      cosi' una chiamata riuscita (esito arrived, senza errore) resta
+      cosi' una chiamata riuscita (esito arrivato, senza errore) resta
       bit-per-bit la stessa forma del ramo sincrono, e una fallita resta
       DISTINGUIBILE invece di sparire nella stessa forma di una riuscita.
 
@@ -1013,18 +1033,18 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
                 # SEMPRE (`_risolto`), non solo quando e' un errore. E'
                 # questo marcatore, tolto qui sotto dopo il ciclo, che
-                # distingue "arrived e riuscito" da "mai arrived": senza,
+                # distingue "arrivato e riuscito" da "mai arrivato": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
                 # docstring di `StreamOccurrence.tools_called`).
                 entry["_risolto"] = True
                 if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
-                    # arrived, senza errore) resta bit-per-bit
+                    # arrivato, senza errore) resta bit-per-bit
                     # {"tool":..., "input":...}, identica alla forma del
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrived (flusso incompleto, o un `result` di errore/max-turns che
+    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1084,7 +1104,7 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 #
 # Perche' esiste. I due campi qui sotto sono prove che non si possono ricavare
 # da nessun file del repository -- il `Dockerfile` dice cosa e' stato chiesto,
-# non cosa e' arrived -- e fino a oggi vivevano SOLO dentro una riga di log,
+# non cosa e' arrivato -- e fino a oggi vivevano SOLO dentro una riga di log,
 # leggibile nel momento in cui un turno passava. E' il motivo per cui la
 # verifica del pin 2.1.241 e' stata rimandata il 24 agosto e poi dimenticata
 # per settimane: richiedeva di essere nel posto giusto al momento giusto.
@@ -1092,14 +1112,25 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 _ULTIMO_INIT: dict = {}
 
 
-def last_bridge_init() -> dict | None:
-    """L'ultimo `init` osservato, o `None` se nessun turno e' ancora passato.
+# Il vocabolario chiuso di `stato` in `last_bridge_init` (C-30, 13/10/2026):
+# la stessa forma degli altri oggetti diagnostici di `/api/health`, che aprono
+# tutti con `stato` e `perche`.
+INIT_STATES = ("non_visto", "visto")
 
-    `None` significa **non ancora visto**, non «assente»: sono due fatti
-    diversi, e un chiamante che li confondesse leggerebbe un container appena
-    riavviato come un container guasto.
+
+def last_bridge_init() -> dict:
+    """L'ultimo `init` osservato, con il suo `stato`.
+
+    Prima del primo turno lo stato e' `non_visto`, con il perche': **non ancora
+    visto** non e' «assente», e un chiamante che li confondesse leggerebbe un
+    container appena riavviato come un container guasto. La parola lo dice
+    meglio del `None` che c'era fino al 13/10/2026. Dopo, `visto` con i campi
+    dell'`init` e `perche` a `null`.
     """
-    return dict(_ULTIMO_INIT) if _ULTIMO_INIT else None
+    if not _ULTIMO_INIT:
+        return {"stato": "non_visto",
+                "perche": "nessun turno del ponte dall'avvio"}
+    return {"stato": "visto", "perche": None, **_ULTIMO_INIT}
 
 
 def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
@@ -1119,7 +1150,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
       girando DAVVERO. La ragione non e' caduta col pin, e' migliorata: prima
       serviva a sapere QUALE CLI fosse capitata dentro l'immagine, perche'
       `@2` ne lasciava entrare una qualunque; adesso serve a PROVARE che il
-      pin sia arrived fino al container -- e a smascherare l'immagine
+      pin sia arrivato fino al container -- e a smascherare l'immagine
       installata piu' vecchia di quella che si crede, che il `Dockerfile` da
       solo non puo' dire.
     - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
@@ -1138,12 +1169,12 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     if occurrence.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): l'init "
-            "non e' arrived. Le cause possibili, in nessun ordine di colpa: "
+            "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
             "la CLI puo' essere morta prima di emetterlo (guardare rc e "
             "stderr, che questo modulo logga a parte), oppure --verbose non e' "
-            "arrived alla CLI, oppure il formato del flusso e' cambiato. "
+            "arrivato alla CLI, oppure il formato del flusso e' cambiato. "
             "Quando gli strumenti erano attesi questa assenza NON e' una "
-            "conferma e vale come guasto: la decide `verifica_init`", job_id)
+            "conferma e vale come guasto: la decide `verify_init`", job_id)
         return
     tools = occurrence.init.get("tools")
     # Si conserva PRIMA di loggare: la riga di log e' la misura di questo
@@ -1186,7 +1217,7 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
       perche' il prompt li nomina uno per uno.
 
     **Un `init` assente vale guasto, non successo.** Una CLI piu' vecchia, un
-    `--verbose` che non e' arrived o un formato cambiato producono la stessa
+    `--verbose` che non e' arrivato o un formato cambiato producono la stessa
     assenza: trattarla come conferma vorrebbe dire far dipendere la promessa
     del prompt da cio' che NON e' stato detto. Un'assenza non e' una conferma.
 
@@ -1199,7 +1230,7 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
     if occurrence.init is None:
         return False, ("il flusso non porta l'evento system/init: un'assenza "
                        "non e' una conferma (CLI piu' vecchia, --verbose non "
-                       "arrived, o formato cambiato)")
+                       "arrivato, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
     awaited = set(mcp_names(species))
@@ -1694,25 +1725,16 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # (primo giro, poi secondo), nella stessa lista che diventa
     # `decision["tools_called"]`.
     #
-    # Step 5 del brief -- la nota che va dichiarata, non risolta qui. La
-    # fetta A (Task 5, reasoning/queue.py::submit) azzera `context_json` a
-    # job risolto, ma NON `decision_json` -- la risposta, che serve al poll.
-    # Questa lista vive quindi in `decision["tools_called"]` e resta su
-    # disco fino alla potatura a 7 giorni, con gli INPUT GREZZI che il
-    # modello ha passato agli strumenti (presi dal blocco `tool_use` dello
-    # stream, PRIMA del dispatch -- vedi `occurrence.tools_called.append`
-    # sopra): per `remember`, `testo`, `ancore` e `condizioni`. Fix round 1
-    # (Task 6, "le chat divise"): `detto_da` non e' PIU' un input che
-    # `_remember` legge -- lo schema non lo chiede e un modello che lo mandi
-    # comunque si vede rifiutare l'intera chiamata (`_bad_arguments`) prima
-    # che `_remember` la veda. Ma questa lista accumula l'input grezzo del
-    # modello ANCHE quando il dispatch lo rifiuta: un `detto_da` (un
-    # identificativo di PERSONA) tentato dal modello resta scritto qui lo
-    # stesso, anche se non e' mai arrived all'archivio. Per `search`, la
-    # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
-    # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
-    # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
-    # della fetta A l'aveva appena tolto dal `context`.
+    # **Gli input grezzi restano nella decisione.** `submit` azzera
+    # `context_json` a turno deciso, non `decision_json`: questa lista vive in
+    # `decision["tools_called"]` con gli INPUT che il modello ha passato agli
+    # strumenti, presi dal blocco `tool_use` dello stream PRIMA del dispatch
+    # (per `remember` il `testo` e le `condizioni`, per `search` il `nome`
+    # cercato). Anche un input che il dispatch rifiuta (`_bad_arguments`)
+    # resta scritto qui. Per una chat consegnata la decisione si svuota un
+    # quarto d'ora dopo la consegna (`ReasoningQueue.forget_delivered`,
+    # reperto C-6); per i turni degli attori resta fino alla potatura a sette
+    # giorni (`reasoning/queue.CONSERVAZIONE`).
     tools_called_in_exchange: list = []
     # Il cronometro del TURNO, non di un'invocazione: `_invoca` puo' girare
     # due volte (l'evento `init` smentisce la sonda degli strumenti) e il
@@ -2024,9 +2046,22 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # dove l'errore arriva nell'evento `result` con `is_error: true`. Logga
         # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
         # nascondere la causa dietro un numero.
-        log.warning("claude rc=%s stderr=%r stdout=%r%s", invocation.rc,
-                    stderr[:300], stdout[:500], log_tail)
+        #
+        # Dello stdout si logga l'evento `result`, non i primi 500 caratteri:
+        # li' c'e' l'`init`, e la causa cadeva oltre. Misurato dallo Sprint sul
+        # log dell'add-on: 22 righe «claude rc=1» fra il 09/10 e l'11/10/2026,
+        # tutte senza causa. Senza evento `result` (processo morto a meta') si
+        # logga la CODA del flusso, dove c'e' l'ultimo evento arrivato.
         result = occurrence.result or {}
+        if occurrence.result is not None:
+            seen = (f"result subtype={result.get('subtype')!r} "
+                    f"is_error={result.get('is_error')!r} "
+                    f"error={truncate_with_marker(str(result.get('error') or ''), 300)!r} "
+                    f"result={truncate_with_marker(occurrence.text, 300)!r}")
+        else:
+            seen = f"stdout (coda)={stdout[-500:]!r}"
+        log.warning("claude rc=%s stderr=%r %s%s", invocation.rc,
+                    stderr[:300], seen, log_tail)
         detail = (occurrence.text or result.get("error")
                   or result.get("subtype") or "")
         if not detail:
@@ -2034,10 +2069,12 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # meglio il flusso grezzo che un silenzio.
             detail = (stdout or stderr).strip()
         # Un sentinella d'errore, non una risposta del modello: e' un
-        # fallimento, e il registro lo chiama cosi'.
+        # fallimento, e il registro lo chiama cosi'. Il dettaglio lungo si
+        # taglia dicendolo (D-70): un taglio muto fa sembrare intera una causa
+        # che continuava.
         return _reply(
             f"{RUNNER_ERROR_PREFIX}{invocation.rc}] "
-            f"{str(detail)[:300]}".strip(), outcome="fallito")
+            f"{truncate_with_marker(str(detail), 300)}".strip(), outcome="fallito")
 
     if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
@@ -2059,7 +2096,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         notice = (
             f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "
-            "arrived non e' una risposta completa, e non te la presento come "
+            "arrivato non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
             "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
@@ -2185,7 +2222,7 @@ async def serve(job: dict, consegna, client, base_url: str, get_headers,
         None, lambda: reason(job, mode, client=client, base_url=base_url,
                              headers=headers))
     delivered = await consegna(job["job_id"], job["nonce"], decision, clock())
-    return "failed" if delivered is None else "done"
+    return "done" if delivered else "failed"
 
 
 async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,

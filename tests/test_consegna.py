@@ -21,29 +21,44 @@ def _app(tmp_path):
 # E3 Task 9 (rilievo 1 della review indipendente sul blocco 5-8): wirava
 # `app["execute_decision"]` e verificava che un submit non-chat lo chiamasse
 # (outcome "notify"). Quell'hook e' uscito per intero -- non e' un ramo che si
-# possa piu' wirare, ne' in produzione ne' nei test. Resta solo il test sotto,
-# che e' l'UNICO comportamento possibile.
+# possa piu' wirare, ne' in produzione ne' nei test.
+
+
+def _actor_kinds() -> list[str]:
+    """I turni che la consegna registra e basta: quelli degli attori, chiesti
+    alla vista dei mestieri sui job (`steering.JOB_SPECIES`), meno chat e
+    promessa che hanno un ramo loro. Piu' una specie che nessuno ragiona piu'
+    (`holistic`): un job lasciato da un'installazione vecchia passa dallo
+    stesso ramo."""
+    from hiris.app.steering import JOB_SPECIES
+
+    kinds = sorted(k for k in JOB_SPECIES if k not in ("chat", "promessa"))
+    assert len(kinds) >= 4, f"la derivazione delle specie si e' rotta: {kinds!r}"
+    return kinds + ["holistic"]
 
 
 @pytest.mark.asyncio
-async def test_consegna_non_chat_registra_e_dichiara(tmp_path, caplog):
-    """fetta E3 Task 4: server.py smise di wirare app["execute_decision"] --
-    la ronda/revisione olistica che lo attuava era uscita, e con lei l'unico
-    produttore di job non-"chat". Una consegna non-chat puo' arrivare solo da
-    un job scaduto/legacy; non deve sparire in silenzio -- resta "recorded" e
-    logga un warning esplicito che nomina il job."""
+@pytest.mark.parametrize("kind", _actor_kinds())
+async def test_la_consegna_di_un_attore_registra_e_tace(tmp_path, caplog, kind):
+    """S-23 (e S-39, lo stesso difetto): fino alla Chiusura ogni consegna di
+    un attore che non fosse l'osservatore scriveva un WARNING su un
+    meccanismo uscito da mesi (la revisione olistica, «nessun
+    execute_decision wired»). E' la consegna normale di un attore: la
+    decisione resta nella coda, la raccoglie il giro che l'ha accodata, e il
+    registro dell'add-on non ha niente da dire."""
     app, q = _app(tmp_path)
-    q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home", "severity_hint": "info",
-              "evidence": {}, "ts": 1.0}, {"snapshot": {}}, deadline_ts=100.0, job_id="J", now=1.0)
+    q.enqueue(kind, {"giorno": "2026-10-13"}, {"snapshot": {}}, deadline_ts=100.0,
+              job_id="J", now=1.0)
     c = q.claim(10.0)
     assert c["job_id"] == "J"
 
     with caplog.at_level("WARNING", logger="hiris.app.reasoning.consegna"):
-        esito = await consegna(app, "J", c["nonce"], {
-            "verdict": "anomalia", "severity": "info", "message": "ok", "action": None,
-        }, 10.0)
-    assert esito == "recorded"
-    assert any("execute_decision" in rec.message and "J" in rec.message for rec in caplog.records)
+        esito = await consegna(app, "J", c["nonce"], {"reply": "[]"}, 10.0)
+    assert esito is True
+    assert q.get("J")["status"] == "decided"
+    assert q.get("J")["decision"] == {"reply": "[]"}
+    assert [r.getMessage() for r in caplog.records] == [], (
+        f"la consegna normale di un turno «{kind}» ha scritto nel registro")
 
 
 @pytest.mark.asyncio
@@ -63,7 +78,7 @@ async def test_consegna_la_risposta_anche_con_una_chiave_vecchia_nel_contesto(tm
               thread=ChatThread("persona:paolo", "pannello"))
     c = q.claim(10.0)
     esito = await consegna(app, "J", c["nonce"], {"reply": "ecco la risposta"}, 10.0)
-    assert esito == "chat_reply_recorded"
+    assert esito is True
     assert replies == ["ecco la risposta"]
 
 
@@ -72,10 +87,10 @@ async def test_consegna_col_nonce_sbagliato_e_rifiutata(tmp_path):
     app, q = _app(tmp_path)
     q.enqueue("holistic", {}, {}, deadline_ts=100.0, job_id="J", now=1.0)
     q.claim(now=10.0)
-    assert await consegna(app, "J", "bad", {}, 10.0) is None
+    assert await consegna(app, "J", "bad", {}, 10.0) is False
     assert q.get("J")["status"] == "claimed"
 
 
 @pytest.mark.asyncio
 async def test_consegna_senza_coda_e_rifiutata(tmp_path):
-    assert await consegna({}, "J", "N", {}, 10.0) is None
+    assert await consegna({}, "J", "N", {}, 10.0) is False

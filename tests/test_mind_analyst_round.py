@@ -33,6 +33,7 @@ import pytest
 from hiris.app import server
 from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.reasoning.queue import ReasoningQueue
 
 
 class _FintoModello:
@@ -180,6 +181,9 @@ async def test_l_analisi_rifatta_SOSTITUISCE_e_non_si_accoda(casa):
 
 class _CodaConTurnoFermo:
     """Un turno accodato e mai risposto, con la scadenza passata."""
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
 
     def __init__(self, deadline_ts, status="pending"):
         self.turno = {"status": status, "deadline_ts": deadline_ts,
@@ -253,6 +257,9 @@ async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
 class _CodaConRispostaINACCETTABILE:
     """Un turno del ponte, RISPOSTO, di un altro giorno, che la validazione
     non potra' mai accettare."""
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
 
     def __init__(self, giorno="2026-09-17"):
         self.turno = {

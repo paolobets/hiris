@@ -149,7 +149,7 @@ def test_le_letture_della_cattura_rendono_gli_ingressi():
     inputs = synthetic_inputs()
     house = CasaFinta(synthetic_inputs())
     assert _run(house.read_registries()) == (inputs["registries"], [])
-    assert _run(house.get_states([])) == inputs["states"]
+    assert _run(house.get_states()) == inputs["states"]
     assert _run(house.statistic_ids()) == set(inputs["statistic_ids"])
     assert _run(house.behavior_configs(["automation.automazione_uno"])) == inputs["behavior"]
     assert _run(house.get_config()) == inputs["ha_config"]
@@ -159,14 +159,6 @@ def test_le_letture_della_cattura_rendono_gli_ingressi():
     assert _run(house.system_log()) == inputs["system_log"]
     dashboards = inputs["dashboards"]
     assert _run(house.read_dashboards()) == (dashboards["entries"], dashboards["unavailable"])
-
-
-def test_get_states_filtra_come_il_vero():
-    """Diciassette finte ignoravano il filtro: qui il filtro e' quello del
-    client, perche' la finta risponde a `GET /api/states` e basta."""
-    house = CasaFinta(synthetic_inputs())
-    rows = _run(house.get_states(["light.luce_uno", "sensor.non_esiste"]))
-    assert [row["entity_id"] for row in rows] == ["light.luce_uno"]
 
 
 def test_una_plancia_senza_corpo_torna_fra_le_non_disponibili():
@@ -206,7 +198,7 @@ def test_un_rifiuto_iniettato_arriva_nella_busta_del_client():
         "/api/states": 500})
     assert _run(house.problems()) == {"errore": "Unknown command.", "causa": "rifiuto",
                                       "codice": "unknown_command"}
-    assert _run(house.get_states([])) == {"errore": "Home Assistant ha risposto 500",
+    assert _run(house.get_states()) == {"errore": "Home Assistant ha risposto 500",
                                           "causa": "rifiuto", "codice": 500}
 
 
@@ -399,12 +391,12 @@ def test_una_get_in_ritardo_porta_cio_che_c_era_quando_e_partita_o_non_arriva():
         house = CasaFinta({}, answers={"/api/states": lambda path: [
             {"entity_id": "light.a", "state": now["state"]}]},
                           delay={"/api/states": 0.02})
-        reading = asyncio.ensure_future(house.get_states([]))
+        reading = asyncio.ensure_future(house.get_states())
         await asyncio.sleep(0)
         now["state"] = "on"
         late = await reading
         stuck = CasaFinta({"states": []}, delay={"/api/states": math.inf})
-        pending = asyncio.ensure_future(stuck.get_states([]))
+        pending = asyncio.ensure_future(stuck.get_states())
         await asyncio.sleep(0.02)
         hanging = not pending.done()
         pending.cancel()
@@ -438,7 +430,7 @@ def test_un_annuncio_arriva_agli_ascoltatori_dallo_smistamento_vero():
 def test_registra_chiamate_e_connessioni_come_le_dichiara_il_client():
     house = CasaFinta(synthetic_inputs())
     _run(house.read_registries())
-    _run(house.get_states([]))
+    _run(house.get_states())
     assert [kind for kind, _what in house.connections] == ["ws", "ws", "rest"]
     assert len([c for c in house.connections if c[0] == "ws"]) == \
         HAClient.read_registries.cost["ws"]

@@ -513,3 +513,69 @@ def test_la_coda_legge_colonne_nominate(q):
     letture = [s for s in viste if s.lstrip().upper().startswith("SELECT")]
     assert len(letture) >= 7, "la prova deve percorrere le letture della coda"
     assert not [s for s in letture if "SELECT *" in s.upper()]
+
+
+# ── C-68 (Chiusura): una riga col corpo JSON guasto ────────────────────────
+#
+# Fino alla Chiusura `_row` faceva tre `json.loads` nudi: una riga storta
+# faceva cadere ogni lettura che la incontrava -- il poll della chat, il
+# raccoglitore di un attore, e `claim`, cioe' il lavoratore del ponte. La
+# guardia e' quella comune degli archivi (`storage.json_column`): chi legge
+# un elenco salta la riga, chi ne legge una la tratta come assente.
+
+def _guasta(q, job_id, colonna):
+    q._conn.execute(f"UPDATE reasoning_jobs SET {colonna}='{{non json' WHERE job_id=?",
+                    (job_id,))
+    q._conn.commit()
+
+
+@pytest.mark.parametrize("colonna", ["wake_json", "context_json", "decision_json"])
+def test_una_riga_guasta_si_legge_come_assente(q, colonna):
+    q.enqueue("analisi", {"giorno": "2026-10-13"}, {}, deadline_ts=100.0,
+              job_id="J", now=1.0)
+    _guasta(q, "J", colonna)
+
+    assert q.get("J") is None
+    assert q.latest("analisi") is None
+    assert q.sweep_expired(now=200.0) == []
+
+
+def test_il_ponte_salta_la_riga_guasta_e_serve_quella_dopo(q):
+    """Una riga che non si legge non si puo' servire: si chiude `failed`, e
+    il lavoratore prende la successiva invece di credere la coda vuota --
+    che lo farebbe dormire fino al prossimo accodamento con un turno buono
+    in attesa."""
+    q.enqueue("analisi", {}, {}, deadline_ts=100.0, job_id="GUASTA", now=1.0)
+    q.enqueue("analisi", {}, {}, deadline_ts=100.0, job_id="BUONA", now=2.0)
+    _guasta(q, "GUASTA", "wake_json")
+
+    assert q.claim(now=10.0)["job_id"] == "BUONA"
+    stato = q._conn.execute("SELECT status FROM reasoning_jobs WHERE job_id='GUASTA'")
+    assert stato.fetchone()[0] == "failed"
+    assert q.claim(now=10.0) is None
+
+
+# ── D-08 (Chiusura): la domanda con cui comincia ogni raccoglitore ─────────
+
+def test_latest_if_decided_e_l_ultimo_solo_se_deciso(q):
+    q.enqueue("analisi", {"giorno": "1"}, {}, deadline_ts=100.0, job_id="A", now=1.0)
+    c = q.claim(now=2.0)
+    assert q.latest_if_decided("analisi") is None, "preso in carico non e' deciso"
+    q.submit("A", c["nonce"], {"reply": "ok"}, now=3.0)
+    assert q.latest_if_decided("analisi")["job_id"] == "A"
+
+    # Un turno nuovo in volo copre il vecchio deciso: non si rilegge una
+    # risposta che chi ha riaccodato ha gia' superato.
+    q.enqueue("analisi", {"giorno": "2"}, {}, deadline_ts=100.0, job_id="B", now=4.0)
+    assert q.latest_if_decided("analisi") is None
+    assert q.latest_if_decided("ricetta") is None
+
+
+def test_latest_if_decided_filtra_la_sveglia_come_latest(q):
+    q.enqueue("proposta", {"giorno": "1"}, {}, deadline_ts=100.0, job_id="G", now=1.0)
+    c = q.claim(now=2.0)
+    q.submit("G", c["nonce"], {"reply": "[]"}, now=3.0)
+    q.enqueue("proposta", {"proposta": 7}, {}, deadline_ts=100.0, job_id="R", now=4.0)
+
+    assert q.latest_if_decided("proposta") is None
+    assert q.latest_if_decided("proposta", wake_key="giorno")["job_id"] == "G"

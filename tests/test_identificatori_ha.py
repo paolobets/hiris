@@ -31,11 +31,8 @@ OWNER = Path(ha_vocabulary.__file__).resolve().relative_to(APP).as_posix()
 #: Le copie in linea AMMESSE, file -> quante, con la ragione. Chiude per
 #: difetto: una copia nuova e' rossa finche' qualcuno non la scrive qui.
 AMMESSE = {
-    # File in mano alla fetta di `House` (Tappa 3, Task 1 e seguenti) mentre
-    # questo task girava: il brief del 04/10/2026 chiedeva di non toccarli.
-    # Escono quando `House` li libera.
-    "home_space/house_history.py": 3,
-    "home_space/house_query.py": 1,
+    # `house_history.py` (3) e `house_query.py` (1) sono usciti con F1 della
+    # Chiusura (13/10/2026, B-24): chiedono a `ha_vocabulary.domain_of`.
     # Non sono entity_id: sono i nomi dei logger di Home Assistant
     # (`homeassistant.components.hydrawise`), che hanno un'altra grammatica.
     "home_space/log_source.py": 2,

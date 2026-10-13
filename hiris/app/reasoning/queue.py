@@ -8,11 +8,13 @@ import time
 from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
 from ..storage import (
+    UNREADABLE,
     Retention,
     add_missing_columns,
     archive_name,
     connect,
     init_schema,
+    json_column,
     prune_declared,
 )
 
@@ -84,8 +86,22 @@ JOB_CLAIMED = "claimed"
 JOB_DECIDED = "decided"
 JOB_EXPIRED = "expired"
 JOB_FAILED = "failed"
+#: Il turno di chat scaduto che si sta rifacendo sulla catena (Task 14 della
+#: fetta «la catena diventa l'unica verita'»). E' l'unico stato in italiano, e
+#: resta cosi': e' scritto nelle righe gia' su disco, e cambiarlo vorrebbe dire
+#: una migrazione per una parola (D-59, Chiusura).
+JOB_DOWNGRADE = "ripiego"
 #: In volo: accodato o preso in carico, non ancora deciso.
 JOB_WAITING = (JOB_PENDING, JOB_CLAIMED)
+#: Chiusi: la potatura li prende dopo la finestra di `CONSERVAZIONE`.
+JOB_CLOSED = (JOB_DECIDED, JOB_EXPIRED, JOB_FAILED)
+
+
+def _sql_in(states: tuple[str, ...]) -> str:
+    """`('a','b')` per una clausola `IN`: le parole vengono dalle costanti qui
+    sopra, mai da chi chiama, quindi possono stare nel testo della query."""
+    return "(" + ",".join(f"'{state}'" for state in states) + ")"
+
 
 #: **Per quanto si tiene un turno chiuso**, nella forma di ogni archivio
 #: (`storage.Retention`): sette giorni, per i turni decisi, scaduti o falliti.
@@ -105,7 +121,7 @@ CONSERVAZIONE: Retention = {
         7,
         ("i turni del ponte: il tetto giornaliero conta le righe di oggi, e "
          "un turno chiuso da una settimana non lo cerca nessuno"),
-        ("DELETE FROM reasoning_jobs WHERE status IN ('decided','expired','failed') "
+        (f"DELETE FROM reasoning_jobs WHERE status IN {_sql_in(JOB_CLOSED)} "
          "AND created_ts < ?")),
 }
 
@@ -141,27 +157,48 @@ _COLUMNS = ("job_id, kind, status, nonce, wake_json, context_json, deadline_ts, 
             "created_ts, priority, subject_key, entry_point, decision_json, decided_ts")
 
 
-def _row(r) -> dict:
-    # **Una forma sola** per ogni lettura della coda (D-62, Tappa 8): `get` e
-    # `latest` leggono la stessa riga con due chiavi diverse, e fino a qui
-    # `decided_ts` usciva solo da `latest` -- la fondamenta 3 rotta dentro un
-    # file solo. `decision` e `decided_ts` sono `None` finche' il turno non e'
-    # deciso.
-    #
-    # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
-    # (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
-    # QUANTO il piano ha avuto per rispondere, e quel numero e'
-    # `deadline_ts - created_ts` -- misurato, non il valore corrente
-    # dell'archivio, che l'utente puo' aver cambiato mentre il turno era in
-    # volo. Additivo: nessun lettore esistente pinna l'insieme delle chiavi.
+def _row(r, archive: str) -> dict | None:
+    """Una riga della coda, in una forma sola; `None` se non si legge.
+
+    **Una forma sola** per ogni lettura della coda (D-62, Tappa 8): `get` e
+    `latest` leggono la stessa riga con due chiavi diverse, e fino a qui
+    `decided_ts` usciva solo da `latest` -- la fondamenta 3 rotta dentro un
+    file solo. `decision` e `decided_ts` sono `None` finche' il turno non e'
+    deciso.
+
+    `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
+    (Task 14): chi ripiega alla scadenza registra nel registro degli esiti
+    QUANTO il piano ha avuto per rispondere, e quel numero e'
+    `deadline_ts - created_ts` -- misurato, non il valore corrente
+    dell'archivio, che l'utente puo' aver cambiato mentre il turno era in
+    volo.
+
+    **Il contesto si scioglie a ogni lettura, ed e' voluto** (D-62,
+    Chiusura). Per un turno in volo porta il nucleo, e il poll della chat lo
+    rilegge ogni 3,5 s: misurato il 13/10/2026, `json.loads` di un contesto
+    di 10.862 caratteri (il nucleo della prima domanda della batteria del
+    13/10 era di 8.503) costa 14 microsecondi, e 73 a 100.000. Una seconda
+    forma della riga senza `context` costerebbe la fondamenta 3 per
+    risparmiare quello.
+
+    **Una riga col corpo JSON guasto non si legge** (C-68, Chiusura): la
+    guardia e' quella di ogni archivio (`storage.json_column`), che la dice
+    nel log una volta sola. Chi chiama la tratta come assente.
+    """
+    bodies = {column: json_column(r[column], archive=archive,
+                                  table="reasoning_jobs", key=r["job_id"])
+             for column in ("wake_json", "context_json", "decision_json")}
+    if any(body is UNREADABLE for body in bodies.values()):
+        return None
     return {"job_id": r["job_id"], "kind": r["kind"], "status": r["status"],
-            "nonce": r["nonce"], "wake": json.loads(r["wake_json"]),
-            "context": json.loads(r["context_json"]),
+            "nonce": r["nonce"], "wake": bodies["wake_json"],
+            "context": bodies["context_json"],
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
             "priority": r["priority"],
             "thread": thread_from_columns(r["subject_key"], r["entry_point"]),
-            "decision": json.loads(r["decision_json"]) if r["decision_json"] else None,
+            "decision": bodies["decision_json"],
             "decided_ts": r["decided_ts"]}
+
 
 def _migration_2(conn) -> None:
     """Versione 2 (23/09/2026, reperto C-6): la colonna della consegna.
@@ -245,7 +282,7 @@ class ReasoningQueue:
             self._conn.execute(
                 "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,"
                 "status,deadline_ts,created_ts,subject_key,entry_point,priority) "
-                "VALUES(?,?,?,?, 'pending', ?, ?, ?, ?, ?)",
+                f"VALUES(?,?,?,?, '{JOB_PENDING}', ?, ?, ?, ?, ?)",
                 (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
                  *thread_params(thread), int(priority)))
             self._conn.commit()
@@ -260,18 +297,32 @@ class ReasoningQueue:
         chiude `sweep_expired`, e servirlo vorrebbe dire pagare una risposta
         che `submit` rifiutera'."""
         with self._lock:
-            r = self._conn.execute(
-                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status='pending' AND deadline_ts > ? "
-                "ORDER BY priority DESC, created_ts ASC, id ASC LIMIT 1",
-                (now,)).fetchone()
-            if r is None:
-                return None
+            while True:
+                r = self._conn.execute(
+                    f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status='{JOB_PENDING}' "
+                    "AND deadline_ts > ? "
+                    "ORDER BY priority DESC, created_ts ASC, id ASC LIMIT 1",
+                    (now,)).fetchone()
+                if r is None:
+                    return None
+                out = _row(r, self.archive_name)
+                if out is not None:
+                    break
+                # Una riga che non si legge non si puo' servire (C-68): si
+                # chiude, e si guarda la successiva. Tornare `None` qui
+                # direbbe al lavoratore «coda vuota», e lo farebbe dormire
+                # fino al prossimo accodamento con un turno buono in attesa.
+                self._conn.execute(
+                    f"UPDATE reasoning_jobs SET status='{JOB_FAILED}', "
+                    "context_json='{}' WHERE job_id=?", (r["job_id"],))
+                self._conn.commit()
             nonce = secrets.token_urlsafe(16)
             self._conn.execute(
-                "UPDATE reasoning_jobs SET status='claimed', nonce=?, claimed_ts=? WHERE job_id=?",
+                f"UPDATE reasoning_jobs SET status='{JOB_CLAIMED}', nonce=?, claimed_ts=? "
+                "WHERE job_id=?",
                 (nonce, now, r["job_id"]))
             self._conn.commit()
-        out = _row(r); out["nonce"] = nonce; out["status"] = "claimed"
+        out["nonce"] = nonce; out["status"] = JOB_CLAIMED
         return out
 
     # Silenzio dichiarato (3) della fetta "il ponte riceve il nucleo" (parita'
@@ -306,11 +357,12 @@ class ReasoningQueue:
             r = self._conn.execute(
                 f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=?", (job_id,)
             ).fetchone()
-            if (r is None or r["status"] != "claimed" or r["nonce"] != nonce
+            if (r is None or r["status"] != JOB_CLAIMED or r["nonce"] != nonce
                     or r["deadline_ts"] <= now):
                 return False
             self._conn.execute(
-                "UPDATE reasoning_jobs SET status='decided', decided_ts=?, decision_json=?, "
+                f"UPDATE reasoning_jobs SET status='{JOB_DECIDED}', decided_ts=?, "
+                "decision_json=?, "
                 "nonce=NULL, context_json='{}' WHERE job_id=?",
                 (now, json.dumps(decision), job_id))
             self._conn.commit()
@@ -333,15 +385,19 @@ class ReasoningQueue:
         # dopo, come dimostra `get(job_id)` chiamato di nuovo.
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status IN ('pending','claimed') "
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE status IN {_sql_in(JOB_WAITING)} "
                 "AND deadline_ts <= ?",
                 (now,)).fetchall()
             for r in rows:
                 self._conn.execute(
-                    "UPDATE reasoning_jobs SET status='expired', context_json='{}' WHERE job_id=?",
+                    f"UPDATE reasoning_jobs SET status='{JOB_EXPIRED}', context_json='{{}}' "
+                    "WHERE job_id=?",
                     (r["job_id"],))
             self._conn.commit()
-        return [_row(r) for r in rows]
+        # Una riga guasta si chiude come le altre, e chi legge l'elenco la
+        # salta (C-68).
+        jobs = (_row(r, self.archive_name) for r in rows)
+        return [job for job in jobs if job is not None]
 
     # ── Il ripiego: da qui il ponte smette di essere un bivio ──────────────
     #
@@ -388,16 +444,17 @@ class ReasoningQueue:
         with self._lock:
             r = self._conn.execute(
                 f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
-                "AND status IN ('pending','claimed') AND deadline_ts <= ?",
+                f"AND status IN {_sql_in(JOB_WAITING)} AND deadline_ts <= ?",
                 (job_id, now)).fetchone()
-            if r is None:
+            out = None if r is None else _row(r, self.archive_name)
+            if out is None:
+                # Una riga guasta non si ripiega (C-68): la chiude la spazzata.
                 return None
             self._conn.execute(
-                "UPDATE reasoning_jobs SET status='ripiego', nonce=NULL, "
+                f"UPDATE reasoning_jobs SET status='{JOB_DOWNGRADE}', nonce=NULL, "
                 "claimed_ts=? WHERE job_id=?", (now, job_id))
             self._conn.commit()
-        out = _row(r)
-        out["status"] = "ripiego"
+        out["status"] = JOB_DOWNGRADE
         out["nonce"] = None
         return out
 
@@ -410,8 +467,9 @@ class ReasoningQueue:
         reclamo e' gia' avvenuto, ed e' lui la mutua esclusione."""
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE reasoning_jobs SET status='decided', decided_ts=?, "
-                "decision_json=?, context_json='{}' WHERE job_id=? AND status='ripiego'",
+                f"UPDATE reasoning_jobs SET status='{JOB_DECIDED}', decided_ts=?, "
+                f"decision_json=?, context_json='{{}}' WHERE job_id=? "
+                f"AND status='{JOB_DOWNGRADE}'",
                 (now, json.dumps(decision), job_id))
             self._conn.commit()
             return cur.rowcount > 0
@@ -431,8 +489,8 @@ class ReasoningQueue:
         modulo non ha bisogno di conoscere ne' l'archivio ne' un orologio."""
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE reasoning_jobs SET status='failed', context_json='{}' "
-                "WHERE status='ripiego' AND claimed_ts <= ?", (before_ts,))
+                f"UPDATE reasoning_jobs SET status='{JOB_FAILED}', context_json='{{}}' "
+                f"WHERE status='{JOB_DOWNGRADE}' AND claimed_ts <= ?", (before_ts,))
             self._conn.commit()
             return cur.rowcount
 
@@ -483,14 +541,34 @@ class ReasoningQueue:
         # riconsiderazione, quindi senza questo istante lo stesso turno storto
         # verrebbe riletto e riannotato a ogni giro (rilievo della review
         # indipendente, 11/09/2026). Lo porta `_row`, per ogni lettura.
-        return None if r is None else _row(r)
+        return None if r is None else _row(r, self.archive_name)
+
+    def latest_if_decided(self, kind: str, *, wake_key: str | None = None,
+                          wake_value: str | None = None) -> dict | None:
+        """L'ultimo turno di quella specie (`latest`), **solo se e' deciso**.
+
+        La domanda con cui ogni raccoglitore di un attore comincia (D-08,
+        Chiusura): c'e' una risposta da raccogliere? Era scritta quattro volte
+        -- `latest` e poi `status != "decided"` -- in `server.py` (analista,
+        ricette, osservatore) e in `mind/proposer_round._collect`.
+
+        **L'ultimo e basta, non l'ultimo deciso.** Se l'ultimo turno e' ancora
+        in volo la risposta e' `None`, anche se uno piu' vecchio e' deciso:
+        quello e' stato superato da chi ha riaccodato, e rileggerlo
+        applicherebbe una risposta vecchia (il commento di `latest`).
+
+        Cosa vuol dire «gia' letto» resta a ogni raccoglitore: ognuno lo legge
+        nella traccia del suo archivio (l'analisi del giorno, il sapere del
+        dispositivo, i tentativi dell'osservatore), e non sono copie."""
+        turn = self.latest(kind, wake_key=wake_key, wake_value=wake_value)
+        return turn if turn is not None and turn["status"] == JOB_DECIDED else None
 
     def get(self, job_id: str) -> dict | None:
         with self._lock:
             r = self._conn.execute(
                 f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=?", (job_id,)
             ).fetchone()
-        return None if r is None else _row(r)
+        return None if r is None else _row(r, self.archive_name)
 
     def has_pending_chat(self, thread: ChatThread, now: float | None = None) -> bool:
         """True se QUESTO filo ha gia' un kind="chat" in volo (status
@@ -537,8 +615,8 @@ class ReasoningQueue:
             row = self._conn.execute(
                 "SELECT 1 FROM reasoning_jobs "
                 f"WHERE kind='chat' AND {thread_condition()} AND "
-                "(status='ripiego' OR "
-                "(status IN ('pending','claimed') AND deadline_ts > ?)) LIMIT 1",
+                f"(status='{JOB_DOWNGRADE}' OR "
+                f"(status IN {_sql_in(JOB_WAITING)} AND deadline_ts > ?)) LIMIT 1",
                 (*thread_params(thread), ts)).fetchone()
         return row is not None
 
@@ -551,9 +629,10 @@ class ReasoningQueue:
         nessuno il catalogo del suo mestiere (attori, Task 3.6)."""
         with self._lock:
             r = self._conn.execute(
-                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=? AND status='claimed'",
+                f"SELECT {_COLUMNS} FROM reasoning_jobs WHERE job_id=? "
+                f"AND status='{JOB_CLAIMED}'",
                 (job_id,)).fetchone()
-        return _row(r) if r is not None else None
+        return None if r is None else _row(r, self.archive_name)
 
     def claimed_chat(self, job_id: str) -> dict | None:
         """Il job SOLO se e' una chat presa in carico (`claimed`), altrimenti

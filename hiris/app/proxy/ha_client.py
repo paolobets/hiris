@@ -165,6 +165,16 @@ MAX_CALENDAR_EVENTS = 2000
 
 logger = logging.getLogger(__name__)
 
+#: Il Supervisor, dentro la rete dell'add-on. Home Assistant sta sotto di lui
+#: (`http://supervisor/core`); qui si chiede solo cio' che sa il Supervisor
+#: stesso (`own_slug`).
+SUPERVISOR_URL = "http://supervisor"
+
+#: La forma di uno slug del Supervisor (`6354e165_hiris` sulla casa, 27/09/2026).
+#: Si usa con `fullmatch`, non con `match` e `^...$`: `$` accetta anche un
+#: a-capo finale, e `"6354e165_hiris\n"` passerebbe.
+SLUG_SHAPE = re.compile(r"[a-z0-9_]+")
+
 # Le cause di un guasto di lettura (decisione D3 del 03/10/2026, A-29/A-30).
 # Prima «Home Assistant non ha risposto» si diceva in nove modi e otto forme:
 # un'eccezione, `{}`, `None`, «risposta in forma inattesa» per una connessione
@@ -453,7 +463,7 @@ class HAClient:
         #: si accendeva una volta e non si spegneva mai). E' il segno che il
         #: nucleo di Home Assistant risponde: lo aspetta l'avvio prima di
         #: leggere la casa (D2 della Tappa 2), e chi deve fare UNA chiamata
-        #: all'avvio (`panel_visibility`) -- l'add-on parte prima del nucleo
+        #: all'avvio (`action/installation.py`) -- l'add-on parte prima del nucleo
         #: (`startup: services`).
         self.ws_ready = asyncio.Event()
         #: Le connessioni autenticate finora: la prima non avvisa «riconnessione».
@@ -477,45 +487,55 @@ class HAClient:
         if self._session:
             await self._session.close()
 
-    async def _rest_get(self, path: str) -> dict:
-        """L'UNICA lettura REST verso Home Assistant: `GET <base><path>` sulla
-        sessione del client. Rende `{"corpo": json}` oppure la busta del
-        guasto, e non solleva: uno stato diverso da 200 e' un rifiuto (col suo
-        numero in `codice`), un corpo che non e' JSON e' una forma, ogni altro
-        guasto del trasporto e' un silenzio.
+    async def _rest_get(self, path: str, *, base: str | None = None) -> dict:
+        """L'UNICA lettura REST verso Home Assistant e il Supervisor: `GET
+        <base><path>` sulla sessione del client. Rende `{"corpo": json}`
+        oppure la busta del guasto, e non solleva: uno stato diverso da 200 e'
+        un rifiuto (col suo numero in `codice`), un corpo che non e' JSON e'
+        una forma, ogni altro guasto del trasporto e' un silenzio.
+
+        `base` e' l'indirizzo di Home Assistant se non si dice altro; il solo
+        altro e' `SUPERVISOR_URL` (`own_slug`, E-06).
 
         Le tre primitive della configurazione (`read_configuration`,
         `save_configuration`, `delete_configuration`) e `call_service` non
         passano di qui: sono il canale delle scritture, e leggono il motivo
         di un rifiuto dal corpo (`_http_reason`). La busta e' la stessa."""
+        # Chi ha risposto si dice col suo nome: un rifiuto del Supervisor
+        # detto «Home Assistant» manderebbe a cercare nel sistema sbagliato
+        # (giro 148).
+        who = "il Supervisor" if base == SUPERVISOR_URL else "Home Assistant"
         try:
-            async with self._session.get(f"{self._base_url}{path}") as resp:
+            async with self._session.get(f"{base or self._base_url}{path}") as resp:
                 if resp.status != 200:
-                    return _failure(REFUSAL, f"Home Assistant ha risposto {resp.status}",
+                    return _failure(REFUSAL, f"{who} ha risposto {resp.status}",
                                     resp.status)
                 try:
                     return {"corpo": await resp.json()}
                 except (aiohttp.ContentTypeError, ValueError):
-                    return _failure(SHAPE, "Home Assistant ha risposto con un corpo "
+                    return _failure(SHAPE, f"{who} ha risposto con un corpo "
                                            "che non e' JSON")
         except Exception as exc:
             logger.debug("lettura REST %s non riuscita: %s", path.split("?")[0], exc)
             return _silence(exc)
 
     @cost(rest=1)
-    async def get_states(self, entity_ids: list[str]) -> list[dict] | dict:
-        """Gli stati della casa, tutti (`[]`) o quelli chiesti: una lista, o la
-        busta del guasto. Non solleva (D3, 03/10/2026: prima sollevava, unico
-        con `get_services` fra le letture)."""
+    async def get_states(self) -> list[dict] | dict:
+        """Gli stati della casa, tutti: una lista, o la busta del guasto. Non
+        solleva (D3, 03/10/2026: prima sollevava, unico con `get_services` fra
+        le letture).
+
+        Fino al 13/10/2026 prendeva gli `entity_ids` da tenere, e filtrava qui
+        dopo aver letto l'intero `/api/states`: nessun chiamante di produzione
+        lo usava (passavano tutti `[]`), e chi vuole uno stato per id lo chiede
+        allo specchio (`EntityCache.get`). Il ramo e' uscito (M-55, F1 della
+        Chiusura)."""
         reply = await self._rest_get("/api/states")
         if "errore" in reply:
             return reply
         all_states = reply["corpo"]
         if not isinstance(all_states, list):
             return _failure(SHAPE, "gli stati non sono arrivati come elenco")
-        if entity_ids:
-            return [s for s in all_states
-                    if isinstance(s, dict) and s.get("entity_id") in entity_ids]
         return all_states
 
     @cost(rest=1)
@@ -939,6 +959,59 @@ class HAClient:
         return occurrence
 
     @cost(ws=1)
+    async def lovelace_resources(self) -> dict:
+        """Le risorse Lovelace della casa: `{"risorse": [...]}` oppure il
+        motivo. Un solo lettore, la disinstallazione della vecchia card
+        (`action/installation.py`): le risorse le ha scritte l'add-on fino
+        alla fetta E5, e chi ha installato disinstalla. La forma di ogni
+        risorsa (`id`, `url`, `type`) la legge chi chiama."""
+        (msg,) = await self._ws_send([("lovelace/resources", None)])
+        occurrence = self._ws_occurrence(msg, "risorse")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["risorse"], list):
+            return _failure(SHAPE, "l'elenco delle risorse Lovelace non è arrivato "
+                                   "come elenco")
+        return occurrence
+
+    @cost(ws=1)
+    async def delete_lovelace_resource(self, resource_id: str) -> dict:
+        """Toglie UNA risorsa Lovelace, per `id`. Primitiva nuda: chi decide
+        quale togliere e' la disinstallazione della card, che riconosce solo
+        le risorse che l'add-on stesso aveva registrato."""
+        (msg,) = await self._ws_send([("lovelace/resources/delete",
+                                       {"resource_id": resource_id})])
+        occurrence = self._ws_occurrence(msg, "_")
+        return occurrence if "errore" in occurrence else {"cancellato": True}
+
+    @cost(rest=1)
+    async def own_slug(self) -> dict:
+        """Lo slug di HIRIS secondo il Supervisor: `{"slug": ...}` oppure il
+        motivo. Serve alla voce di menu, che si scrive per `url_path`.
+
+        `GET /addons/self/info` risolve l'add-on che chiama (Supervisor
+        2026.09.2, `supervisor/api/apps.py::get_app_for_request`, verificato il
+        27/09/2026) e risponde `{"result": "ok", "data": {...}}`. Il token
+        della sessione e' gia' quello del Supervisor (`SUPERVISOR_TOKEN`): fino
+        alla Chiusura (E-06) questa domanda apriva un client suo, in
+        `panel_visibility.read_own_slug`.
+
+        **Il corpo non esce mai da qui**: `data` porta anche le opzioni
+        dell'add-on, chiavi API comprese. Esce solo lo slug, e solo se ha la
+        forma di uno slug (`SLUG_SHAPE`): arriva da una risposta HTTP, e un
+        valore strano deve fermare il comando, non viaggiare fino a HA.
+        """
+        read = await self._rest_get("/addons/self/info", base=SUPERVISOR_URL)
+        if "errore" in read:
+            return read
+        body = read["corpo"]
+        data = body.get("data") if isinstance(body, dict) else None
+        slug = data.get("slug") if isinstance(data, dict) else None
+        if not isinstance(slug, str) or not SLUG_SHAPE.fullmatch(slug):
+            return _failure(SHAPE, "il Supervisor non ha dato uno slug di forma attesa")
+        return {"slug": slug}
+
+    @cost(ws=1)
     async def create_label(self, name: str) -> dict:
         """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
         QUI, nel registro di Home Assistant, e non in una tabella nostra: e'
@@ -1188,10 +1261,20 @@ class HAClient:
         oltre un certo numero di id non e' una porta, e' una trappola per chi
         la chiama. Il costo dichiarato (`rest=1`) e' quello di UN pezzo, non
         della chiamata: **una richiesta per pezzo di identificatori**
-        (`_history_chunks`, uno ogni `_HISTORY_FILTER_MAX` byte di filtro),
-        partite insieme. `@cost` non sa dire un costo variabile, e la prova
-        (`tests/test_ha_client_invio.py`) chiama con un identificatore solo.
-        Nessun identificatore, nessuna richiesta: le serie sono vuote.
+        (`_history_chunks`, uno ogni `_HISTORY_FILTER_MAX` byte di filtro).
+        `@cost` non sa dire un costo variabile: la prova del costo
+        (`tests/test_ha_client_invio.py`) chiama con un identificatore solo, e
+        quella dei pezzi (`tests/test_ha_client_time_reads.py`) conta una
+        richiesta per pezzo. Nessun identificatore, nessuna richiesta: le serie
+        sono vuote.
+
+        **I pezzi partono uno alla volta** (S-33, F1 della Chiusura,
+        13/10/2026). Fino ad allora partivano tutti insieme con
+        `asyncio.gather`, senza un tetto: una domanda su tutta la casa erano
+        tante richieste in parallelo verso Home Assistant quanti i pezzi. Un
+        tetto di parallelismo sarebbe stato un numero nostro, non misurato; in
+        fila il tetto e' uno, e il primo pezzo che fallisce ferma gli altri,
+        perche' il suo guasto e' gia' il guasto di tutti (qui sotto).
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
         bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso) ed e' vero se il cap
@@ -1229,11 +1312,10 @@ class HAClient:
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
             return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
-        answers = await asyncio.gather(*(self._history_piece(chunk, from_iso, to_iso)
-                                         for chunk in _history_chunks(entities)))
         series: dict[str, list[dict]] = {}
         truncated = False
-        for answer in answers:
+        for chunk in _history_chunks(entities):
+            answer = await self._history_piece(chunk, from_iso, to_iso)
             if "errore" in answer:
                 return answer
             series.update(answer["serie"])
@@ -1582,7 +1664,6 @@ class HAClient:
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
-        token = self._headers["Authorization"].removeprefix("Bearer ")
         types = [t for t, _ in commands]
         try:
             async with (
@@ -1593,13 +1674,13 @@ class HAClient:
                 # contano dal vivo le connessioni che HIRIS apre.
                 logger.debug("_ws_send: una connessione, %d comandi (%s)",
                              len(commands), types)
-                handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                if handshake.get("type") == "auth_required":
-                    await ws.send_json({"type": "auth", "access_token": token})
-                    auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    if auth.get("type") != "auth_ok":
-                        logger.warning("HA WS auth failed in _ws_send(%s)", types)
-                        return replies
+                # L'autenticazione e' quella del WebSocket di lunga vita
+                # (`_authenticate`): fino al 13/10/2026 qui ce n'era una
+                # seconda copia, riga per riga (A-28, F1 della Chiusura).
+                refusal = await self._authenticate(ws)
+                if refusal is not None:
+                    logger.warning("HA WS auth failed in _ws_send(%s): %s", types, refusal)
+                    return replies
                 for msg_id, (msg_type, extra) in enumerate(commands, start=1):
                     payload = {"id": msg_id, "type": msg_type}
                     if extra:

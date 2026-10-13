@@ -23,6 +23,7 @@ from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_proposals import handle_proposal_redo
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.reasoning.queue import ReasoningQueue
 
 
 class _Modello:
@@ -47,6 +48,9 @@ class _Registro:
 
 
 class _Coda:
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
     def count_exchanges_today(self):
         return 0
 

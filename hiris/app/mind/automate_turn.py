@@ -271,20 +271,21 @@ def settle(app, ident: str, exchange: str | None, answer, *,
     return "non_automatizzabile"
 
 
-def deliver(app, job: dict | None, decision: dict) -> str:
+def deliver(app, job: dict | None, decision: dict) -> None:
     """La consegna di un turno del ponte (`reasoning/consegna.py`): la
     proposta viene dalla sveglia, il turno e la risposta dalla decisione. La
     maschera dei nomi si rilegge dalla casa, come fa il proponente quando
-    raccoglie (`proposer_round._collect`)."""
+    raccoglie (`proposer_round._collect`). Non torna niente: l'esito sta
+    nella riga che `settle` scrive, e la consegna non lo legge."""
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
 
     home_space = app.get("home_space_store")
     presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
                 if home_space is not None else None)
-    return settle(app, ((job or {}).get("wake") or {}).get("proposta") or "",
-                  decision.get("exchange_id"), decision.get("reply"),
-                  presence=presence)
+    settle(app, ((job or {}).get("wake") or {}).get("proposta") or "",
+           decision.get("exchange_id"), decision.get("reply"),
+           presence=presence)
 
 
 def _built_in(app, exchange: str | None) -> str | None:

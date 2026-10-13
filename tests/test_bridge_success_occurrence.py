@@ -31,7 +31,7 @@ from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
 
 # Fetta «le chat divise»: un job di chat porta il filo di chi ha scritto, e
-# senza filo la consegna non scrive (`chat_reply_senza_filo`).
+# senza filo la consegna non scrive (prova in `tests/test_chat_divise.py`).
 T = ChatThread("persona:paolo", "pannello")
 
 
@@ -71,7 +71,7 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
         assert claimed["job_id"] == "J1"
         esito_consegna = await consegna(app, "J1", claimed["nonce"],
                                         {"reply": "ecco la risposta del ponte"}, 10.0)
-        assert esito_consegna == "chat_reply_recorded"
+        assert esito_consegna is True
 
     esito = registry.occurrence("subscription")
     assert esito is not None, (
@@ -118,7 +118,7 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
         assert claimed["job_id"] == "J2"
         esito_consegna = await consegna(app, "J2", claimed["nonce"],
                                         {"reply": "[errore runner rc=1] boom"}, 10.0)
-        assert esito_consegna == "chat_reply_recorded"
+        assert esito_consegna is True
 
     esito = registry.occurrence("subscription")
     assert esito is not None, (

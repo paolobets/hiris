@@ -34,7 +34,6 @@ from __future__ import annotations
 import logging
 import time
 
-from ..mind.observer import SCOPE_TURN_KIND
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
 from ..providers import SUBSCRIPTION
@@ -43,19 +42,27 @@ logger = logging.getLogger(__name__)
 
 
 async def consegna(app, job_id: str, nonce: str, decision: dict,
-                  now: float) -> str | None:
+                  now: float) -> bool:
     """Consegna la decisione di un turno preso dalla coda.
 
-    `None` quando la coda la rifiuta (nonce sbagliato, turno non piu' preso in
-    carico o gia' scaduto: `ReasoningQueue.submit`) -- e allora non succede
-    nient'altro. Altrimenti l'esito della consegna, una parola sola.
+    `False` quando la coda la rifiuta (nonce sbagliato, turno non piu' preso
+    in carico o gia' scaduto: `ReasoningQueue.submit`) -- e allora non
+    succede nient'altro. `True` quando la decisione e' registrata, qualunque
+    cosa sia successa dopo.
+
+    **Torna un si' o un no, non una parola d'esito** (M-72, Chiusura). Fino
+    qui ogni ramo produceva la sua parola (`recorded`, `chat_reply_*`,
+    `promessa_*`, `automazione_*`, `rifalla_*`, `error`), e l'unico lettore,
+    `agent/runner.serve`, guardava solo se fosse `None`: otto valori che
+    leggevano soltanto le prove, e una `error` che usciva come consegna
+    riuscita. Cio' che va saputo di un ramo lo dice il ramo stesso, nel
+    registro dell'add-on, e il resto lo dice l'archivio che il ramo scrive.
     """
     q = app.get("reasoning_queue")
     decision = decision or {}
     if q is None or not q.submit(job_id, nonce, decision, now):
-        return None
+        return False
     job = q.get(job_id)
-    outcome = "recorded"
 
     if (job or {}).get("kind") == "promessa":
         # Fetta «le promesse seguono la catena» (22/08/2026). La consegna di un
@@ -73,7 +80,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # restare su disco). `wake` no, ed e' per questo che
         # `keeper/exchange._enqueue_to_bridge` ce lo mette.
         from ..keeper.exchange import _senza_conclusione
-        from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, fail_unfinished
+        from ..keeper.outcome import UNKNOWN, fail_unfinished
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
         reply = decision.get("reply")
@@ -94,12 +101,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
             logger.warning(
                 "consegna di un turno di promessa senza promessa (job_id=%s, "
                 "id=%r): non c'e' niente da chiudere", job_id, ident)
-            outcome = "promessa_sconosciuta"
-        elif closed == ALREADY_CLOSED:
-            outcome = "promessa_gia_conclusa"
-        else:
-            outcome = "promessa_senza_conclusione"
-        return outcome
+        return True
 
     if (job or {}).get("kind") == "chat":
         # Chat-via-abbonamento (Slice 4b): a chat job's submit writes the
@@ -123,22 +125,18 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
                 "consegna di un turno di chat senza filo (job_id=%s): accodato "
                 "prima delle chat divise, la risposta non si scrive in nessuna "
                 "cronologia", job_id)
-            outcome = "chat_reply_senza_filo"
         elif submit_chat_reply is not None and reply:
             try:
                 await submit_chat_reply(reply, thread)
-                outcome = "chat_reply_recorded"
             except Exception:
                 logger.exception("submit_chat_reply failed")
-                outcome = "error"
-        else:
-            outcome = "chat_reply_skipped"
-        return outcome
+        return True
 
     from ..mind import automate_turn
 
     if (job or {}).get("kind") == automate_turn.AUTOMATE_TURN_KIND:
-        return "automazione_" + automate_turn.deliver(app, job, decision)
+        automate_turn.deliver(app, job, decision)
+        return True
 
     if (job or {}).get("kind") == PROPOSAL_TURN_KIND \
             and ((job or {}).get("wake") or {}).get(REDO_KEY):
@@ -149,28 +147,21 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         from ..mind.proposal_redo import deliver
 
         try:
-            return "rifalla_" + (deliver(app, job, decision) or "ignorato")
+            deliver(app, job, decision)
         except Exception:
             logger.exception("consegna di un «Rifalla» non riuscita (job_id=%s)",
                              job_id)
-            return "error"
+        return True
 
     # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
     # degli attori. Non c'e' niente da attuare -- la decisione resta
-    # "recorded" -- e la risposta se la va a prendere dalla coda il giro
-    # periodico che ha accodato il turno (`_collect_scope_turn`,
-    # `_collect_recipe_turn`, `_collect_analyst_turn`, `_collect_actuator_turn`
-    # in `server.py`).
-    #
-    # Il log qui sotto tace solo per lo scope (dall'11/09/2026). Per le altre
-    # specie degli attori scatta a ogni consegna, con una frase su un
-    # meccanismo -- la revisione olistica -- uscito da mesi.
-    if (job or {}).get("kind") != SCOPE_TURN_KIND:
-        logger.warning(
-            "reasoning submit: nessun execute_decision wired -- l'attuazione "
-            "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
-            "decisione solo registrata", job_id, (job or {}).get("kind"))
-    return outcome
+    # registrata -- e la risposta se la va a prendere dalla coda il giro
+    # periodico che ha accodato il turno (i raccoglitori in `server.py` e
+    # `mind/proposer_round._collect`). E' la consegna normale di un attore, e
+    # non si annota: fino alla Chiusura (S-23) qui scattava un WARNING a ogni
+    # consegna che non fosse dell'osservatore, su un meccanismo -- la
+    # revisione olistica -- uscito da mesi.
+    return True
 
 
 def close_expired_promise(app, job: dict) -> None:
