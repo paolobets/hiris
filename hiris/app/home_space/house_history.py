@@ -48,6 +48,7 @@ from .historian import (
 )
 from .house_query import (
     HouseFilters,
+    behavior_kinds,
     envelope,
     page_rows,
     parse_filters,
@@ -133,7 +134,7 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
             return ("cosa=esecuzioni vale per automazioni e script: dominio accetta "
                     "automation o script")
         reference = str(a.get("riferimento") or "")
-        if reference and reference.split(".", 1)[0] not in BEHAVIOR_DOMAINS:
+        if reference and ha_vocabulary.domain_of(reference) not in BEHAVIOR_DOMAINS:
             return (f"«{reference}» non e' un'automazione ne' uno script: "
                     "cosa=esecuzioni vale solo per loro")
     return None
@@ -336,8 +337,7 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float,
     non taglia nulla, salvo `limite` 0 (solo il conto: nessuno da leggere)."""
     f = query.who
     if query.kind == "esecuzioni":
-        kinds = ((BEHAVIOR_DOMAINS[f.domain],) if f.domain
-                 else ("automazione", "script"))
+        kinds = behavior_kinds(f.domain)
         f = replace(f, domain=None)
     else:
         kinds = ("entita",)
@@ -1123,7 +1123,7 @@ def _entities_in(node) -> list[str]:
 def _moving_in(config) -> list[str]:
     """Le entita' che si spostano nominate OVUNQUE nella configurazione."""
     if isinstance(config, str):
-        return [config] if config.split(".", 1)[0] in MOVING_DOMAINS else []
+        return [config] if ha_vocabulary.domain_of(config) in MOVING_DOMAINS else []
     items = config.values() if isinstance(config, dict) else (
         config if isinstance(config, list) else ())
     return [found for item in items for found in _moving_in(item)]
@@ -1146,7 +1146,7 @@ def _redact_condition_results(trace: dict) -> dict:
     cleaned = {}
     for path, elements in steps.items():
         owners = _entities_in(_config_at(config, str(path)))
-        moving = ([e for e in owners if e.split(".", 1)[0] in MOVING_DOMAINS]
+        moving = ([e for e in owners if ha_vocabulary.domain_of(e) in MOVING_DOMAINS]
                   if owners else anyone_moving)
         if not moving or not isinstance(elements, list):
             cleaned[path] = elements
