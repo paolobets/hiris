@@ -48,13 +48,6 @@ FROM_OUTSIDE: dict[str, str] = {
     "HIRIS_AGENT_MODE": (
         "valvola delle prove: `dry-run` fa girare il lavoratore del ponte "
         "senza la CLI (`test_agent_worker_startup.py`)"),
-    "MAX_TOOL_ITERATIONS": (
-        "da togliere: copia del tetto di `claude_runner.MAX_TOOL_ITERATIONS` "
-        "in `openai_compat_runner.py`, file di F3a (D-10); patch in "
-        "chiusura/f5-patch"),
-    "OLLAMA_MAX_TOOL_ITERATIONS": (
-        "da togliere: tetto di Ollama in `openai_compat_runner.py`, file di "
-        "F3a (D-10); patch in chiusura/f5-patch"),
 }
 
 

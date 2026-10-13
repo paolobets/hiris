@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import time
 from contextlib import suppress
@@ -13,6 +12,7 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
+    MAX_TOOL_ITERATIONS,
     RunnerBackendError,
     _current_tool_calls,
     _current_tool_leaked,
@@ -107,15 +107,14 @@ def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
             thinking_budget, backend_noun,
         )
 
-# fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
-# claude_runner.MAX_TOOL_ITERATIONS -- 10 round-trip morivano garantiti
-# contro 8 stanze da guardare una a una, senza margine per il giro finale
-# della risposta. Sale a 50.
-MAX_TOOL_ITERATIONS = int(os.environ.get("MAX_TOOL_ITERATIONS", "50"))
+# Il tetto degli strumenti e' quello di `claude_runner.MAX_TOOL_ITERATIONS`,
+# importato: fino alla Chiusura (F5, F-10, 13/10/2026) qui ce n'era una copia
+# letta da `MAX_TOOL_ITERATIONS` e `OLLAMA_MAX_TOOL_ITERATIONS`, variabili che
+# `run.sh` non esportava -- costanti scritte due volte (D-10).
 # Ollama tende a fare più iterazioni a vuoto; limite ridotto per contenere la
 # latenza. La proporzione resta quella di sempre -- meta' del tetto sincrono
 # (10 -> 5, ora 50 -> 25) -- non un nuovo giudizio su Ollama.
-_OLLAMA_MAX_TOOL_ITERATIONS = int(os.environ.get("OLLAMA_MAX_TOOL_ITERATIONS", "25"))
+_OLLAMA_MAX_TOOL_ITERATIONS = MAX_TOOL_ITERATIONS // 2
 
 
 def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
