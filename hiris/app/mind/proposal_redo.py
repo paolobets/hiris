@@ -212,22 +212,22 @@ async def redo(app, store, proposal: dict, request: str, *,
     return {"strada": route, "ripiego": downgrade, "esito": outcome}
 
 
-def deliver(app, job: dict, decision: dict) -> str | None:
+def deliver(app, job: dict, decision: dict) -> None:
     """La risposta del piano a un «Rifalla», dalla consegna del ponte
-    (`reasoning/consegna.py`). Torna l'esito, o `None` se il turno non e' un
-    rifacimento."""
+    (`reasoning/consegna.py`). Non torna niente: l'esito sta nella riga che
+    `settle` scrive, e la consegna non lo legge."""
     from ..reasoning.queue import turn_answer
 
     wake = job.get("wake") or {}
     ident = wake.get(WAKE_KEY)
     store = app.get("observations")
     if not ident or store is None:
-        return None
+        return
     occurrence = proposer_turn.apply_outcomes(
         [{}], turn_answer({**job, "decision": decision}),
         built=_built_in(app, decision.get("exchange_id")), presence=_presence(app))
-    return settle(app, store, ident, wake.get("richiesta") or "", occurrence,
-                  turn=job["job_id"])
+    settle(app, store, ident, wake.get("richiesta") or "", occurrence,
+           turn=job["job_id"])
 
 
 def settle(app, store, ident: str, request: str, occurrence: dict, *,
