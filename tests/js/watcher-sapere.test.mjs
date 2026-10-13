@@ -251,7 +251,7 @@ test('mount: una correzione di PRIMA mostra il suo autore «proprietario», la d
   // righe scritte prima portano «proprietario», e per loro e' vero.
   const g = giudizio({
     da: 'correzione', chi: 'proprietario', quando_ts: 1787000000,
-    campo: 'accendibile', valore: 'si',
+    campo: 'da_sapere_subito', valore: 'si',
   });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
@@ -503,7 +503,7 @@ test('seam _rendiSapere: il select dell’editor del genere (dentro una riga) ha
 test('mount: «Torna al seme» sposta il focus ad ogni passo — niente focus perso su <body>', async () => {
   // Mutazione che la uccide: nascondere il bottone che ha il focus senza
   // spostarlo altrove (start.hidden/confirmBox.hidden senza .focus()).
-  const g = giudizio({ da: 'correzione', campo: 'accendibile', soggetto: 'light.focus_revert' });
+  const g = giudizio({ da: 'correzione', campo: 'da_sapere_subito', soggetto: 'light.focus_revert' });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -639,7 +639,7 @@ test('seam _rendiSapere: il select del genere porta ESATTAMENTE le 4 opzioni app
 });
 
 test('seam _rendiSapere: «Correggi» non compare su una riga che non è di campo «genere»', () => {
-  const g = giudizio({ campo: 'accendibile', da: 'seme', soggetto: 'switch.no_correggi' });
+  const g = giudizio({ campo: 'da_sapere_subito', da: 'seme', soggetto: 'switch.no_correggi' });
   const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
   const riga = trovaRigaGiudizio(corpo, g.soggetto);
   assert.ok(riga, 'la riga esiste');
@@ -818,8 +818,9 @@ test('i campi dei giudizi: lo stesso insieme in type_judgments.py (JUDGMENT_FIEL
   assert.ok(blocco, 'JUDGMENT_FIELD_NAMES non trovata in type_judgments.py '
     + '(e\' cambiata forma sotto questo test?)');
   const nomiCostanti = blocco[1].split(',').map((s) => s.trim()).filter(Boolean);
-  assert.ok(nomiCostanti.length >= 7, 'attesi almeno sette campi (erano sei prima '
-    + 'del Task 1 di «da sapere subito»): ' + nomiCostanti.join(', '));
+  assert.ok(nomiCostanti.length >= 6, 'attesi almeno sei campi (sette dal Task 1 di '
+    + '«da sapere subito», sei dal 13/10/2026 quando `accendibile` e\' uscito, M-61): '
+    + nomiCostanti.join(', '));
 
   const python = new Set(nomiCostanti.map((nome) => {
     assert.ok(mappa[nome], 'costante non risolta: ' + nome
@@ -845,7 +846,7 @@ test('JUDGMENT_FIELD_GROUPS: ogni gruppo porta un\'etichetta italiana non vuota'
   const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
   assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
   const gruppi = Array.from(m[1].matchAll(/\{\s*campo:\s*'([a-z_]+)',\s*etichetta:\s*'([^']*)'\s*\}/g));
-  assert.ok(gruppi.length >= 7, 'attesi almeno sette gruppi');
+  assert.ok(gruppi.length >= 6, 'attesi almeno sei gruppi (sette fino al 13/10/2026, M-61)');
   for (const [, campo, etichetta] of gruppi) {
     assert.ok(etichetta.trim().length > 0, 'etichetta vuota per il campo: ' + campo);
   }
@@ -907,7 +908,8 @@ test('seam _rendiSapere: la sezione DISEGNA un gruppo per OGNI campo dichiarato,
    rifà la cronaca degli ultimi 22 giorni» dentro «Torna al seme» -- ma la
    cronaca si rifa' solo per i campi che entrano nell'IMPRONTA
    (`type_judgments.CHRONICLE_FIELDS`: `genere` e `riposo`). Per
-   `accendibile`, `lavoro`, `limiti_parametri` e `da_sapere_subito` quelle due
+   `lavoro`, `limiti_parametri` e `da_sapere_subito` (e `accendibile`, finche'
+   c'era) quelle due
    frasi erano una promessa che nessuno mantiene. */
 
 /* I due elenchi si leggono dal SORGENTE e diventano il dato della prova: i
@@ -935,7 +937,6 @@ const VALORE_PER_CAMPO = {
   riposo: '["off"]',
   lavoro: '{"on": "acceso"}',
   limiti_parametri: '{"brightness": {"min": "a", "max": "b"}}',
-  accendibile: 'si',
   da_sapere_subito: 'no',
 };
 
@@ -948,7 +949,7 @@ test('seam _rendiSapere: la frase sulla cronaca compare per TUTTI e SOLI i campi
      Ora e' rossa sul primo campo fuori dall'impronta (allora era `notevole`,
      uscito dai giudizi il 02/10/2026). Ripristinata con l'editor.
 
-     Cosa lasciava passare: il giorno in cui qualcuno corregge `accendibile`, la
+     Cosa lasciava passare: il giorno in cui qualcuno corregge `lavoro`, la
      pagina gli rimostrerebbe la frase falsa e nessuna prova lo direbbe. */
   const impronta = campiDellImpronta();
   assert.ok(impronta.size > 0, 'l\'impronta ha almeno un campo');
@@ -1005,16 +1006,16 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
 
 test('seam _rendiSapere: in «Correzioni» ogni riga dice QUALE campo è', () => {
   /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
-     Corretto da Paolo» vale identica per `accendibile` e per `da_sapere_subito`.
+     Corretto da Paolo» vale identica per `lavoro` e per `da_sapere_subito`.
      Mutazione che la uccide: togliere il campo dalla riga. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [
-      giudizio({ da: 'correzione', campo: 'accendibile', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+      giudizio({ da: 'correzione', campo: 'lavoro', soggetto: 'lock', soggetto_genere: 'tipo', valore: '{"locking": "in chiusura"}' }),
       giudizio({ da: 'correzione', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
     ],
   }));
   const campi = Array.from(corpo.querySelectorAll('.jr-row .jr-field')).map((n) => n.textContent);
-  assert.deepEqual(campi.slice().sort(), ['Accendibile', 'Da sapere subito'],
+  assert.deepEqual(campi.slice().sort(), ['Da sapere subito', 'Lavoro'],
     'le due righe dello stesso soggetto si distinguono per campo');
 });
 
