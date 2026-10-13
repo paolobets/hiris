@@ -230,10 +230,13 @@ test('renderError: la frase di chi chiama e un «Riprova» che rilancia', () => 
   assert.equal(rilanci, 1);
 });
 
-test('nomiRegistriInItaliano: il nome e l\'ambito caduto', () => {
+test('nomiRegistriInItaliano: il nome dal server, l\'ambito caduto, il grezzo se manca', () => {
   loadScripts([COMMON], { html: HTML });
-  assert.deepEqual(nomiRegistriInItaliano(['aree', 'categorie:script', 'ignoto']),
+  const nomi = { aree: 'Aree', categorie: 'Categorie' };
+  assert.deepEqual(nomiRegistriInItaliano(['aree', 'categorie:script', 'ignoto'], nomi),
     ['Aree', 'Categorie (ambito «script»)', 'ignoto']);
+  assert.deepEqual(nomiRegistriInItaliano(['aree'], undefined), ['aree'],
+    'senza la mappa del server resta il nome della tabella, mai un vuoto');
 });
 
 /* ------------------------------------------------------------- il tema */

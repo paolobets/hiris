@@ -85,12 +85,3 @@ test('memory-route.js: la chiave interna `forza`/`grandezza` (PATCH, docs/GLOSSA
   assert.match(src, /r\.grandezza/);
 });
 
-test('«Categorie» resta com\'era: e\' il vocabolario di Home Assistant, non una parola nostra', () => {
-  /* Prima la prova leggeva il TESTO delle due copie della mappa, una in
-     dashboard.js e una in tree-route.js. La mappa vive una volta sola in
-     common.js (registro C-20), e si chiede a lei: e' la stessa che le due
-     pagine leggono. */
-  loadScripts(['common.js'], { html: '<!doctype html><body></body>' });
-  assert.deepEqual(nomiRegistriInItaliano(['etichette', 'categorie', 'integrazioni']),
-    ['Etichette', 'Categorie', 'Integrazioni']);
-});

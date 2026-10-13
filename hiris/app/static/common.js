@@ -247,18 +247,15 @@ function pad2(n) { return n < 10 ? '0' + n : String(n); }
    della tabella e, per le categorie, l'ambito che ha fallito
    (`categorie:script` -- vedi `ha_client.read_registries`): l'ambito NON si
    butta, e' il dettaglio che dice quale delle quattro chiamate e' caduta.
-   La leggono la home e l'albero della casa: prima ne avevano una copia
-   ciascuno, «duplicata di proposito». */
-var NOMI_REGISTRI = {
-  piani: 'Piani', aree: 'Aree', dispositivi: 'Dispositivi', entita: 'Entità',
-  etichette: 'Etichette', categorie: 'Categorie', integrazioni: 'Integrazioni'
-};
-
+   Le parole dei registri le manda il server (`nomi_registri` di
+   `GET /api/home-space`, C-10): qui non se ne tiene una copia, e un registro
+   che la mappa non conosce si legge col suo nome grezzo. La leggono la home
+   e l'albero della casa. */
 // eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
-function nomiRegistriInItaliano(voci) {
+function nomiRegistriInItaliano(voci, nomi) {
   return voci.map(function (entry) {
     var pezzi = String(entry).split(':');
-    var name = NOMI_REGISTRI[pezzi[0]] || pezzi[0];
+    var name = (nomi && nomi[pezzi[0]]) || pezzi[0];
     var scope = pezzi.slice(1).join(':');
     return scope ? name + ' (ambito «' + scope + '»)' : name;
   });

@@ -18,7 +18,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api import servizi
-from hiris.app.api.handlers_home_space import handle_get_home_space
+from hiris.app.api.handlers_home_space import handle_get_home_space, register_names
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.house import _EXCLUDED_KEY
 from hiris.app.home_space.reader import TABLES, HomeSpace
@@ -184,15 +184,45 @@ def test_report_pages_keep_no_scheduler_copy():
 
 
 # -- C-10: i nomi dei registri ------------------------------------------------
-# `NOMI_REGISTRI` (common.js) e' TESTO DI PAGINA -- le parole con cui la home e
-# l'albero nominano i registri -- e resta nel JavaScript: nel server non c'e'
-# una tabella di quelle parole da cui riceverle. Le CHIAVI invece sono un fatto
-# del server, le tabelle dell'anagrafe: un registro nuovo senza la sua parola
-# comparirebbe col nome grezzo, e questa prova lo dice prima.
-# Mutazione eseguita: aggiunta "zone" a `reader.TABLES` -> rossa.
+# Le parole con cui la home e l'albero nominano i registri le manda il server
+# (`nomi_registri` di `GET /api/home-space`), con le chiavi chieste a
+# `reader.TABLES`; la pagina non ne tiene una copia. Supera la decisione del
+# giro 2 del 05/10 (n.6: «restano nel JS, legate da una prova»): D2 della
+# Chiusura vuole un vocabolario chiuso in una casa sola.
+# Mutazioni ESEGUITE (13/10/2026): rimessa in common.js la mappa
+# `NOMI_REGISTRI` -> rossa la seconda; tolto `nomi_registri` dal ramo senza
+# archivio -> rossa la prima.
 
-def test_register_names_cover_reader_tables():
-    assert set(_js_object(_js("common.js"), "NOMI_REGISTRI")) == set(TABLES)
+@pytest.mark.asyncio
+async def test_home_space_route_sends_register_names(aiohttp_client, tmp_path):
+    store = HomeSpace(str(tmp_path))
+    app = web.Application()
+    app["home_space_store"] = store
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    try:
+        body = await (await client.get("/api/home-space")).json()
+    finally:
+        store.close()
+    assert list(body["nomi_registri"]) == list(TABLES)
+    assert body["nomi_registri"] == register_names()
+    # «Categorie» e' la parola di Home Assistant, non una nostra (3.22.3).
+    assert register_names()["categorie"] == "Categorie"
+
+    app = web.Application()
+    app["home_space_store"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    body = await (await client.get("/api/home-space")).json()
+    assert body["nomi_registri"] == register_names()
+
+
+def test_no_page_keeps_the_register_names():
+    words = set(register_names().values())
+    assert len(words) == len(TABLES), "la derivazione non porta piu' i nomi dei registri"
+    copies = [path.name for path in STATIC.rglob("*.js")
+              if all(f"'{w}'" in path.read_text(encoding="utf-8") for w in words)]
+    assert not copies, f"pagine che ricopiano i nomi dei registri: {copies}"
 
 
 # -- C-10: i prefissi dei soggetti di sistema ---------------------------------

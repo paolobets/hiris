@@ -309,5 +309,7 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # 8 dalla Tappa 8 T4 (08/10/2026): le parole degli stati delle costruzioni e
 # delle promesse non hanno piu' una copia in JavaScript (`states.READABLE`,
 # C-10) -- la pagina riceve la frase dalla rotta.
-KNOWN_CEILING = 8
+# 7 dalla Chiusura, F2 (13/10/2026): i nomi dei registri non hanno piu' una
+# copia in common.js -- la pagina li riceve in `nomi_registri` (C-10).
+KNOWN_CEILING = 7
 

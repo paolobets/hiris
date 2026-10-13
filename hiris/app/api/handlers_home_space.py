@@ -21,8 +21,27 @@ from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
+from ..home_space.reader import TABLES
 from ..home_space.render import render_entity
 from ..proxy.state_translations import read_for_house
+
+#: Le parole con cui una persona legge i registri dell'anagrafe (C-10). Stavano
+#: nel JavaScript (`NOMI_REGISTRI`, common.js), legate alle tabelle da una
+#: prova: dalla Chiusura (D2) un vocabolario chiuso ha una casa sola, e la
+#: pagina lo riceve in `nomi_registri`. Le chiavi sono `reader.TABLES`, e
+#: `register_names()` le chiede a lei: un registro nuovo senza la sua parola
+#: esce col nome della tabella, mai vuoto.
+_REGISTER_WORDS = {
+    "piani": "Piani", "aree": "Aree", "dispositivi": "Dispositivi", "entita": "Entità",
+    "etichette": "Etichette", "categorie": "Categorie", "integrazioni": "Integrazioni",
+}
+
+
+def register_names() -> dict[str, str]:
+    """Il nome leggibile di ogni registro dell'anagrafe, nell'ordine di
+    `reader.TABLES`."""
+    return {table: _REGISTER_WORDS.get(table, table) for table in TABLES}
+
 
 #: Cio' che l'albero toglie dalla resa media di un'entita' (Tappa 9, F5, D1),
 #: ognuno col suo perche': `area` e' il ramo in cui l'entita' sta, lo stesso
@@ -108,6 +127,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # Un vocabolario, non un fatto della casa: esce anche qui, e la
             # risposta ha la stessa forma nei due rami.
             "nomi_misure": _MEASUREMENT_NAMES,
+            "nomi_registri": register_names(),
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi`,
@@ -160,6 +180,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # casa si legge: la tabella del nucleo, mandata a chi disegna l'albero
         # invece di ricopiata nel JavaScript (C-09, Tappa 4, Task 5).
         "nomi_misure": _MEASUREMENT_NAMES,
+        # I nomi dei registri, per leggere `conteggi` e `non_disponibili`
+        # (C-10): stessa ragione di `nomi_misure`.
+        "nomi_registri": register_names(),
         # Ogni entita' e' la resa media, meno `_TREE_DROPS` (Tappa 9, F5).
         "piani": _tree(house, translations, zone),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home

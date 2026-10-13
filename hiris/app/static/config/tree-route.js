@@ -110,8 +110,8 @@ window.HirisTreeRoute = (function () {
      si legge -- cosi' la stessa casa si legge uguale sul nucleo del modello e
      su questa pagina, e la pagina non ne tiene una copia (C-09). Una chiave
      che HA manda e che la mappa non conosce ancora NON sparisce: compare
-     col suo nome grezzo, stessa regola di `NOMI_REGISTRI` (common.js) e
-     delle "chiavi sconosciute" di dashboard.js. */
+     col suo nome grezzo, stessa regola dei nomi dei registri
+     (`nomiRegistriInItaliano`, common.js) e delle "chiavi sconosciute" di dashboard.js. */
   function homeMeasurements(unit, names) {
     if (!unit) return [];
     names = names || {};
@@ -423,8 +423,8 @@ window.HirisTreeRoute = (function () {
   /* Per ogni registro che non ha risposto, la copia che l'anagrafe tiene al
      suo posto e di quando e' (`non_disponibili_letti_il`, S-36): `null` se
      quel registro non ha mai risposto. Senza la mappa, i soli nomi. */
-  function unavailableWithCopy(unavailable, since) {
-    var names = nomiRegistriInItaliano(unavailable);
+  function unavailableWithCopy(unavailable, since, registerNames) {
+    var names = nomiRegistriInItaliano(unavailable, registerNames);
     if (!since) return names;
     return unavailable.map(function (entry, i) {
       var at = since[entry];
@@ -567,7 +567,7 @@ window.HirisTreeRoute = (function () {
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
         TONE_PROBLEM);
       list(body, unavailableWithCopy(home_space.non_disponibili,
-        home_space.non_disponibili_letti_il));
+        home_space.non_disponibili_letti_il, home_space.nomi_registri));
     } else {
       line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }

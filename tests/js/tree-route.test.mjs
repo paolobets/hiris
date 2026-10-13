@@ -51,6 +51,8 @@ function casaCompleta(extra = {}) {
     // I nomi delle misure li manda il server (`briefing._MEASUREMENT_NAMES`,
     // C-09): qui una loro parte, quanto basta alla casa di prova.
     nomi_misure: { temperature: 'temperatura', length: 'lunghezza' },
+    // Le parole dei registri, dal server (`nomi_registri`, C-10).
+    nomi_registri: { piani: 'Piani', aree: 'Aree', categorie: 'Categorie' },
     piani: [
       {
         id: 'piano_terra', nome: 'Piano terra', livello: 0,

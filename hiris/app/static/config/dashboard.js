@@ -32,8 +32,6 @@ window.HirisDashboard = (function () {
   var section = pageSection;
   var read = readJson;
 
-  /* `NOMI_REGISTRI` e `nomiRegistriInItaliano` vivono in common.js. */
-
   var NOMI_COMPORTAMENTO = {
     automazione: 'Automazioni',
     script: 'Script'
@@ -209,14 +207,14 @@ window.HirisDashboard = (function () {
       line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONE_UNKNOWN);
     } else {
       line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
-      tile(body, home_space.conteggi, NOMI_REGISTRI, unavailableRegisters(home_space.non_disponibili));
+      tile(body, home_space.conteggi, home_space.nomi_registri, unavailableRegisters(home_space.non_disponibili));
     }
 
     threeStates(body, onlyIfLoaded(home_space.anagrafe_letta_il, home_space.non_disponibili), {
       ignoto: 'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutti i registri hanno risposto.',
       pieno: 'Registri che non hanno risposto all’ultima lettura:'
-    }, nomiRegistriInItaliano);
+    }, function (voci) { return nomiRegistriInItaliano(voci, home_space.nomi_registri); });
 
     /* Comportamento */
     var comp = home_space.comportamento || {};
