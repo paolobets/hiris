@@ -234,8 +234,8 @@ _SUPERVISOR_PATH = urlsplit(_BASE_SUPERVISOR).path
 
 
 def _per_url(rispondi):
-    """Home Assistant che risponde a ogni pezzo con `rispondi(percorso)`: i
-    pezzi partono insieme, l'ordine delle richieste non e' un contratto."""
+    """Home Assistant che risponde a ogni pezzo con `rispondi(percorso)`:
+    l'ordine delle richieste non e' un contratto."""
     return CasaFinta(synthetic_inputs(), answers={_HISTORY: rispondi})
 
 
@@ -390,3 +390,50 @@ async def test_storico_codifica_l_istante_nel_percorso():
                     "2026-08-24T10:00:00+02:00")
     percorso = urlsplit(_asked(c)[0]).path
     assert percorso == "/api/history/period/2026-08-24T08%3A00%3A00%2B02%3A00"
+
+
+# --- I pezzi in fila (S-33, F1 della Chiusura, 13/10/2026) --------------------
+#
+# Rosse prima della correzione, sul codice di allora (i pezzi insieme con
+# `asyncio.gather`): cinque pezzi in volo insieme invece di uno, e cinque
+# richieste invece di una quando il primo pezzo e' rifiutato.
+
+def _counting_client(answer):
+    """Il client vero col solo `_rest_get` sostituito: conta le richieste e
+    quante sono in volo nello stesso momento."""
+    import asyncio
+
+    from hiris.app.proxy.ha_client import HAClient
+    client = HAClient(base_url="http://ha.test", token="t")
+    seen = {"in_volo": 0, "al_massimo": 0, "richieste": 0}
+
+    async def rest_get(path):
+        seen["richieste"] += 1
+        seen["in_volo"] += 1
+        seen["al_massimo"] = max(seen["al_massimo"], seen["in_volo"])
+        await asyncio.sleep(0)
+        seen["in_volo"] -= 1
+        return answer(path)
+
+    client._rest_get = rest_get
+    return client, seen
+
+
+@pytest.mark.asyncio
+async def test_storico_i_pezzi_partono_uno_alla_volta():
+    client, seen = _counting_client(lambda path: {"corpo": _storico_minimo(path)})
+    esito = await client.history(_QUATTROCENTO, "2026-08-24T08:00:00+00:00",
+                                 "2026-08-24T10:00:00+00:00")
+    assert sorted(esito["serie"]) == sorted(_QUATTROCENTO)
+    assert seen["richieste"] > 1
+    assert seen["al_massimo"] == 1, seen
+
+
+@pytest.mark.asyncio
+async def test_storico_il_primo_pezzo_che_fallisce_ferma_gli_altri():
+    from hiris.app.proxy.ha_client import REFUSAL, _failure
+    client, seen = _counting_client(lambda path: _failure(REFUSAL, "rifiutato", 500))
+    esito = await client.history(_QUATTROCENTO, "2026-08-24T08:00:00+00:00",
+                                 "2026-08-24T10:00:00+00:00")
+    assert "serie" not in esito
+    assert seen["richieste"] == 1, seen

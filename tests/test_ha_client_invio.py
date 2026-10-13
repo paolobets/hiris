@@ -336,3 +336,47 @@ async def test_ogni_connessione_lascia_una_riga_di_debug(log, caplog):
         await _client()._ws_send([("c", None)])
     lines = [r for r in caplog.records if r.getMessage().startswith("_ws_send:")]
     assert len(lines) == log["connections"] == 2
+
+
+# --- l'autenticazione, scritta una volta (A-28, F1 della Chiusura) ----------
+#
+# Fino al 13/10/2026 `_ws_send` aveva la sua copia dell'autenticazione, riga per
+# riga quella di `_authenticate`. Mutazione ESEGUITA e ripristinata (`git
+# status` pulito): la copia rimessa in `_ws_send` -- rossa
+# `test_il_gettone_si_manda_da_un_posto_solo` (`['_authenticate', '_ws_send']`).
+
+def test_il_gettone_si_manda_da_un_posto_solo():
+    tree = ast.parse(_CLIENT.read_text(encoding="utf-8"))
+    senders = sorted({
+        function.name
+        for function in ast.walk(tree)
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in ast.walk(function)
+        if isinstance(node, ast.Dict)
+        and any(isinstance(key, ast.Constant) and key.value == "access_token"
+                for key in node.keys)})
+    assert senders == ["_authenticate"], senders
+
+
+class _RefusingWS(_FakeWS):
+    async def send_json(self, payload):
+        if payload.get("type") == "auth":
+            self._pending.append({"type": "auth_invalid", "message": "gettone scaduto"})
+            return
+        await super().send_json(payload)
+
+
+class _RefusingSession(_FakeSession):
+    def ws_connect(self, url):
+        self._log["connections"] += 1
+        return _RefusingWS(self._log)
+
+
+@pytest.mark.asyncio
+async def test_un_gettone_rifiutato_non_manda_i_comandi(log, caplog):
+    with (caplog.at_level(logging.WARNING, logger="hiris.app.proxy.ha_client"),
+          patch("aiohttp.ClientSession", lambda *a, **k: _RefusingSession(log))):
+        replies = await _client()._ws_send([("a", None), ("b", None)])
+    assert replies == [None, None]
+    assert log["commands"] == []
+    assert any("gettone scaduto" in r.getMessage() for r in caplog.records)

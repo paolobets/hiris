@@ -1290,6 +1290,18 @@ def _compare_area(area: dict | None, identifier: str, answer,
     return entry
 
 
+def entity_index(home_space: dict) -> dict[str, dict]:
+    """Le voci dell'anagrafe per id, nell'ordine dell'anagrafe.
+
+    **L'indice, in un posto solo** (A-16, F1 della Chiusura, 13/10/2026):
+    `House.entry` lo chiede qui una volta per casa, e il confronto con Home
+    Assistant (`compare_with_home_assistant`, pura, sull'anagrafe che le passa
+    il giro) lo chiede qui invece di rifarselo. Una voce che non e' un
+    dizionario o non porta l'id non entra."""
+    return {e["id"]: e for e in home_space.get("entita") or []
+            if isinstance(e, dict) and e.get("id")}
+
+
 def compare_with_home_assistant(floors: list[dict], home_space: dict,
                                 answers: dict[str, dict]) -> dict:
     """Il giro di confronto, in forma pura: albero + risposte di HA -> esito.
@@ -1308,7 +1320,7 @@ def compare_with_home_assistant(floors: list[dict], home_space: dict,
     stessa.
     """
     lookup = _area_lookup(floors)
-    known = {e.get("id"): e for e in (home_space.get("entita") or []) if e.get("id")}
+    known = entity_index(home_space)
     checked = [_compare_area(lookup.get(identifier), identifier, answer, known)
                 for identifier, answer in (answers or {}).items()]
     return {"aree_totali": len(lookup), "guardate": checked}

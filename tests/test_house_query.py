@@ -768,3 +768,40 @@ def test_search_pagina_con_la_funzione_condivisa(monkeypatch):
                    hq.parse_filters({"dominio": "light", "limite": 2}),
                    detail=_dettaglio, now=T0)
     assert chiamate == [(0, 2)]
+
+
+# ── i generi del comportamento, chiesti a `BEHAVIOR_DOMAINS` (B-23, B-31) ────
+#
+# F1 della Chiusura (13/10/2026). Mutazioni ESEGUITE e ripristinate (`git
+# status` pulito): `house_history.choose` torna a `("automazione", "script")`
+# in linea -- rossa `test_nessun_genere_del_comportamento_scritto_a_mano`;
+# `behavior_kinds(None)` rende solo il primo genere -- rossa
+# `test_behavior_kinds_dice_il_genere_di_un_dominio_o_tutti`.
+
+def test_behavior_kinds_dice_il_genere_di_un_dominio_o_tutti():
+    from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS
+    assert hq.behavior_kinds(None) == tuple(BEHAVIOR_DOMAINS.values())
+    assert len(hq.behavior_kinds(None)) == len(BEHAVIOR_DOMAINS) >= 2
+    for domain, kind in BEHAVIOR_DOMAINS.items():
+        assert hq.behavior_kinds(domain) == (kind,)
+    assert set(BEHAVIOR_DOMAINS.values()) <= set(hq.KINDS)
+    assert set(BEHAVIOR_DOMAINS.values()) <= set(hq._FILTERS_BY_KIND)
+
+
+def test_nessun_genere_del_comportamento_scritto_a_mano():
+    """I generi che non coincidono col loro dominio (`automazione`, non
+    `script`) non compaiono come letterali nei due moduli che li usano: li
+    chiedono a `BEHAVIOR_DOMAINS`. Il genere che coincide col dominio non si
+    puo' distinguere dal dominio, e si lascia."""
+    import ast
+    from pathlib import Path
+
+    from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS
+    own = {kind for domain, kind in BEHAVIOR_DOMAINS.items() if kind != domain}
+    assert own, "nessun genere da cercare: la derivazione si e' rotta"
+    folder = Path(hq.__file__).parent
+    found = {name: [node.lineno
+                    for node in ast.walk(ast.parse((folder / name).read_text(encoding="utf-8")))
+                    if isinstance(node, ast.Constant) and node.value in own]
+             for name in ("house_query.py", "house_history.py")}
+    assert found == {"house_query.py": [], "house_history.py": []}, found

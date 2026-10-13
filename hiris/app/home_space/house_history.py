@@ -30,6 +30,7 @@ import asyncio
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -39,6 +40,7 @@ from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_invent
 from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
+from .counts import hourly_consumed, hourly_mean_min_max
 from .historian import (
     day_boundaries,
     home_space_zone,
@@ -48,6 +50,7 @@ from .historian import (
 )
 from .house_query import (
     HouseFilters,
+    behavior_kinds,
     envelope,
     page_rows,
     parse_filters,
@@ -133,7 +136,7 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
             return ("cosa=esecuzioni vale per automazioni e script: dominio accetta "
                     "automation o script")
         reference = str(a.get("riferimento") or "")
-        if reference and reference.split(".", 1)[0] not in BEHAVIOR_DOMAINS:
+        if reference and ha_vocabulary.domain_of(reference) not in BEHAVIOR_DOMAINS:
             return (f"«{reference}» non e' un'automazione ne' uno script: "
                     "cosa=esecuzioni vale solo per loro")
     return None
@@ -336,8 +339,7 @@ def choose(query: HistoryQuery, house: House, behavior, *, now: float,
     non taglia nulla, salvo `limite` 0 (solo il conto: nessuno da leggere)."""
     f = query.who
     if query.kind == "esecuzioni":
-        kinds = ((BEHAVIOR_DOMAINS[f.domain],) if f.domain
-                 else ("automazione", "script"))
+        kinds = behavior_kinds(f.domain)
         f = replace(f, domain=None)
     else:
         kinds = ("entita",)
@@ -702,7 +704,8 @@ def _band_counts(bands: list[dict], state_class) -> dict | None:
     (gia' corretto per gli azzeramenti, misurato il 27/08/2026) e NESSUNA
     media: la media delle letture di fine ora di un contatore non dice niente
     (revisione del Task 4, 30/09/2026). Una misura ha `media`, `minimo`,
-    `massimo` di ogni ora -- ore di peso uguale."""
+    `massimo` di ogni ora -- ore di peso uguale. Le regole dei conti stanno in
+    `counts` (B-13), le stesse delle operazioni delle ricette."""
     if state_class in _COUNTERS:
         states = [x for x in (_number(b.get("a_fine_ora")) for b in bands) if x is not None]
         if not states:
@@ -711,15 +714,15 @@ def _band_counts(bands: list[dict], state_class) -> dict | None:
                   "massimo": max(states)}
         changes = [x for x in (_number(b.get("cambio")) for b in bands) if x is not None]
         if changes:
-            counts["consumato"] = _round(sum(changes))
+            counts["consumato"] = _round(hourly_consumed(changes))
         return counts
-    means = [x for x in (_number(b.get("media")) for b in bands) if x is not None]
-    if not means:
+    hours = [(mean, _number(b.get("minimo")), _number(b.get("massimo")))
+             for b in bands if (mean := _number(b.get("media"))) is not None]
+    found = hourly_mean_min_max(hours)
+    if found is None:
         return None
-    lows = [x for x in (_number(b.get("minimo")) for b in bands) if x is not None]
-    highs = [x for x in (_number(b.get("massimo")) for b in bands) if x is not None]
-    return {"primo": means[0], "ultimo": means[-1], "minimo": min(lows or means),
-            "massimo": max(highs or means), "media": _round(sum(means) / len(means))}
+    return {"primo": hours[0][0], "ultimo": hours[-1][0], "minimo": found["minimo"],
+            "massimo": found["massimo"], "media": _round(found["media"])}
 
 
 def _band_activity(bands: list[dict]) -> float | None:
@@ -1123,7 +1126,7 @@ def _entities_in(node) -> list[str]:
 def _moving_in(config) -> list[str]:
     """Le entita' che si spostano nominate OVUNQUE nella configurazione."""
     if isinstance(config, str):
-        return [config] if config.split(".", 1)[0] in MOVING_DOMAINS else []
+        return [config] if ha_vocabulary.domain_of(config) in MOVING_DOMAINS else []
     items = config.values() if isinstance(config, dict) else (
         config if isinstance(config, list) else ())
     return [found for item in items for found in _moving_in(item)]
@@ -1146,7 +1149,7 @@ def _redact_condition_results(trace: dict) -> dict:
     cleaned = {}
     for path, elements in steps.items():
         owners = _entities_in(_config_at(config, str(path)))
-        moving = ([e for e in owners if e.split(".", 1)[0] in MOVING_DOMAINS]
+        moving = ([e for e in owners if ha_vocabulary.domain_of(e) in MOVING_DOMAINS]
                   if owners else anyone_moving)
         if not moving or not isinstance(elements, list):
             cleaned[path] = elements
@@ -1447,7 +1450,7 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
                       attributes=mirror.attributes)
 
 
-def run_key(cache, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
+def run_key(cache, ident: str, entry: Callable[[str], dict | None]) -> tuple[str, str] | None:
     """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,
     o `None` se non si risolve (e allora non si chiede: `trace/list` con
     una chiave sconosciuta torna `[]`, che si leggerebbe «mai partita» --
@@ -1466,12 +1469,12 @@ def run_key(cache, ident: str, registry: dict[str, dict]) -> tuple[str, str] | N
     if domain == "automation":
         config_id = automation_config_id(cache, ident)
         return ("automation", config_id) if config_id else None
-    unique_id = (registry.get(ident) or {}).get("unique_id")
+    unique_id = (entry(ident) or {}).get("unique_id")
     key = unique_id or object_id
     return ("script", str(key)) if key else None
 
 
-async def read_runs(ha, query: HistoryQuery, chosen: Chosen, home: dict, *,
+async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
                     cache, seal) -> dict:
     """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
     (`run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
@@ -1490,10 +1493,10 @@ async def read_runs(ha, query: HistoryQuery, chosen: Chosen, home: dict, *,
         fault = unreadable_inventory_error(cache)
         if fault is not None:
             return {"errore": fault["error"]}
-    # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
-    # seconda lettura.
-    registry = {e.get("id"): e for e in home.get("entita") or []}
-    keys = {s.ident: run_key(cache, s.ident, registry) for s in chosen.subjects}
+    # La casa che `choose` ha gia' letto: la stessa, e la sua voce per id
+    # (`House.entry`), non un secondo indice rifatto qui (A-16, F1 della
+    # Chiusura, 13/10/2026).
+    keys = {s.ident: run_key(cache, s.ident, house.entry) for s in chosen.subjects}
     if query.run_id is not None:
         subject = chosen.subjects[0]
         key = keys[subject.ident]
@@ -1585,14 +1588,14 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     di questa funzione."""
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal)
-    mirror, home = house.mirror, house.home_space
+    mirror = house.mirror
     chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):
         return chosen
     if not chosen.subjects:
         return empty_answer(query, chosen)
     if query.kind == "esecuzioni":
-        return await read_runs(ha, query, chosen, home, cache=cache, seal=seal)
+        return await read_runs(ha, query, chosen, house, cache=cache, seal=seal)
     if query.kind == "valori":
         response = await read_values(ha, query, chosen, mirror)
     else:

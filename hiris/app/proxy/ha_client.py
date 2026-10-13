@@ -1258,10 +1258,20 @@ class HAClient:
         oltre un certo numero di id non e' una porta, e' una trappola per chi
         la chiama. Il costo dichiarato (`rest=1`) e' quello di UN pezzo, non
         della chiamata: **una richiesta per pezzo di identificatori**
-        (`_history_chunks`, uno ogni `_HISTORY_FILTER_MAX` byte di filtro),
-        partite insieme. `@cost` non sa dire un costo variabile, e la prova
-        (`tests/test_ha_client_invio.py`) chiama con un identificatore solo.
-        Nessun identificatore, nessuna richiesta: le serie sono vuote.
+        (`_history_chunks`, uno ogni `_HISTORY_FILTER_MAX` byte di filtro).
+        `@cost` non sa dire un costo variabile: la prova del costo
+        (`tests/test_ha_client_invio.py`) chiama con un identificatore solo, e
+        quella dei pezzi (`tests/test_ha_client_time_reads.py`) conta una
+        richiesta per pezzo. Nessun identificatore, nessuna richiesta: le serie
+        sono vuote.
+
+        **I pezzi partono uno alla volta** (S-33, F1 della Chiusura,
+        13/10/2026). Fino ad allora partivano tutti insieme con
+        `asyncio.gather`, senza un tetto: una domanda su tutta la casa erano
+        tante richieste in parallelo verso Home Assistant quanti i pezzi. Un
+        tetto di parallelismo sarebbe stato un numero nostro, non misurato; in
+        fila il tetto e' uno, e il primo pezzo che fallisce ferma gli altri,
+        perche' il suo guasto e' gia' il guasto di tutti (qui sotto).
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
         bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso) ed e' vero se il cap
@@ -1299,11 +1309,10 @@ class HAClient:
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
             return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
-        answers = await asyncio.gather(*(self._history_piece(chunk, from_iso, to_iso)
-                                         for chunk in _history_chunks(entities)))
         series: dict[str, list[dict]] = {}
         truncated = False
-        for answer in answers:
+        for chunk in _history_chunks(entities):
+            answer = await self._history_piece(chunk, from_iso, to_iso)
             if "errore" in answer:
                 return answer
             series.update(answer["serie"])
@@ -1652,7 +1661,6 @@ class HAClient:
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
-        token = self._headers["Authorization"].removeprefix("Bearer ")
         types = [t for t, _ in commands]
         try:
             async with (
@@ -1663,13 +1671,13 @@ class HAClient:
                 # contano dal vivo le connessioni che HIRIS apre.
                 logger.debug("_ws_send: una connessione, %d comandi (%s)",
                              len(commands), types)
-                handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                if handshake.get("type") == "auth_required":
-                    await ws.send_json({"type": "auth", "access_token": token})
-                    auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    if auth.get("type") != "auth_ok":
-                        logger.warning("HA WS auth failed in _ws_send(%s)", types)
-                        return replies
+                # L'autenticazione e' quella del WebSocket di lunga vita
+                # (`_authenticate`): fino al 13/10/2026 qui ce n'era una
+                # seconda copia, riga per riga (A-28, F1 della Chiusura).
+                refusal = await self._authenticate(ws)
+                if refusal is not None:
+                    logger.warning("HA WS auth failed in _ws_send(%s): %s", types, refusal)
+                    return replies
                 for msg_id, (msg_type, extra) in enumerate(commands, start=1):
                     payload = {"id": msg_id, "type": msg_type}
                     if extra:
