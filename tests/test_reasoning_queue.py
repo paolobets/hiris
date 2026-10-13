@@ -513,3 +513,43 @@ def test_la_coda_legge_colonne_nominate(q):
     letture = [s for s in viste if s.lstrip().upper().startswith("SELECT")]
     assert len(letture) >= 7, "la prova deve percorrere le letture della coda"
     assert not [s for s in letture if "SELECT *" in s.upper()]
+
+
+# ── C-68 (Chiusura): una riga col corpo JSON guasto ────────────────────────
+#
+# Fino alla Chiusura `_row` faceva tre `json.loads` nudi: una riga storta
+# faceva cadere ogni lettura che la incontrava -- il poll della chat, il
+# raccoglitore di un attore, e `claim`, cioe' il lavoratore del ponte. La
+# guardia e' quella comune degli archivi (`storage.json_column`): chi legge
+# un elenco salta la riga, chi ne legge una la tratta come assente.
+
+def _guasta(q, job_id, colonna):
+    q._conn.execute(f"UPDATE reasoning_jobs SET {colonna}='{{non json' WHERE job_id=?",
+                    (job_id,))
+    q._conn.commit()
+
+
+@pytest.mark.parametrize("colonna", ["wake_json", "context_json", "decision_json"])
+def test_una_riga_guasta_si_legge_come_assente(q, colonna):
+    q.enqueue("analisi", {"giorno": "2026-10-13"}, {}, deadline_ts=100.0,
+              job_id="J", now=1.0)
+    _guasta(q, "J", colonna)
+
+    assert q.get("J") is None
+    assert q.latest("analisi") is None
+    assert q.sweep_expired(now=200.0) == []
+
+
+def test_il_ponte_salta_la_riga_guasta_e_serve_quella_dopo(q):
+    """Una riga che non si legge non si puo' servire: si chiude `failed`, e
+    il lavoratore prende la successiva invece di credere la coda vuota --
+    che lo farebbe dormire fino al prossimo accodamento con un turno buono
+    in attesa."""
+    q.enqueue("analisi", {}, {}, deadline_ts=100.0, job_id="GUASTA", now=1.0)
+    q.enqueue("analisi", {}, {}, deadline_ts=100.0, job_id="BUONA", now=2.0)
+    _guasta(q, "GUASTA", "wake_json")
+
+    assert q.claim(now=10.0)["job_id"] == "BUONA"
+    stato = q._conn.execute("SELECT status FROM reasoning_jobs WHERE job_id='GUASTA'")
+    assert stato.fetchone()[0] == "failed"
+    assert q.claim(now=10.0) is None
