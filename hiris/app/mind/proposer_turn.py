@@ -32,6 +32,10 @@ from ..steering import PROPOSER_SPECIES, SPECIES, read_json, refused_lines, refu
 from .analyst import evidence_of, observation_key
 from .analyst_turn import READERS, AnalystDispatcher
 
+# Gli esiti che il modello puo' dare a un'osservazione (D12) vivono nella
+# foglia (G-24): `mind/store` li legge senza importare questo modulo.
+from .proposer_outcomes import BUILT, BY_HAND, NOTHING, OUTCOMES
+
 logger = logging.getLogger(__name__)
 
 #: La specie di turno, per il ponte e per il runner: una vista sulla
@@ -52,11 +56,6 @@ MAX_ANSWER_TOKENS = 4096
 #: tabella degli strumenti (`home_space/tools.TOOLS`), mai ricopiato.
 PROPOSE = "propose"
 
-#: Gli esiti che il modello puo' dare a un'osservazione (D12).
-BUILT = "costruita"
-BY_HAND = "a_mano"
-NOTHING = "niente"
-OUTCOMES = (BUILT, BY_HAND, NOTHING)
 
 #: Perche' una proposta da fare a mano si chiude `superata` (D24-1): la stessa
 #: frase dal giro e dal «Rifalla», scritta una volta.

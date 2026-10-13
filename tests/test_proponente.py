@@ -747,3 +747,15 @@ async def test_una_risposta_di_IERI_non_scrive_sull_analisi_di_oggi(casa, monkey
                       "outcome": "riuscito"}}
     await pr.proposer_round(casa)
     assert pt.outcomes_of(casa["observations"].analysis(OGGI)) == []
+
+
+def test_gli_esiti_del_proponente_vivono_nella_foglia():
+    """G-24 (Chiusura): gli esiti hanno una casa sola, `mind/proposer_outcomes`,
+    e `proposer_turn` li importa da li' invece di ridefinirli. Mutazione
+    ESEGUITA (13/10/2026): `OUTCOMES` ridefinita in `proposer_turn` con gli
+    stessi valori -- rossa (non e' lo stesso oggetto)."""
+    from hiris.app.mind import proposer_outcomes, proposer_turn
+
+    assert proposer_turn.OUTCOMES is proposer_outcomes.OUTCOMES
+    for nome in ("BUILT", "BY_HAND", "NOTHING"):
+        assert getattr(proposer_turn, nome) is getattr(proposer_outcomes, nome)
