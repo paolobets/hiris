@@ -178,7 +178,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
             "ripetute": repeated}
 
 
-def _enrich(line: dict, number: int, known: dict, problems: list,
+def _enrich(line: dict, number: int, known: list[dict], problems: list,
             days: list[str]) -> dict | None:
     """Un'osservazione validata e completata coi numeri della serie."""
     written = [f for f in NUMERIC_FIELDS if f in line]
