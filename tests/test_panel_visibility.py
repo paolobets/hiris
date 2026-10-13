@@ -156,6 +156,32 @@ async def test_own_slug_chiede_al_supervisor_col_suo_gettone(aiohttp_server, mon
     assert chieste == [("/addons/self/info", "Bearer token-del-supervisor")]
 
 
+
+@pytest.mark.asyncio
+async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, monkeypatch):
+    """Il rifiuto di `own_slug` nomina il Supervisor, non Home Assistant: il
+    registro della voce di menu manderebbe a cercare nel sistema sbagliato
+    (giro 148).
+
+    Mutazione ESEGUITA (13/10/2026): in `_rest_get` il nome fisso «Home
+    Assistant» -- rossa."""
+    async def info(request):
+        return web.json_response({"result": "error"}, status=403)
+
+    app = web.Application()
+    app.router.add_get("/addons/self/info", info)
+    srv = await aiohttp_server(app)
+    supervisore = str(srv.make_url("")).rstrip("/")
+    monkeypatch.setattr(ha_client, "SUPERVISOR_URL", supervisore)
+    vero = HAClient(f"{supervisore}/core", "token-del-supervisor")
+    await vero.start()
+    try:
+        esito = await vero.own_slug()
+    finally:
+        await vero.stop()
+    assert esito["errore"] == "il Supervisor ha risposto 403", esito
+    assert esito["codice"] == 403
+
 def _app(accesso: bool, ha):
     return {"non_admin_access": accesso, "ha_client": ha}
 

@@ -501,15 +501,19 @@ class HAClient:
         `save_configuration`, `delete_configuration`) e `call_service` non
         passano di qui: sono il canale delle scritture, e leggono il motivo
         di un rifiuto dal corpo (`_http_reason`). La busta e' la stessa."""
+        # Chi ha risposto si dice col suo nome: un rifiuto del Supervisor
+        # detto «Home Assistant» manderebbe a cercare nel sistema sbagliato
+        # (giro 148).
+        who = "il Supervisor" if base == SUPERVISOR_URL else "Home Assistant"
         try:
             async with self._session.get(f"{base or self._base_url}{path}") as resp:
                 if resp.status != 200:
-                    return _failure(REFUSAL, f"Home Assistant ha risposto {resp.status}",
+                    return _failure(REFUSAL, f"{who} ha risposto {resp.status}",
                                     resp.status)
                 try:
                     return {"corpo": await resp.json()}
                 except (aiohttp.ContentTypeError, ValueError):
-                    return _failure(SHAPE, "Home Assistant ha risposto con un corpo "
+                    return _failure(SHAPE, f"{who} ha risposto con un corpo "
                                            "che non e' JSON")
         except Exception as exc:
             logger.debug("lettura REST %s non riuscita: %s", path.split("?")[0], exc)
