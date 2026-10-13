@@ -565,7 +565,10 @@ class OpenAICompatRunner:
         context_str: str = "",
         conversation_history: list[dict] | None = None,
         model: str = "auto",
-        max_tokens: int = 4096,
+        *,
+        # Il tetto d'uscita non ha un predefinito (D-13, Chiusura 13/10/2026):
+        # lo dichiara ogni mestiere, e lo passa `steering.chain_turn`.
+        max_tokens: int,
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,

@@ -111,7 +111,7 @@ async def test_chat_returns_text_response(runner):
         instance.messages.create = AsyncMock(return_value=fake_message)
 
         runner._client = instance
-        result = await runner.chat("Ciao")
+        result = await runner.chat("Ciao", max_tokens=4096)
 
     assert result == "Hello from Claude"
 
@@ -136,7 +136,7 @@ async def test_restrict_to_home_injects_prompt(restricted_runner):
         return m
 
     restricted_runner._client.messages.create = capture
-    await restricted_runner.chat("Ciao", restrict_to_home=True)
+    await restricted_runner.chat("Ciao", restrict_to_home=True, max_tokens=4096)
     system_text = _sys_text(captured[0]["system"])
     assert "solo" in system_text.lower()
     assert RESTRICT_PROMPT in system_text
@@ -156,7 +156,8 @@ async def test_restrict_to_home_false_does_not_inject(runner):
         return m
 
     runner._client.messages.create = capture
-    await runner.chat("Ciao", system_prompt="Prompt originale", restrict_to_home=False)
+    await runner.chat("Ciao", system_prompt="Prompt originale", restrict_to_home=False,
+                      max_tokens=4096)
     system_text = _sys_text(captured[0]["system"])
     assert "Prompt originale" in system_text
     assert RESTRICT_PROMPT not in system_text
@@ -177,7 +178,7 @@ async def test_restrict_to_home_appends_to_existing_prompt(restricted_runner):
 
     restricted_runner._client.messages.create = capture
     await restricted_runner.chat(
-        "Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True
+        "Ciao", system_prompt="Sei un agente energia.", restrict_to_home=True, max_tokens=4096
     )
     system_text = _sys_text(captured[0]["system"])
     assert "agente energia" in system_text
@@ -348,7 +349,7 @@ async def test_chat_no_thinking_param_when_disabled(runner):
     msg.usage = MagicMock(input_tokens=10, output_tokens=5,
                           cache_creation_input_tokens=0, cache_read_input_tokens=0)
     runner._client.messages.create = AsyncMock(return_value=msg)
-    await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=0)
+    await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=0, max_tokens=4096)
     kwargs = runner._client.messages.create.call_args.kwargs
     assert "thinking" not in kwargs
 
@@ -396,7 +397,7 @@ async def test_cache_control_within_limit_with_modifiers_and_history(runner):
             {"role": "assistant", "content": "prima risposta"},
         ],
         restrict_to_home=True,
-        response_mode="compact",
+        response_mode="compact", max_tokens=4096
     )
     n = _count_cache_breakpoints(captured[0])
     assert n <= 4, f"too many cache_control breakpoints: {n}"
@@ -420,7 +421,7 @@ async def test_cache_control_single_system_breakpoint(runner):
     await runner.chat(
         "Ciao",
         system_prompt="Prompt agente",
-        restrict_to_home=True,
+        restrict_to_home=True, max_tokens=4096
     )
     system = captured[0]["system"]
     n_system = sum(1 for b in system if isinstance(b, dict) and b.get("cache_control"))
@@ -439,7 +440,7 @@ async def test_chat_populates_last_tool_calls_single_call(runner):
     text_block = MagicMock(type="text", text="ok")
     msg2 = MagicMock(stop_reason="end_turn", content=[text_block])
     runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
-    await runner.chat("ciao")
+    await runner.chat("ciao", max_tokens=4096)
     assert runner.last_tool_calls == [
         {"tool": "get_entity_states", "input": {"ids": ["light.living"]}}
     ]
@@ -486,7 +487,7 @@ async def test_chat_processes_all_tool_use_blocks_of_one_response_in_one_iterati
 
     finto_dispatcher = MagicMock(dispatch=AsyncMock(side_effect=fake_dispatch))
 
-    text = await runner.chat("guarda cinque stanze", dispatcher=finto_dispatcher)
+    text = await runner.chat("guarda cinque stanze", dispatcher=finto_dispatcher, max_tokens=4096)
 
     assert text == "fatto"
     # Due chiamate API in tutto -- il giro coi tool (UNA iterazione, N
@@ -535,7 +536,8 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(runner, capl
     finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
     with caplog.at_level(logging.WARNING):
-        result = await runner.chat("guarda ogni stanza", dispatcher=finto_dispatcher)
+        result = await runner.chat("guarda ogni stanza", dispatcher=finto_dispatcher,
+                                   max_tokens=4096)
 
     assert result == _MAX_ITERATIONS_NOTICE
     assert "Max tool iterations reached." not in result
@@ -607,11 +609,11 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
     finto_dispatcher = MagicMock(dispatch=AsyncMock(return_value={"ok": True}))
 
     async def call_a():
-        text = await runner.chat("call-A", dispatcher=finto_dispatcher)
+        text = await runner.chat("call-A", dispatcher=finto_dispatcher, max_tokens=4096)
         return text, list(runner.last_tool_calls)
 
     async def call_b():
-        text = await runner.chat("call-B", dispatcher=finto_dispatcher)
+        text = await runner.chat("call-B", dispatcher=finto_dispatcher, max_tokens=4096)
         return text, list(runner.last_tool_calls)
 
     (text_a, tools_a), (text_b, tools_b) = await asyncio.gather(call_a(), call_b())
@@ -689,7 +691,7 @@ async def test_un_credito_esaurito_arriva_al_router_col_400_e_la_frase_del_provi
         patch.object(runner, "_call_api", AsyncMock(side_effect=credito)),
         pytest.raises(RunnerBackendError) as info,
     ):
-        await runner.chat("Ciao")
+        await runner.chat("Ciao", max_tokens=4096)
 
     # Il 400 e' «altro» (G39-2): per Anthropic e' ogni `invalid_request_error`.
     assert info.value.family == "altro"
@@ -724,7 +726,7 @@ async def test_un_modello_inesistente_e_un_404_non_un_errore_temporaneo(runner):
         patch.object(runner, "_call_api", AsyncMock(side_effect=_Sparito())),
         pytest.raises(RunnerBackendError) as info,
     ):
-        await runner.chat("Ciao")
+        await runner.chat("Ciao", max_tokens=4096)
 
     assert info.value.family == "modello" and info.value.code == 404
     assert "temporaneo" not in info.value.friendly_message
@@ -749,6 +751,6 @@ async def test_anthropic_irraggiungibile_non_porta_un_codice_inventato(runner):
         patch.object(runner, "_call_api", AsyncMock(side_effect=giu)),
         pytest.raises(RunnerBackendError) as info,
     ):
-        await runner.chat("Ciao")
+        await runner.chat("Ciao", max_tokens=4096)
 
     assert info.value.family == "irraggiungibile" and info.value.code is None

@@ -388,13 +388,11 @@ TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 #: strumenti (la chat). Una vista sulle righe qui sopra, non una seconda copia.
 BASE_TOOL_RULES = "".join(text for _tools, text in TOOL_RULES)
 
-MAX_TOKENS = 4096
-# Tetto d'uscita piu' alto per la chat interattiva: una risposta lunga (il
-# riepilogo di una casa grande, un elenco di ricordi) supera legittimamente il
-# default di `chat()` (`MAX_TOKENS` qui sopra), che resta per i chiamanti che
-# non passano `max_tokens`. `handlers_chat.py` passa `CHAT_MAX_TOKENS`. Kept
-# well under the model max so the non-streaming SDK path doesn't hit the
-# request-timeout guard.
+# Tetto d'uscita della chat interattiva: una risposta lunga (il riepilogo di
+# una casa grande, un elenco di ricordi) lo richiede legittimamente.
+# `chat()` non ha un tetto predefinito (D-13): ogni mestiere dichiara il suo,
+# e `handlers_chat.py` passa questo. Kept well under the model max so the
+# non-streaming SDK path doesn't hit the request-timeout guard.
 CHAT_MAX_TOKENS = 16000
 # fetta "i riferimenti" (R3): misurato che 8 stanze da guardare una a una
 # servono 10 round-trip minimi contro un tetto di 10 -- morte garantita anche
@@ -886,7 +884,10 @@ class ClaudeRunner:
         context_str: str = "",
         conversation_history: list[dict] | None = None,
         model: str = "auto",
-        max_tokens: int = MAX_TOKENS,
+        *,
+        # Il tetto d'uscita non ha un predefinito (D-13, Chiusura 13/10/2026):
+        # lo dichiara ogni mestiere, e lo passa `steering.chain_turn`.
+        max_tokens: int,
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,

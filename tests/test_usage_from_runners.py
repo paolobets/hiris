@@ -60,7 +60,7 @@ async def test_claude_scrive_il_modello_i_token_e_la_cache(monkeypatch):
         return _RispostaClaude()
 
     monkeypatch.setattr(runner, "_call_api", _finta)
-    await runner.chat(user_message="ciao")
+    await runner.chat(user_message="ciao", max_tokens=4096)
 
     assert len(registro.scritte) == 1
     s = registro.scritte[0]
@@ -86,7 +86,7 @@ async def test_un_modello_claude_fuori_listino_esce_non_noto(monkeypatch):
         return _RispostaClaude()
 
     monkeypatch.setattr(runner, "_call_api", _finta)
-    await runner.chat(user_message="ciao")
+    await runner.chat(user_message="ciao", max_tokens=4096)
 
     assert registro.scritte[0]["cost_state"] == "non_noto"
     assert registro.scritte[0]["cost_usd"] is None
@@ -102,7 +102,7 @@ async def test_senza_archivio_il_runner_funziona_lo_stesso(monkeypatch):
         return _RispostaClaude()
 
     monkeypatch.setattr(runner, "_call_api", _finta)
-    assert await runner.chat(user_message="ciao") == "fatto"
+    assert await runner.chat(user_message="ciao", max_tokens=4096) == "fatto"
 
 
 # ── OpenAI-compat, OpenRouter, Ollama ───────────────────────────────────────
@@ -274,7 +274,7 @@ async def test_claude_consegna_i_token_DOPO_la_risposta(monkeypatch):
     monkeypatch.setattr(runner, "_call_api", _finta)
     consegne, gettone = _raccogli()
     try:
-        await runner.chat(user_message="ciao")
+        await runner.chat(user_message="ciao", max_tokens=4096)
     finally:
         togli_misura(gettone)
 
@@ -299,7 +299,7 @@ async def test_claude_fuori_listino_consegna_costo_NULL(monkeypatch):
     monkeypatch.setattr(runner, "_call_api", _finta)
     consegne, gettone = _raccogli()
     try:
-        await runner.chat(user_message="ciao")
+        await runner.chat(user_message="ciao", max_tokens=4096)
     finally:
         togli_misura(gettone)
     assert consegne[1][1]["cost_usd"] is None
@@ -341,7 +341,7 @@ async def test_openrouter_consegna_i_token_DOPO_la_risposta():
 
     consegne, gettone = _raccogli()
     try:
-        await runner.chat(user_message="ciao", model="anthropic/claude-sonnet-4-6")
+        await runner.chat(user_message="ciao", model="anthropic/claude-sonnet-4-6", max_tokens=4096)
     finally:
         togli_misura(gettone)
 
@@ -374,7 +374,7 @@ async def test_claude_risponde_anche_se_l_archivio_dei_consumi_solleva(monkeypat
         return _RispostaClaude()
 
     monkeypatch.setattr(runner._client.messages, "create", _finta)
-    assert await runner.chat("ciao") == "fatto"
+    assert await runner.chat("ciao", max_tokens=4096) == "fatto"
 
 
 @pytest.mark.asyncio
@@ -384,7 +384,7 @@ async def test_la_catena_risponde_anche_se_l_archivio_dei_consumi_solleva():
     risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=msg)])
     risposta.usage = _uso(cost=0.0031)
     runner._client.chat.completions.create = AsyncMock(return_value=risposta)
-    assert await runner.chat(user_message="ciao") == "fatto"
+    assert await runner.chat(user_message="ciao", max_tokens=4096) == "fatto"
 
 
 # ── Il costo del giro, calcolato una volta (Tappa 7, T10; D-60) ────────────
@@ -411,14 +411,14 @@ async def test_i_consumi_e_la_misura_del_giro_dicono_lo_STESSO_costo(monkeypatch
             return _RispostaClaude()
 
         monkeypatch.setattr(runner._client.messages, "create", _finta)
-        chiama = runner.chat("ciao")
+        chiama = runner.chat("ciao", max_tokens=4096)
     else:
         runner = OpenRouterRunner(api_key="x", log_usage=registro)
         msg = MagicMock(content="fatto", tool_calls=None)
         risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=msg)])
         risposta.usage = _uso(cost=0.0031)
         runner._client.chat.completions.create = AsyncMock(return_value=risposta)
-        chiama = runner.chat(user_message="ciao")
+        chiama = runner.chat(user_message="ciao", max_tokens=4096)
     gettone = posa_misura(lambda giro, pesi: consegne.append(pesi))
     try:
         await chiama

@@ -95,7 +95,7 @@ async def test_claude_runner_manda_la_regola_al_modello():
     instance.messages.create = AsyncMock(return_value=fake_message)
     runner._client = instance
 
-    await runner.chat("ciao", context_str=_CONTESTO_PROVA)
+    await runner.chat("ciao", context_str=_CONTESTO_PROVA, max_tokens=4096)
 
     sent_system = instance.messages.create.call_args.kwargs["system"]
     assert _REGOLA in _sys_text(sent_system)

@@ -195,10 +195,12 @@ async def test_il_prefisso_in_cache_e_identico_per_due_soggetti_diversi():
     contesto_paolo = "## Chi ti sta parlando\n- Paolo (persona)\n"
     contesto_marta = "## Chi ti sta parlando\n- Marta (persona)\n"
 
-    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_paolo)
+    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_paolo,
+                      max_tokens=4096)
     system_paolo = runner._client.messages.create.call_args.kwargs["system"]
 
-    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_marta)
+    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_marta,
+                      max_tokens=4096)
     system_marta = runner._client.messages.create.call_args.kwargs["system"]
 
     assert system_paolo[:-1] == system_marta[:-1], (
