@@ -1193,29 +1193,21 @@ async def handle_chat(request: web.Request) -> web.Response:
                 {"role": "assistant", "content": response},
             ], data_dir, thread=thread)
 
+    # Stessa scelta del ramo del ponte qui sopra: i NOMI degli strumenti vanno
+    # nei log a debug, non nella risposta. Fino al 13/10/2026 (M-31) la
+    # risposta portava anche `debug.thinking_blocks`, e la lista locale gli
+    # argomenti di ogni chiamata: nessuno dei due aveva un lettore.
     raw = getattr(runner, "last_tool_calls", None)
-    tools_called = [
-        {"tool": t.get("tool", ""), "input": t.get("input")}
-        for t in raw if isinstance(t, dict)
-    ] if isinstance(raw, list) else []
-    raw_thinking = getattr(runner, "last_thinking_blocks", None)
-    thinking_blocks = list(raw_thinking) if isinstance(raw_thinking, list) else []
-    # Stessa scelta del ramo del ponte qui sopra: i nomi degli strumenti vanno
-    # nei log a debug, non nella risposta. `thinking_blocks` resta -- e' il
-    # ragionamento che l'utente ha chiesto di vedere, non un nome di funzione.
-    if tools_called:
+    if isinstance(raw, list) and raw:
         logger.debug("strumenti del turno: %s",
-                     ", ".join(str(t.get("tool") or "?") for t in tools_called))
-    debug_payload: dict = {}
-    if thinking_blocks:
-        debug_payload["thinking_blocks"] = thinking_blocks
-    payload = {"response": response, "debug": debug_payload}
+                     ", ".join(str(t.get("tool") or "?") for t in raw
+                               if isinstance(t, dict)))
+    payload = {"response": response}
     # L'annuncio del ripiego a monte. Si compone QUI e non nel ramo che ha
     # deciso di ripiegare, perché prima della chiamata qui sopra non si sa
     # ancora CHI ha risposto -- il router ripiega a sua volta, e il primo della
     # catena può aver fallito. `_downgrade_reason` resta `None` quando il turno
-    # non ha ripiegato, e allora non si scrive niente. La forma della risposta
-    # NON cambia: `response` e `debug` restano identici e `nota` è facoltativa,
+    # non ha ripiegato, e allora non si scrive niente. `nota` è facoltativa,
     # quindi un client che la ignori continua a funzionare.
     if _downgrade_reason:
         note = _who_answered_note(request, reason=_downgrade_reason)

@@ -428,19 +428,6 @@ async def test_cache_control_single_system_breakpoint(runner):
 
 
 @pytest.mark.asyncio
-async def test_chat_collects_thinking_blocks(runner):
-    """Thinking blocks in response.content are captured in last_thinking_blocks."""
-    thinking_block = MagicMock(type="thinking", thinking="step 1: check state\nstep 2: decide")
-    text_block = MagicMock(type="text", text="ok")
-    msg = MagicMock(stop_reason="end_turn", content=[thinking_block, text_block])
-    msg.usage = MagicMock(input_tokens=10, output_tokens=5,
-                          cache_creation_input_tokens=0, cache_read_input_tokens=0)
-    runner._client.messages.create = AsyncMock(return_value=msg)
-    await runner.chat("ciao", model="claude-sonnet-4-6", thinking_budget=2048)
-    assert runner.last_thinking_blocks == ["step 1: check state\nstep 2: decide"]
-
-
-@pytest.mark.asyncio
 async def test_chat_populates_last_tool_calls_single_call(runner):
     """Baseline for 'single-call behavior unchanged' (review A/#3): a lone,
     non-overlapping chat() call must still populate last_tool_calls with its

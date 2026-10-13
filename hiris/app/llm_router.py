@@ -7,7 +7,6 @@ from typing import Any
 
 from .claude_runner import (
     RunnerBackendError,
-    _current_thinking_blocks,
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
@@ -263,10 +262,3 @@ class LLMRouter:
         ContextVar dei runner, come `last_truncated`."""
         return _current_tool_leaked.get()
 
-    @property
-    def last_thinking_blocks(self) -> list:
-        """Extended-thinking blocks from the call that just ran through THIS
-        asyncio Task. See last_tool_calls above — same ContextVar-backed
-        isolation, shared with ClaudeRunner/OpenAICompatRunner."""
-        val = _current_thinking_blocks.get()
-        return val if val is not None else []

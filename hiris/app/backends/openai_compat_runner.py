@@ -317,9 +317,7 @@ class OpenAICompatRunner:
 
     # Per-call, per-asyncio-Task isolated — shares the SAME ContextVar as
     # ClaudeRunner (review A/#3 — see claude_runner.py's module comment for
-    # the full rationale). No last_thinking_blocks here: OpenAI-compatible
-    # backends don't support Anthropic Extended Thinking (thinking_budget is
-    # accepted-and-ignored in chat() below).
+    # the full rationale).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)

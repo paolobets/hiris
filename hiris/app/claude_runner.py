@@ -555,18 +555,18 @@ MINIMAL_PROMPT = (
     "Esempio:\nStato: acceso\nTemperatura: 21°C"
 )
 
-# ── Per-call tool-call / thinking-block isolation (review A/#3) ────────────
+# ── Per-call tool-call isolation (review A/#3) ─────────────────────────────
 # ClaudeRunner and OpenAICompatRunner are long-lived singletons shared by
 # every interactive chat request AND every scheduler-driven agent run on the
-# same event loop. `last_tool_calls`/`last_thinking_blocks` used to be plain
-# unlocked instance attributes: chat() reset them to [] then appended after
+# same event loop. `last_tool_calls` used to be a plain
+# unlocked instance attribute: chat() reset it to [] then appended after
 # `await` points. Two overlapping calls on the SAME runner instance (e.g. a
 # chat request racing a background persona run) could interleave their
 # resets/appends and leak one call's tool-call inputs (entity IDs,
 # memory-recall content, HTTP payloads) into a completely different call's
-# debug_payload / SSE `done` event, or silently wipe them.
+# response, or silently wipe them.
 #
-# Fix: back both attributes with a contextvars.ContextVar instead of a plain
+# Fix: back the attribute with a contextvars.ContextVar instead of a plain
 # instance attribute, via the _PerCallList descriptor below. asyncio.Task
 # creation copies the current Context, and ContextVar.set() inside a Task
 # mutates only that Task's own copy — never a sibling Task's. Two concurrent
@@ -581,16 +581,13 @@ MINIMAL_PROMPT = (
 # The ContextVar objects are module-level so ClaudeRunner and
 # OpenAICompatRunner (which imports them below) share the exact same
 # isolation buffers, and so LLMRouter (llm_router.py) can proxy its own
-# last_tool_calls/last_thinking_blocks properties to the SAME per-call state
+# last_tool_calls property to the SAME per-call state
 # instead of scanning its registered backends for "whichever has a
 # non-empty list" (the old LLMRouter property — that scan could return a
 # totally different caller's tool calls than the one that just ran through
 # the router, amplifying the same race).
 _current_tool_calls: "contextvars.ContextVar[list | None]" = contextvars.ContextVar(
     "hiris_current_tool_calls", default=None
-)
-_current_thinking_blocks: "contextvars.ContextVar[list | None]" = contextvars.ContextVar(
-    "hiris_current_thinking_blocks", default=None
 )
 # **La misura del carico, per CHIAMATA e non per oggetto** (23/09/2026).
 #
@@ -778,7 +775,6 @@ class ClaudeRunner:
     # Per-call, per-asyncio-Task isolated — NOT shared mutable instance state,
     # even though this object is a long-lived singleton (see comment above).
     last_tool_calls = _PerCallList(_current_tool_calls)
-    last_thinking_blocks = _PerCallList(_current_thinking_blocks)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
     last_unanswered = _PerCallFlag(_current_unanswered)
@@ -823,9 +819,9 @@ class ClaudeRunner:
         # didascalie e' la cosa piu' onesta che la pagina possa dire di se'.
         # `None` = nessuna lettura: il modello automatico del provider.
         self._read_model = read_model
-        # last_tool_calls / last_thinking_blocks are intentionally NOT
-        # initialized here — they are per-call/per-Task class-level
-        # descriptors (see above); chat() resets them at the start of every
+        # last_tool_calls is intentionally NOT
+        # initialized here — it is a per-call/per-Task class-level
+        # descriptor (see above); chat() resets it at the start of every
         # call, scoped to the calling Task.
 
     def _chosen_model(self) -> str:
@@ -970,9 +966,6 @@ class ClaudeRunner:
         messages.append({"role": "user", "content": user_message})
 
         thinking_param = _build_thinking_param(thinking_budget, effective_model, max_tokens)
-        # Collect thinking blocks across all tool-use iterations for downstream
-        # surfacing in the execution log / chat debug panel.
-        self.last_thinking_blocks = []
 
         for _giro in range(1, MAX_TOOL_ITERATIONS + 1):
             try:
@@ -1022,10 +1015,6 @@ class ClaudeRunner:
                     failure_reply(_family, _code, _said), family=_family, code=_code,
                     said=_said,
                 ) from exc
-
-            for block in response.content:
-                if getattr(block, "type", None) == "thinking":
-                    self.last_thinking_blocks.append(getattr(block, "thinking", ""))
 
             inp = response.usage.input_tokens
             out = response.usage.output_tokens

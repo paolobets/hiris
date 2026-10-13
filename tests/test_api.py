@@ -485,10 +485,9 @@ async def test_chat_debug_tools_called_returns_objects(client):
     # -- `t.get("name")` invece di `t.get("tool")`, che rendeva ogni voce
     # `None` e faceva esplodere il frontend DOPO che la risposta era gia'
     # comparsa -- non puo' piu' esistere: non c'e' piu' nessuna voce da
-    # comporre. Resta pinnato che `debug` non porti quella chiave, con
-    # l'insieme esatto.
-    assert "tools_called" not in data["debug"]
-    assert set(data["debug"]) <= {"thinking_blocks"}
+    # comporre. Dal 13/10/2026 (M-31) non c'e' piu' nemmeno `debug`: il
+    # ragionamento esteso che portava non aveva un lettore.
+    assert set(data) == {"response"}
 
 
 # test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3

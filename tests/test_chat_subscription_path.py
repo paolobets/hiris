@@ -115,7 +115,6 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
         runner = AsyncMock()
         runner.chat = AsyncMock(return_value="sync reply")
         runner.last_tool_calls = []
-        runner.last_thinking_blocks = []
 
     app = web.Application()
     app["llm_router"] = runner
@@ -1317,10 +1316,9 @@ async def test_il_ripiego_a_monte_si_annuncia_e_dice_chi_ha_risposto(tmp_path, m
         "OpenRouter, a consumo.")
     # La forma della risposta NON cambia: `nota` si aggiunge, non sostituisce.
     assert body["response"] == "sync reply"
-    # `debug` resta nel payload del ramo sincrono ma NON porta piu' i nomi
-    # degli strumenti (17/08/2026): ci vive solo `thinking_blocks`, che e' il
-    # ragionamento che l'utente ha chiesto di vedere, non un nome di funzione.
-    assert body["debug"] == {}
+    # Niente `debug` (M-31, 13/10/2026): ne' i nomi degli strumenti, usciti il
+    # 17/08/2026, ne' il ragionamento esteso, che nessuna pagina leggeva.
+    assert "debug" not in body
 
 
 @pytest.mark.asyncio

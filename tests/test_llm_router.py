@@ -4,7 +4,6 @@ import pytest
 
 from hiris.app.claude_runner import (
     RunnerBackendError,
-    _current_thinking_blocks,
     _current_tool_calls,
 )
 from hiris.app.llm_router import LLMRouter
@@ -61,21 +60,6 @@ def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_run
         assert router.last_tool_calls == [{"tool": "get_home_status", "input": {}}]
     finally:
         _current_tool_calls.reset(token)
-
-
-def test_router_last_thinking_blocks_reflects_current_call(mock_runner):
-    """LLMRouter previously had NO last_thinking_blocks property at all, so
-    handlers_chat.py's `getattr(runner, "last_thinking_blocks", None)`
-    silently returned None whenever chat went through the router — the
-    debug payload's thinking_blocks was always empty. Now it proxies the
-    same shared per-call ContextVar as ClaudeRunner."""
-    router = LLMRouter(claude=mock_runner, model_chain=["claude"])
-    assert router.last_thinking_blocks == []
-    token = _current_thinking_blocks.set(["step 1: ..."])
-    try:
-        assert router.last_thinking_blocks == ["step 1: ..."]
-    finally:
-        _current_thinking_blocks.reset(token)
 
 
 # Tappa 7 T9 (M-07): `test_router_strategy_defaults_to_balanced`,

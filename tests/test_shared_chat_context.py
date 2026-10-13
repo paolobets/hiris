@@ -308,7 +308,6 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
         runner = AsyncMock()
         runner.chat = AsyncMock(return_value="risposta sincrona")
         runner.last_tool_calls = []
-        runner.last_thinking_blocks = []
         app = web.Application(middlewares=[_finto_confine])
         app["llm_router"] = runner
         app["claude_runner"] = runner
