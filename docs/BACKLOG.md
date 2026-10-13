@@ -1523,7 +1523,7 @@ Rilievi **minori**, dichiarati e non corretti, raggruppati. Nessuno rompe una ri
 ognuno ha un effetto che qualcuno può incontrare.
 
 *Da misurare dal vivo nel rilancio della batteria di §9* (segnati **[batteria]**):
-- **Il tetto è sulle righe, non sui caratteri.** `BRIDGE_CEILING_CHARS = 30.000` è la soglia dei
+- **Il tetto è sulle righe, non sui caratteri.** `BRIDGE_CAP_CHARS = 30.000` è la soglia dei
   cancelli, ma il dettaglio completo tiene 50 righe (`ROWS_MAX`), non 30.000 caratteri: 50 righe
   molto ricche arrivano a ~32.700 caratteri (~13.000 token), sotto i 25.000 del ponte. Il commento
   lo dice; **[batteria]**: misurare il peso reale dei dettagli sulla casa vera.
@@ -2019,7 +2019,7 @@ la regola vuole; non è stato provato dal vivo se sia il comportamento che si vu
 Ogni promessa spinge al più **3** servizi (`MAX_SERVICES_PER_PROMISE`) — una persona vera ha un
 telefono e forse un tablet, non dieci. Rischio accettato e dichiarato: **nessun freno globale**
 sul numero di push che la casa manda in una finestra di tempo. Il numero di promesse pendenti è
-già limitato (`CEILING_IN_SOSPESO` per filo, `HOUSE_CEILING_IN_SOSPESO` per la casa), e quel tetto
+già limitato (`SUSPENDED_CAP` per filo, `HOUSE_SUSPENDED_CAP` per la casa), e quel tetto
 limita anche questo — ma non è la stessa cosa di un freno sulle notifiche in sé.
 
 ### L'elenco delle conversazioni rilegge ogni messaggio dell'utente a ogni apertura
