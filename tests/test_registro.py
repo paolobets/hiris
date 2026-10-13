@@ -205,3 +205,91 @@ def test_il_rilascio_vuole_una_versione_vera(tmp_path):
 
 def test_il_registro_vero_non_ha_segni_storti():
     assert registro.malformed(registro.read_entries(REGISTER)) == []
+
+
+#: Un registro e un BACKLOG piccoli per le trasferite (D1 della Chiusura,
+#: 13/10/2026): una voce aperta, la sezione delle trasferite, due voci del
+#: BACKLOG, una aperta e una chiusa.
+_WITH_TRANSFERRED = (
+    "## C. La resa\n\n| Id | Voce | Stato | Unirla | Fonti |\n|---|---|---|---|---|\n"
+    "| C-24 | fogli di stile | D | DP | reg |\n"
+    "| C-26 | altra | E | PS | reg |\n\n"
+    "## Trasferite\n\n| Id | Voce | Voce del BACKLOG | Perché |\n|---|---|---|---|\n\n"
+    "## Chiuse\n\n| Id | Voce | Chiusa con | Commit | Cosa |\n|---|---|---|---|---|\n"
+    "| C-01 | prima | 3.73.0 | 1111111 | tolta |\n")
+_BACKLOG_TEXT = (
+    "# BACKLOG\n\n## In attesa\n\n"
+    "### I fogli di stile: due sistemi — aperta il 05/10/2026\n\ntesto\n\n"
+    "### ~~Una cosa fatta~~ — CHIUSA il 02/10/2026\n\ntesto\n\n"
+    "### I soggetti raggruppati — **USCITA con la v3.54.0**, resta `volte`\n")
+
+
+def _transfer_copies(tmp_path):
+    document = tmp_path / "registro.md"
+    document.write_text(_WITH_TRANSFERRED, encoding="utf-8")
+    backlog = tmp_path / "BACKLOG.md"
+    backlog.write_text(_BACKLOG_TEXT, encoding="utf-8")
+    return document, backlog
+
+
+def test_una_voce_trasferita_non_e_ne_aperta_ne_chiusa(tmp_path):
+    """Mutazione ESEGUITA: in `read_entries` la sezione «Trasferite» non
+    riconosciuta (`transferred` sempre falso) -- rossa (la riga non si legge
+    piu': `C-24` sparisce dal registro)."""
+    document, backlog = _transfer_copies(tmp_path)
+    registro.transfer(document, "C-24", backlog="I fogli di stile: due sistemi",
+                      note="fuori dallo sprint", backlog_path=backlog)
+    entries = {entry.id: entry for entry in registro.read_entries(document)}
+    assert entries["C-24"].transferred and not entries["C-24"].closed
+    assert not registro.is_open(entries["C-24"])
+    assert entries["C-24"].cells[2:] == ("I fogli di stile: due sistemi", "fuori dallo sprint")
+    assert registro.count(list(entries.values())) == {
+        "C": {"aperte": 1, "chiuse": 1, "trasferite": 1}}
+    assert registro.untethered(list(entries.values()), backlog) == []
+
+
+def test_si_trasferisce_solo_a_una_voce_aperta_del_backlog(tmp_path):
+    """Mutazione ESEGUITA: in `backlog_titles` tolto il salto delle voci
+    barrate o chiuse -- rossa (la voce «~~Una cosa fatta~~» lega una trasferita)."""
+    document, backlog = _transfer_copies(tmp_path)
+    assert registro.backlog_titles(backlog) == {"I fogli di stile: due sistemi"}
+    for title in ("Una voce che non c'e'", "~~Una cosa fatta~~", "I soggetti raggruppati"):
+        with pytest.raises(SystemExit, match="non e' una voce aperta del BACKLOG"):
+            registro.transfer(document, "C-24", backlog=title, note="x",
+                              backlog_path=backlog)
+    assert registro.is_open({e.id: e for e in registro.read_entries(document)}["C-24"])
+
+
+def test_una_trasferita_senza_legame_ferma_la_verifica(tmp_path):
+    """Il legame si ricontrolla a ogni verifica: la voce del BACKLOG puo'
+    chiudersi, o cambiare titolo, dopo il trasferimento.
+    Mutazione ESEGUITA: `untethered` restituisce sempre [] -- rossa."""
+    document, backlog = _transfer_copies(tmp_path)
+    registro.transfer(document, "C-24", backlog="I fogli di stile: due sistemi",
+                      note="x", backlog_path=backlog)
+    backlog.write_text(_BACKLOG_TEXT.replace(
+        "### I fogli di stile: due sistemi — aperta",
+        "### ~~I fogli di stile: due sistemi~~ — CHIUSA"), encoding="utf-8")
+    assert registro.untethered(registro.read_entries(document), backlog) == ["C-24"]
+
+
+def test_trasferire_o_chiudere_una_trasferita_si_rifiuta(tmp_path):
+    """Chiudere una trasferita direbbe «copia cancellata» di una copia che
+    resta nel codice.
+    Mutazione ESEGUITA: tolto da `_the_open_entry` il rifiuto delle
+    trasferite -- rossa (`close` la sposta fra le chiuse senza dire niente)."""
+    document, backlog = _transfer_copies(tmp_path)
+    registro.transfer(document, "C-24", backlog="I fogli di stile: due sistemi",
+                      note="x", backlog_path=backlog)
+    with pytest.raises(SystemExit, match="gia' trasferita"):
+        registro.transfer(document, "C-24", backlog="I fogli di stile: due sistemi",
+                          note="x", backlog_path=backlog)
+    with pytest.raises(SystemExit, match="gia' trasferita"):
+        registro.close(document, "C-24", version="3.79.0", commit="abc1234", note="x")
+
+
+def test_le_trasferite_del_registro_vero_hanno_il_loro_legame():
+    assert registro.untethered(registro.read_entries(REGISTER)) == []
+    # Il lettore del BACKLOG non si e' svuotato: senza titoli ogni legame
+    # sembrerebbe rotto, o -- con una mutazione che lo zittisce -- nessuno.
+    assert len(registro.backlog_titles()) > 20

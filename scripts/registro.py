@@ -18,7 +18,9 @@ non resta un posto in cui una voce possa essere insieme aperta e chiusa.
 - un capitolo comincia a una riga `## X. ...`, con X una lettera sola;
 - una voce e' una riga di tabella il cui primo campo ha la forma `X-NN`;
 - tutto cio' che sta sotto `## Chiuse` e' chiuso, e il capitolo di una voce
-  chiusa e' la lettera del suo id.
+  chiusa e' la lettera del suo id;
+- tutto cio' che sta sotto `## Trasferite` e' trasferito (vedi sotto), e il
+  capitolo e' ancora la lettera dell'id.
 
 Le righe di tabella fuori da un capitolo e fuori da `## Chiuse` (le sezioni
 «in coda»: correzioni, tracciabilita') NON sono voci, e non si leggono.
@@ -38,6 +40,17 @@ ma non uscito», e ha un comando solo. Un segno che il lettore non capisce
 ferma `verifica`: altrimenti al rilascio quella voce resterebbe aperta in
 silenzio.
 
+## Trasferita a un lavoro fuori dallo sprint
+
+Una voce che appartiene a un lavoro dichiarato fuori dallo sprint (i fogli di
+stile, la pagina dell'osservatore, il refactor degli agenti) non si chiude: la
+copia resta. Esce dal registro **trasferita**, con il titolo della voce di
+`docs/BACKLOG.md` che la porta (D1 della Chiusura, decisa da Paolo il
+13/10/2026): il fatto resta in un posto solo, il BACKLOG, e il registro tiene
+il legame. `trasferisci` sposta la riga sotto `## Trasferite`; `verifica` si
+ferma se il titolo non nomina una voce aperta del BACKLOG -- un legame verso
+una voce che non c'e', o gia' chiusa, e' un argomento perso.
+
 Uso:
   python scripts/registro.py conta
   python scripts/registro.py chiudi M-13 --versione 3.73.0 --commit abc1234 \\
@@ -45,6 +58,9 @@ Uso:
   python scripts/registro.py verifica
   python scripts/registro.py chiudibili
   python scripts/registro.py rilascia --versione 3.78.0
+  python scripts/registro.py trasferisci C-24 \\
+      --backlog "I fogli di stile: due sistemi di variabili, e l'override caricato prima" \\
+      --nota "fuori dallo sprint (§9)"
 """
 from __future__ import annotations
 
@@ -59,8 +75,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTER = ROOT / "docs" / "design" / "2026-10-01-registro-dei-doppioni.md"
+BACKLOG = ROOT / "docs" / "BACKLOG.md"
 
 CLOSED_HEADING = "## Chiuse"
+TRANSFERRED_HEADING = "## Trasferite"
 _CHAPTER = re.compile(r"^## ([A-Z])\. ")
 _ENTRY_ID = re.compile(r"^([A-Z])-\d{2,}$")
 
@@ -73,6 +91,8 @@ class Entry(NamedTuple):
     closed: bool
     line: int
     cells: tuple[str, ...]
+    #: Trasferita a una voce del BACKLOG: ne' aperta ne' chiusa (la copia resta).
+    transferred: bool = False
 
 
 def _cells(row: str) -> list[str]:
@@ -83,34 +103,42 @@ def read_entries(path: Path = REGISTER) -> list[Entry]:
     """Le voci del documento, aperte e chiuse, nell'ordine in cui compaiono."""
     entries: list[Entry] = []
     chapter: str | None = None
-    closed = False
+    closed = transferred = False
     for number, row in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if row.startswith("#"):
             closed = row.strip() == CLOSED_HEADING
+            transferred = row.strip() == TRANSFERRED_HEADING
             found = _CHAPTER.match(row)
             chapter = found.group(1) if found else None
             continue
-        if not row.startswith("|") or (chapter is None and not closed):
+        out_of_chapter = closed or transferred
+        if not row.startswith("|") or (chapter is None and not out_of_chapter):
             continue
         cells = _cells(row)
         shaped = _ENTRY_ID.match(cells[0]) if len(cells) >= 2 else None
         if not shaped:
             continue
-        if not closed and shaped.group(1) != chapter:
+        if not out_of_chapter and shaped.group(1) != chapter:
             raise SystemExit(f"registro: la voce {cells[0]} (riga {number}) sta nel "
                              f"capitolo {chapter}: una voce sta nel capitolo della sua lettera")
-        entries.append(Entry(id=cells[0], chapter=cells[0][0] if closed else chapter,
+        entries.append(Entry(id=cells[0], chapter=cells[0][0] if out_of_chapter else chapter,
                              text=cells[1], closed=closed, line=number,
-                             cells=tuple(cells)))
+                             cells=tuple(cells), transferred=transferred))
     return entries
+
+
+def is_open(entry: Entry) -> bool:
+    """Aperta: ne' chiusa ne' trasferita."""
+    return not entry.closed and not entry.transferred
 
 
 def count(entries: list[Entry]) -> dict[str, dict[str, int]]:
     """Per capitolo: quante voci aperte e quante chiuse."""
     tally: dict[str, dict[str, int]] = {}
     for entry in entries:
-        row = tally.setdefault(entry.chapter, {"aperte": 0, "chiuse": 0})
-        row["chiuse" if entry.closed else "aperte"] += 1
+        row = tally.setdefault(entry.chapter, {"aperte": 0, "chiuse": 0, "trasferite": 0})
+        row["chiuse" if entry.closed else "trasferite" if entry.transferred
+            else "aperte"] += 1
     return tally
 
 
@@ -126,7 +154,7 @@ def verdicts(entries: list[Entry]) -> dict[str, dict[str, int]]:
     (E, D, NV) e quante per `Unirla` (PS, CC, DP)."""
     tally: dict[str, dict[str, int]] = {"stato": {}, "unirla": {}}
     for entry in entries:
-        if entry.closed or entry.chapter not in DUPLICATE_CHAPTERS:
+        if not is_open(entry) or entry.chapter not in DUPLICATE_CHAPTERS:
             continue
         for name, cell in (("stato", entry.cells[2]), ("unirla", entry.cells[3])):
             key = TWO_VERDICTS if "CONTRADDIZIONE" in cell else cell
@@ -143,23 +171,82 @@ def close(path: Path, entry_id: str, *, version: str, commit: str, note: str) ->
     matching = [entry for entry in read_entries(path) if entry.id == entry_id]
     if not matching:
         raise SystemExit(f"registro: la voce {entry_id} non esiste")
+    entry = _the_open_entry(path, entry_id)
+    _move(path, entry, CLOSED_HEADING,
+          f"| {entry_id} | {entry.text} | {version} | {commit} | {note} |")
+
+
+def _the_open_entry(path: Path, entry_id: str) -> Entry:
+    matching = [entry for entry in read_entries(path) if entry.id == entry_id]
+    if not matching:
+        raise SystemExit(f"registro: la voce {entry_id} non esiste")
     entry = matching[0]
     if entry.closed:
         raise SystemExit(f"registro: la voce {entry_id} e' gia' chiusa")
+    if entry.transferred:
+        raise SystemExit(f"registro: la voce {entry_id} e' gia' trasferita")
+    return entry
+
+
+def _move(path: Path, entry: Entry, heading: str, row: str) -> None:
+    """Toglie la riga della voce dal suo capitolo e la accoda alla tabella
+    della sezione `heading`."""
     rows = path.read_text(encoding="utf-8").splitlines()
     del rows[entry.line - 1]
-    stripped = [row.strip() for row in rows]
-    if CLOSED_HEADING not in stripped:
-        raise SystemExit(f"registro: nel documento manca la sezione `{CLOSED_HEADING}`")
-    # La riga va in coda alla tabella di «Chiuse», ovunque stia la sezione: la
-    # prima intestazione dopo di lei (o la fine del file) ne segna il confine.
-    start = stripped.index(CLOSED_HEADING)
+    stripped = [line.strip() for line in rows]
+    if heading not in stripped:
+        raise SystemExit(f"registro: nel documento manca la sezione `{heading}`")
+    # La riga va in coda alla tabella della sezione, ovunque stia: la prima
+    # intestazione dopo di lei (o la fine del file) ne segna il confine.
+    start = stripped.index(heading)
     end = next((index for index in range(start + 1, len(rows))
                 if rows[index].startswith("#")), len(rows))
     while end > start + 1 and not rows[end - 1].strip():
         end -= 1
-    rows.insert(end, f"| {entry_id} | {entry.text} | {version} | {commit} | {note} |")
+    rows.insert(end, row)
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+_BACKLOG_HEADING = re.compile(r"^#{3,4} (.+)$")
+#: Le parole con cui il BACKLOG dice, nel titolo, che una voce non aspetta
+#: piu' niente (`### ~~titolo~~ — CHIUSA il ...`, `— **USCITA con la v3.54.0**`).
+_BACKLOG_DONE = ("CHIUSA", "USCITA")
+
+
+def backlog_titles(path: Path = BACKLOG) -> set[str]:
+    """I titoli delle voci APERTE del BACKLOG (le intestazioni `###` e `####`;
+    le `##` sono le sezioni): il testo dell'intestazione
+    prima di « — ». Una voce barrata o dichiarata chiusa/uscita non porta
+    niente, quindi non lega una trasferita."""
+    titles: set[str] = set()
+    for row in path.read_text(encoding="utf-8").splitlines():
+        found = _BACKLOG_HEADING.match(row)
+        if not found:
+            continue
+        title, _dash, rest = found.group(1).partition(" — ")
+        if title.startswith("~~") or any(word in rest for word in _BACKLOG_DONE):
+            continue
+        titles.add(title.strip())
+    return titles
+
+
+def transfer(path: Path, entry_id: str, *, backlog: str, note: str,
+             backlog_path: Path = BACKLOG) -> None:
+    """Sposta la voce sotto `## Trasferite`, col titolo della voce del
+    BACKLOG che la porta. Rifiuta un titolo che non nomina una voce aperta:
+    il legame si controlla quando si scrive, non solo quando si verifica."""
+    if backlog not in backlog_titles(backlog_path):
+        raise SystemExit(f"registro: «{backlog}» non e' una voce aperta del BACKLOG")
+    entry = _the_open_entry(path, entry_id)
+    _move(path, entry, TRANSFERRED_HEADING,
+          f"| {entry_id} | {entry.text} | {backlog} | {note} |")
+
+
+def untethered(entries: list[Entry], backlog_path: Path = BACKLOG) -> list[str]:
+    """Le trasferite il cui titolo non nomina una voce aperta del BACKLOG."""
+    titles = backlog_titles(backlog_path)
+    return [entry.id for entry in entries
+            if entry.transferred and (len(entry.cells) < 3 or entry.cells[2] not in titles)]
 
 
 RELEASABLE_MARK = "**chiudibile al rilascio**"
@@ -176,7 +263,7 @@ class Releasable(NamedTuple):
 
 def releasable(entry: Entry) -> Releasable | None:
     """Il segno «chiudibile al rilascio» di una voce aperta, o None."""
-    if entry.closed:
+    if not is_open(entry):
         return None
     found = _RELEASABLE.search(entry.cells[-1])
     if not found:
@@ -188,7 +275,7 @@ def releasable(entry: Entry) -> Releasable | None:
 def malformed(entries: list[Entry]) -> list[str]:
     """Le voci che nominano il segno ma non nella forma che si legge."""
     return [entry.id for entry in entries
-            if not entry.closed and RELEASABLE_MARK in entry.cells[-1]
+            if is_open(entry) and RELEASABLE_MARK in entry.cells[-1]
             and releasable(entry) is None]
 
 
@@ -240,10 +327,13 @@ def _print_count(entries: list[Entry]) -> None:
     tally = count(entries)
     for chapter in sorted(tally):
         row = tally[chapter]
-        print(f"  {chapter}  aperte {row['aperte']:>3} · chiuse {row['chiuse']:>3}")
+        print(f"  {chapter}  aperte {row['aperte']:>3} · chiuse {row['chiuse']:>3}"
+              f" · trasferite {row['trasferite']:>3}")
     opened = sum(row["aperte"] for row in tally.values())
     closed = sum(row["chiuse"] for row in tally.values())
-    print(f"  Totale: {opened + closed} voci · aperte {opened} · chiuse {closed}")
+    moved = sum(row["trasferite"] for row in tally.values())
+    print(f"  Totale: {opened + closed + moved} voci · aperte {opened} · chiuse {closed}"
+          f" · trasferite {moved}")
     marked = [entry for entry in entries if releasable(entry) is not None]
     print(f"  Fatte nel ramo, chiudibili al rilascio: {len(marked)} · "
           f"aperte vere: {opened - len(marked)} · "
@@ -258,7 +348,8 @@ def main() -> None:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("conta", help="quante voci aperte e chiuse, per capitolo")
-    commands.add_parser("verifica", help="esce 1 se una voce e' chiusa a meta' "
+    commands.add_parser("verifica", help="esce 1 se una voce e' chiusa a meta', "
+                                         "trasferita senza legame "
                                          "o porta un segno storto")
     commands.add_parser("chiudibili", help="le voci fatte nel ramo, da chiudere al rilascio")
     releasing = commands.add_parser("rilascia", help="al rilascio: chiude le voci "
@@ -269,7 +360,18 @@ def main() -> None:
     closing.add_argument("--versione", required=True)
     closing.add_argument("--commit", required=True)
     closing.add_argument("--nota", required=True)
+    moving = commands.add_parser("trasferisci", help="sposta una voce sotto «Trasferite», "
+                                 "legata alla voce del BACKLOG che la porta")
+    moving.add_argument("id")
+    moving.add_argument("--backlog", required=True,
+                        help="il titolo della voce del BACKLOG, prima di « — »")
+    moving.add_argument("--nota", required=True)
     args = parser.parse_args()
+
+    if args.command == "trasferisci":
+        transfer(REGISTER, args.id, backlog=args.backlog, note=args.nota)
+        print(f"registro: {args.id} trasferita a «{args.backlog}»")
+        return
 
     if args.command == "chiudi":
         close(REGISTER, args.id, version=args.versione, commit=args.commit, note=args.nota)
@@ -300,6 +402,11 @@ def main() -> None:
     if crooked:
         print(f"registro: segno «chiudibile al rilascio» illeggibile in: {crooked}",
               file=sys.stderr)
+        sys.exit(1)
+    loose = untethered(entries)
+    if loose:
+        print(f"registro: voci trasferite a una voce del BACKLOG che non c'e' "
+              f"o e' chiusa: {loose}", file=sys.stderr)
         sys.exit(1)
     print(f"registro: {len(entries)} voci lette, nessuna chiusa a meta'")
 

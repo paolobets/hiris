@@ -1,7 +1,7 @@
 # Il registro dei doppioni — la lista di lavoro dello sprint «Una fonte sola di verità»
 
 Nato il 01/10/2026 sulla v3.72.2 come indice v2 dell'analisi. È la lista di lavoro: una riga per voce, i dettagli restano nei rapporti a cui la riga rimanda.
-**Si legge con un programma**: `python scripts/registro.py conta` dice quante voci sono aperte e chiuse; `chiudi <id>` sposta una voce nella sezione «Chiuse» in fondo; `verifica` gira nel cancello. La prova è `tests/test_registro.py`.
+**Si legge con un programma**: `python scripts/registro.py conta` dice quante voci sono aperte e chiuse; `chiudi <id>` sposta una voce nella sezione «Chiuse» in fondo; `trasferisci <id>` la sposta in «Trasferite», legata alla voce del BACKLOG che la porta; `verifica` gira nel cancello. La prova è `tests/test_registro.py`.
 Fonde il registro v1 (`REGISTRO-DEI-DOPPIONI.md`: 155 voci A–G e T, 41 righe M, 20 righe X) con le parti 2 e 3 dei nove rapporti di copertura (`copertura-1…9-*.md`, sigle `cop-1`…`cop-9`).
 **Regola di chiusura: una voce si chiude solo quando la copia è cancellata.** Una prova che passa o un commento che promette non chiudono niente.
 Gli id del registro v1 non cambiano; i reperti nuovi continuano la numerazione del capitolo (A da A-19, B da B-30, C da C-28, D da D-34, E da E-09, F da F-14, G da G-16, T da T-13, M da M-42, X da X-21). Il capitolo S è nuovo.
@@ -811,6 +811,13 @@ chiude qui: si chiudono a copia cancellata.
 - **D-45** (D8 = A): entra al T7, fuori dalle 44. La scelta fra cercare davvero ricordi e
   integrazioni per nome e togliere la promessa dalla descrizione si fa sulla misura, e torna al
   proprietario col numero.
+
+## Trasferite
+
+Una voce arriva qui solo con `python scripts/registro.py trasferisci`, quando appartiene a un lavoro dichiarato fuori dallo sprint e Paolo ha approvato il trasferimento (D1 della Chiusura, 13/10/2026). La copia resta nel codice: il lavoro lo porta la voce del BACKLOG nominata nella riga, e `registro.py verifica` si ferma se quella voce non c'è o è chiusa.
+
+| Id | Voce | Voce del BACKLOG | Perché |
+|---|---|---|---|
 
 ## Chiuse
 
