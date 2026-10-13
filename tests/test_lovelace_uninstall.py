@@ -26,6 +26,7 @@ WebSocket sua: le prove fingono il FILO con la casa finta comune
 (M-41): dopo un passaggio pulito scrive il segno in `/data` e non chiede piu'
 niente a Home Assistant.
 """
+import asyncio
 import os
 import pathlib
 import sys
@@ -45,13 +46,16 @@ URL_LOCALE_NUDO = f"/local/{SLUG}/hiris-chat-card.js"
 URL_LOCALE_VERSIONATO = f"/local/{SLUG}/hiris-chat-card.js?v=0.4.0"
 
 
-def _casa(risorse=None, *, elenco=None, cancella=None) -> CasaFinta:
+def _casa(risorse=None, *, elenco=None, cancella=None, slug=None) -> CasaFinta:
     """La casa finta con l'elenco delle risorse Lovelace (`risorse`, oppure
-    `elenco`: un `Refused` o `SILENT`) e la risposta alle cancellazioni
-    (`cancella`, di norma `null` come `lovelace/resources/delete`)."""
+    `elenco`: un `Refused` o `SILENT`), la risposta alle cancellazioni
+    (`cancella`, di norma `null` come `lovelace/resources/delete`) e, se
+    serve, quella del Supervisor allo slug (`slug`)."""
     answers = {"lovelace/resources": (lambda extra: risorse) if elenco is None
                else (lambda extra: elenco),
                "lovelace/resources/delete": cancella or (lambda extra: None)}
+    if slug is not None:
+        answers["supervisor /addons/self/info"] = lambda extra: slug
     return CasaFinta({}, answers=answers)
 
 
@@ -420,6 +424,33 @@ async def test_l_installazione_disinstalla_la_card_dopo_la_voce_di_menu(monkeypa
 
     assert ordine == ["voce", ("card", ha, str(tmp_path))]
 
+
+
+@pytest.mark.asyncio
+async def test_la_card_aspetta_il_nucleo_anche_quando_la_voce_di_menu_esce_subito(
+        monkeypatch, tmp_path):
+    """Senza slug la voce di menu esce subito, senza aspettare lei il nucleo.
+    La card no: chiede `lovelace/resources` solo a nucleo collegato, o la
+    domanda andrebbe a un Home Assistant che non c'e' ancora, il segno non si
+    scriverebbe e il tentativo si perderebbe fino all'avvio dopo (N148-2,
+    giro 148).
+
+    Mutazione ESEGUITA (13/10/2026): `pass` al posto dell'attesa di
+    `ws_ready` in `install` -- rossa (la card chiede le risorse prima)."""
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
+    ha = _casa([], slug=SILENT)
+    app = {"ha_client": ha, "data_dir": str(tmp_path), "non_admin_access": False}
+
+    compito = asyncio.create_task(installation.install(app))
+    for _ in range(20):
+        await asyncio.sleep(0)
+    chieste = [t for t, _ in ha.calls]
+    assert "supervisor /addons/self/info" in chieste, "precondizione: lo slug e' stato chiesto"
+    assert "lovelace/resources" not in chieste, chieste
+
+    ha.ws_ready.set()
+    await asyncio.wait_for(compito, timeout=5)
+    assert "lovelace/resources" in [t for t, _ in ha.calls]
 
 # ---------------------------------------------------------------------------
 # A-40 (Tappa 2, Task 11) — una cartella sola: quella di `home_space/redaction`
