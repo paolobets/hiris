@@ -75,34 +75,34 @@ def consiglia(intent: dict) -> dict:
         # ramo sull'innesco perche' una ricorrenza arriva spesso senza che il
         # modello abbia gia' composto il trigger orario.
         strutture.append("automazione")
-        reasons.append("una ricorrenza e' un’automazione di Home Assistant, non una "
+        reasons.append("una ricorrenza è un’automazione di Home Assistant, non una "
                       "promessa: le promesse servono per «fra un’ora, una volta»")
     elif innesco:
         strutture.append("automazione")
-        reasons.append("c’e' un innesco, quindi e' un’automazione")
+        reasons.append("c’è un innesco, quindi è un’automazione")
 
     if parametri:
         if "script" not in strutture:
             strutture.append("script")
         reasons.append("serve un parametro in ingresso, e le automazioni non ne "
-                      "prendono: quella parte e' uno script con `fields`")
+                      "prendono: quella parte è uno script con `fields`")
         if riuso and passi:
             reasons.append("inoltre la sequenza si riusa anche altrove, quindi lo script "
-                          "puo' essere richiamato da altri posti")
+                          "può essere richiamato da altri posti")
     elif riuso and passi and "automazione" in strutture:
         strutture.append("script")
         reasons.append("la sequenza si riusa anche altrove, quindi vive in uno script "
                       "che l’automazione chiama")
     elif passi and not strutture:
         strutture.append("script")
-        reasons.append("e' una sequenza che lanci tu, senza innesco: e' uno script")
+        reasons.append("è una sequenza che lanci tu, senza innesco: è uno script")
 
     if states:
         strutture.append("scena")
         if len(strutture) == 1:
             # Solo scena, nessuna automazione o script
             reasons.append("sono stati da ristabilire insieme, senza innesco e senza "
-                          "sequenza: e' una scena")
+                          "sequenza: è una scena")
         else:
             # Scena accesa da automazione e/o script
             if "automazione" in strutture and "script" in strutture:

@@ -495,7 +495,7 @@ class AgendaStore:
         # La frase dello stato, non la parola dell'archivio (C-54, Tappa 8):
         # «e' gia' in_corso» arrivava al modello, e da li' a una persona.
         return {
-            "errore": ("quella promessa non e' piu' in attesa ({}): non si disdice, "
+            "errore": ("quella promessa non è più in attesa ({}): non si disdice, "
                        "si legge.").format(readable(row["stato"]))
         }
 
@@ -525,12 +525,12 @@ class AgendaStore:
         non c'e'.
         """
         _REASON_FAI = (
-            "l’add-on si e' fermato mentre la manteneva: non l’ho ripetuta, "
-            "perche' non so se fosse gia' partita.")
+            "l’add-on si è fermato mentre la manteneva: non l’ho ripetuta, "
+            "perché non so se fosse già partita.")
         _REASON_CHIEDI = (
-            "l’add-on si e' fermato mentre guardavo: non ho toccato niente in "
-            "casa, ma non so se la notifica fosse gia' partita. Non l’ho "
-            "ripetuta: l’ora che mi avevi dato e' passata, e una risposta "
+            "l’add-on si è fermato mentre guardavo: non ho toccato niente in "
+            "casa, ma non so se la notifica fosse già partita. Non l’ho "
+            "ripetuta: l’ora che mi avevi dato è passata, e una risposta "
             "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(

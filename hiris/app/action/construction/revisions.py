@@ -89,7 +89,7 @@ REASON_EXPIRED = "scaduta senza risposta"
 #: Il motivo di una riga rimasta `in_corso` a un riavvio (`risana`). Una
 #: costante perche' la legge anche `_migration_6`, che porta a `incerta` le
 #: righe che `risana` segnava `rifiutata` (oggi `fallita`) fino al 07/10/2026.
-REASON_RESTARTED = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+REASON_RESTARTED = ("l’add-on si è riavviato mentre la stavo applicando: non so "
                     "se la scrittura sia arrivata a Home Assistant.")
 
 #: I giorni dopo cui una proposta si pota: una costante perche' li dichiarano

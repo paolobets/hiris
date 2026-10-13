@@ -79,8 +79,8 @@ def test_un_guasto_di_lettura_non_e_una_casa_sana():
     niente che non va» -- un'affermazione, non un silenzio."""
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
     assert "Home Assistant non ha risposto" in testo
-    assert "non si e' potuto guardare" in testo
-    assert any("non si e' potuto guardare" in g for g in riepilogo["faults"])
+    assert "non si è potuto guardare" in testo
+    assert any("non si è potuto guardare" in g for g in riepilogo["faults"])
 
 
 def test_il_registro_non_letto_non_e_il_registro_vuoto():
@@ -111,7 +111,7 @@ def test_una_severita_che_non_si_sa_giudicare_non_si_tace():
     ]})
     assert "mqtt" in testo and "silenzio" in testo
     assert "hue" in testo and "novita" in testo
-    assert "severita' non dichiarata" in testo
+    assert "severità non dichiarata" in testo
 
 
 # --------------------------------------------------------------------------
@@ -167,10 +167,10 @@ def test_i_guasti_hanno_una_SEZIONE_PROPRIA_subito_dopo_la_casa():
     # DOPO «La casa», PRIMA di tutto il resto.
     assert testo.index("## La casa") < testo.index("## Cosa non va in casa")
     assert testo.index("## Cosa non va in casa") < testo.index(
-        "## Cio' che la casa fa gia' da sola")
+        "## Ciò che la casa fa già da sola")
 
     # E NON fra le lacune: e' li' che si perdeva.
-    lacune = testo.split("## Cio' che HIRIS ignora")[1]
+    lacune = testo.split("## Ciò che HIRIS ignora")[1]
     assert "reolink" not in lacune
 
 
@@ -192,7 +192,7 @@ def test_il_tetto_conta_cio_che_non_elenca():
         _p(domain=f"integrazione_{n}", issue_id=f"guasto_{n}", severity="error")
         for n in range(9)
     ]})
-    assert "Home Assistant ha gia' diagnosticato 9 problemi" in testo
+    assert "Home Assistant ha già diagnosticato 9 problemi" in testo
     assert "e altri 4 problemi della stessa lista, non elencati" in testo
     assert "integrazione_8" not in testo
 
@@ -240,7 +240,7 @@ def test_quanti_se_ne_sono_taciuti_si_dichiara_sempre():
         _p(domain="hue", issue_id="a", severity="warning"),
         _p(domain="tuya", issue_id="b", severity="warning"),
     ]})
-    assert "2 problemi aperti di severita' minore" in testo
+    assert "2 problemi aperti di severità minore" in testo
     assert "Impostazioni -> Riparazioni" in testo
 
 
@@ -254,7 +254,7 @@ def test_i_taciuti_si_dichiarano_anche_accanto_a_un_guasto_grave():
         _p(domain="mqtt", issue_id="c", severity="warning"),
     ]})
     assert "grave" in testo
-    assert "Altri 3 problemi di severita' minore non sono elencati" in testo
+    assert "Altri 3 problemi di severità minore non sono elencati" in testo
 
 
 def test_al_singolare_la_frase_concorda_per_intero():
@@ -264,8 +264,8 @@ def test_al_singolare_la_frase_concorda_per_intero():
     solo_taciuto, _ = _nucleo({"problemi": [
         _p(domain="hue", issue_id="a", severity="warning"),
     ]})
-    assert "1 problema aperto di severita' minore" in solo_taciuto
-    assert "non e' elencato qui, si legge in" in solo_taciuto
+    assert "1 problema aperto di severità minore" in solo_taciuto
+    assert "non è elencato qui, si legge in" in solo_taciuto
 
     uno_grave, _ = _nucleo({"problemi": [
         _p(domain="caldaia", issue_id="grave", severity="critical"),
@@ -285,7 +285,7 @@ def test_al_singolare_la_frase_concorda_per_intero():
         _p(domain="caldaia", issue_id="grave", severity="critical"),
         _p(domain="hue", issue_id="a", severity="warning"),
     ]})
-    assert ("Un altro problema di severita' minore non e' elencato"
+    assert ("Un altro problema di severità minore non è elencato"
             in grave_piu_un_taciuto)
 
 
@@ -300,7 +300,7 @@ def test_un_warning_con_una_scadenza_non_e_un_consiglio():
     assert "template" in testo
     assert "formato_vecchio" in testo
     assert "si rompe in 2026.12" in testo
-    assert "severita' minore" not in testo
+    assert "severità minore" not in testo
 
 
 def test_riparabile_da_solo_si_dice_perche_cambia_cosa_si_puo_fare():
@@ -375,7 +375,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto",
                                   "causa": "silenzio", "codice": None}
     testo, _ = compose_briefing(app)
-    assert "non si e' potuto guardare" in testo
+    assert "non si è potuto guardare" in testo
     assert "Home Assistant non ha risposto" in testo
 
 
@@ -391,7 +391,7 @@ def test_rileggi_problemi_porta_anche_il_rifiuto_col_suo_motivo():
                                   "codice": "unknown_command"}
     testo, _ = compose_briefing(app)
     assert "Unknown command." in testo
-    assert "non si e' potuto guardare" in testo
+    assert "non si è potuto guardare" in testo
 
 
 def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():

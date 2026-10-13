@@ -95,7 +95,7 @@ def test_una_presa_in_corso_al_riavvio_diventa_fallita_e_non_riparte(archivio):
 
     p = archivio.read(ident)
     assert p["stato"] == "fallita"
-    assert "si e' fermato" in p["motivo"]
+    assert "si è fermato" in p["motivo"]
     assert archivio.scadute(ADESSO + 999) == []  # non torna in circolo
 
 

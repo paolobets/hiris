@@ -95,7 +95,7 @@ _DOMAIN_NAMES = {
     # "aspirapolvere" resta "aspirapolvere", "analisi" resta "analisi" -- e
     # dedurlo produrrebbe "aspirapolveres".
     "ai_task": ("compito IA", "compiti IA"),
-    "air_quality": ("qualita' dell’aria", "qualita' dell’aria"),
+    "air_quality": ("qualità dell’aria", "qualità dell’aria"),
     "alarm_control_panel": ("pannello allarme", "pannelli allarme"),
     "assist_satellite": ("satellite vocale", "satelliti vocali"),
     "binary_sensor": ("sensore binario", "sensori binari"),
@@ -409,14 +409,14 @@ def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
     reason = str(kept.get("motivo") or "").strip()
     read_at = kept.get("letto_il")
     if not read_at:
-        return f"il comportamento della casa non si e' ancora potuto leggere ({reason})."
+        return f"il comportamento della casa non si è ancora potuto leggere ({reason})."
     epoch = instant_epoch(read_at)
     if epoch is None:
-        return ("cio' che la casa fa da sola e' una replica conservata: "
+        return ("ciò che la casa fa da sola è una replica conservata: "
                 f"l’ultima rilettura non l’ha sostituita ({reason}).")
     timezone, label = _house_zone(frame)
     when = datetime.fromtimestamp(epoch, timezone)
-    return ("cio' che la casa fa da sola e' la replica letta alle {} del {} (fuso {}): "
+    return ("ciò che la casa fa da sola è la replica letta alle {} del {} (fuso {}): "
             "l’ultima rilettura non l’ha sostituita ({}).").format(
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label, reason)
 
@@ -449,10 +449,10 @@ def _vocabulary_freshness_line(frame: dict | None) -> str:
     if not freshness["vocabolario_piu_vecchio_della_casa"]:
         return ""
     return (
-        f"(Il vocabolario delle classi di Home Assistant che HIRIS importa e' "
+        f"(Il vocabolario delle classi di Home Assistant che HIRIS importa è "
         f"verificato fino alla versione {freshness['versione_vocabolario']}; "
-        f"questa casa e' alla {freshness['versione_casa']} -- vale la pena "
-        f"rileggere la documentazione, non e' un errore.)"
+        f"questa casa è alla {freshness['versione_casa']} -- vale la pena "
+        f"rileggere la documentazione, non è un errore.)"
     )
 
 
@@ -507,8 +507,8 @@ def _reference_frame_lines(frame: dict | None) -> list[str]:
                   for key, name in _MEASUREMENT_NAMES.items() if unit.get(key)]
         if measurements:
             lines.append(
-                "Unita' con cui ragiona la casa: " + ", ".join(measurements)
-                + " (ogni entita' porta la propria: se manca, manca -- non e'"
+                "Unità con cui ragiona la casa: " + ", ".join(measurements)
+                + " (ogni entità porta la propria: se manca, manca -- non è"
                   " questa).")
     return lines
 
@@ -552,7 +552,7 @@ def _home_space_lines(floors: list[dict],
                     + _device_annotation(area["entita"], dom, n, device_names)
                     for dom, n in counts.items())
             else:
-                detail = "nessuna entita'"
+                detail = "nessuna entità"
             lines.append(f"  - {_tree_area_name(area)}: {detail}")
     return lines
 
@@ -770,9 +770,9 @@ def _capability_lines(attributes: dict[str, dict] | None,
     regola."""
     if unreliable_state:
         return ([
-            ("Stato non letto (o dichiarato non attendibile): non si puo' dire cosa "
-            "le cose di questa casa sanno fare -- non e' lo stesso di 'non sanno "
-            "fare niente'.")
+            ("Stato non letto (o dichiarato non attendibile): non si può dire cosa "
+            "le cose di questa casa sanno fare -- non è lo stesso di 'non sanno "
+            "fare nientè.")
         ], [1], False)
     if attributes is None:
         # Il chiamante non ha guardato. **Silenzio**, e non una frase: e' la
@@ -794,7 +794,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         key = (domain_of(entity_id), _capability_signature(capabilities))
         counted[key] = counted.get(key, 0) + 1
     if not counted:
-        return (["Nessuna entita' dichiara un campo di manovra."], [1], False)
+        return (["Nessuna entità dichiara un campo di manovra."], [1], False)
     lines: list[str] = []
     weights: list[int] = []
     spent = 0
@@ -831,7 +831,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         # riga cade il taglio la conta come le firme vere che cadono con lei:
         # l'avviso in fondo al nucleo (`_cut_notice`) resta giusto in
         # ENTRAMBI i casi, che il rinvio sopravviva o no.
-        lines.append(f"- (altre {left_out} entita' con capacita' rare non elencate qui: "
+        lines.append(f"- (altre {left_out} entità con capacità rare non elencate qui: "
                      "chiedile con `search`.)")
         weights.append(left_out)
     return (lines, weights, True)
@@ -1011,7 +1011,7 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
             + " (le ritrovi con `search(genere=\"integrazione\")`)")
     return (f"{count_phrase} di Home Assistant {verb}: "
             f"{', '.join(entries[:_LISTED_PROBLEMS_CAP])}{unlisted_tail}. "
-            "Le entita' che dipendono da loro possono non rispondere.")
+            "Le entità che dipendono da loro possono non rispondere.")
 
 
 # LA SOGLIA dei problemi diagnosticati da Home Assistant, e il perche'.
@@ -1076,7 +1076,7 @@ def _problem_entry(p: dict) -> str:
     """
     name = f"{p.get('domain') or 'senza dominio'}: " \
            f"{p.get('translation_key') or p.get('issue_id') or 'senza chiave'}"
-    details = [(p.get("severity") or "").strip().lower() or "severita' non dichiarata"]
+    details = [(p.get("severity") or "").strip().lower() or "severità non dichiarata"]
     deadline = (p.get("breaks_in_ha_version") or "").strip()
     if deadline:
         details.append(f"si rompe in {deadline}")
@@ -1114,9 +1114,9 @@ def _problems_notice(problems: dict | None) -> str | None:
 
     error = (problems.get("errore") or "").strip()
     if error:
-        return ("il registro dei problemi di Home Assistant non si e' potuto "
-                f"leggere ({error}): qui non si sta dicendo che la casa e' "
-                "sana, si sta dicendo che non si e' potuto guardare.")
+        return ("il registro dei problemi di Home Assistant non si è potuto "
+                f"leggere ({error}): qui non si sta dicendo che la casa è "
+                "sana, si sta dicendo che non si è potuto guardare.")
 
     to_report: list[dict] = []
     silenced = 0
@@ -1158,9 +1158,9 @@ def _problems_notice(problems: dict | None) -> str | None:
         # problema ... non sono elencato» e' cio' che succede a concordare un
         # pezzo per volta. Stessa disciplina di `_cut_notice`, che per la
         # stessa ragione riceve le frasi gia' concordate.
-        silenced_tail = (" Un altro problema di severita' minore non e' elencato"
+        silenced_tail = (" Un altro problema di severità minore non è elencato"
                         if silenced == 1 else
-                        f" Altri {silenced} problemi di severita' minore non sono elencati")
+                        f" Altri {silenced} problemi di severità minore non sono elencati")
         silenced_tail += " (warning senza una versione di rottura dichiarata)."
 
     if not to_report:
@@ -1170,9 +1170,9 @@ def _problems_notice(problems: dict | None) -> str | None:
             # casa sana.
             return None
         # Anche qui la frase intera, non la desinenza (vedi `silenced_tail`).
-        count_and_which = ("1 problema aperto di severita' minore" if silenced == 1
-                          else f"{silenced} problemi aperti di severita' minore")
-        closing_phrase = ("non e' elencato qui, si legge" if silenced == 1
+        count_and_which = ("1 problema aperto di severità minore" if silenced == 1
+                          else f"{silenced} problemi aperti di severità minore")
+        closing_phrase = ("non è elencato qui, si legge" if silenced == 1
                     else "non sono elencati qui, si leggono")
         return (f"Home Assistant ha {count_and_which} (warning senza una "
                 f"versione di rottura dichiarata): {closing_phrase} in "
@@ -1187,7 +1187,7 @@ def _problems_notice(problems: dict | None) -> str | None:
                              if unlisted == 1 else
                              f"; e altri {unlisted} problemi della stessa "
                              "lista, non elencati")
-    return (f"Home Assistant ha gia' diagnosticato {count} {entry}: {entries}"
+    return (f"Home Assistant ha già diagnosticato {count} {entry}: {entries}"
             f"{unlisted_tail}.{silenced_tail} "
             f"Si {_plural(count, 'legge', 'leggono')} per esteso e si "
             f"{_plural(count, 'ripara', 'riparano')} in {_REPAIR_LOCATION}.")
@@ -1254,9 +1254,9 @@ def _comparison_notice(comparison: dict | None) -> str | None:
 
     error = str(comparison.get("errore") or "").strip()
     if error:
-        return ("il confronto fra l’albero della casa e Home Assistant non si e' "
+        return ("il confronto fra l’albero della casa e Home Assistant non si è "
                 f"potuto fare ({error}): qui non si sta dicendo che l’albero "
-                "combacia, si sta dicendo che non si e' potuto controllare.")
+                "combacia, si sta dicendo che non si è potuto controllare.")
 
     checked = [g for g in comparison.get("guardate") or [] if isinstance(g, dict)]
     if not checked:
@@ -1283,15 +1283,15 @@ def _comparison_notice(comparison: dict | None) -> str | None:
                 # delle sue entita', che sarebbe la stessa notizia detta a
                 # pezzi.
                 entries.append(f"{g.get('nome')} ({g.get('area')}) non esiste "
-                            "piu' in Home Assistant")
+                            "più in Home Assistant")
             else:
                 entries.append(f"{g.get('nome')}: {_cited_entities(g.get('in_piu') or [])}")
         count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
             f"In {count_phrase} l’albero di HIRIS afferma qualcosa che Home Assistant "
-            f"non conferma -- {'; '.join(entries)}. E' il caso peggiore dei due: "
-            "e' cosi' che nasce una risposta sbagliata detta con sicurezza, e "
-            "finche' l’anagrafe non si ricostruisce quelle attribuzioni non "
+            f"non conferma -- {'; '.join(entries)}. È il caso peggiore dei due: "
+            "è così che nasce una risposta sbagliata detta con sicurezza, e "
+            "finché l’anagrafe non si ricostruisce quelle attribuzioni non "
             "reggono.")
 
     if missing:
@@ -1299,15 +1299,15 @@ def _comparison_notice(comparison: dict | None) -> str | None:
                 for g in missing]
         count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
-            f"In {count_phrase} Home Assistant riporta entita' che l’albero di HIRIS "
+            f"In {count_phrase} Home Assistant riporta entità che l’albero di HIRIS "
             f"non ci attribuisce -- {'; '.join(entries)}. La replica dell’anagrafe "
-            "e' piu' vecchia della casa, o un registro non ha risposto.")
+            "è più vecchia della casa, o un registro non ha risposto.")
 
     if not_loaded:
         entries = [f"{g.get('nome')} ({g.get('errore')})" for g in not_loaded]
         count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
-            f"Su {count_phrase} il confronto non si e' potuto fare -- {'; '.join(entries)}: "
+            f"Su {count_phrase} il confronto non si è potuto fare -- {'; '.join(entries)}: "
             "non si sta dicendo che quelle aree combaciano, si sta dicendo che "
             "non si sono potute controllare.")
 
@@ -1591,7 +1591,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(
             "registri di Home Assistant che non hanno risposto all’ultima "
             f"lettura: {', '.join(sorted(unavailable))}. "
-            "Cio' che manca qui sotto potrebbe esistere lo stesso.")
+            "Ciò che manca qui sotto potrebbe esistere lo stesso.")
 
     # Subito dopo i registri caduti, e prima di tutto il resto: sono la stessa
     # specie di dichiarazione -- quanto ci si puo' fidare dell'albero che
@@ -1621,10 +1621,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == "nascosta"]
     if hidden:
         n = len(hidden)
-        entry = _plural(n, "entita' nascosta", "entita' nascoste")
+        entry = _plural(n, "entità nascosta", "entità nascoste")
         notices.append(
             f"{n} {entry} in Home Assistant: fuori dai conteggi qui sopra "
-            "perche' la persona le ha nascoste, ma esistono e `search` le "
+            "perché la persona le ha nascoste, ma esistono e `search` le "
             "riporta se gliele chiedi (`includi_nascoste`).")
 
     # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
@@ -1653,9 +1653,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         # identiche, e chiamare `_plural` con lo stesso testo due volte e'
         # un giro a vuoto che nasconde perche' non serve).
         notices.append(
-            f"{n} entita' di servizio (config/diagnostic) in Home Assistant: "
-            "fuori dalle capacita' del nucleo "
-            "perche' l’integrazione le marca cosi', ma esistono e `search` le "
+            f"{n} entità di servizio (config/diagnostic) in Home Assistant: "
+            "fuori dalle capacità del nucleo "
+            "perché l’integrazione le marca così, ma esistono e `search` le "
             "riporta se gliele chiedi (`includi_servizio`).")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
@@ -1737,9 +1737,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     unreliable = _unreliable_state(home_space, state, reliable_state, unavailable)
     if unreliable:
         notices.append(
-            "lo stato delle entita' non e' stato letto, o e' stato dichiarato non "
+            "lo stato delle entità non è stato letto, o è stato dichiarato non "
             "attendibile: il nucleo non dice che va tutto bene, dice che non si "
-            "e' potuto guardare.")
+            "è potuto guardare.")
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, digest_visible_entity_ids(home_space))
     behavior_lines, behavior_weights = _behavior_lines(behavior, unknown)
@@ -1766,9 +1766,9 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # cosa fa gia' nessuno), e chi legge le trova accanto. Piu' in alto
     # avrebbe spinto giu' la mappa delle stanze, che e' la chiave di lettura
     # di tutti i nomi che vengono dopo.
-    capability_section = ("## Cosa si puo' chiedere alle cose di casa", capability_lines)
-    behavior_section = ("## Cio' che la casa fa gia' da sola", behavior_lines)
-    memory_section = ("## Cio' che le persone hanno detto", memory_lines)
+    capability_section = ("## Cosa si può chiedere alle cose di casa", capability_lines)
+    behavior_section = ("## Ciò che la casa fa già da sola", behavior_lines)
+    memory_section = ("## Ciò che le persone hanno detto", memory_lines)
 
     print_order = [home_space_section]
     # Zero righe significa «il chiamante non ha guardato gli attributi», e
@@ -1820,8 +1820,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # («5 voci non incluse» -- e quali? come?). `search` le elenca per genere,
     # automazioni e script separati (`home_space/tools.py`, filtro `genere`).
     cut_labels = [
-        ("capacita", "entita' di cui il nucleo non dice cosa sa fare",
-                      "entita' di cui il nucleo non dice cosa sanno fare"),
+        ("capacita", "entità di cui il nucleo non dice cosa sa fare",
+                      "entità di cui il nucleo non dice cosa sanno fare"),
         ("comportamento",
          ("voce di comportamento non inclusa (le elencano "
           "`search(genere=\"automazione\")` e `search(genere=\"script\")`)"),
@@ -1829,8 +1829,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
           "`search(genere=\"automazione\")` e `search(genere=\"script\")`)")),
         ("casa", "riga di conteggio della casa non inclusa",
                  "righe di conteggio della casa non incluse"),
-        ("ricordi", "ricordo non incluso (il piu' vecchio prima)",
-                    "ricordi non inclusi (i piu' vecchi prima)"),
+        ("ricordi", "ricordo non incluso (il più vecchio prima)",
+                    "ricordi non inclusi (i più vecchi prima)"),
     ]
 
     truncated = False
@@ -1866,7 +1866,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # nucleo occuperebbe uno spazio che le lacune, gia' dichiarate, non
     # avrebbero avuto, e la rete di sicurezza sotto sarebbe l'unica cosa a
     # farsi carico dello sforamento.
-    known_gaps_length = len(_assemble([("## Cio' che HIRIS ignora", _gap_lines(notices))]))
+    known_gaps_length = len(_assemble([("## Ciò che HIRIS ignora", _gap_lines(notices))]))
     # La sezione dei guasti entra nel conto come le lacune: sta FUORI dal
     # taglio -- non si accorcia mai, perche' e' la risposta alla domanda piu'
     # comune che si faccia a questo prodotto -- quindi lo spazio che occupa va
@@ -1893,7 +1893,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(_cut_notice(excluded_per_pool, cut_labels, cap))
         cut_notice_index = len(notices) - 1
 
-    gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
+    gap_section = ("## Ciò che HIRIS ignora", _gap_lines(notices))
 
     # DOVE va la sezione dei guasti: subito dopo «La casa» e prima di tutto il
     # resto. L'ordine di lettura diventa: com'e' fatta -> cosa e' rotto ->
@@ -1944,7 +1944,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             cut_notice_index = len(notices) - 1
         else:
             notices[cut_notice_index] = message
-        gap_section = ("## Cio' che HIRIS ignora", _gap_lines(notices))
+        gap_section = ("## Ciò che HIRIS ignora", _gap_lines(notices))
         text = _assemble(_with_faults(print_order) + [gap_section])
 
     excluded_memories = excluded_per_pool.get("ricordi", 0)

@@ -139,8 +139,8 @@ STATE_WAIT_S = 2.0
 _MUTE_REGISTRY = ("non so ancora cosa Home Assistant sa fare: il registro dei "
                   "servizi e' vuoto. Non e' che questa casa non sappia fare "
                   "niente -- e' che non sono riuscito a leggerlo. Riprova fra poco.")
-_BLIND_MIRROR = ("non vedo lo stato di questa casa: l’inventario delle entita' "
-                   "non e' disponibile. Non posso dire se l’entita' esista, solo "
+_BLIND_MIRROR = ("non vedo lo stato di questa casa: l’inventario delle entità "
+                   "non è disponibile. Non posso dire se l’entità esista, solo "
                    "che non ho potuto controllare. Riprova fra poco.")
 
 # La terza guardia, e ha la stessa forma delle due sopra: un ingresso che non
@@ -197,29 +197,29 @@ def _seconds(pending: float) -> str:
 # era nemmeno guardato.
 def _not_seen(pending: float, *, listened: bool) -> str:
     if not listened:
-        return ("la chiamata e' partita, ma non sono riuscito a rileggere lo "
+        return ("la chiamata è partita, ma non sono riuscito a rileggere lo "
                 "stato dopo: non sono rimasto in ascolto dei cambiamenti -- o "
                 "questo collegamento con Home Assistant non li annuncia, o "
-                "l’ascolto non si e' aperto -- quindi non c’e' stata "
+                "l’ascolto non si è aperto -- quindi non c’è stata "
                 "nessuna attesa: non avevo nessun annuncio da aspettare. La "
                 "chiamata non ha riportato niente e l’inventario interno non "
-                "e' leggibile. Non so dire cosa sia cambiato")
-    return ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "
+                "è leggibile. Non so dire cosa sia cambiato")
+    return ("la chiamata è partita, ma non sono riuscito a rileggere lo stato "
             f"dopo: ho aspettato {_seconds(pending)} secondi e Home Assistant non "
-            "ha annunciato niente su queste entita', la chiamata non ha riportato "
-            "niente e l’inventario interno non e' leggibile. Non so dire cosa sia "
+            "ha annunciato niente su queste entità, la chiamata non ha riportato "
+            "niente e l’inventario interno non è leggibile. Non so dire cosa sia "
             "cambiato")
 
 
 def _no_change(pending: float, *, listened: bool) -> str:
     if not listened:
-        return ("la chiamata e' andata a buon fine, ma questo collegamento "
+        return ("la chiamata è andata a buon fine, ma questo collegamento "
                 "con Home Assistant non annuncia i cambiamenti di stato: "
-                "nessuna attesa e' stata possibile -- non c’era un annuncio "
+                "nessuna attesa è stata possibile -- non c’era un annuncio "
                 "da aspettare -- e nella chiamata Home Assistant non ha "
-                "riportato nessun cambiamento. E' un fatto su cio' che la "
-                "chiamata ha detto, non una diagnosi del dispositivo: puo' "
-                "voler dire che era gia' cosi', oppure che sta ancora "
+                "riportato nessun cambiamento. È un fatto su ciò che la "
+                "chiamata ha detto, non una diagnosi del dispositivo: può "
+                "voler dire che era già così, oppure che sta ancora "
                 "muovendosi")
     return ("la chiamata e' andata a buon fine, ho aspettato "
             f"{_seconds(pending)} secondi che Home Assistant annunciasse un "
@@ -231,9 +231,9 @@ def _no_change(pending: float, *, listened: bool) -> str:
 
 
 _CHANGED_NOT_SHOWABLE = ("Home Assistant ha riportato un cambiamento su queste "
-                            "entita' -- annunciandolo, o dichiarandolo nella "
+                            "entità -- annunciandolo, o dichiarandolo nella "
                             "chiamata -- ma fra i valori che HIRIS confronta non "
-                            "ce n’e' nessuno diverso: il comando ha avuto effetto "
+                            "ce n’è nessuno diverso: il comando ha avuto effetto "
                             "su qualcosa che non so mostrare")
 
 # Il quarto avviso, per il caso che i tre sopra non possono descrivere: un
@@ -246,7 +246,7 @@ _CHANGED_NOT_SHOWABLE = ("Home Assistant ha riportato un cambiamento su queste "
 # guardare invece di qualcosa che non si e' mosso. Nessuna scadenza nominata:
 # non se n'e' pagata nessuna (vedi il ramo senza bersaglio di
 # `ActionActuator.execute`).
-_NO_STATE_TO_REREAD = ("la chiamata e' partita ed e' stata accettata: questo "
+_NO_STATE_TO_REREAD = ("la chiamata è partita ed è stata accettata: questo "
                              "servizio non ha un bersaglio, quindi non c’era "
                              "nessuno stato da rileggere.")
 
@@ -561,7 +561,7 @@ class ActionActuator:
         remove = getattr(self._ha, "remove_state_listener", None)
         if not callable(add) or not callable(remove):
             logger.warning("questo client di Home Assistant non annuncia i "
-                           "cambiamenti di stato: l’esito potra' dire solo cio' "
+                           "cambiamenti di stato: l’esito potrà dire solo ciò "
                            "che la chiamata ha riportato")
             return False
         try:

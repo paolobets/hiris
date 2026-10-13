@@ -136,8 +136,8 @@ def test_il_nucleo_conta_una_nascosta_di_servizio_una_volta_sola():
     home_space = _casa(_riga("sensor.n_s", hidden_by="user", entity_category="config"),
                        _riga("sensor.s", entity_category="diagnostic"))
     testo = _core_text(home_space)
-    assert "1 entita' nascosta" in testo
-    assert "1 entita' di servizio" in testo
+    assert "1 entità nascosta" in testo
+    assert "1 entità di servizio" in testo
 
 
 # --- IDENTITA' ------------------------------------------------------------

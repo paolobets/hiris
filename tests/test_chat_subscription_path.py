@@ -1026,7 +1026,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         # ① la casa seminata e' arrivata davvero al ponte -- le sezioni del
         # nucleo, la stanza seminata e il ricordo seminato
         assert "## La casa" in contesto and "Cucina" in contesto
-        assert "## Cio' che le persone hanno detto" in contesto
+        assert "## Ciò che le persone hanno detto" in contesto
         assert "faretti dimmerabili" in contesto
 
         # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la

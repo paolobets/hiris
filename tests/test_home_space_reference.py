@@ -178,7 +178,7 @@ def test_il_nucleo_dice_le_unita_della_casa_lette_dalla_cornice():
     Mutazione ESEGUITA: il nucleo che legge ancora `unita` -- rossa (la riga
     delle unita' sparisce)."""
     testo = _nucleo(reference_frame(_CONFIG))
-    assert "Unita' con cui ragiona la casa: temperatura C" in testo
+    assert "Unità con cui ragiona la casa: temperatura C" in testo
 
 
 # --- il vocabolario invecchiato: "qualcuno lo dice" -------------------------

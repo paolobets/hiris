@@ -207,7 +207,7 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
 # ---------------------------------------------------------------------------
 
 def test_la_memoria_nella_fotografia_non_viene_negata():
-    ricordo = ("## Cio' che le persone hanno detto" + chr(10)
+    ricordo = ("## Ciò che le persone hanno detto" + chr(10)
                + "- la caldaia perde (detto da paolo)")
     system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=ricordo)
 

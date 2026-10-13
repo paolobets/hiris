@@ -194,7 +194,7 @@ def test_flusso_senza_result_e_dichiarato_nel_log_e_nella_reply(caplog):
 
     # e nella reply, perche' un log che nessuno legge non e' una dichiarazione
     assert reply.startswith(runner._INCOMPLETE_STREAM_SENTINEL)
-    assert "non e' una risposta completa" in reply
+    assert "non è una risposta completa" in reply
     # e non e' il testo parziale spacciato per risposta: il pezzo grezzo c'e',
     # ma etichettato come tale
     assert "ultimo pezzo di flusso letto" in reply

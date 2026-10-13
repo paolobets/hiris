@@ -135,7 +135,7 @@ def test_hiris_ne_ha_di_meno_si_dichiara():
     testo, _ = _nucleo(esito, casa)
     assert "switch.forno" in testo
     assert "non ci attribuisce" in testo
-    assert "piu' vecchia della casa" in testo
+    assert "più vecchia della casa" in testo
 
 
 def test_hiris_ne_ha_di_piu_e_il_caso_peggiore():
@@ -193,7 +193,7 @@ def test_un_area_che_in_ha_non_esiste_piu_si_dice_in_una_parola():
 
     assert esito["guardate"][0]["assente_in_ha"] is True
     testo, _ = _nucleo(esito, casa)
-    assert "non esiste piu' in Home Assistant" in testo
+    assert "non esiste più in Home Assistant" in testo
 
 
 def test_nessuno_ha_chiesto_non_e_un_albero_verificato():
@@ -333,7 +333,7 @@ def test_un_area_non_letta_non_e_un_area_che_combacia():
     assert "errore" in guardate["bagno"]
     assert "mancanti" not in guardate["bagno"] and "in_piu" not in guardate["bagno"]
     testo, _ = _nucleo(esito, casa)
-    assert "non si e' potuto fare" in testo
+    assert "non si è potuto fare" in testo
     assert "non si sono potute controllare" in testo
 
 
@@ -341,8 +341,8 @@ def test_il_giro_non_letto_non_e_un_albero_verificato():
     """Il gemello del ramo `errore` di `_problems_notice`: non si sta dicendo
     che l'albero combacia, si sta dicendo che non si e' potuto controllare."""
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
-    assert "non si e' potuto controllare" in testo
-    assert any("non si e' potuto controllare" in a for a in riepilogo["notices"])
+    assert "non si è potuto controllare" in testo
+    assert any("non si è potuto controllare" in a for a in riepilogo["notices"])
 
 
 def test_un_area_sparita_dall_albero_e_un_confronto_perso():
@@ -350,7 +350,7 @@ def test_un_area_sparita_dall_albero_e_un_confronto_perso():
     combaciare: e' un confronto che non si e' potuto chiudere."""
     casa = _casa([])
     esito = _confronto(casa, {"salotto": _risposta([])})
-    assert "non e' piu' nell’albero" in esito["guardate"][0]["errore"]
+    assert "non è più nell’albero" in esito["guardate"][0]["errore"]
 
 
 def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():

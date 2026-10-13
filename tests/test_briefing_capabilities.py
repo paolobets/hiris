@@ -102,7 +102,7 @@ def test_il_nucleo_dice_che_in_questa_casa_qualcosa_sa_fare_colore():
     `"color_temp" in testo`.
     """
     testo, _ = compose(_CASA, [], [], _STATO, attributes=_attributi())
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     assert "4 luci" in sezione
     assert "supported_color_modes=[color_temp, hs]" in sezione
     assert "44 luci: supported_color_modes=[onoff]" in sezione
@@ -120,7 +120,7 @@ def test_una_firma_aggregata_e_mappa_non_dettaglio():
     arrossisce.
     """
     testo, _ = compose(_CASA, [], [], _STATO, attributes=_attributi())
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     assert "min_color_temp_kelvin" in sezione      # il nome: e' la mappa
     assert "9000" not in sezione                   # il valore: e' il dettaglio
     assert "1500" not in sezione
@@ -145,7 +145,7 @@ def test_il_nucleo_conta_le_entita_e_non_le_nomina():
     """Quarantotto luci in due righe. Gli `entity_id` non ci stanno, qui come
     in «La casa»."""
     testo, _ = compose(_CASA, [], [], _STATO, attributes=_attributi())
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     assert "light.luce0" not in sezione
     assert len(sezione.split("\n")) == 3          # intestazione + due firme
 
@@ -248,7 +248,7 @@ def test_la_sezione_ha_un_tetto_suo_e_dichiara_cio_che_ci_lascia_fuori():
     tante = {f"light.luce{n}": {CAPABILITIES: {"effect_list": [f"effetto{n}"]}}
              for n in range(300)}
     testo, _ = compose(_CASA, [], [], _STATO, cap=100000, attributes=tante)
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     assert len(sezione) <= briefing._CAPABILITY_SECTION_BUDGET + 200
     assert "non elencate qui" in sezione
     assert "`search`" in sezione
@@ -279,7 +279,7 @@ def test_attributi_letti_e_vuoti_non_sono_attributi_non_letti():
     vuoto -- i due casi collassano e la prova arrossisce.
     """
     testo, _ = compose(_CASA, [], [], _STATO, attributes={})
-    assert "Nessuna entita' dichiara un campo di manovra." in testo
+    assert "Nessuna entità dichiara un campo di manovra." in testo
 
 
 def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
@@ -295,7 +295,7 @@ def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
     """
     testo, _ = compose(_CASA, [], [], _STATO, cap=900,
                        reliable_state=False, attributes=_attributi())
-    assert "non si puo' dire cosa le cose di questa casa sanno fare" in testo
+    assert "non si può dire cosa le cose di questa casa sanno fare" in testo
 
 
 # ---------------------------------------------------------------------------
@@ -372,12 +372,12 @@ def test_a_seimila_il_taglio_morde_le_capacita_e_non_il_comportamento():
     """
     testo, riepilogo = _nucleo_tetto(cap=5600)
     assert riepilogo["truncated"] is True
-    automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
+    automazioni = _sezione(testo, "## Ciò che la casa fa già").splitlines()[1:]
     assert len(automazioni) == _AUTOMAZIONI_TETTO, (
         f"il comportamento deve restare intero: ne sono entrate {len(automazioni)}")
-    firme = _sezione(testo, "## Cosa si puo' chiedere").splitlines()[1:]
+    firme = _sezione(testo, "## Cosa si può chiedere").splitlines()[1:]
     intere = _sezione(_nucleo_tetto(cap=100_000)[0],
-                      "## Cosa si puo' chiedere").splitlines()[1:]
+                      "## Cosa si può chiedere").splitlines()[1:]
     assert len(firme) < len(intere), "il taglio deve aver morso le capacita'"
     assert "cosa sanno fare" in " ".join(riepilogo["notices"])
 
@@ -393,9 +393,9 @@ def test_al_tetto_di_adesso_comportamento_e_capacita_restano_interi():
     5.516 caratteri e a 6000 il taglio non morde piu'.)
     """
     testo, riepilogo = _nucleo_tetto()
-    automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
+    automazioni = _sezione(testo, "## Ciò che la casa fa già").splitlines()[1:]
     assert len(automazioni) == _AUTOMAZIONI_TETTO
-    assert "## Cosa si puo' chiedere" in testo
+    assert "## Cosa si può chiedere" in testo
     assert riepilogo["truncated"] is False
 
 
@@ -472,7 +472,7 @@ def test_r1_la_sezione_conta_come_la_casa_non_come_lo_specchio_della_cache():
     """
     testo, _ = compose(_CASA_R1, [], [], _STATO_R1, attributes=_ATTRIBUTI_R1)
     assert "Sala da pranzo (id: sala): 1 luce, 1 numero" in _sezione(testo, "## La casa")
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     # Concordanza: la STESSA "1 luce" che dice «La casa» -- non le tre della
     # cache (visibile + nascosta + solo-cache).
     assert sezione.splitlines()[1:] == ["- 1 luce: supported_color_modes=[onoff]"]
@@ -562,7 +562,7 @@ def test_r2_il_rinvio_ha_peso_e_l_avviso_non_sottostima_quando_cade():
     testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, cap=1300,
                                attributes=attributi)
     assert riepilogo["truncated"] is True
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     firme_superstiti = [riga for riga in sezione.splitlines()[1:]
                         if riga.startswith("- ") and "effetto_raro_" in riga]
     n_superstiti = len(firme_superstiti)
@@ -585,6 +585,6 @@ def test_r2_il_rinvio_sopravvive_quando_non_serve_tagliare_oltre():
     prima: lo fa contare correttamente SE cade."""
     attributi = _attributi_firme_rare(60)
     testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, attributes=attributi)
-    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    sezione = _sezione(testo, "## Cosa si può chiedere")
     assert "non elencate qui" in sezione
     assert riepilogo["truncated"] is False

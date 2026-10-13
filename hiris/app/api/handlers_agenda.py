@@ -122,7 +122,7 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     # (`keeper/store.CONSERVAZIONE`): la pagina non ne disegnera' mai
     # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
     if len(ids) > _MAX_IDS:
-        return error_response(400, f"troppi identificatori in una volta (il tetto e' {_MAX_IDS}).")
+        return error_response(400, f"troppi identificatori in una volta (il tetto è {_MAX_IDS}).")
     return web.json_response({"marked": store.mark_read(
         ids, thread=request_thread(request), now=time.time())})
 

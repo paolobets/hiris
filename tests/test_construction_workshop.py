@@ -405,7 +405,7 @@ async def test_una_proposta_non_piu_in_attesa_si_rifiuta_con_la_frase_del_suo_st
     archivio.mark_uncertain(p["proposta_id"], now=ADESSO + 1, execution_id=None)
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert esito["errore"] == f"quella proposta non e' piu' in attesa: {readable('incerta')}."
+    assert esito["errore"] == f"quella proposta non è più in attesa: {readable('incerta')}."
     assert ha.salvate == []
 
 
@@ -950,7 +950,7 @@ async def test_scrittura_arrivata_senza_risposta_applicata(banco):
                                  now=ADESSO + 60)
 
     assert esito["eseguito"] is True
-    assert "e' arrivata" in esito["avviso"]
+    assert "è arrivata" in esito["avviso"]
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
     assert cronaca.read(esito["esecuzione_id"])["eseguito"] is True
 
@@ -978,7 +978,7 @@ async def test_rilettura_muta_lascia_incerta_e_non_disfa(banco):
 
     assert esito["eseguito"] is False
     assert silent(esito)
-    assert "non so se e' arrivata" in esito["errore"]
+    assert "non so se è arrivata" in esito["errore"]
     assert "input_boolean.modalita_notte" in esito["errore"]
     assert ha.helper_cancellati == []
     riga = archivio.read(p["proposta_id"], now=ADESSO)
@@ -1000,7 +1000,7 @@ async def _incerta(officina, ha, *, arriva: bool):
     ha.cadute_successive = {"read_configuration"}
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert "non so se e' arrivata" in esito["errore"]
+    assert "non so se è arrivata" in esito["errore"]
     ha.scrittura_muta = False
     ha._override.pop("salva", None)
     ha.cadute_successive = set()
@@ -1048,8 +1048,8 @@ async def test_una_costruzione_incerta_mai_arrivata_lo_dice_e_non_scrive(banco):
                                    now=ADESSO + 120)
 
     assert esito["eseguito"] is False
-    assert esito["errore"] == ("automation.1771 e' gia' com’era prima: non "
-                               "c’e' niente da rimettere."), esito["errore"]
+    assert esito["errore"] == ("automation.1771 è già com’era prima: non "
+                               "c’è niente da rimettere."), esito["errore"]
     assert ha.salvate == []
 
 
@@ -1075,7 +1075,7 @@ async def test_un_incerta_gia_rimessa_al_secondo_clic_non_inventa_la_causa(banco
 
     assert secondo["eseguito"] is False
     assert "arrivata" not in secondo["errore"], secondo["errore"]
-    assert "gia' com’era prima" in secondo["errore"]
+    assert "già com’era prima" in secondo["errore"]
     assert ha.salvate == []
 
 
@@ -1113,7 +1113,7 @@ async def test_scrittura_muta_non_arrivata_rifiutata(banco):
 
     assert esito["eseguito"] is False
     assert silent(esito)
-    assert "non e' arrivata" in esito["errore"]
+    assert "non è arrivata" in esito["errore"]
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "fallita"
 
 
@@ -1378,7 +1378,7 @@ async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_p
     # e nessuna etichetta va su un id che nessuno ha confermato.
     assert ha.etichettate == [], (
         "nessuna etichetta su un id che nessuno ha confermato")
-    assert "registro delle entita'" in (esito.get("avviso") or "")
+    assert "registro delle entità" in (esito.get("avviso") or "")
     assert "input_boolean.modalita_notte" in (esito.get("avviso") or "")
     assert "etichetta HIRIS" in esito["avviso"]
     assert archivio.read(p["proposta_id"], now=ADESSO)["stato"] == "applicata"
@@ -1857,7 +1857,7 @@ async def test_una_modifica_su_un_oggetto_cancellato_a_mano_NON_lo_ricrea(banco)
     ha.corpi.pop("1771")
     esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                  now=ADESSO + 60)
-    assert "non c’e' piu'" in esito["errore"]
+    assert "non c’è più" in esito["errore"]
     assert ha.salvate == []
 
 

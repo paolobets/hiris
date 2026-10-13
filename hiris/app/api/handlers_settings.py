@@ -174,7 +174,7 @@ def _text(body: dict, key: str, current: str) -> str:
         raise Rejection(
             key,
             f"«{key}» contiene un carattere non rappresentabile in UTF-8 "
-            f"(posizione {exc.start}): di solito significa che il testo e' "
+            f"(posizione {exc.start}): di solito significa che il testo è "
             "stato incollato da una sorgente malformata. Ricopialo e riprova.",
         ) from None
     return value

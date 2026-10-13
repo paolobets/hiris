@@ -161,7 +161,7 @@ async def test_il_contesto_della_chat_e_il_nucleo(aiohttp_client, tmp_path):
     # Le sezioni del nucleo -- lo stesso testo che GET /api/briefing mostra --
     # non le quattro vecchie intestazioni.
     assert "## La casa" in context_str
-    assert "## Cio' che la casa fa gia' da sola" in context_str
+    assert "## Ciò che la casa fa già da sola" in context_str
     assert "Cucina" in context_str
     assert "## Contesto casa" not in context_str
     archivio_casa.close()
@@ -264,7 +264,7 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
     assert "Nessun piano registrato." in context_str
     # Mai un nucleo vuoto spacciato per una casa vuota: il nucleo dice
     # "non ho potuto guardare".
-    assert "non si e' potuto guardare" in context_str
+    assert "non si è potuto guardare" in context_str
 
 
 # ---------------------------------------------------------------------------

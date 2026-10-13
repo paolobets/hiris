@@ -117,10 +117,14 @@ APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 # dopo -- "l'utente", non "utente'" (l'apostrofo di chiusura di un
 # identificatore citato, quello si lascia stare: dopo di lui non c'e' mai una
 # lettera) e non "e'"/"gia'"/"perche'" (l'accento sostituito con l'apostrofo
-# a fine parola: un'altra convenzione di questo codice, gia' sorvegliata da
-# `tests/js/watcher-route.test.mjs` per il frontend, FUORI dal perimetro di
-# questa prova).
+# a fine parola: quello lo guarda `ACCENTO_DRITTO_RE` qui sotto).
 ELISIONE_DRITTA_RE = re.compile(r"[A-Za-zÀ-ÿ]+'(?=[A-Za-zÀ-ÿ])")
+
+# Un accento dritto: una vocale e l'apostrofo ASCII a fine parola -- "e'",
+# "gia'", "perche'". C-26 (Decisione 19 del piano di chiusura): nel testo per
+# il proprietario si scrivono le lettere accentate vere, e nessun messaggio,
+# in tutto `hiris/app`, mescola l'elisione `’` con un accento dritto.
+ACCENTO_DRITTO_RE = re.compile(r"(?<![A-Za-zÀ-ÿ'])[A-Za-zÀ-ÿ]*?[aeiouAEIOU]'(?![A-Za-zÀ-ÿ])")
 
 WHOLE_FILE: tuple[tuple[int, int], ...] | None = None
 
@@ -380,6 +384,35 @@ def _elisioni_dritte(sorgente: str, nome: str,
     return trovate
 
 
+def _accenti_dritti(sorgente: str, nome: str,
+                    intervalli: tuple[tuple[int, int], ...] | None, *,
+                    solo_misti: bool) -> list[str]:
+    """Le stringhe (non docstring, f-string comprese) nell'intervallo
+    dichiarato che portano un accento dritto; con `solo_misti` soltanto
+    quelle che portano anche l'elisione `’`. Pura, come `_elisioni_dritte`."""
+    albero = ast.parse(sorgente, filename=nome)
+    docstring_righe = _docstring_linenos(albero)
+    trovate = []
+    for node in ast.walk(albero):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            testo = node.value
+        elif isinstance(node, ast.JoinedStr):
+            testo = "".join(v.value for v in node.values
+                            if isinstance(v, ast.Constant))
+        else:
+            continue
+        if node.lineno in docstring_righe:
+            continue
+        if intervalli is not None and not any(
+                inizio <= node.lineno <= fine for inizio, fine in intervalli):
+            continue
+        if solo_misti and "’" not in testo:
+            continue
+        if ACCENTO_DRITTO_RE.search(testo):
+            trovate.append(f"{nome}:{node.lineno}: {testo[:90]!r}")
+    return trovate
+
+
 def _elisioni_dritte_in(path: Path, intervalli: tuple[tuple[int, int], ...] | None) -> list[str]:
     return _elisioni_dritte(path.read_text(encoding="utf-8"), path.name, intervalli)
 
@@ -458,11 +491,11 @@ def test_la_guardia_vede_davvero_dentro_actuator_appena_allargata():
     correzione ha tolto da `_BLIND_MIRROR` -- in una stringa mai scritta su
     disco, dentro l'intervallo dichiarato per la funzione."""
     intatto = (APP / "action" / "actuator.py").read_text(encoding="utf-8")
-    assert "l’inventario delle entita'" in intatto, (
+    assert "l’inventario delle entità" in intatto, (
         "questo test presuppone che _BLIND_MIRROR sia gia' corretto: se "
         "questa asserzione fallisce, la correzione R2 e' stata disfatta altrove"
     )
-    mutato = intatto.replace("l’inventario delle entita'", "l'inventario delle entita'", 1)
+    mutato = intatto.replace("l’inventario delle entità", "l'inventario delle entità", 1)
     assert mutato != intatto
 
     difetti = _elisioni_dritte(mutato, "actuator.py", SORVEGLIATO["action/actuator.py"])
@@ -472,3 +505,34 @@ def test_la_guardia_vede_davvero_dentro_actuator_appena_allargata():
         "_BLIND_MIRROR: gli estremi dichiarati in SORVEGLIATO non coprono la "
         "riga vera, o non la coprivano mai"
     )
+
+
+def test_nessun_accento_dritto_nel_testo_sorvegliato_del_proprietario():
+    """C-26: nel testo per il proprietario le lettere accentate sono vere
+    («è», «già», «perché»), non una vocale con l'apostrofo dritto.
+
+    Mutazione ESEGUITA: «non si è potuto guardare» riportato a «non si e'
+    potuto guardare» in `home_space/briefing.py` -- rossa, col nome del file
+    e della riga."""
+    difetti: list[str] = []
+    for relativo, intervalli in SORVEGLIATO.items():
+        difetti.extend(_accenti_dritti((APP / relativo).read_text(encoding="utf-8"),
+                                       relativo, intervalli, solo_misti=False))
+    assert difetti == [], (
+        "accento dritto trovato nel testo per il proprietario:\n" + "\n".join(difetti))
+
+
+def test_nessun_messaggio_mescola_l_elisione_curva_e_l_accento_dritto():
+    """C-26, la meta' che vale per TUTTO `hiris/app`: un messaggio che porta
+    `’` e insieme «e'» mescola due convenzioni nella stessa frase -- era
+    proprio il difetto della voce.
+
+    Mutazione ESEGUITA: «è» riportato a «e'» in una frase con `’` di
+    `action/construction/workshop.py` -- rossa."""
+    difetti: list[str] = []
+    for path in sorted(APP.rglob("*.py")):
+        difetti.extend(_accenti_dritti(path.read_text(encoding="utf-8"),
+                                       path.relative_to(APP).as_posix(), None,
+                                       solo_misti=True))
+    assert difetti == [], (
+        "messaggio che mescola ’ e un accento dritto:\n" + "\n".join(difetti))

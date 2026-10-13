@@ -141,7 +141,7 @@ def test_service_entities_are_counted_even_when_not_announced():
 
     Mutazione: non contare `service` (o non appenderlo a `notices`) -- il
     test torna rosso su
-    `assert "2 entita' di servizio" in gaps` (`AssertionError`, la
+    `assert "2 entità di servizio" in gaps` (`AssertionError`, la
     sottostringa non compare)."""
     entities, state = [], {}
     for i in range(2):
@@ -150,7 +150,7 @@ def test_service_entities_are_counted_even_when_not_announced():
     text = _con(entities, state)
 
     gaps = _sezione_lacune(text)
-    assert "2 entita' di servizio" in gaps, (
+    assert "2 entità di servizio" in gaps, (
         "ma il numero c'e', altrimenti la domanda «quante sono di servizio?» "
         "costerebbe una chiamata a `search` per ognuna")
 
@@ -196,7 +196,7 @@ def test_un_telefono_in_casa_chi_chiede_lo_vede():
 # ── Le nascoste: fuori dalle gestioni, DENTRO la conoscenza ────────────────
 
 def _sezione_lacune(testo: str) -> str:
-    return testo.split("## Cio' che HIRIS ignora")[1]
+    return testo.split("## Ciò che HIRIS ignora")[1]
 
 
 def test_le_nascoste_si_contano_nel_nucleo_anche_se_non_si_annunciano():
@@ -215,7 +215,7 @@ def test_le_nascoste_si_contano_nel_nucleo_anche_se_non_si_annunciano():
     testo = _con(entita, stato)
 
     lacune = _sezione_lacune(testo)
-    assert "3 entita' nascoste" in lacune, (
+    assert "3 entità nascoste" in lacune, (
         "ma il numero c'e', altrimenti la domanda «quante ce ne sono?» "
         "costerebbe sedici chiamate")
 
