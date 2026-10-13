@@ -48,13 +48,14 @@ async def test_leggi_registri_chiede_tutti_i_registri_in_un_colpo():
         "config/entity_registry/list",
         "config/label_registry/list",
         "config_entries/get",
+        "manifest/list",
         "config/category_registry/list",
         "config/category_registry/list",
         "config/category_registry/list",
         "config/category_registry/list",
     ]
     assert set(registri) == {"piani", "aree", "dispositivi", "entita",
-                             "etichette", "categorie", "integrazioni"}
+                             "etichette", "categorie", "integrazioni", "manifesti"}
 
 
 @pytest.mark.asyncio

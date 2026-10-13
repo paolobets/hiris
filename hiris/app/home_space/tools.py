@@ -124,6 +124,7 @@ from .house_query import (
     parse_filters,
     query_house,
 )
+from .log_source import manifest_of
 from .privacy import (
     ADMIN_ONLY_HISTORY_KINDS,
     HA_CORE_USER_SERVICES,
@@ -2507,7 +2508,11 @@ class ToolDispatcher:
         if isinstance(query, dict):
             return query
         if query.kind == "errori":
-            return await read_errors(self._ha, query, seal=self._seal())
+            # I nomi del manifest dall'anagrafe, senza costruire la casa del
+            # turno (B-50): gli errori non la guardano.
+            known = self._home_space.read() if self._home_space is not None else {}
+            return await read_errors(self._ha, query, seal=self._seal(),
+                                     manifest=manifest_of(known))
         if self._home_space is None:
             return {"errore": "`history` non e' disponibile: la conoscenza della casa "
                               "non e' ancora stata caricata."}

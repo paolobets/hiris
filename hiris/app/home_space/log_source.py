@@ -11,11 +11,26 @@ li', cioe' `home_space` dipendeva dal cervello, contro la regola che vuole la
 conoscenza sotto e il cervello sopra. E' una lettura della casa, non un
 giudizio del cervello: il resoconto e la rotta dello scope la chiamano da qui.
 
-**Il nome e' dedotto dallo slug**, non letto dal manifest dell'integrazione:
-e' la voce B-50 del registro, che la Tappa 3 cambia al Task 5 dopo aver letto
-la fonte di Home Assistant.
+**Il nome e' quello del manifest** (B-50, F1 della Chiusura, 13/10/2026):
+Home Assistant lo dichiara (`manifest/list`), e l'anagrafe lo tiene nella
+tabella `manifesti` (`reader._manifest`). Fino a quel giorno era dedotto dallo
+slug: misurato sulla casa il 13/10/2026, 19 integrazioni distinte nel registro
+degli errori, 15 nel manifest, e per 12 di quelle 15 il nome dedotto era
+diverso da quello vero.
+
+**E il manifest conosce anche le librerie** (N151b-1, revisione del
+13/10/2026): il campo `loggers` e' «a list of names that the integration's
+requirements use for their getLogger calls» (developers.home-assistant.io,
+`creating_integration_manifest`), e `alexa_devices` porta
+`["aioamazondevices"]` (Core `2026.10.1`). Una riga scritta da una libreria e'
+quindi dell'integrazione che la dichiara. Lo slug resta il ripiego per cio' che
+il manifest davvero non conosce: le integrazioni non caricate (senza argomenti
+`manifest/list` rende le sole caricate) e i logger che nessuna dichiara.
 """
 from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 #: I due prefissi con cui un logger di Home Assistant nomina l'integrazione da
 #: cui viene: `homeassistant.components.hydrawise` -> «Hydrawise»,
@@ -59,11 +74,59 @@ def integration_slug(domain: str) -> str | None:
     # Una libreria di terze parti (`aioamazondevices`, `habluetooth.scanner`)
     # non e' un'integrazione di Home Assistant, ma il primo segmento e' lo
     # stesso appiglio stabile: `habluetooth.scanner` e `habluetooth.manager`
-    # sono la stessa cosa per chi legge.
+    # sono la stessa cosa per chi legge. Il NOME e l'identificativo mostrato
+    # cercano prima l'integrazione che la dichiara (`_owner`, N151b-1); il
+    # giudizio `impalcatura` resta su questo slug, perche' l'elenco di
+    # fabbrica (`SCAFFOLDING_INTEGRATIONS`) nomina `habluetooth`, la libreria.
     return domain.split(".")[0]
 
 
-def integration_name(domain: str) -> str | None:
+@dataclass(frozen=True)
+class Manifest:
+    """Cio' che il manifest delle integrazioni caricate dice a chi nomina un
+    logger (B-50): **`names`**, lo slug -> il nome che Home Assistant gli da';
+    **`loggers`**, il logger di una libreria -> lo slug dell'integrazione che
+    lo dichiara (`loggers` del manifest, N151b-1). Vuoto senza anagrafe: ogni
+    nome ripiega allora sullo slug, come prima di B-50."""
+    names: Mapping[str, str] = field(default_factory=dict)
+    loggers: Mapping[str, str] = field(default_factory=dict)
+
+
+def manifest_of(home_space: Mapping) -> Manifest:
+    """Il `Manifest` dall'anagrafe data (tabella `manifesti`, `reader._manifest`).
+
+    **Un logger dichiarato da due integrazioni caricate non e' di nessuna
+    delle due**: la riga non dice quale delle due l'abbia scritta, e
+    sceglierne una sarebbe inventarlo. Quel logger ripiega sullo slug, come
+    uno che nessuno dichiara."""
+    rows = [row for row in home_space.get("manifesti") or []
+            if isinstance(row, dict) and row.get("dominio")]
+    owners: dict[str, set[str]] = {}
+    for row in rows:
+        for name in row.get("loggers") or []:
+            owners.setdefault(name, set()).add(row["dominio"])
+    return Manifest(
+        names={row["dominio"]: row["nome"] for row in rows if row.get("nome")},
+        loggers={name: next(iter(slugs)) for name, slugs in owners.items()
+                 if len(slugs) == 1})
+
+
+def _owner(domain: str, manifest: Manifest) -> str | None:
+    """Lo slug dell'integrazione a cui appartiene un logger: i prefissi di Home
+    Assistant prima (`integration_slug`, il logger nomina gia' la sua), poi il
+    logger dichiarato piu' lungo che e' il nome intero o il suo prefisso
+    seguito da un punto (`aioamazondevices.api` -> `alexa_devices`), poi lo
+    slug."""
+    domain = str(domain or "").strip()
+    if not domain.startswith((*_INTEGRATION_PREFIXES, _CORE_LOGGER_PREFIX)):
+        declared = [name for name in manifest.loggers
+                    if domain == name or domain.startswith(name + ".")]
+        if declared:
+            return manifest.loggers[max(declared, key=len)]
+    return integration_slug(domain)
+
+
+def integration_name(domain: str, manifest: Manifest) -> str | None:
     """Il nome leggibile dell'integrazione da cui viene una voce di sistema.
 
     **Si ricava da cio' che la voce gia' porta** -- `dominio`, scritto
@@ -72,15 +135,22 @@ def integration_name(domain: str) -> str | None:
     posizione nel sorgente), e leggerlo come un nome darebbe
     `log:...@handler.py:108` in cima alla pagina, che e' esattamente cio' che
     la pagina faceva prima del 18/09.
+
+    Il nome e' quello del manifest (`manifest_of`), anche per una libreria che
+    un'integrazione dichiara (`_owner`). Il nucleo resta «Home Assistant»
+    anche se il manifest nomina `homeassistant`: un logger
+    `homeassistant.helpers` e' il prodotto, non la sua integrazione «Home
+    Assistant Core Integration».
     """
-    slug = integration_slug(domain)
+    slug = _owner(domain, manifest)
     if slug is None:
         return None
     if slug == _CORE_SLUG:
         return _CORE_NAME
-    # Una libreria di terze parti (`aioamazondevices`) non e' un'integrazione e
-    # il suo nome intero e' piu' vero di qualunque pezzo se ne possa tagliare:
-    # per lei il `slug` E' il nome.
+    if slug in manifest.names:
+        return manifest.names[slug]
+    # Un logger che nessun manifest caricato dichiara: il suo nome intero e'
+    # piu' vero di qualunque pezzo se ne possa tagliare.
     return _rendered(slug)
 
 
@@ -92,16 +162,19 @@ def _rendered(slug: str) -> str:
     return words[:1].upper() + words[1:]
 
 
-def integration_of(domain: str) -> tuple[str, str] | None:
+def integration_of(domain: str, manifest: Manifest) -> tuple[str, str] | None:
     """`(nome, identificativo)` dell'integrazione da cui viene un dominio di
     registro, o `None` se non se ne ricava nessuno.
 
-    Le due regole insieme (`integration_name`, `integration_slug`): la usa
-    la rotta dello scope per raggruppare i soggetti tecnici, e il primo piano
-    del resoconto (`mind/report.py`) usa le stesse, cosi' le due schede della
-    stessa pagina dicono lo stesso nome per lo stesso logger.
+    Le stesse regole di `integration_name`, con lo stesso proprietario
+    (`_owner`): la riga di una libreria porta l'identificativo
+    dell'integrazione che la dichiara, e il filtro per integrazione della
+    storia degli errori la ritrova. La usa la rotta dello scope per
+    raggruppare i soggetti tecnici, e il primo piano del resoconto
+    (`mind/report.py`) usa le stesse, cosi' le due schede della stessa pagina
+    dicono lo stesso nome per lo stesso logger.
     """
-    identifier = integration_slug(domain)
+    identifier = _owner(domain, manifest)
     if not identifier:
         return None
-    return integration_name(domain), identifier
+    return integration_name(domain, manifest), identifier

@@ -98,6 +98,12 @@ _REGISTRI_COMPLETI = {
     "integrazioni": [{"entry_id": "01K27AMNYXJVJRAENZ64TRDV28", "domain": "sun",
                       "title": "Sun", "source": "import", "state": "loaded",
                       "reason": None, "error_reason_translation_key": None}],
+    # `manifest/list` sulla casa vera il 13/10/2026: le chiavi della prima voce.
+    "manifesti": [{"codeowners": ["@home-assistant/core"],
+                   "documentation": "https://www.home-assistant.io/integrations/sun",
+                   "domain": "sun", "iot_class": "calculated", "is_built_in": True,
+                   "loggers": [], "name": "Sun", "overwrites_built_in": False,
+                   "requirements": []}],
 }
 
 def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
@@ -119,8 +125,11 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
     """
     anagrafe = build_home_space(_REGISTRI_COMPLETI)
 
+    # `manifesti` e' una tabella interna (`INTERNAL_TABLES`, B-50): la si
+    # costruisce come le altre.
     assert set(anagrafe) == {"piani", "aree", "dispositivi", "entita",
-                             "etichette", "categorie", "integrazioni"}
+                             "etichette", "categorie", "integrazioni", "manifesti"}
+    assert anagrafe["manifesti"] == [{"dominio": "sun", "nome": "Sun", "loggers": []}]
     assert set(anagrafe["piani"][0]) == {"id", "nome", "livello"}
     assert set(anagrafe["aree"][0]) == {
         "id", "nome", "piano_id", "alias", "etichette",
@@ -254,7 +263,7 @@ def test_la_casa_tenuta_ha_sempre_le_sette_tabelle(tmp_path):
         casa.hold({"entita": [{"id": "light.cucina"}]})
 
         assert set(casa.read()) == {"piani", "aree", "dispositivi", "entita",
-                                    "etichette", "categorie", "integrazioni"}
+                                    "etichette", "categorie", "integrazioni", "manifesti"}
         assert casa.read()["dispositivi"] == []
         assert casa.read()["entita"] == [{"id": "light.cucina"}]
     finally:

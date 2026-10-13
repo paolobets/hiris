@@ -46,7 +46,7 @@ _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
 
 
 _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
-          "etichette": [], "categorie": [], "integrazioni": []}
+          "etichette": [], "categorie": [], "integrazioni": [], "manifesti": []}
 
 #: Il primo comando di `read_registries`, chiesto alla sua tabella: una
 #: ricostruzione lo manda una volta, quindi contarlo conta le ricostruzioni.

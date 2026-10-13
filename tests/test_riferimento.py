@@ -14,6 +14,7 @@ from pathlib import Path
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
 from hiris.app.home_space.house import House
+from hiris.app.home_space.log_source import Manifest
 from tests.test_house_history import _REGISTRO, _q
 from tests.test_house_query import STATI, T0, _casa, _dettaglio, _specchio
 
@@ -91,9 +92,10 @@ def test_gli_errori_della_storia_trovano_l_integrazione_con_la_maiuscola():
     """`house_history.error_rows` confrontava l'integrazione esatta.
 
     Mutazione ESEGUITA: il confronto torna esatto -- rossa."""
-    esatto = hh.error_rows(_q(cosa="errori", integrazione="zha"), _REGISTRO)["voci"]
+    esatto = hh.error_rows(_q(cosa="errori", integrazione="zha"), _REGISTRO, Manifest())["voci"]
     assert esatto
-    assert hh.error_rows(_q(cosa="errori", integrazione="ZHA"), _REGISTRO)["voci"] == esatto
+    maiuscole = hh.error_rows(_q(cosa="errori", integrazione="ZHA"), _REGISTRO, Manifest())
+    assert maiuscole["voci"] == esatto
 
 
 def _unicodedata_normalize_calls(albero) -> int:

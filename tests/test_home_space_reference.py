@@ -123,7 +123,7 @@ def _house(**faults):
     (`silence=`, `refuse=`)."""
     return CasaFinta({"registries": {"piani": [], "aree": [], "dispositivi": [],
                                      "entita": [], "etichette": [], "categorie": [],
-                                     "integrazioni": []},
+                                     "integrazioni": [], "manifesti": []},
                       "states": [], "ha_config": _CONFIG}, **faults)
 
 

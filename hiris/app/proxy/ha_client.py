@@ -2273,6 +2273,16 @@ class HAClient:
         ("entita",       "config/entity_registry/list",       None),
         ("etichette",    "config/label_registry/list",        None),
         ("integrazioni", "config_entries/get",               None),
+        # Il manifest delle integrazioni caricate: il loro NOME vero (B-50, F1
+        # della Chiusura). Letto nel sorgente (tag `2026.10.1`,
+        # `websocket_api/commands.py::handle_manifest_list`): senza
+        # `integrations` rende le sole caricate, e con un nome sconosciuto
+        # Home Assistant scrive un errore nel suo registro -- percio' niente
+        # argomenti. Non e' `require_admin`. Misurato sulla casa il 13/10/2026
+        # (HA 2026.10.1): 163 voci, chiavi `codeowners`, `documentation`,
+        # `domain`, `iot_class`, `is_built_in`, `loggers`, `name`,
+        # `overwrites_built_in`, `requirements`.
+        ("manifesti",    "manifest/list",                    None),
     ] + [
         ("categorie", "config/category_registry/list", {"scope": scope})
         for scope in _CATEGORY_SCOPES

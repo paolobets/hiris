@@ -39,6 +39,15 @@ from .topology import clean_text
 TABLES = ("piani", "aree", "dispositivi", "entita", "etichette", "categorie",
           "integrazioni")
 
+#: Le tabelle che l'anagrafe TIENE ma non espone (B-50, F1 della Chiusura,
+#: 13/10/2026): il manifest delle integrazioni caricate serve solo a dare il
+#: nome vero a un'integrazione nei messaggi (`log_source.manifest_of`). Non
+#: e' un registro che la casa abbia compilato -- 163 integrazioni caricate,
+#: comprese le interne, contro 39 domini configurati sulla casa il 13/10/2026 --
+#: e la pagina non lo conta ne' lo dichiara caduto (decisione di
+#: `ux-ui-specialist`, 13/10/2026: «ne ho 163 o 39?»).
+INTERNAL_TABLES = ("manifesti",)
+
 logger = logging.getLogger(__name__)
 
 #: Il sistema di riferimento della casa e' l'unica cosa che sopravvive ai
@@ -185,6 +194,20 @@ def _integration(row: dict) -> dict:
             "disabilitata_da": row.get("disabled_by") or None}
 
 
+def _manifest(row: dict) -> dict:
+    """Il manifest di un'integrazione caricata, ridotto a cio' che HIRIS
+    legge: lo slug (`dominio`), il nome che Home Assistant le da' (B-50,
+    `log_source.integration_name`) e i `loggers`, i nomi con cui le sue
+    librerie scrivono nel registro (N151b-1: «the names that the
+    integration's requirements use for their getLogger calls», documentazione
+    del manifest). Il resto (requisiti, proprietari del codice,
+    documentazione) non ha lettori."""
+    loggers = row.get("loggers")
+    return {"dominio": row["domain"], "nome": clean_name(row.get("name")),
+            "loggers": [str(name) for name in loggers if name]
+            if isinstance(loggers, list) else []}
+
+
 def _entity(row: dict) -> dict:
     """Una riga del registro delle entita', come l'anagrafe la espone.
 
@@ -256,6 +279,8 @@ def build_home_space(registries: dict[str, list[dict]]) -> dict[str, list[dict]]
         "categorie": [_category(c) for c in registries.get("categorie", [])
                       if c.get("category_id")],
         "integrazioni": [_integration(i) for i in registries.get("integrazioni", [])],
+        "manifesti": [_manifest(m) for m in registries.get("manifesti", [])
+                      if m.get("domain")],
     }
 
 
@@ -274,7 +299,7 @@ def _carried_over(built: dict[str, list[dict]], previous: dict[str, list[dict]],
     result = dict(built)
     for name in unavailable:
         table, _, part = name.partition(":")
-        if table not in TABLES or table not in previous:
+        if table not in (*TABLES, *INTERNAL_TABLES) or table not in previous:
             continue
         if not part:
             result[table] = list(previous[table])
@@ -395,7 +420,8 @@ class HomeSpace:
         accanto ai dati perche' una casa senza piani e un registro dei piani
         caduto producono la stessa lista vuota.
         """
-        self._home_space = {table: list(home_space.get(table, ())) for table in TABLES}
+        self._home_space = {table: list(home_space.get(table, ()))
+                            for table in (*TABLES, *INTERNAL_TABLES)}
         self._unavailable = list(unavailable or [])
         # Chi prende in consegna da qui non porta copie: un registro caduto e'
         # una tabella vuota, senza eta'. Le copie con la loro eta' le scrive
@@ -429,6 +455,15 @@ class HomeSpace:
         previous_read, previous_since = self._updated_at, self._unavailable_since
         if previous_read is not None:
             built = _carried_over(built, self._home_space, unavailable or [])
+        # Una tabella interna caduta si tiene come le altre (sopra), ma non si
+        # dichiara fra i registri non riletti: la pagina non la mostra, e cio'
+        # che perde e' solo il nome vero di un'integrazione, che ripiega sullo
+        # slug. Lo dice il registro dell'add-on.
+        internal = [name for name in unavailable or [] if name in INTERNAL_TABLES]
+        if internal:
+            logger.warning("anagrafe: %s non riletti, i nomi delle integrazioni restano "
+                           "quelli di prima (o lo slug)", ", ".join(internal))
+            unavailable = [name for name in unavailable if name not in INTERNAL_TABLES]
         self.hold(built, unavailable, reference_frame)
         # **La copia porta il suo istante** (S-36, Tappa 8, Task 1,
         # 08/10/2026): l'ultima ricostruzione in cui quel registro ha
@@ -458,7 +493,7 @@ class HomeSpace:
         nuova, non una modifica di quella tenuta: chi ha gia' letto l'anagrafe
         tiene la sua (vedi il docstring della classe, «di sola lettura»).
 
-        **Un'anagrafe mai letta non nasce da qui**: senza le altre sei tabelle
+        **Un'anagrafe mai letta non nasce da qui**: senza le altre tabelle
         sarebbe una casa fatta di sole integrazioni, che i lettori leggerebbero
         come una casa vuota. La prima ricostruzione le legge da se'.
         """

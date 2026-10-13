@@ -58,6 +58,7 @@ import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.log_source import (
+    Manifest,
     integration_name,
     integration_slug,
 )
@@ -585,7 +586,8 @@ FRONT_PAGE_ORDER = ("da_sapere_subito", "guasto", "avviso")
 #: portare una riga in piu' in primo piano, mai una in meno.
 _WARNING_LEVEL = "WARNING"
 
-def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
+def as_page(report: dict, *, judgments, manifest: Manifest,
+            names: dict | None = None) -> dict:
     """Il resoconto di un giorno **con il nome sempre e il primo piano**, per la
     pagina dell'osservatore (spec §3).
 
@@ -595,7 +597,8 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
 
     - **`nome`, sempre.** Chi ce l'ha tiene il suo (e' quello di ALLORA, ed e'
       piu' vero: un dispositivo si puo' rinominare); una voce di sistema lo
-      ricava dal `dominio` che gia' porta; un'entita' lo prende da `names`, i
+      ricava dal `dominio` che gia' porta, col `manifest` delle integrazioni
+      (`log_source.manifest_of`; B-50); un'entita' lo prende da `names`, i
       nomi vivi. Chi non ha nessuna delle tre resta **senza**: la pagina mostra
       l'identificativo dicendo che e' un identificativo, e nessuno inventa un
       nome dall'`entity_id`.
@@ -622,7 +625,7 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     seen, band = [], []
     for entry in chronicle:
         entry = dict(entry)
-        name = _resolved_name(entry, names)
+        name = _resolved_name(entry, names, manifest)
         if name:
             entry["nome"] = name
         mark = _front_page_mark(entry, judgments)
@@ -635,12 +638,12 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     return page
 
 
-def _resolved_name(entry: dict, names: dict | None) -> str | None:
+def _resolved_name(entry: dict, names: dict | None, manifest: Manifest) -> str | None:
     stored = entry.get("nome")
     if stored:
         return stored
     if entry.get("dominio"):
-        return integration_name(entry["dominio"])
+        return integration_name(entry["dominio"], manifest)
     return (names or {}).get(entry.get("chi"))
 
 

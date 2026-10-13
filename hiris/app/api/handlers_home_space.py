@@ -21,6 +21,7 @@ from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
+from ..home_space.reader import TABLES
 from ..home_space.render import render_entity
 from ..proxy.state_translations import read_for_house
 
@@ -150,7 +151,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # suo posto (`HomeSpace.unavailable_since`, S-36): `None` se quel
         # registro non ha mai risposto e la tabella e' vuota.
         "non_disponibili_letti_il": store.unavailable_since(),
-        "conteggi": {key: len(value) for key, value in home_space.items()},
+        # Le tabelle esposte, non quelle interne (`reader.INTERNAL_TABLES`, B-50).
+        "conteggi": {key: len(home_space[key]) for key in TABLES if key in home_space},
         # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
         # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,

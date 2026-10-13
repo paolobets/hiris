@@ -13,6 +13,7 @@ import pytest
 
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.historian import day_boundaries
+from hiris.app.home_space.log_source import Manifest
 from hiris.app.home_space.type_judgments import TypeJudgments
 from hiris.app.home_space.type_vocabulary import CHRONICLE_GENRES
 from hiris.app.mind.facts import CHRONICLE_RULE, aggregate_day, genre_for
@@ -1996,7 +1997,7 @@ def test_in_primo_piano_sale_solo_la_voce_dell_istanza_non_le_assenze_delle_enti
     _ha(archivio, "light.portico", "off", "unavailable", ts(11))
     _ha(archivio, "light.portico", "unavailable", "off", ts(11, 10))
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
-    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS, manifest=Manifest())
     assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
         ("integrazione:e_irr", "guasto")]
     portico = next(v for v in pagina["cronaca"] if v["chi"] == "light.portico")
@@ -2111,7 +2112,7 @@ def test_la_finestra_di_scollegamento_non_sale_in_primo_piano(archivio):
         _ha(archivio, eid, _RESTING[eid], "unavailable", ts(12) + i / 100)
         _ha(archivio, eid, "unavailable", _RESTING[eid], ts(12, 5) + i / 100)
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
-    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS)
+    pagina = as_page(archivio.report(G), judgments=tv.REPO_JUDGMENTS, manifest=Manifest())
     assert [(r["chi"], r["sorta"]) for r in pagina["primo_piano"]] == [
         ("integrazione:e_irr", "guasto")]
     finestra = next(v for v in pagina["cronaca"] if v["chi"] == "connessione:home_assistant")
