@@ -128,11 +128,14 @@ class Provider:
     #: dichiarato come riserva dalla riga di provenienza.
     reserve_models: tuple[str, ...] = ()
     #: L'indirizzo dell'API del provider, fino alla versione (`.../v1`): la
-    #: base di ogni domanda che HIRIS gli fa -- l'elenco dei modelli, e per
-    #: OpenRouter e OpenAI la chat. `""` dove l'indirizzo non e' un fatto del
+    #: base delle domande che HIRIS gli fa -- oggi l'elenco dei modelli
+    #: (`api/handlers_models.py`). `""` dove l'indirizzo non e' un fatto del
     #: provider: il piano passa dalla CLI, Ollama lo scrive il proprietario.
     #: Fino alla Chiusura (F-09) gli indirizzi erano letterali in tre moduli,
-    #: accanto a un `host` scritto a mano che doveva dire la stessa cosa.
+    #: accanto a un `host` scritto a mano che doveva dire la stessa cosa; la
+    #: chat di OpenRouter e di OpenAI li scrive ancora in linea finche' non
+    #: entrano le patch per F3a e F8 (lo dice `AMMESSI` in
+    #: `tests/test_indirizzi_provider.py`).
     api_base: str = ""
     #: Il valore e' un ALIAS che segue il modello corrente (il piano) o un
     #: identificatore che punta a una cosa fissa (progetto §6.2).
