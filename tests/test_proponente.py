@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import time
+import types
 
 import pytest
 
@@ -343,6 +344,32 @@ async def test_A_MANO_va_nell_archivio_gemello_con_l_impronta_e_la_prova(casa):
     assert accanto[0] == {"impronta": proposta["impronta"], "esito": "a_mano",
                           "proposta_id": proposta["id"]}
     assert [o["esito"] for o in accanto] == ["a_mano", "niente"]
+
+
+@pytest.mark.asyncio
+async def test_esiti_e_proposta_a_mano_portano_l_istante_dell_orologio_del_giro(
+        casa, monkeypatch):
+    """G-14 (Chiusura, giro 154 N154-1): `_settle` prende un istante solo, e
+    la proposta a mano che nasce e l'analisi che la cita lo portano tutte e
+    due. Si ferma l'orologio del MODULO, non `time.time` per tutti: con
+    l'orologio di tutti fermo l'archivio leggerebbe lo stesso istante anche
+    senza riceverlo, ed e' per questo che la mutazione restava verde.
+
+    Mutazione ESEGUITA (13/10/2026): togliere `when_ts=now` da
+    `replace_analysis` in `proposer_round._settle` -- rossa qui.
+    """
+    app = casa
+    app["llm_router"] = _Modello(([], _risposta_manuale()))
+    fermo = float(int(time.time())) - 600.0
+    monkeypatch.setattr(pr, "time", types.SimpleNamespace(time=lambda: fermo))
+
+    await pr.proposer_round(app)
+
+    (scritto,) = app["observations"]._conn.execute(
+        "SELECT scritto_ts FROM analisi WHERE giorno = ?", (OGGI,)).fetchone()
+    assert scritto == fermo
+    (proposta,) = app["observations"].proposals()
+    assert proposta["creata_ts"] == fermo
 
 
 @pytest.mark.asyncio
