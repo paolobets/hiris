@@ -24,7 +24,7 @@ def _app(tmp_path):
 # possa piu' wirare, ne' in produzione ne' nei test.
 
 
-def _specie_degli_attori() -> list[str]:
+def _actor_kinds() -> list[str]:
     """I turni che la consegna registra e basta: quelli degli attori, chiesti
     alla vista dei mestieri sui job (`steering.JOB_SPECIES`), meno chat e
     promessa che hanno un ramo loro. Piu' una specie che nessuno ragiona piu'
@@ -38,7 +38,7 @@ def _specie_degli_attori() -> list[str]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", _specie_degli_attori())
+@pytest.mark.parametrize("kind", _actor_kinds())
 async def test_la_consegna_di_un_attore_registra_e_tace(tmp_path, caplog, kind):
     """S-23 (e S-39, lo stesso difetto): fino alla Chiusura ogni consegna di
     un attore che non fosse l'osservatore scriveva un WARNING su un

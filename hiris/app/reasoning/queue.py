@@ -185,18 +185,18 @@ def _row(r, archive: str) -> dict | None:
     guardia e' quella di ogni archivio (`storage.json_column`), che la dice
     nel log una volta sola. Chi chiama la tratta come assente.
     """
-    corpi = {colonna: json_column(r[colonna], archive=archive,
+    bodies = {column: json_column(r[column], archive=archive,
                                   table="reasoning_jobs", key=r["job_id"])
-             for colonna in ("wake_json", "context_json", "decision_json")}
-    if any(corpo is UNREADABLE for corpo in corpi.values()):
+             for column in ("wake_json", "context_json", "decision_json")}
+    if any(body is UNREADABLE for body in bodies.values()):
         return None
     return {"job_id": r["job_id"], "kind": r["kind"], "status": r["status"],
-            "nonce": r["nonce"], "wake": corpi["wake_json"],
-            "context": corpi["context_json"],
+            "nonce": r["nonce"], "wake": bodies["wake_json"],
+            "context": bodies["context_json"],
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
             "priority": r["priority"],
             "thread": thread_from_columns(r["subject_key"], r["entry_point"]),
-            "decision": corpi["decision_json"],
+            "decision": bodies["decision_json"],
             "decided_ts": r["decided_ts"]}
 
 
@@ -396,8 +396,8 @@ class ReasoningQueue:
             self._conn.commit()
         # Una riga guasta si chiude come le altre, e chi legge l'elenco la
         # salta (C-68).
-        letti = (_row(r, self.archive_name) for r in rows)
-        return [job for job in letti if job is not None]
+        jobs = (_row(r, self.archive_name) for r in rows)
+        return [job for job in jobs if job is not None]
 
     # ── Il ripiego: da qui il ponte smette di essere un bivio ──────────────
     #
