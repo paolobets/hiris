@@ -24,7 +24,7 @@ window.HirisWatcherGiorno = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var line = S.line;
+  var line = pageLine;
   var subheading = S.subheading;
   var read = S.read;
   var retryButton = S.retryButton;
@@ -34,9 +34,6 @@ window.HirisWatcherGiorno = (function () {
   var fmtTime = S.fmtTime;
   var fmtCount = S.fmtCount;
   var fmtPercent = S.fmtPercent;
-  var TONE_PROBLEM = S.TONE_PROBLEM;
-  var TONE_CALM = S.TONE_CALM;
-  var TONE_UNKNOWN = S.TONE_UNKNOWN;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
 
   /* La resa del resoconto per UN UMANO.

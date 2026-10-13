@@ -16,14 +16,12 @@ window.HirisWatcherCosaFare = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var line = S.line;
+  var line = pageLine;
   var read = S.read;
   var retryButton = S.retryButton;
   var fmtCount = S.fmtCount;
   var fmtPercent = S.fmtPercent;
   var localOggi = S.localOggi;
-  var TONE_PROBLEM = S.TONE_PROBLEM;
-  var TONE_CALM = S.TONE_CALM;
 
   /* I tre inneschi, **a parole**. «1» non vuol dire niente per chi legge: la
      spec da' a ciascuno un nome, ed e' quello che va in pagina. Vivono qui in

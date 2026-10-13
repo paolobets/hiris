@@ -133,6 +133,76 @@ function renderError(node, text, reload) {
   return node;
 }
 
+/* I mattoni delle pagine che leggono e mostrano (la home, l'albero, le schede
+   dell'osservatore). Ne avevano una copia ciascuna (C-20).
+
+   I toni sono quelli del TESTO, non dei pallini: le tinte `*-ink`, perche'
+   `--warn`/`--err` sul tema chiaro stanno a 2.04:1 e 4.05:1, e qui colorano
+   la frase con cui HIRIS dice «questo non l'ho letto», cioe' la frase per cui
+   queste pagine esistono. Tre stati e non due: «non si puo' sapere» non e' ne'
+   un'assenza vera (calmo) ne' un guasto (problema), come un `null` non e' un
+   `[]`. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+var TONE_UNKNOWN = 'color:var(--warn-ink)';
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+var TONE_PROBLEM = 'color:var(--err-ink)';
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+var TONE_CALM = 'color:var(--text-3)';
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine della configurazione
+function pageLine(parent, text, style) {
+  var p = el('p', 'sc-desc', text);
+  if (style) p.style.cssText = style;
+  parent.appendChild(p);
+  return p;
+}
+
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
+function pageList(parent, voci) {
+  var ul = el('ul');
+  ul.style.cssText = 'margin:4px 0 0;padding-left:20px;color:var(--text-2);font-size:var(--fs-13)';
+  voci.forEach(function (v) { ul.appendChild(el('li', null, v)); });
+  parent.appendChild(ul);
+  return ul;
+}
+
+/* Una sezione con titolo e sottotitolo; restituisce il corpo. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
+function pageSection(outlet, title, subtitle) {
+  var card = el('section', 'section-card');
+  var head = el('div', 'sc-header');
+  head.appendChild(el('h2', 'sc-title', title));
+  if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
+  card.appendChild(head);
+  var body = el('div', 'sc-body');
+  card.appendChild(body);
+  outlet.appendChild(card);
+  return body;
+}
+
+/* La lettura che si rompe su una risposta non riuscita: chi chiama la prende
+   nel `catch` e dice cosa non ha potuto leggere. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
+function readJson(path) {
+  return fetch(path).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+
+/* Un errore di rete NON degrada in una pagina vuota: la sezione dice che non
+   ha potuto leggere, e la console porta il dettaglio tecnico. Una pagina che
+   tace su una fetch caduta e' indistinguibile da una casa senza niente dentro.
+   Diversa da `renderError` di proposito: qui non c'e' un «Riprova» dentro
+   un nodo che c'e' gia', c'e' una sezione intera al posto di quella che non
+   e' arrivata. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/dashboard.js e config/tree-route.js
+function renderSectionError(outlet, title, text, err) {
+  console.error('[' + title + '] lettura fallita', err);
+  var body = pageSection(outlet, title, null);
+  pageLine(body, text, TONE_PROBLEM);
+}
+
 /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
    pannello e `aria-expanded` sul bottone che lo governa non possono
    divergere se nessuno li assegna separatamente -- ed e' proprio la

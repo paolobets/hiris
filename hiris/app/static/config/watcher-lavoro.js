@@ -83,7 +83,7 @@ window.HirisWatcherLavoro = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var line = S.line;
+  var line = pageLine;
   var subheading = S.subheading;
   var read = S.read;
   var write = S.write;
@@ -98,9 +98,6 @@ window.HirisWatcherLavoro = (function () {
   var fmtCount = S.fmtCount;
   var fmtDuration = S.fmtDuration;
   var fmtAgo = S.fmtAgo;
-  var TONE_PROBLEM = S.TONE_PROBLEM;
-  var TONE_CALM = S.TONE_CALM;
-  var TONE_UNKNOWN = S.TONE_UNKNOWN;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
 
   /* I tre autori possibili di una decisione dello scope (`author` in

@@ -112,6 +112,50 @@ test('una funzione aggiunta a common.js entra nel cancello senza toccare la prov
   assert.deepEqual(copies.filter((c) => c.includes(nuova)), ['config/finta.js ' + nuova + ':1']);
 });
 
+/* Il cancello per NOME non vede una copia rinominata: `line` di home, albero
+   e osservatore era `pageLine` col nome cambiato, e passava (C-20). Qui si
+   confronta il CORPO: una funzione di un altro file il cui corpo, a spazi
+   compressi, e' quello di una funzione di common.js. Limite dichiarato: una
+   copia con i parametri rinominati ha un corpo diverso e non si vede. I corpi
+   di una riga sola non contano: `return x;` coincide per caso. */
+function normalizedBody(source, fn) {
+  return source.slice(fn.body.start, fn.body.end).replace(/\s+/g, ' ');
+}
+
+function bodyCopiesOutside(commonSrc, files) {
+  const bodies = new Map();
+  const commonAst = acorn.parse(commonSrc, { ecmaVersion: 'latest' });
+  for (const node of commonAst.body) {
+    if (node.type === 'FunctionDeclaration' && node.body.body.length > 1) {
+      bodies.set(normalizedBody(commonSrc, node), node.id.name);
+    }
+  }
+  const copies = [];
+  for (const [rel, src] of files) {
+    const ast = acorn.parse(src, { ecmaVersion: 'latest', locations: true });
+    walk.full(ast, (node) => {
+      if (!/^(FunctionDeclaration|FunctionExpression)$/.test(node.type)) return;
+      const nome = bodies.get(normalizedBody(src, node));
+      if (nome) copies.push(rel + ':' + node.loc.start.line + ' = ' + nome);
+    });
+  }
+  return { bodies, copies };
+}
+
+test('nessun file di static/ ricopia il corpo di una funzione di common.js, nemmeno rinominata', () => {
+  const { bodies, copies } = bodyCopiesOutside(commonSource(), staticFiles());
+  assert.ok(bodies.size > 0, 'nessun corpo da confrontare: il cancello e\' cieco');
+  assert.deepEqual(copies, [], 'copie rinominate fuori da common.js:\n' + copies.join('\n'));
+});
+
+test('una copia rinominata di pageLine entra nel cancello', () => {
+  const corpo = commonSource().match(/function pageLine\(parent, text, style\) (\{[\s\S]*?\n\})/);
+  assert.ok(corpo, 'pageLine non trovata in common.js');
+  const copia = ['config/finta.js', `(function(){ function line(parent, text, style) ${corpo[1]} })();`];
+  const { copies } = bodyCopiesOutside(commonSource(), [copia]);
+  assert.deepEqual(copies, ['config/finta.js:1 = pageLine']);
+});
+
 test('una variabile locale che porta un elemento non e\' una copia', () => {
   const src = '(function(){ var el = document.getElementById("x"); return el; })();';
   const { copies } = copiesOutside(commonSource(), [['config/x.js', src]]);

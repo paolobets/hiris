@@ -15,20 +15,7 @@
 window.HirisWatcherShared = (function () {
   'use strict';
 
-  var TONE_PROBLEM = 'color:var(--err-ink)';
-  var TONE_CALM = 'color:var(--text-3)';
-
-  /* Il tono del terzo stato -- «non si puo' sapere» -- distinto sia dal calmo
-     (un'assenza vera) sia dal problema (un guasto): lo stesso `TONE_UNKNOWN`
-     di tree-route.js, per la stessa ragione (un `null` non e' un `[]`). */
-  var TONE_UNKNOWN = 'color:var(--warn-ink)';
-
-  function line(parent, text, style) {
-    var p = el('p', 'sc-desc', text);
-    if (style) p.style.cssText = style;
-    parent.appendChild(p);
-    return p;
-  }
+  /* I toni e `pageLine` vivono in common.js (C-20). */
 
   /* Una scrittura: stessa forma di `read`, piu' l'intestazione che il
      prodotto usa gia' per le sue POST (`X-Requested-With`). Torna sempre
@@ -344,7 +331,7 @@ window.HirisWatcherShared = (function () {
   function elencoLungo(corpo, opzioni) {
     var tutti = opzioni.tutti || [];
     var pochi = opzioni.pochi || [];
-    if (opzioni.riassunto) line(corpo, opzioni.riassunto, TONE_CALM);
+    if (opzioni.riassunto) pageLine(corpo, opzioni.riassunto, TONE_CALM);
     if (pochi.length) {
       /* Il criterio PRIMA delle righe: cinque righe scelte da noi, senza la
          frase che dice come, sembrerebbero le uniche cinque che esistono. */
@@ -563,9 +550,8 @@ window.HirisWatcherShared = (function () {
   }
 
   return {
-    TONE_PROBLEM: TONE_PROBLEM, TONE_CALM: TONE_CALM, TONE_UNKNOWN: TONE_UNKNOWN,
     SUBJECT_IS_ID: SUBJECT_IS_ID, SUBJECT_IS_ID_PLURAL: SUBJECT_IS_ID_PLURAL,
-    line: line, subheading: subheading,
+    subheading: subheading,
     read: read, write: write, retryButton: retryButton,
     createDisclosure: createDisclosure, intestazioneFresca: intestazioneFresca,
     elencoLungo: elencoLungo,

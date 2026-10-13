@@ -48,7 +48,7 @@ window.HirisWatcherSapere = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var line = S.line;
+  var line = pageLine;
   var subheading = S.subheading;
   var read = S.read;
   var write = S.write;
@@ -64,9 +64,6 @@ window.HirisWatcherSapere = (function () {
   var fmtHours = S.fmtHours;
   var fmtDateOnly = S.fmtDateOnly;
   var fmtDayMonth = S.fmtDayMonth;
-  var TONE_PROBLEM = S.TONE_PROBLEM;
-  var TONE_CALM = S.TONE_CALM;
-  var TONE_UNKNOWN = S.TONE_UNKNOWN;
 
   /* I campi del sapere, detti come li direbbe una persona.
 
