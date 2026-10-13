@@ -151,6 +151,31 @@ def test_services_page_keeps_no_states():
     assert not copied, f"services-route.js tiene gli stati dei servizi: {copied}"
 
 
+# -- C-10: le parole delle costruzioni ----------------------------------------
+# Il nome del dominio e del gesto le manda la rotta (`construction_words`), con
+# le chiavi dei loro padroni: i domini costruibili di `HAClient` e i gesti
+# dell'officina. La pagina tiene solo il colore del gesto.
+# Mutazioni ESEGUITE (13/10/2026): aggiunto «input_boolean» ai domini
+# costruibili -> rossa la prima; rimessa in constructions-route.js la mappa
+# `DOMAIN_NAME` -> rossa la seconda.
+
+def test_construction_words_cover_their_owners():
+    from hiris.app.action.construction.workshop import OPERATIONS
+    from hiris.app.api.handlers_constructions import _DOMAIN_WORDS, _GESTURE_WORDS
+    from hiris.app.proxy.ha_client import HAClient
+    assert set(_DOMAIN_WORDS) == set(HAClient.CONFIGURABLE_DOMAINS)
+    assert set(_GESTURE_WORDS) == set(OPERATIONS)
+
+
+def test_constructions_page_keeps_no_construction_words():
+    from hiris.app.api.handlers_constructions import _DOMAIN_WORDS, _GESTURE_WORDS
+    source = _js("config/constructions-route.js")
+    words = list(_DOMAIN_WORDS.values()) + [word for word, _ in _GESTURE_WORDS.values()]
+    assert len(words) >= 6
+    copied = [w for w in words if f"'{w}'" in source]
+    assert not copied, f"constructions-route.js ricopia le parole delle costruzioni: {copied}"
+
+
 # -- C-11: gli orari dello scheduler ------------------------------------------
 # Passo 1: «alle 00:20», «un giorno ogni 5 minuti» e i 22 giorni erano prosa
 # delle pagine, legati allo schedulatore dell'app avviata (mutazioni eseguite:

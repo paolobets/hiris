@@ -231,6 +231,36 @@ async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
 
 
 @pytest.mark.asyncio
+async def test_le_parole_della_costruzione_escono_uguali_dalle_due_porte():
+    """C-10 (Chiusura, F2): il nome del dominio, l'articolo, la parola del
+    gesto e se tocca un oggetto che c'era li manda il server, e la pagina non
+    ne tiene una copia. Elenco e singola le portano uguali (fondamenta 3).
+
+    Mutazione ESEGUITA (13/10/2026): tolto `**construction_words(row)` dalla
+    singola -> rossa."""
+    righe = [{"id": "m1", "stato": "applicata", "gesto": "modifica", "dominio": "scene",
+              "prima": {"name": "Sera"}},
+             {"id": "c1", "stato": "in_attesa", "gesto": "crea", "dominio": "automation"},
+             {"id": "x1", "stato": "in_attesa", "gesto": "nuovo_gesto", "dominio": "nuovo"}]
+    app = _app(FintoArchivio(righe))
+    elenco = {c["id"]: c for c in _corpo(await handle_get_constructions(FintaRichiesta(app)))
+              ["constructions"]}
+    assert {k: elenco["m1"][k] for k in ("dominio_nome", "articolo", "gesto_leggibile",
+                                          "esisteva")} == \
+        {"dominio_nome": "Scena", "articolo": "la scena", "gesto_leggibile": "Modificata",
+         "esisteva": True}
+    assert elenco["c1"]["esisteva"] is False
+    # Un dominio o un gesto che le parole non conoscono esce col suo nome.
+    assert (elenco["x1"]["dominio_nome"], elenco["x1"]["gesto_leggibile"]) == \
+        ("nuovo", "nuovo_gesto")
+    for ident, riga in elenco.items():
+        singola = _corpo(await handle_get_construction(FintaRichiesta(app, ident=ident)))
+        assert {k: singola["construction"][k] for k in ("dominio_nome", "articolo",
+                                                         "gesto_leggibile", "esisteva")} == \
+            {k: riga[k] for k in ("dominio_nome", "articolo", "gesto_leggibile", "esisteva")}
+
+
+@pytest.mark.asyncio
 async def test_il_filo_di_chi_ha_proposto_non_esce_dall_elenco():
     """Fix round 1, Task 7: il filo di chi ha proposto (`thread`, che
     `_row()` porta dal Task 7) non deve attraversare questo confine -- anche

@@ -4,13 +4,16 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conFrase, etichetta } from './helpers/stati.mjs';
+import { conParole } from './helpers/costruzioni.mjs';
 
 /* Una risposta della rotta come la manda il server: ogni riga con la frase
-   del suo stato (`stato_leggibile`, C-10 della Tappa 8), chiesta al
-   vocabolario e non ricopiata qui. */
+   del suo stato (`stato_leggibile`, C-10 della Tappa 8) e le parole del suo
+   dominio e del suo gesto (C-10 della Chiusura), chieste ai sorgenti e non
+   ricopiate qui. */
 function conFrasi(risposta) {
   return risposta && Array.isArray(risposta.constructions)
-    ? { ...risposta, constructions: risposta.constructions.map(conFrase) } : risposta;
+    ? { ...risposta, constructions: risposta.constructions.map((r) => conParole(conFrase(r))) }
+    : risposta;
 }
 
 /* La pagina carica common.js per primo (le utilita' scritte una volta):

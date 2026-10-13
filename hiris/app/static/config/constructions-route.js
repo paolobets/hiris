@@ -15,10 +15,10 @@
    1. Manca(va) la rotta per rifiutare nello scheletro del brief: e' stata
       chiusa dal Task 10-bis (`POST /api/constructions/{id}/reject`), quindi la
       card «in attesa» ha DUE bottoni, Approva e Rifiuta, non uno.
-   2. `gesto` non vale MAI letteralmente "ripristina": l'elenco vero e'
-      ("crea","modifica","cancella"). Un ripristino crea una riga NUOVA con
-      gesto="cancella" (se disfa una creazione) o "modifica" (tutti gli altri
-      casi), e `frase="ripristino di {id}"`. Il segnale che una riga e' frutto
+   2. `gesto` non vale MAI letteralmente "ripristina": i gesti veri sono i tre
+      di `workshop.OPERATIONS`. Un ripristino crea una riga NUOVA che cancella
+      (se disfa una creazione) o modifica (tutti gli altri casi), con
+      `frase="ripristino di {id}"`. Il segnale che una riga e' frutto
       di un ripristino e' quel PREFISSO di `frase`, non un valore di `gesto`
       che non arriva mai -- un ramo su quel valore sarebbe codice morto.
 
@@ -145,8 +145,12 @@ window.HirisConstructions = (function () {
      badge e' uno per tutte le code (`stateBadge`, common.js). Fino
      all'08/10/2026 questa pagina teneva una tabella sua di tutti e due. */
 
-  var DOMAIN_NAME = { automation: 'Automazione', script: 'Script', scene: 'Scena' };
-  var DOMAIN_ARTICLE = { automation: 'l’automazione', script: 'lo script', scene: 'la scena' };
+  /* Le parole del dominio e del gesto arrivano dalla rotta anche loro
+     (`dominio_nome`, `articolo`, `gesto_leggibile`, `esisteva`, C-10): un
+     dominio o un gesto che il server aggiungesse si legge col proprio nome.
+     Qui resta solo il COLORE del gesto, come `stateBadge` per gli stati: il
+     rosso a cio' che toglie, l'ambra a cio' che cambia, il neutro al resto. */
+  var GESTURE_BADGE = { cancella: 'badge-err', modifica: 'badge-warn' };
 
   var CHIAVI_CONFRONTO = [
     { chiave: 'triggers', etichetta: 'trigger' },
@@ -174,24 +178,22 @@ window.HirisConstructions = (function () {
   }
 
   function domainName(c) {
-    return DOMAIN_NAME[c.dominio] || c.dominio;
+    return c.dominio_nome || c.dominio;
   }
 
   function objectArticle(c) {
-    return DOMAIN_ARTICLE[c.dominio] || ('l’oggetto ' + c.dominio);
+    return c.articolo || ('l’oggetto ' + c.dominio);
   }
 
   /* guida §4: dare a OGNI modifica e cancellazione lo stesso trattamento
-     massimo -- non selezionare, generalizzare. Un `modifica`/`cancella` con
-     `prima` valorizzato tocca qualcosa che esisteva gia'. */
+     massimo -- non selezionare, generalizzare. Se tocca qualcosa che esisteva
+     gia' lo dice il server (`esisteva`). */
   function eraGiaLi(c) {
-    return c.gesto !== 'crea' && !!c.prima;
+    return !!c.esisteva;
   }
 
   function operationBadge(c) {
-    if (c.gesto === 'cancella') return { cls: 'badge-err', testo: 'Cancellata' };
-    if (c.gesto === 'modifica') return { cls: 'badge-warn', testo: 'Modificata' };
-    return { cls: 'badge-off', testo: 'Creata' };
+    return { cls: GESTURE_BADGE[c.gesto] || 'badge-off', testo: c.gesto_leggibile || c.gesto };
   }
 
   /* La `frase` prefissata "ripristino di " non e' detta dall'utente (scarto

@@ -313,5 +313,7 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # copia in common.js -- la pagina li riceve in `nomi_registri` (C-10).
 # 6 dalla Chiusura, F2 (13/10/2026): i ruoli e le specie dei servizi arrivano
 # dalla rotta con le loro frasi, e i servizi gia' divisi per stato (C-10).
-KNOWN_CEILING = 6
+# 4 dalla Chiusura, F2 (13/10/2026): il nome dei domini costruibili e dei gesti
+# delle costruzioni arriva dalla rotta (`construction_words`, C-10).
+KNOWN_CEILING = 4
 
