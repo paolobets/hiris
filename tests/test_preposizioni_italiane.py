@@ -403,7 +403,7 @@ _NOTE_ITALIANE = frozenset({
     "col_token_del_piano", "come_stringa", "commenti_di", "con_free", "con_gratuiti",
     "con_registro_caduto", "corpo_ricevuto_dal_modello", "cost_da_listino", "da_anchor",
     "da_http", "da_quante", "da_risolvere", "da_run_sh", "da_salvare",
-    "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
+    "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
     "e_contenitore", "e_def", "e_intestazione",
     "fra_parentesi",

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
-import { conFrase, etichetta } from './helpers/stati.mjs';
+import { conLetturaPromessa, etichetta } from './helpers/stati.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
@@ -16,7 +16,7 @@ import { conFrase, etichetta } from './helpers/stati.mjs';
    - il vocabolario mostrato non e' quello del backend: `saltata` -> «Non
      eseguita», `fallita` -> «Non riuscita» (guida §0/§3). Dalla Tappa 8
      (C-10) la frase la manda la rotta (`stato_leggibile`, da
-     `hiris/app/states.py`): il finto server la mette con `conFrase`, e le
+     `hiris/app/states.py`): il finto server la mette con `conLetturaPromessa`, e le
      prove la chiedono a `etichetta` invece di ricopiarla;
    - nessun window.confirm() per disdire: e' reversibile (chiedendo di nuovo a
      voce) e la riga non sparisce, passa allo storico. */
@@ -95,7 +95,7 @@ function montaConServer(opts = {}) {
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
       const scelto = corpo !== undefined ? corpo : { agenda: PROMESSE };
       return jsonResponse(scelto && Array.isArray(scelto.agenda)
-        ? { ...scelto, agenda: scelto.agenda.map(conFrase) } : scelto);
+        ? { ...scelto, agenda: scelto.agenda.map(conLetturaPromessa) } : scelto);
     }
     if (method === 'POST' && u.indexOf('api/agenda/read') === 0) {
       if (opts.readRotto) throw new Error('rete giu');
@@ -567,6 +567,17 @@ test('una in sospeso NON e\' un esito da leggere, anche se il segno e\' nullo', 
 
   const daLeggere = sezione(document, 'unread');
   assert.doesNotMatch(daLeggere.textContent, /accendi lo studio/);
+});
+
+test('una disdetta non letta NON e\' un esito da leggere: e\' un ordine appena dato', async () => {
+  /* `disdetta` e' conclusa (non `sospesa`) ma non e' un `esito`: il server
+     lo dice con i due segni (C-12). Mutazione ESEGUITA: il filtro ricavato
+     per complemento (`p.sospesa !== true`) -- rossa. */
+  const disdetta = { ...PROMESSE[0], id: 'p4', frase: 'spegni il forno', stato: 'disdetta' };
+  const { document } = await monta({ get: { agenda: [...PROMESSE, disdetta] } });
+
+  assert.doesNotMatch(sezione(document, 'unread').textContent, /spegni il forno/);
+  assert.match(sezione(document, 'history').textContent, /spegni il forno/);
 });
 
 test('senza esiti nuovi la sezione non c\'e\' proprio: non e\' una sezione vuota', async () => {

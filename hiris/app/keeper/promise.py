@@ -21,15 +21,15 @@ import json
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
-from ..states import CANCELLED, FAILED, KEPT, SKIPPED, readable
+from ..states import CANCELLED, FAILED, KEPT, SKIPPED, SUSPENDED, readable
 
 VERB = ("fai", "chiedi")
 #: Gli stati che chiudono una promessa. Le parole vivono nel vocabolario
 #: (`states.py`, Tappa 8, D4): qui si dice solo quali sono le conclusive di
 #: questa coda. L'insieme «in sospeso» e' `states.SUSPENDED`, la sua casa
 #: sola: fino all'08/10/2026 ce n'era una copia qui e una in
-#: `action/construction/revisions.py`. `tests/js/agenda-route-vocabulary.test.mjs`
-#: lega questi insiemi al JavaScript della pagina Impegni.
+#: `action/construction/revisions.py`. Dal 13/10/2026 (C-12) la pagina Impegni
+#: non ne tiene copie: legge `sospesa` ed `esito` da `serializza`.
 STATES_CONCLUSI = (KEPT, SKIPPED, CANCELLED, FAILED)
 
 # Gli stati che sono una NOTIZIA per chi legge -- `STATES_CONCLUSI` meno
@@ -89,6 +89,10 @@ _CHIAVI = (
     "thread",
     # Quando si e' conclusa (G-20, Tappa 8): `risvegliata_ts` e' la presa.
     "closed_ts",
+    # Cosa vuol dire lo stato, calcolato qui (C-12, Chiusura, 13/10/2026):
+    # in sospeso (`states.SUSPENDED`) e un esito da leggere (`STATES_ESITO`).
+    # La pagina Impegni ne teneva le due liste sue.
+    "sospesa", "esito",
 )
 
 
@@ -327,6 +331,10 @@ def serializza(row) -> dict:
         "thread": thread_from_columns(_column(row, "subject_key"),
                                       _column(row, "entry_point")),
         "closed_ts": _column(row, "closed_ts"),
+        # `disdetta` e' conclusa ma non e' un esito: e' un ordine appena dato
+        # (vedi `STATES_ESITO`). Le due domande hanno due risposte.
+        "sospesa": row["stato"] in SUSPENDED,
+        "esito": row["stato"] in STATES_ESITO,
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

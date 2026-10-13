@@ -4,7 +4,7 @@
    delle prove la mettono come la mette il server vero.
 
    Regex, non un parser: lo stesso grado di sofisticazione delle letture di
-   sorgenti Python gia' in uso (`agenda-route-vocabulary.test.mjs`). Se una
+   sorgenti Python gia' in uso (`helpers/costruzioni.mjs`). Se una
    lettura si rompe, `tupla` e `FRASI` lo dicono invece di tornare vuoti. */
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -48,4 +48,18 @@ export function etichetta(stato) {
   const frase = FRASI[stato];
   assert.ok(frase, 'nessuna frase per «' + stato + '»');
   return frase.charAt(0).toUpperCase() + frase.slice(1);
+}
+
+/* Cosa vuol dire lo stato di una promessa, come lo calcola
+   `keeper/promise.py::serializza` (C-12): `sospesa` (`states.SUSPENDED`) ed
+   `esito` (`promise.STATES_ESITO`), letti dai sorgenti. */
+const PROMESSA = readFileSync(
+  new URL('../../../hiris/app/keeper/promise.py', import.meta.url), 'utf8');
+const SOSPESI = tupla('SUSPENDED');
+const ESITI = tupla('STATES_ESITO', PROMESSA);
+
+export function conLetturaPromessa(riga) {
+  const r = conFrase(riga);
+  if (!r || typeof r.stato !== 'string' || 'sospesa' in r) return r;
+  return { ...r, sospesa: SOSPESI.includes(r.stato), esito: ESITI.includes(r.stato) };
 }
