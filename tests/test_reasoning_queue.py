@@ -553,3 +553,29 @@ def test_il_ponte_salta_la_riga_guasta_e_serve_quella_dopo(q):
     stato = q._conn.execute("SELECT status FROM reasoning_jobs WHERE job_id='GUASTA'")
     assert stato.fetchone()[0] == "failed"
     assert q.claim(now=10.0) is None
+
+
+# ── D-08 (Chiusura): la domanda con cui comincia ogni raccoglitore ─────────
+
+def test_latest_if_decided_e_l_ultimo_solo_se_deciso(q):
+    q.enqueue("analisi", {"giorno": "1"}, {}, deadline_ts=100.0, job_id="A", now=1.0)
+    c = q.claim(now=2.0)
+    assert q.latest_if_decided("analisi") is None, "preso in carico non e' deciso"
+    q.submit("A", c["nonce"], {"reply": "ok"}, now=3.0)
+    assert q.latest_if_decided("analisi")["job_id"] == "A"
+
+    # Un turno nuovo in volo copre il vecchio deciso: non si rilegge una
+    # risposta che chi ha riaccodato ha gia' superato.
+    q.enqueue("analisi", {"giorno": "2"}, {}, deadline_ts=100.0, job_id="B", now=4.0)
+    assert q.latest_if_decided("analisi") is None
+    assert q.latest_if_decided("ricetta") is None
+
+
+def test_latest_if_decided_filtra_la_sveglia_come_latest(q):
+    q.enqueue("proposta", {"giorno": "1"}, {}, deadline_ts=100.0, job_id="G", now=1.0)
+    c = q.claim(now=2.0)
+    q.submit("G", c["nonce"], {"reply": "[]"}, now=3.0)
+    q.enqueue("proposta", {"proposta": 7}, {}, deadline_ts=100.0, job_id="R", now=4.0)
+
+    assert q.latest_if_decided("proposta") is None
+    assert q.latest_if_decided("proposta", wake_key="giorno")["job_id"] == "G"

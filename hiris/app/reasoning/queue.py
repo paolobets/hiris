@@ -535,6 +535,26 @@ class ReasoningQueue:
         # indipendente, 11/09/2026). Lo porta `_row`, per ogni lettura.
         return None if r is None else _row(r, self.archive_name)
 
+    def latest_if_decided(self, kind: str, *, wake_key: str | None = None,
+                          wake_value: str | None = None) -> dict | None:
+        """L'ultimo turno di quella specie (`latest`), **solo se e' deciso**.
+
+        La domanda con cui ogni raccoglitore di un attore comincia (D-08,
+        Chiusura): c'e' una risposta da raccogliere? Era scritta quattro volte
+        -- `latest` e poi `status != "decided"` -- in `server.py` (analista,
+        ricette, osservatore) e in `mind/proposer_round._collect`.
+
+        **L'ultimo e basta, non l'ultimo deciso.** Se l'ultimo turno e' ancora
+        in volo la risposta e' `None`, anche se uno piu' vecchio e' deciso:
+        quello e' stato superato da chi ha riaccodato, e rileggerlo
+        applicherebbe una risposta vecchia (il commento di `latest`).
+
+        Cosa vuol dire «gia' letto» resta a ogni raccoglitore: ognuno lo legge
+        nella traccia del suo archivio (l'analisi del giorno, il sapere del
+        dispositivo, i tentativi dell'osservatore), e non sono copie."""
+        turn = self.latest(kind, wake_key=wake_key, wake_value=wake_value)
+        return turn if turn is not None and turn["status"] == JOB_DECIDED else None
+
     def get(self, job_id: str) -> dict | None:
         with self._lock:
             r = self._conn.execute(

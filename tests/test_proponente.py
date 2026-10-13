@@ -23,6 +23,7 @@ from hiris.app.mind import proposer_round as pr
 from hiris.app.mind import proposer_turn as pt
 from hiris.app.mind.analyst import evidence_of, observation_key
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
@@ -519,6 +520,9 @@ async def test_un_secondo_A_MANO_non_duplica_e_non_si_richiede_a_ogni_giro(casa)
 # -- Il ponte ------------------------------------------------------------------
 
 class _Coda:
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
     def __init__(self):
         self.accodati = []
         self.turno = None

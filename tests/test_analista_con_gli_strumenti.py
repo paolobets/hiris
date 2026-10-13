@@ -20,6 +20,7 @@ from hiris.app.home_space import historian
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind import compute
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.reasoning.queue import ReasoningQueue
 
 
 class _Sotto:
@@ -161,6 +162,9 @@ async def test_sulla_catena_le_LETTURE_vengono_dal_registro_delle_chiamate(casa)
 class _CodaRisposta:
     """Un turno del ponte risposto oggi, con le chiamate fatte dalla CLI:
     nomi col prefisso del server, e uno strumento proprio della CLI."""
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
 
     def __init__(self, giorno):
         self.turno = {
@@ -171,7 +175,7 @@ class _CodaRisposta:
                               "input": {"riferimento": "sensor.prelievo"}},
                              {"tool": "ToolSearch", "input": {"query": "x"}}]}}
 
-    def latest(self, kind):
+    def latest(self, kind, **_filtro):
         return self.turno
 
 
