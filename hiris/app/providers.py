@@ -37,6 +37,7 @@ import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 # LA MISURA DELLA CREDENZIALE DEL PIANO, in un posto solo.
 #
@@ -126,9 +127,13 @@ class Provider:
     #: L'elenco che il pannello mostra quando la lettura viva fallisce,
     #: dichiarato come riserva dalla riga di provenienza.
     reserve_models: tuple[str, ...] = ()
-    #: L'ospite che si interroga per l'elenco dei modelli: serve a nominare
-    #: CHI non ha risposto.
-    host: str = ""
+    #: L'indirizzo dell'API del provider, fino alla versione (`.../v1`): la
+    #: base di ogni domanda che HIRIS gli fa -- l'elenco dei modelli, e per
+    #: OpenRouter e OpenAI la chat. `""` dove l'indirizzo non e' un fatto del
+    #: provider: il piano passa dalla CLI, Ollama lo scrive il proprietario.
+    #: Fino alla Chiusura (F-09) gli indirizzi erano letterali in tre moduli,
+    #: accanto a un `host` scritto a mano che doveva dire la stessa cosa.
+    api_base: str = ""
     #: Il valore e' un ALIAS che segue il modello corrente (il piano) o un
     #: identificatore che punta a una cosa fissa (progetto §6.2).
     model_alias: bool = False
@@ -153,6 +158,12 @@ class Provider:
     #: per chiamata: `compreso` (il piano non espone il prezzo del turno),
     #: `gratuito` (in casa). `""` dove il costo si calcola.
     cost_state: str = ""
+
+    @property
+    def host(self) -> str:
+        """L'ospite che si interroga, chiesto all'indirizzo: serve a nominare
+        CHI non ha risposto."""
+        return urlsplit(self.api_base).hostname or ""
 
 
 SUBSCRIPTION = Provider(
@@ -196,7 +207,7 @@ CLAUDE = Provider(
     # archivio «auto» e' la STRINGA VUOTA, e il pannello la offre da se'.
     reserve_models=("claude-haiku-4-5-20251001", "claude-sonnet-4-6",
                     "claude-opus-4-7"),
-    host="api.anthropic.com",
+    api_base="https://api.anthropic.com/v1",
     usage_note="Costo calcolato sul listino Anthropic.",
 )
 
@@ -222,7 +233,7 @@ OPENROUTER = Provider(
     reserve_models=("openrouter:openai/gpt-4o", "openrouter:openai/gpt-4.1",
                     "openrouter:google/gemini-2.5-flash",
                     "openrouter:mistralai/mistral-large"),
-    host="openrouter.ai",
+    api_base="https://openrouter.ai/api/v1",
     usage_note=("Costo dichiarato da OpenRouter: e' quanto e' stato "
                 "addebitato, non una stima."),
 )
@@ -237,7 +248,7 @@ OPENAI = Provider(
     model_path=("provider_models", "openai"),
     auto_model="gpt-4o",
     reserve_models=("gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"),
-    host="api.openai.com",
+    api_base="https://api.openai.com/v1",
     usage_note="Costo calcolato sul listino OpenAI.",
 )
 
