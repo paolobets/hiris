@@ -2,7 +2,7 @@
 import json
 import os
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import ClassVar
 
@@ -118,6 +118,31 @@ async def test_promesse_elenca_cio_che_e_in_sospeso(promesse):
         "domanda": "e' aumentata?"})
     esito = await d.dispatch("agenda", {})
     assert len(esito["promesse"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_gli_istanti_di_una_promessa_arrivano_al_modello_in_iso(promesse):
+    """C-32/C-39: verso il modello ogni istante e' ISO con l'offset, e la
+    promessa era l'unica eccezione -- cinque istanti in epoch, con i nomi in
+    `_ts`. Da tutte e tre le porte (`promise`, `agenda`, `cancel`) esce la
+    resa della promessa, `render.render_promise`.
+
+    Rossa prima del fix: `quando_ts` era un numero."""
+    d = _dispatcher(promesse)
+    in_an_hour = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+    creata = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "x",
+        "quando": in_an_hour.astimezone(timezone(timedelta(hours=2))).isoformat(),
+        "domanda": "e' aumentata?"})
+    elenco = await d.dispatch("agenda", {"tutte": True})
+    disdetta = await d.dispatch("cancel", {"id": creata["promessa"]["id"]})
+    for promessa in (creata["promessa"], elenco["promesse"][0], disdetta["promessa"]):
+        assert not [k for k in promessa if k.endswith("_ts")], promessa
+        # Nessun fuso dichiarato a questo dispatcher: l'istante esce in UTC,
+        # con l'offset scritto (`historian.instant_out`).
+        assert promessa["quando"] == in_an_hour.isoformat()
+        assert promessa["nata_il"].endswith("+00:00")
+    assert disdetta["promessa"]["chiusa_il"].endswith("+00:00")
 
 
 @pytest.mark.asyncio

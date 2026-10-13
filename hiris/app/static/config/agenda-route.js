@@ -102,9 +102,15 @@ window.HirisAgendaRoute = (function () {
     if (s) s.textContent = text || '';
   }
 
-  /* ── Date e ore (guida §4): sempre da `quando_ts`, mai da `quando_detto`
-     -- quello e' gia' dentro la `frase` verbatim. Il fuso non si mostra:
-     `new Date(ts*1000)` legge gia' quello del browser di chi guarda. ──── */
+  /* ── Date e ore (guida §4): sempre da `quando`, mai da `quando_detto`
+     -- quello e' gia' dentro la `frase` verbatim. Gli istanti arrivano in
+     ISO con l'offset (`render.render_promise`, C-32, 13/10/2026), la stessa
+     forma che riceve il modello; si mostrano ancora nel fuso del browser di
+     chi guarda (C-17 decide se passare all'ora della casa). ──── */
+  function epochOf(instant) {
+    return Date.parse(instant) / 1000;
+  }
+
   function fmtAbsoluteTime(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
@@ -115,8 +121,8 @@ window.HirisAgendaRoute = (function () {
       d.getDate() === hour.getDate();
   }
 
-  function fmtAbsolute(ts) {
-    var d = new Date(ts * 1000);
+  function fmtAbsolute(instant) {
+    var d = new Date(instant);
     var hour = fmtAbsoluteTime(d);
     return isToday(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
   }
@@ -131,9 +137,9 @@ window.HirisAgendaRoute = (function () {
   var RTF = (typeof Intl !== 'undefined' && Intl.RelativeTimeFormat)
     ? new Intl.RelativeTimeFormat('it', { numeric: 'auto' }) : null;
 
-  function fmtRelative(ts) {
+  function fmtRelative(instant) {
     if (!RTF) return '';
-    var diffS = ts - (Date.now() / 1000);
+    var diffS = epochOf(instant) - (Date.now() / 1000);
     if (Math.abs(diffS) < 3600) return RTF.format(Math.round(diffS / 60), 'minute');
     return RTF.format(Math.round(diffS / 3600), 'hour');
   }
@@ -275,7 +281,7 @@ window.HirisAgendaRoute = (function () {
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
     var body = el('div');
-    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts) + ' · ' + fmtRelative(p.quando_ts)));
+    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando) + ' · ' + fmtRelative(p.quando)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
     body.appendChild(phrase);
@@ -336,7 +342,7 @@ window.HirisAgendaRoute = (function () {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
-    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts)));
+    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
@@ -376,10 +382,10 @@ window.HirisAgendaRoute = (function () {
   }
 
   function sortPending(list) {
-    return list.slice().sort(function (a, b) { return a.quando_ts - b.quando_ts; });
+    return list.slice().sort(function (a, b) { return epochOf(a.quando) - epochOf(b.quando); });
   }
   function sortHistory(list) {
-    return list.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
+    return list.slice().sort(function (a, b) { return epochOf(b.quando) - epochOf(a.quando); });
   }
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
   /* Il conteggio dello storico e' passato NEL TITOLO (`Storico (14)`): da
@@ -528,12 +534,12 @@ window.HirisAgendaRoute = (function () {
       var pending = all.filter(function (p) { return p.sospesa === true; });
       var history = all.filter(function (p) { return p.sospesa !== true; });
       /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:
-         `esito_letto_ts` e' NULL anche per ogni promessa IN SOSPESO -- non
+         `esito_letto_il` e' NULL anche per ogni promessa IN SOSPESO -- non
          ha ancora un esito da leggere -- quindi il solo campo nullo
          riempirebbe «Esiti da leggere» di impegni futuri. La seconda e'
          `esito`, che il server calcola (vedi in cima al file). */
       var unread = all.filter(function (p) {
-        return p.esito === true && p.esito_letto_ts == null;
+        return p.esito === true && p.esito_letto_il == null;
       });
       /* «Esiti da leggere» si disegna per PRIMA: e' quella che decide su
          quale copia di una riga ripetuta va il rivelatore «Cosa è
@@ -542,7 +548,7 @@ window.HirisAgendaRoute = (function () {
       renderPending(pendingBody, pendingDesc, pending, load);
       renderHistory(historyBody, historyDesc, history, disegnati);
       /* La finestra (C-14): oltre le 200 il server lo dice con `total`. Le
-         escluse sono le piu' vecchie (l'ordine e' per `quando_ts`
+         escluse sono le piu' vecchie (l'ordine e' per `quando`
          decrescente), cioe' tutte dello storico: le in sospeso stanno in cima
          e il loro tetto per filo (`CEILING_IN_SOSPESO`, 50) e' sotto la
          finestra. */

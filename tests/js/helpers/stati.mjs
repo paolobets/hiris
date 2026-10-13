@@ -61,5 +61,27 @@ const ESITI = tupla('STATES_ESITO', PROMESSA);
 export function conLetturaPromessa(riga) {
   const r = conFrase(riga);
   if (!r || typeof r.stato !== 'string' || 'sospesa' in r) return r;
-  return { ...r, sospesa: SOSPESI.includes(r.stato), esito: ESITI.includes(r.stato) };
+  return resaPromessa({ ...r, sospesa: SOSPESI.includes(r.stato), esito: ESITI.includes(r.stato) });
+}
+
+/* Gli istanti di una promessa come li manda la resa
+   (`hiris/app/home_space/render.py::render_promise`, C-32): il nome in
+   `_ts` dell'archivio diventa quello di `_PROMISE_INSTANTS`, e l'epoch un
+   ISO con l'offset. Le prove scrivono i record in epoch, come l'archivio. */
+const RESA = readFileSync(
+  new URL('../../../hiris/app/home_space/render.py', import.meta.url), 'utf8');
+const bloccoIstanti = RESA.match(/^_PROMISE_INSTANTS = \{([\s\S]*?)\}/m);
+assert.ok(bloccoIstanti, 'render.py: _PROMISE_INSTANTS non si legge');
+const ISTANTI = {};
+for (const m of bloccoIstanti[1].matchAll(/"(\w+)": "(\w+)"/g)) ISTANTI[m[1]] = m[2];
+assert.ok(Object.keys(ISTANTI).length >= 5, '_PROMISE_INSTANTS: troppo pochi istanti letti');
+
+function resaPromessa(riga) {
+  const out = {};
+  for (const [chiave, valore] of Object.entries(riga)) {
+    if (!(chiave in ISTANTI)) { out[chiave] = valore; continue; }
+    out[ISTANTI[chiave]] = valore == null ? valore
+      : new Date(valore * 1000).toISOString().replace(/\.\d{3}Z$/, '+00:00');
+  }
+  return out;
 }

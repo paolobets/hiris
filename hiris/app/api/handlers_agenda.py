@@ -1,8 +1,9 @@
 """Le tre rotte delle promesse: guardare, disdire, e guardare cosa e' cambiato.
 
 Non serializzano niente per conto proprio. La forma di una promessa e' UNA, e
-vive in `keeper/promise.py::serializza` (gia' usata dall'archivio): se
-questa rotta ne costruisse una sua, la pagina e la chat mostrerebbero due
+vive in `keeper/promise.py::serializza` (gia' usata dall'archivio), resa con
+gli istanti in ISO da `home_space/render.render_promise` come per lo strumento
+(C-32, 13/10/2026): se questa rotta ne costruisse una sua, la pagina e la chat mostrerebbero due
 cose diverse della stessa promessa il primo giorno in cui qualcuno aggiunge
 un campo da una parte sola.
 
@@ -43,6 +44,7 @@ from ..chat_thread import (
     unknown_id_text,
     without_thread,
 )
+from ..home_space.render import render_promise
 from .boundary import error_response, json_object, occurrence_out
 from .soffitto import restricted_person
 
@@ -70,7 +72,7 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     rows, left_out = store.page(thread=thread, solo_in_sospeso=not show_all, limit=200)
     # La finestra si dichiara (C-14, 13/10/2026): `total` e `shown`, come la
     # pagina della memoria. Fino ad allora oltre le 200 la pagina taceva.
-    return web.json_response({"agenda": [without_thread(r) for r in rows],
+    return web.json_response({"agenda": [render_promise(without_thread(r)) for r in rows],
                               "total": len(rows) + left_out, "shown": len(rows)})
 
 
@@ -86,7 +88,7 @@ async def handle_delete_promise(request: web.Request) -> web.Response:
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
     return web.json_response(occurrence_out(
-        {**occurrence, "promessa": without_thread(occurrence["promessa"])}))
+        {**occurrence, "promessa": render_promise(without_thread(occurrence["promessa"]))}))
 
 
 async def handle_mark_read(request: web.Request) -> web.Response:

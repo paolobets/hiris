@@ -104,7 +104,8 @@ function montaConServer(opts = {}) {
     if (method === 'DELETE') {
       if (opts.deleteRotto) throw new Error('rete giu\'');
       return jsonResponse(
-        opts.deleteBody !== undefined ? opts.deleteBody : { promessa: { ...PROMESSE[0], stato: 'disdetta' } },
+        opts.deleteBody !== undefined ? opts.deleteBody
+          : { promessa: conLetturaPromessa({ ...PROMESSE[0], stato: 'disdetta' }) },
         opts.deleteStatus !== undefined ? opts.deleteStatus : 200);
     }
     throw new Error('metodo inatteso: ' + method);

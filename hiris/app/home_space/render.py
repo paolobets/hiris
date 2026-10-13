@@ -24,7 +24,7 @@ from ..proxy.entity_cache import (
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .ha_vocabulary import domain_of, entity_category_measure_rule
-from .historian import instant_out
+from .historian import home_space_zone, instant_out
 from .reference import normalize
 from .topology import (
     HVAC_ACTION_ATTRIBUTE,
@@ -1142,6 +1142,34 @@ def render_memory(memory: dict, house: House, *, zone) -> dict:
         out["ancore"] = [_shown(house.tether(tether), house)
                          for tether in out["ancore"] or []]
     return out
+
+
+#: Gli istanti di una promessa: il nome dell'archivio (`keeper.promise.serializza`,
+#: in epoch) e il nome con cui escono verso il modello, in ISO. `quando` e' il
+#: campo del vocabolario (`field_vocabulary.FIELDS`); gli altri seguono
+#: `detto_il` del ricordo.
+_PROMISE_INSTANTS = {"quando_ts": "quando", "nata_ts": "nata_il",
+                     "risvegliata_ts": "risvegliata_il",
+                     "esito_letto_ts": "esito_letto_il", "closed_ts": "chiusa_il"}
+
+
+def render_promise(promise: dict) -> dict:
+    """La resa di UNA promessa verso il modello: la forma di
+    `keeper.promise.serializza`, con gli istanti in ISO nell'ora della
+    promessa (`fuso`, la stessa dell'istantanea) invece che in epoch.
+
+    C-32/C-39 (Paolo, 13/10/2026, «come consigliato»): verso il modello ogni
+    istante era ISO con l'offset tranne i cinque della promessa. La pagina
+    Impegni legge ancora `serializza`, coi numeri: la sua forma cambia con
+    C-17 (le date della pagina nell'ora della casa).
+
+    `None` resta `null` (`instant_out`): una promessa mai risvegliata non ha
+    `risvegliata_il`, e lo dice. L'ordine delle chiavi resta quello di
+    `serializza`."""
+    zone = home_space_zone(promise.get("fuso"))
+    return {_PROMISE_INSTANTS.get(key, key):
+            instant_out(value, zone) if key in _PROMISE_INSTANTS else value
+            for key, value in promise.items()}
 
 
 #: Come si chiama una cosa che c'e' ma di cui Home Assistant non sa il nome,

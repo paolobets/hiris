@@ -136,7 +136,7 @@ from .queries import related as _readable_links
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import DEPTHS, depth_for, render_entity
+from .render import DEPTHS, depth_for, render_entity, render_promise
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -2202,7 +2202,7 @@ class ToolDispatcher:
         occurrence = self._agenda.create(data, thread=self._thread, now=_time.time())
         if "errore" in occurrence:
             return occurrence
-        result = {"promessa": without_thread(occurrence["promessa"])}
+        result = {"promessa": render_promise(without_thread(occurrence["promessa"]))}
         if verb == "chiedi":
             # Solo per sapere SE una strada c'e': la notifica partira' al
             # risveglio, dal recapito risolto allora (se nel frattempo la
@@ -2259,7 +2259,7 @@ class ToolDispatcher:
         """
         show_all = bool(arguments.get("tutte"))
         rows, left = self._agenda.page(thread=self._thread, solo_in_sospeso=not show_all)
-        answer: dict = {"promesse": [without_thread(r) for r in rows]}
+        answer: dict = {"promesse": [render_promise(without_thread(r)) for r in rows]}
         if left > 0:
             # C-39: le promesse che la pagina non mostra si dichiarano, nella
             # forma di `oltre` delle altre risposte (`restano`). Niente
@@ -2278,7 +2278,8 @@ class ToolDispatcher:
         occurrence = self._agenda.cancel(identifier.strip(), thread=self._thread,
                                          now=_time.time())
         if "promessa" in occurrence:
-            return {**occurrence, "promessa": without_thread(occurrence["promessa"])}
+            return {**occurrence,
+                    "promessa": render_promise(without_thread(occurrence["promessa"]))}
         return occurrence
 
     async def _propose(self, arguments: dict[str, Any], *, masked: bool) -> dict:
