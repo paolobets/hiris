@@ -84,7 +84,7 @@ from ..chat_store import (
 )
 from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..providers import SUBSCRIPTION
-from ..proxy._sanitize import MASK
+from ..proxy._sanitize import MASK, truncate_with_marker
 from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
 from ..usage.giro import anthropic_turn_tokens, pesa_carico
 from . import prompts
@@ -2053,10 +2053,12 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # meglio il flusso grezzo che un silenzio.
             detail = (stdout or stderr).strip()
         # Un sentinella d'errore, non una risposta del modello: e' un
-        # fallimento, e il registro lo chiama cosi'.
+        # fallimento, e il registro lo chiama cosi'. Il dettaglio lungo si
+        # taglia dicendolo (D-70): un taglio muto fa sembrare intera una causa
+        # che continuava.
         return _reply(
             f"{RUNNER_ERROR_PREFIX}{invocation.rc}] "
-            f"{str(detail)[:300]}".strip(), outcome="fallito")
+            f"{truncate_with_marker(str(detail), 300)}".strip(), outcome="fallito")
 
     if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito

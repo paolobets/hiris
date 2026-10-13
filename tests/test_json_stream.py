@@ -712,3 +712,19 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     # disciplina, la affianca.
     assert decisione["reply"].startswith(runner.MISSING_TOOLS_NOTICE)
     assert "ok, senza strumenti" in decisione["reply"]
+
+
+def test_rc_diverso_da_zero_con_un_dettaglio_lungo_dichiara_il_taglio():
+    """D-70 (Tappa 8, Task 0): il dettaglio dell'errore si tagliava a 300
+    caratteri in silenzio, e chi leggeva la reply non poteva sapere che la
+    causa continuava oltre. Il taglio e' quello di `truncate_with_marker`:
+    stesso tetto, ma detto."""
+    from hiris.app.proxy._sanitize import CUT
+
+    lungo = "Error: " + "x" * 600
+    reply = _reason(lungo + "\n", rc=1, stderr="")
+    assert reply.startswith("[errore runner rc=1]")
+    assert reply.endswith(CUT), (
+        f"il dettaglio lungo e' stato tagliato senza dirlo: {reply[-60:]!r}")
+    dettaglio = reply.removeprefix("[errore runner rc=1]").strip()
+    assert len(dettaglio) <= 300
