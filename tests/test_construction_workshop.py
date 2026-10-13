@@ -751,25 +751,23 @@ async def test_il_motivo_del_mestiere_viaggia_nell_anteprima_anche_senza_dissens
 
 
 @pytest.mark.asyncio
-async def test_ripristinare_dalla_chat_e_un_giro_in_due_tempi(banco):
-    """IMPORTANT 5: prima `restore` creava la proposta e la passava subito
-    ad `apply` con lo stesso `turno`, che il cancello rifiutava SEMPRE --
-    e la riga restava `in_attesa` a bruciare un posto del tetto per sette
-    giorni. Ora, dalla chat, e' un giro in due tempi come tutto il resto."""
+async def test_ripristinare_dalla_chat_si_rifiuta_e_non_propone_niente(banco):
+    """M-75 (Chiusura F5): il ripristino dalla chat in due tempi non aveva
+    chiamanti ed e' uscito. Un `restore` chiesto da un'origine non umana si
+    rifiuta prima di scrivere la proposta: nessuna riga `in_attesa` a
+    bruciare un posto del tetto, niente scritto in casa.
+
+    Rossa sul codice di prima (ramo in due tempi): tornava `proposta_id`."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
                                actor="chat", exchange="t1", now=ADESSO)
     await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
     ha.salvate.clear()
-    esito = await officina.restore(p["proposta_id"], actor="chat", exchange="t3",
-                                      now=ADESSO + 120)
-    assert "proposta_id" in esito
-    assert esito["anteprima"]
+    for turno in ("t3", None):
+        esito = await officina.restore(p["proposta_id"], actor="chat", exchange=turno,
+                                       now=ADESSO + 120)
+        assert "errore" in esito and "pagina" in esito["errore"]
     assert ha.salvate == []
-    esito2 = await officina.apply(esito["proposta_id"], actor="chat", exchange="t4",
-                                    now=ADESSO + 180)
-    assert esito2["eseguito"] is True
-    assert ha.salvate[0][2]["alias"] == "com'era"
 
 
 @pytest.mark.asyncio
@@ -1413,22 +1411,6 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
         anteprima = officina._preview("modifica", dominio, "1", {"alias": "X"},
                                         {"alias": "X"}, {"alias": "Y"}, consiglio)
         assert f"Modifico {atteso} «X», che esiste già in casa tua." in anteprima
-
-
-@pytest.mark.asyncio
-async def test_ripristinare_dalla_chat_senza_turno_indica_la_pagina(banco):
-    """Minore 2: se il chiamante di `restore` non porta un'identita' di
-    turno, la proposta appena creata non sara' MAI confermabile da un'origine
-    non umana (IMPORTANT 1, round 2) -- e l'anteprima restituita deve dirlo,
-    come gia' fa il messaggio del cancello in `apply`."""
-    officina, _ha, _archivio, _ = banco
-    p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
-                               actor="chat", exchange="t1", now=ADESSO)
-    await officina.apply(p["proposta_id"], actor="pagina", exchange=None, now=ADESSO + 60)
-    esito = await officina.restore(p["proposta_id"], actor="chat", exchange=None,
-                                      now=ADESSO + 120)
-    assert "proposta_id" in esito
-    assert "pagina" in esito["anteprima"].lower()
 
 
 # ---------------------------------------------------------------------------
