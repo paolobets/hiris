@@ -835,11 +835,11 @@ class StreamOccurrence:
       li ha emessi -- `[{"tool": nome, "input": argomenti}, ...]`, la STESSA
       forma di `handlers_chat.py` (ramo sincrono): una lista sola, che la
       chat rende e i raccoglitori degli attori leggono, non due. Lista VUOTA
-      (mai `None`) quando nessuno strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
-      dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
-      (`mcp__hiris__remember`), MAI normalizzato: normalizzarlo nasconderebbe il
-      caso in cui il modello chiama
-      qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
+      (mai `None`) quando nessuno strumento e' stato chiamato: `None` direbbe
+      "non lo so", una lista vuota dice "nessuno". Il nome e' quello GREZZO
+      che il modello ha usato (`mcp__hiris__remember`), MAI normalizzato:
+      normalizzarlo nasconderebbe il caso in cui il modello chiama qualcosa
+      che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
       cosi' una chiamata riuscita (esito arrivato, senza errore) resta
