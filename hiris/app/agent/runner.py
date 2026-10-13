@@ -2045,9 +2045,22 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # dove l'errore arriva nell'evento `result` con `is_error: true`. Logga
         # entrambi i canali e prova a estrarre un dettaglio leggibile, per non
         # nascondere la causa dietro un numero.
-        log.warning("claude rc=%s stderr=%r stdout=%r%s", invocation.rc,
-                    stderr[:300], stdout[:500], log_tail)
+        #
+        # Dello stdout si logga l'evento `result`, non i primi 500 caratteri:
+        # li' c'e' l'`init`, e la causa cadeva oltre. Misurato dallo Sprint sul
+        # log dell'add-on: 22 righe «claude rc=1» fra il 09/10 e l'11/10/2026,
+        # tutte senza causa. Senza evento `result` (processo morto a meta') si
+        # logga la CODA del flusso, dove c'e' l'ultimo evento arrivato.
         result = occurrence.result or {}
+        if occurrence.result is not None:
+            seen = (f"result subtype={result.get('subtype')!r} "
+                    f"is_error={result.get('is_error')!r} "
+                    f"error={truncate_with_marker(str(result.get('error') or ''), 300)!r} "
+                    f"result={truncate_with_marker(occurrence.text, 300)!r}")
+        else:
+            seen = f"stdout (coda)={stdout[-500:]!r}"
+        log.warning("claude rc=%s stderr=%r %s%s", invocation.rc,
+                    stderr[:300], seen, log_tail)
         detail = (occurrence.text or result.get("error")
                   or result.get("subtype") or "")
         if not detail:
