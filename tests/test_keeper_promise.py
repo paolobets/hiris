@@ -3,10 +3,10 @@ import re
 from pathlib import Path
 
 from hiris.app.keeper.promise import (
-    CEILING_IN_SOSPESO,
     ORIZZONTE_S,
     STATES_CONCLUSI,
     STATES_ESITO,
+    SUSPENDED_CAP,
     TOLLERANZA_S,
     delay_reason,
     serializza,
@@ -123,7 +123,7 @@ def test_il_motivo_del_ritardo_dice_i_minuti_misurati():
 
 
 def test_le_costanti_sono_quelle_dichiarate_nella_spec():
-    assert (TOLLERANZA_S, ORIZZONTE_S, CEILING_IN_SOSPESO,
+    assert (TOLLERANZA_S, ORIZZONTE_S, SUSPENDED_CAP,
             CONSERVAZIONE["promesse"][0]) == (120, 30 * 86400, 50, 90)
 
 

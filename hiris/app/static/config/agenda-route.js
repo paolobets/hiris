@@ -550,7 +550,7 @@ window.HirisAgendaRoute = (function () {
       /* La finestra (C-14): oltre le 200 il server lo dice con `total`. Le
          escluse sono le piu' vecchie (l'ordine e' per `quando`
          decrescente), cioe' tutte dello storico: le in sospeso stanno in cima
-         e il loro tetto per filo (`CEILING_IN_SOSPESO`, 50) e' sotto la
+         e il loro tetto per filo (`SUSPENDED_CAP`, 50) e' sotto la
          finestra. */
       var fuori = (typeof data.total === 'number' && typeof data.shown === 'number')
         ? Math.max(0, data.total - data.shown) : 0;

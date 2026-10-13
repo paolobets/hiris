@@ -513,7 +513,7 @@ async def test_la_chiamata_aspetta_che_home_assistant_ci_sia(supervisor):
 async def test_un_nucleo_che_non_arriva_si_dice_e_non_si_chiama(supervisor, caplog,
                                                                  monkeypatch):
     """Oltre il tetto: una riga che lo dice, nessun comando, nessuna eccezione."""
-    monkeypatch.setattr(installation, "SYNC_CEILING_S", 0.2)
+    monkeypatch.setattr(installation, "SYNC_CAP_S", 0.2)
     ha = _casa(pronto=False)
 
     with caplog.at_level(logging.INFO, logger=LOGGER):
@@ -529,12 +529,12 @@ async def test_un_nucleo_che_non_arriva_si_dice_e_non_si_chiama(supervisor, capl
 async def test_un_nucleo_collegato_che_non_risponde_si_dice_e_non_solleva(
         supervisor, caplog, monkeypatch):
     """Il ramo `else` del tetto: il WebSocket c'e', ma `frontend/update_panel`
-    resta appeso oltre `SYNC_CEILING_S`. Una riga che dice «non ha
+    resta appeso oltre `SYNC_CAP_S`. Una riga che dice «non ha
     risposto», nessuna eccezione, nessuna rilettura.
 
     Mutazione ESEGUITA: i due rami del tetto scambiati (`if
     ha.ws_ready.is_set()`) -- rossa (la riga dice «non si è collegato»)."""
-    monkeypatch.setattr(installation, "SYNC_CEILING_S", 0.2)
+    monkeypatch.setattr(installation, "SYNC_CAP_S", 0.2)
     ha = _filo_appeso("frontend/update_panel")
 
     with caplog.at_level(logging.INFO, logger=LOGGER):

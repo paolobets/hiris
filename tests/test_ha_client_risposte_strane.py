@@ -33,7 +33,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Il tetto delle attese di una prova: una connessione finta non fa I/O.
-CEILING_S = 2
+CAP_S = 2
 
 
 # ── S-05: le plance ─────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ async def _until(condition, what: str) -> None:
         while not condition():
             await asyncio.sleep(0)
     try:
-        await asyncio.wait_for(poll(), CEILING_S)
+        await asyncio.wait_for(poll(), CAP_S)
     except TimeoutError:
         raise AssertionError(f"non e' successo: {what}") from None
 

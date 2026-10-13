@@ -501,7 +501,7 @@ def _release_expired(app, now: float) -> None:
             turn.dispatcher = None
 
 
-def _ceiling_rejection(name: str) -> dict:
+def _cap_rejection(name: str) -> dict:
     """Il `content` che il modello vede quando il tetto per-turno e' pieno.
 
     **La forma scelta, motivata (non un dettaglio di stile).** Resta una
@@ -657,7 +657,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
                     "MCP: tetto di %d chiamate di strumento raggiunto per il "
                     "turno %s -- «%s» NON viene eseguita, il dispatcher non "
                     "e' invocato", MAX_TOOL_ROUNDS, exchange_id, name)
-            return _answer(request_id, _ceiling_rejection(name))
+            return _answer(request_id, _cap_rejection(name))
 
     # Il nome accettato e' quello nudo (`search`, ...): il prefisso
     # `mcp__hiris__` lo mette la CLI dal lato modello, non arriva nel

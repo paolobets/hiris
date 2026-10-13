@@ -139,7 +139,7 @@ the cap refined 2026-08-25, M2 in correzioni-minori.md).
 `sanitize_ha_value`'s clamp was 120 chars and cut without saying so: once
 this module was actually wired, that silently mangled real content -- an
 `input_text` state (HA allows up to 255) -- into something that read as
-complete. The clamp is now 255 (Home Assistant's own ceiling on a state
+complete. The clamp is now 255 (Home Assistant's own cap on a state
 string, `homeassistant.core.MAX_LENGTH_STATE_STATE`, not a margin picked for
 caution) for fields that actually ARE `state`. A logbook `messaggio` (a
 reader that left on 30/09/2026) and an integration's failure `motivo` are NOT
@@ -321,7 +321,7 @@ def sanitize_ha_value(v) -> str:
     """Strip injection markers and clamp to 255 chars, declaring the cut if it
     happens (see `sanitize_text`).
 
-    255, not the old 120: it is Home Assistant's own ceiling on a state
+    255, not the old 120: it is Home Assistant's own cap on a state
     string (`homeassistant.core.MAX_LENGTH_STATE_STATE`), not a margin picked
     for caution. 120 was tight enough to silently truncate real content once
     this function was actually wired in production — an `input_text` state
@@ -336,14 +336,14 @@ def sanitize_ha_value(v) -> str:
     return sanitize_text(v, 255)
 
 
-# M2 (August 2026 review): 255 is Home Assistant's own ceiling on a
+# M2 (August 2026 review): 255 is Home Assistant's own cap on a
 # `state` string -- correct for `sanitize_ha_value` above, wrong for fields
 # that are not `state`. `messaggio` (a logbook entry's free text, a reader
 # that left on 30/09/2026) and `motivo` (why an integration failed to start,
-# `home_space/reader.py::clean_reason`) are HA free text with no such ceiling: a
+# `home_space/reader.py::clean_reason`) are HA free text with no such cap: a
 # legitimate one -- an automation message that quotes an SMS/email body, an
 # exception summary from a broken integration -- can honestly run past 255
-# without being an attack. Clamping them to the `state` ceiling was honest
+# without being an attack. Clamping them to the `state` cap was honest
 # (the marker said so) but not generous: it threw away real content that had
 # every right to be there.
 #

@@ -114,14 +114,14 @@ RUNNING_STATE = "RUNNING"
 
 # Le attese del websocket di lunga vita, in secondi. Dopo una caduta si
 # riprova dopo `RECONNECT_DELAY_S`. Dopo un gettone RIFIUTATO (S-04) l'attesa
-# parte da `AUTH_RETRY_FIRST_S` e raddoppia fino a `AUTH_RETRY_CEILING_S`:
+# parte da `AUTH_RETRY_FIRST_S` e raddoppia fino a `AUTH_RETRY_CAP_S`:
 # ogni rifiuto e' una notifica «Login attempt failed» fra quelle di Home
 # Assistant (`components/http/ban.py`, `process_wrong_login`, righe 115-145
 # al tag 2026.9.4) -- l'indirizzo del Supervisor non viene mai bandito
 # (righe 153-155), ma un tentativo ogni dieci secondi riempirebbe le notifiche.
 RECONNECT_DELAY_S = 10
 AUTH_RETRY_FIRST_S = 10
-AUTH_RETRY_CEILING_S = 300
+AUTH_RETRY_CAP_S = 300
 # Quanto si aspetta ogni messaggio della fase di autenticazione (S-29). Non e'
 # un tetto nostro: e' quello di Home Assistant, che chiude la fase se il
 # messaggio non arriva entro `AUTH_MESSAGE_TIMEOUT = 10` secondi
@@ -2606,7 +2606,7 @@ class HAClient:
         giorno un `auth_invalid` faceva `return`: il ciclo usciva, e l'add-on
         restava sordo -- niente stato vivo, niente anagrafe aggiornata -- fino
         al riavvio. Adesso si riprova, con un'attesa che cresce
-        (`AUTH_RETRY_FIRST_S` .. `AUTH_RETRY_CEILING_S`) e torna alla prima
+        (`AUTH_RETRY_FIRST_S` .. `AUTH_RETRY_CAP_S`) e torna alla prima
         dopo un'autenticazione riuscita. Cosa manda Home Assistant, letto il
         03/10/2026 al tag 2026.9.4 (`websocket_api/auth.py`, righe 44-46 e
         125-129): `{"type": "auth_invalid", "message": ...}`, poi chiude la
@@ -2639,7 +2639,7 @@ class HAClient:
                             "HA WebSocket: autenticazione rifiutata da Home Assistant "
                             "(%s) -- riprovo fra %ds", refusal, auth_wait)
                         pause = auth_wait
-                        auth_wait = min(auth_wait * 2, AUTH_RETRY_CEILING_S)
+                        auth_wait = min(auth_wait * 2, AUTH_RETRY_CAP_S)
             except asyncio.CancelledError:
                 return
             except Exception as exc:

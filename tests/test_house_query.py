@@ -18,7 +18,7 @@ T0 = 1_790_700_000.0
 #: garanzia: un caso di prova con 50 righe ricche arriva a ~32.700 caratteri
 #: (re-review, 30/09/2026) -- oltre questa soglia, ma ~13.000 token, ben sotto
 #: il limite del ponte. Le case di questi cancelli stanno sotto i 30.000.
-BRIDGE_CEILING_CHARS = 30_000
+BRIDGE_CAP_CHARS = 30_000
 
 
 def _luce(i, a, **k):
@@ -479,7 +479,7 @@ def test_su_una_casa_grande_nessuna_risposta_supera_la_soglia_del_ponte():
     for argomenti in ({}, {"stato": "on"}, {"dominio": "light"}, {"salta": 50}):
         r = hq.query_house(House(casa, _specchio(stati)), [],
                            hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
-        assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CEILING_CHARS, argomenti
+        assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CAP_CHARS, argomenti
 
 
 # -- Review finale della fetta (30/09/2026): alias, filtri, riferimenti -------

@@ -1006,8 +1006,8 @@ MAX_CALENDAR_DAYS_BACK = 365
 DEFAULT_CALENDAR_DAYS_AHEAD = 30
 
 
-def _clamp_days(raw, *, default: float, ceiling: float) -> float:
-    """Qualunque cosa -> un numero di giorni fra 0 e `ceiling`.
+def _clamp_days(raw, *, default: float, cap: float) -> float:
+    """Qualunque cosa -> un numero di giorni fra 0 e `cap`.
 
     Contratto totale (NaN, stringhe, numeri fuori scala diventano tutti il
     default, mai un'eccezione) e minimo a 0 apposta: qui 0 e' un valore
@@ -1022,14 +1022,14 @@ def _clamp_days(raw, *, default: float, ceiling: float) -> float:
         return default
     if math.isnan(number):
         return default
-    return min(float(ceiling), max(0.0, number))
+    return min(float(cap), max(0.0, number))
 
 
-def _days_beyond(raw, ceiling: float) -> bool:
+def _days_beyond(raw, cap: float) -> bool:
     """Un numero di giorni chiesto oltre il tetto. Cio' che non e' un numero
     lo ferma gia' `dispatch` contro il `type` dello schema."""
     return (isinstance(raw, int | float) and not isinstance(raw, bool)
-            and not math.isnan(raw) and raw > ceiling)
+            and not math.isnan(raw) and raw > cap)
 
 
 def _days_said(raw) -> str:
@@ -2578,19 +2578,19 @@ class ToolDispatcher:
         # Oltre il tetto si RIFIUTA, non si taglia (B9, approvata il
         # 05/10/2026; B-33): come `history` oltre i 90 giorni. Tagliato in
         # silenzio, il modello credeva di aver letto la finestra chiesta.
-        too_far = [f"{key} arriva al massimo a {ceiling} giorni (chiesti {_days_said(value)})"
-                   for key, ceiling in (("giorni_avanti", MAX_CALENDAR_DAYS_AHEAD),
+        too_far = [f"{key} arriva al massimo a {cap} giorni (chiesti {_days_said(value)})"
+                   for key, cap in (("giorni_avanti", MAX_CALENDAR_DAYS_AHEAD),
                                         ("giorni_indietro", MAX_CALENDAR_DAYS_BACK))
                    for value in [arguments.get(key)]
-                   if _days_beyond(value, ceiling)]
+                   if _days_beyond(value, cap)]
         if too_far:
             return {"errore": "«calendar»: " + "; ".join(too_far)
                     + ". Restringi la finestra."}
         ahead = _clamp_days(arguments.get("giorni_avanti"),
                             default=DEFAULT_CALENDAR_DAYS_AHEAD,
-                            ceiling=MAX_CALENDAR_DAYS_AHEAD)
+                            cap=MAX_CALENDAR_DAYS_AHEAD)
         behind = _clamp_days(arguments.get("giorni_indietro"),
-                             default=0, ceiling=MAX_CALENDAR_DAYS_BACK)
+                             default=0, cap=MAX_CALENDAR_DAYS_BACK)
         # L'elenco dallo specchio (A-34, F1 della Chiusura): uno specchio che
         # non si legge (`Mirror.readable`, composto in `read_mirror`) non e'
         # «nessun calendario», si dice -- con le parole dell'inventario.

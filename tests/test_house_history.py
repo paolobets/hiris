@@ -16,7 +16,7 @@ from hiris.app.home_space.log_source import Manifest
 from hiris.app.home_space.render import render_entity
 from tests.test_briefing import _casa_grande
 from tests.test_house_query import (
-    BRIDGE_CEILING_CHARS,
+    BRIDGE_CAP_CHARS,
     STATI,
     T_IERI,
     _automazioni,
@@ -340,7 +340,7 @@ def test_su_una_casa_grande_una_riga_per_soggetto_e_sotto_la_soglia_del_ponte():
     assert set(prima) == set(render_entity(_casa_viva(casa, stati), prima["id"], "corta",
                                            zone=ZoneInfo(ROMA))) | {"cambi"}
     assert uscita["voci"][0]["cambi"] == 5
-    assert len(json.dumps(uscita, ensure_ascii=False)) < BRIDGE_CEILING_CHARS
+    assert len(json.dumps(uscita, ensure_ascii=False)) < BRIDGE_CAP_CHARS
 
 
 def test_la_corta_e_l_entita_resa_e_ultimo_cambio_non_dipende_dalla_finestra():

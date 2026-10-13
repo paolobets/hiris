@@ -37,7 +37,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Il tetto delle attese: una connessione finta non fa I/O.
-CEILING_S = 2
+CAP_S = 2
 
 
 @pytest.fixture(autouse=True)
@@ -59,7 +59,7 @@ async def _until(condition, what: str) -> None:
         while not condition():
             await asyncio.sleep(0)
     try:
-        await asyncio.wait_for(poll(), CEILING_S)
+        await asyncio.wait_for(poll(), CAP_S)
     except TimeoutError:
         raise AssertionError(f"non e' successo: {what}") from None
 
@@ -131,7 +131,7 @@ async def test_ws_ready_si_accende_alla_conferma_e_si_spegne_alla_caduta():
     client, connection = _client()
     assert not client.ws_ready.is_set()
     await client.start_websocket()
-    await asyncio.wait_for(client.ws_ready.wait(), CEILING_S)
+    await asyncio.wait_for(client.ws_ready.wait(), CAP_S)
     # Acceso solo DOPO che Home Assistant ha confermato l'iscrizione agli
     # stati: chi legge la casa dopo `ws_ready` non perde un cambio.
     states = next(m for m in connection.sent if m.get("event_type") == "state_changed")
@@ -166,7 +166,7 @@ async def test_un_gettone_rifiutato_si_riprova_e_la_seconda_connessione_accende_
     client, connection = _client()
     connection.refuse_next_auth()
     await client.start_websocket()
-    await asyncio.wait_for(client.ws_ready.wait(), CEILING_S)
+    await asyncio.wait_for(client.ws_ready.wait(), CAP_S)
     assert connection.opened == 2
     assert connection.listening == 1
     # Il motivo che Home Assistant ha scritto arriva nel registro.
@@ -190,7 +190,7 @@ async def test_l_attesa_dopo_un_rifiuto_cresce_fino_al_tetto(monkeypatch):
         await real_sleep(0)
 
     monkeypatch.setattr(ha_client_module, "AUTH_RETRY_FIRST_S", 10)
-    monkeypatch.setattr(ha_client_module, "AUTH_RETRY_CEILING_S", 35)
+    monkeypatch.setattr(ha_client_module, "AUTH_RETRY_CAP_S", 35)
     monkeypatch.setattr(ha_client_module.asyncio, "sleep", sleep)
     client, connection = _client()
     for _ in range(4):
@@ -257,7 +257,7 @@ async def test_un_iscrizione_alle_integrazioni_rifiutata_si_dice(caplog):
     heard: list = []
     client.add_integration_listener(heard.append)
     await client.start_websocket()
-    await asyncio.wait_for(client.ws_ready.wait(), CEILING_S)
+    await asyncio.wait_for(client.ws_ready.wait(), CAP_S)
     await _settle()
     assert heard == []
     assert "config_entries/subscribe" in caplog.text and "Unauthorized" in caplog.text

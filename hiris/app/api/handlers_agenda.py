@@ -118,7 +118,7 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     # lascerebbe passare decine di migliaia di identificatori. Non e' una
     # difesa da attacco -- questa rotta sta dietro CSRF e in rete locale --
     # e' che un 400 dice la verita' e un 500 no. Le promesse in sospeso hanno
-    # un tetto (`promise.HOUSE_CEILING_IN_SOSPESO`) e lo storico e' potato
+    # un tetto (`promise.HOUSE_SUSPENDED_CAP`) e lo storico e' potato
     # (`keeper/store.CONSERVAZIONE`): la pagina non ne disegnera' mai
     # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
     if len(ids) > _MAX_IDS:

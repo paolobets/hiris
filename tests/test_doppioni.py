@@ -295,8 +295,8 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 
     known = json.loads((Path(__file__).resolve().parents[1] / "scripts"
                         / "doppioni_noti.json").read_text(encoding="utf-8"))
-    assert len(known) == KNOWN_CEILING, (
-        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
+    assert len(known) == KNOWN_CAP, (
+        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CAP}")
 
 
 # 11 dalla Tappa 7 T9 (07/10/2026): i quattro vocabolari dei provider fra
@@ -323,5 +323,5 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # reperto -- l'elisione «un'entita'» in un commento di watcher-lavoro.js, una
 # chiave `tipo:` di raggruppamento e il prefisso `integrazione:` citato in un
 # commento. Il commento e' riscritto; nessuna copia del vocabolario c'era.
-KNOWN_CEILING = 0
+KNOWN_CAP = 0
 

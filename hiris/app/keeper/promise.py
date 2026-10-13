@@ -68,13 +68,13 @@ ORIZZONTE_S = 30 * 86400
 # 2026-09-26 §2): con un tetto della casa, le promesse di Marta avrebbero
 # potuto togliere a Paolo il diritto di prometterne una -- e il messaggio di
 # rifiuto gli avrebbe parlato di promesse che non vede.
-CEILING_IN_SOSPESO = 50
+SUSPENDED_CAP = 50
 # **E il totale resta limitato** (ruling 2.6 della revisione di sicurezza): un
 # tetto solo per filo lascerebbe il totale crescere col numero dei fili, e i
 # fili li moltiplica chiunque arrivi da un ingresso diverso. 200 tiene il disco
 # della scheda SD e il battito dell'orologio (che legge le scadute ogni 15
 # secondi) nell'ordine di grandezza di oggi: quattro fili pieni, non di piu'.
-HOUSE_CEILING_IN_SOSPESO = 200
+HOUSE_SUSPENDED_CAP = 200
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
@@ -120,8 +120,8 @@ PHRASE_CAP = 200
 # persona vera ha un telefono e forse un tablet; un recapito che ne
 # risolvesse dieci farebbe di un esito dieci notifiche. Il limite
 # accettato: nessun freno GLOBALE sulle push in questa fetta -- il numero
-# delle promesse e' gia' limitato (`CEILING_IN_SOSPESO`,
-# `HOUSE_CEILING_IN_SOSPESO`), e questo tetto limita il resto.
+# delle promesse e' gia' limitato (`SUSPENDED_CAP`,
+# `HOUSE_SUSPENDED_CAP`), e questo tetto limita il resto.
 MAX_SERVICES_PER_PROMISE = 3
 
 

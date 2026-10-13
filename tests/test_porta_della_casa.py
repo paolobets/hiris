@@ -11,7 +11,7 @@ from hiris.app.keeper.exchange import SOLA_LETTURA
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests.test_briefing import _CASA as _CASA_BRIEFING
-from tests.test_house_query import BRIDGE_CEILING_CHARS
+from tests.test_house_query import BRIDGE_CAP_CHARS
 
 # Le fixture della casa seminata hanno UNA definizione, in
 # `tests/test_knowledge_tools.py`: importate, pytest le trova nel namespace
@@ -329,7 +329,7 @@ async def test_il_dettaglio_vero_di_una_cosa_grande_sta_sotto_la_soglia_del_pont
     r = await big_door.dispatch("search", arguments)
     voce, = r["voci"]
     assert voce["esiste"] is True
-    assert _size(r) < BRIDGE_CEILING_CHARS, (arguments, _size(r))
+    assert _size(r) < BRIDGE_CAP_CHARS, (arguments, _size(r))
     righe = len(voce["entita"]) + len(voce.get("entita_nascoste", []))
     assert righe == 50
     # Cio' che resta si dichiara, col modo di chiederlo: mai un taglio muto.
@@ -364,4 +364,4 @@ def test_il_dettaglio_vero_senza_area_sta_sotto_la_soglia_del_ponte(big_door):
     assert voce["esiste"] is True
     assert len(voce["entita"]) == 50 and voce["oltre"]["gruppi"]["entita"] > 0
     assert 'area=\\"senza area\\"' in json.dumps(voce, ensure_ascii=False)
-    assert _size(voce) < BRIDGE_CEILING_CHARS
+    assert _size(voce) < BRIDGE_CAP_CHARS
