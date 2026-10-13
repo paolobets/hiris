@@ -748,7 +748,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # Il ripiego dalla coda alla catena e' un turno di chat: la
         # specie e' quella di chi ha scritto, non della strada che il
         # turno ha dovuto prendere.
-        answer, _turn = await chain_turn(
+        answer, turn = await chain_turn(
             runner, "chat", usage=request.app.get("usage"),
             soggetto=soggetto,
             # L'ora di ADESSO, non quella dell'accodamento (D-51).
@@ -793,10 +793,12 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 # scadenza (spec §4, come `soggetto` qui sopra).
                 thread=thread),
         )
+        answered = turn.answered
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
         # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
         answer = exc.friendly_message
+        answered = False
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
     # La scadenza del ponte e' un ripiego come gli altri, e conta nella
@@ -807,14 +809,14 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
     queue.resolve_downgrade(job_id, {"reply": answer, "nota": note}, time.time())
-    if not _is_toxic_assistant(answer):
-        # SOLO la risposta: il turno dell'utente è già in cronologia da prima
-        # dell'accodamento (`_enqueue_chat_job`), e riscriverlo lo
-        # duplicherebbe. E SOLO la risposta anche rispetto alla nota: una nota
-        # persistita diventa contesto che il modello rilegge al turno dopo e su
-        # cui ragiona -- è la stessa famiglia del difetto dichiarato su «Errore
-        # temporaneo del servizio AI», che in cronologia ci finisce e non
-        # dovrebbe.
+    if answered and not _is_toxic_assistant(answer):
+        # SOLO la risposta, e solo se c'e' (la regola del ramo sincrono, D-15):
+        # il turno dell'utente è già in cronologia da prima dell'accodamento
+        # (`_enqueue_chat_job`), e riscriverlo lo duplicherebbe. E SOLO la
+        # risposta anche rispetto alla nota: una nota persistita diventa
+        # contesto che il modello rilegge al turno dopo e su cui ragiona -- è
+        # la stessa famiglia del difetto dichiarato su «Errore temporaneo del
+        # servizio AI», che in cronologia ci finisce e non dovrebbe.
         if thread is not None:
             append_messages([{"role": "assistant", "content": answer}], data_dir,
                             thread=thread)
@@ -1071,6 +1073,14 @@ async def handle_chat(request: web.Request) -> web.Response:
 
         context_history = _trim_history(history)
 
+        # La domanda si scrive PRIMA del turno, come fanno il ponte e il suo
+        # ripiego (D-15, Chiusura 13/10/2026): la risposta, dopo, solo se il
+        # turno ha risposto davvero. Letta la cronologia qui sopra, cosi' il
+        # turno non la riceve due volte; se il turno cade, la domanda rimasta
+        # sola la toglie la lettura (`chat_store._purge_toxic_turns`).
+        append_messages([{"role": "user", "content": message}], data_dir,
+                        thread=thread)
+
         # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
         # restituisce mai). Dalla fetta «le chat divise»
         # `load_history`/`get_past_summaries` leggono la cronologia del FILO di
@@ -1144,8 +1154,9 @@ async def handle_chat(request: web.Request) -> web.Response:
         agent_response_mode = settings.response_mode
         agent_thinking_budget = settings.thinking_budget
 
+        answered = False
         try:
-            response, _turn = await chain_turn(
+            response, turn = await chain_turn(
                 runner, "chat", usage=request.app.get("usage"),
                 soggetto=request.get("soggetto"),
                 # L'ora della casa in coda al messaggio, non nel nucleo (D-51):
@@ -1162,6 +1173,7 @@ async def handle_chat(request: web.Request) -> web.Response:
                 tools=KNOWLEDGE_TOOLS,
                 dispatcher=tool_dispatcher,
             )
+            answered = turn.answered
         except RunnerBackendError as exc:
             # Review C/#13: runners now raise instead of returning a friendly
             # string on API failure, so LLMRouter's auto-fallback loop actually
@@ -1183,15 +1195,14 @@ async def handle_chat(request: web.Request) -> web.Response:
             # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
             response = exc.friendly_message
 
-        # Persist the new user+assistant exchange — but skip when the runner
-        # returned a synthetic error / leak sentinel, so the next turn doesn't
-        # inherit a degraded history. The user retains the visible error in the
-        # current response payload.
-        if not _is_toxic_assistant(response):
-            append_messages([
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": response},
-            ], data_dir, thread=thread)
+        # La risposta, solo se c'e': non una frase sintetica del router o di un
+        # runner (nessuno ha risposto, il ripiego fermato dopo una scrittura),
+        # ne' una sentinella tossica. Il turno dopo non deve ereditarla come
+        # se l'avesse detta il modello; l'utente la legge comunque in questa
+        # risposta.
+        if answered and not _is_toxic_assistant(response):
+            append_messages([{"role": "assistant", "content": response}],
+                            data_dir, thread=thread)
 
     # Stessa scelta del ramo del ponte qui sopra: i NOMI degli strumenti vanno
     # nei log a debug, non nella risposta. Fino al 13/10/2026 (M-31) la

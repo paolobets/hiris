@@ -733,6 +733,7 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     runner_mock = AsyncMock()
     runner_mock.chat = AsyncMock(return_value="sync reply")
     runner_mock.last_tool_calls = []
+    runner_mock.last_unanswered = False
 
     app = web.Application()
     app["llm_router"] = runner_mock

@@ -547,6 +547,24 @@ def test_purge_handles_leading_toxic_assistant_with_no_preceding_user():
     ]
 
 
+def test_purge_drops_a_question_left_without_answer():
+    """D-15 (Chiusura, 13/10/2026): la domanda si scrive prima del turno su
+    ogni strada, e la risposta solo se c'e'. Una domanda rimasta senza
+    risposta (il turno e' fallito) si toglie in lettura quando ne arriva
+    un'altra: l'API di Claude non accetta due turni utente di fila. L'ultima
+    resta: e' quella a cui il turno sta rispondendo (il ponte la rilegge
+    dopo averla scritta).
+
+    Rossa sul codice di prima: le due domande restavano di fila."""
+    msgs = [
+        {"role": "user", "content": "accendi la luce"},
+        {"role": "user", "content": "riprovo: accendi la luce"},
+        {"role": "assistant", "content": "Fatto."},
+        {"role": "user", "content": "grazie"},
+    ]
+    assert _purge_toxic_turns(msgs) == msgs[1:]
+
+
 def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
     """End-to-end: existing chat with leaked tool calls + error messages comes
     out clean, simulating what happens for users upgrading from v0.9.7."""

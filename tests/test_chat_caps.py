@@ -104,6 +104,7 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
         runner = AsyncMock()
         runner.chat = AsyncMock(return_value="sync reply")
         runner.last_tool_calls = []
+        runner.last_unanswered = False
 
     app = web.Application()
     app["llm_router"] = runner
@@ -359,6 +360,7 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
         side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
     )
     runner.last_tool_calls = []
+    runner.last_unanswered = False
     app, _q, runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=False, tetto_giornaliero=0, runner=runner)
 

@@ -77,6 +77,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     runner = AsyncMock()
     runner.chat = AsyncMock(return_value="risposta sincrona")
     runner.last_tool_calls = []
+    runner.last_unanswered = False
 
     app = web.Application(middlewares=[_finto_confine])
     app["llm_router"] = runner

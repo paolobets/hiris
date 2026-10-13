@@ -115,6 +115,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
         runner = AsyncMock()
         runner.chat = AsyncMock(return_value="sync reply")
         runner.last_tool_calls = []
+        runner.last_unanswered = False
 
     app = web.Application()
     app["llm_router"] = runner

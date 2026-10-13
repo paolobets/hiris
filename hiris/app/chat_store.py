@@ -171,6 +171,12 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
     turn (so we don't leave dangling user messages with no answer in context).
 
     Operates in-order, single pass. Empty assistant content also counts as toxic.
+
+    Toglie anche la domanda rimasta senza risposta, quando la segue un'altra
+    domanda (D-15, Chiusura 13/10/2026): ogni strada della chat scrive la
+    domanda PRIMA del turno e la risposta solo se c'e', e l'API di Claude non
+    accetta due turni utente di fila. L'ultima domanda resta: e' quella a cui
+    il turno sta rispondendo.
     """
     out: list[dict] = []
     for msg in messages:
@@ -178,6 +184,8 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
             if out and out[-1].get("role") == "user":
                 out.pop()
             continue
+        if msg.get("role") == "user" and out and out[-1].get("role") == "user":
+            out.pop()
         out.append(msg)
     return out
 
