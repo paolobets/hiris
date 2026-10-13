@@ -357,8 +357,9 @@ class Watcher:
             when = _declared_instant(new_state)
             if when is None:
                 # Qui mancano o sono illeggibili TUTTI E DUE gli istanti,
-                # `last_updated` e `last_changed` (il messaggio nomina solo il
-                # secondo). Se HA cambiasse il loro formato, ogni cambio
+                # `last_updated` e `last_changed`, e il messaggio li nomina
+                # tutti e due (X-57: fino al 13/10/2026 nominava solo il
+                # secondo, il ripiego). Se HA cambiasse il loro formato, ogni cambio
                 # slitterebbe all'istante in cui
                 # l'abbiamo saputo e nessuno se ne accorgerebbe. DEBUG e non
                 # WARNING: capiterebbe per OGNI evento se gli istanti
@@ -366,8 +367,8 @@ class Watcher:
                 # registro -- a DEBUG resta comunque disponibile a chi
                 # diagnostica.
                 logger.debug(
-                    "osservatore: 'last_changed' mancante o illeggibile per "
-                    "%s, uso l'orologio", eid)
+                    "osservatore: 'last_updated' e 'last_changed' mancanti o "
+                    "illeggibili per %s, uso l'orologio", eid)
                 when = self._now()
             self._store.record(
                 quando_ts=when, source="entita", subject=str(eid),
