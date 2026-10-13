@@ -492,6 +492,17 @@ CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 -- **Il silenzio si archivia.** «Ho guardato e non c'era niente da dire» e «non
 -- ho guardato» sono due cose diverse, ed e' la stessa legge del resoconto
 -- vuoto: un'analisi con zero osservazioni e' una riga, non un'assenza.
+--
+-- **Le osservazioni portano i numeri del resoconto, ed e' voluto** (A-17,
+-- Chiusura). `osservazioni[]` ricopia le misure su cui l'analista ha
+-- ragionato (`valore`, `mediana`, `base`..., che il codice attacca e il
+-- modello non scrive: `analyst_turn.NUMERIC_FIELDS`). Non e' un doppione
+-- del resoconto: e' la fotografia di cio' che l'analista ha visto quel
+-- giorno. Il resoconto si riscrive (un recupero, un giudizio corretto: lo
+-- dice il `fondamento`), e un'analisi che rimandasse al resoconto di adesso
+-- direbbe di aver visto numeri che non ha visto. La prova dell'anti-
+-- ripetizione (`analyst.evidence_of`) e' fatta di quei numeri: confrontarla
+-- con quelli di oggi e' il punto.
 CREATE TABLE IF NOT EXISTS analisi (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -560,6 +571,12 @@ CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC)
 -- (`{"id": null}` quello di fabbrica, `null` se non dichiarato), e si risolve in
 -- lettura (A-17, Tappa 8); `regole` dice con quali regole e' stato misurato,
 -- `null` prima che il resoconto lo dicesse (G-03, `report.rules_mark`).
+-- `giudizio` e' `{"impronta", "regola"}` (`facts.chronicle_mark`): non una
+-- copia dei giudizi sui tipi, ma un'impronta calcolata da loro, come l'id di
+-- una versione. E' voluta (A-17, Chiusura): quando un giudizio cambia, il
+-- confronto fra l'impronta scritta e quella di adesso dice quali giorni
+-- rifare (`facts.chronicle_is_stale`), e i giudizi di allora non vivono da
+-- nessun'altra parte.
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
