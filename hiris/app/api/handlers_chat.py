@@ -852,9 +852,10 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # this is the only place they get surfaced to the user.
         return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status == JOB_DECIDED and not reply:
-        # Task 1's chat_reply_skipped outcome: a decision was recorded but it
-        # carries no usable reply. Same terminal treatment as expired/failed
-        # -- pending-forever would strand the UI.
+        # Una decisione registrata senza una risposta da mostrare (la
+        # consegna, `reasoning/consegna.py`, non ha scritto niente in
+        # cronologia). Stesso trattamento di scaduto/fallito: un «pending»
+        # per sempre lascerebbe la pagina ad aspettare.
         return web.json_response(error_body(_REPLY_NOT_ARRIVED, status="error"))
     if status in JOB_WAITING and job.get("deadline_ts", 0) <= time.time():
         # Il piano non ha risposto in tempo. Fino alla 2.4.1 finiva qui, con
