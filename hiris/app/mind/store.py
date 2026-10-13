@@ -56,6 +56,7 @@ from ..storage import (
     rebuild_table,
     table_columns,
 )
+from .proposer_outcomes import BY_HAND, NOTHING, OUTCOMES
 from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
@@ -2072,7 +2073,7 @@ class ObservationsStore:
         Un giro **non chiude niente**: la proposta resta com'e', in attesa o
         no -- la chiude, quando serve, chi lo chiama.
 
-        `outcome` e' l'esito del proponente (`proposer_turn.OUTCOMES`, attori,
+        `outcome` e' l'esito del proponente (`proposer_outcomes.OUTCOMES`, attori,
         Task 4.4):
         - **a mano**: `text` e `why` sostituiscono testo e perche', e il
           giro conserva la forma scartata;
@@ -2082,7 +2083,7 @@ class ObservationsStore:
         `turn` e' l'identita' del turno che ha risposto: **lo stesso turno non
         scrive due giri**, ed e' cio' che rende innocua una seconda consegna.
         """
-        if outcome not in ("a_mano", "niente", "costruita"):
+        if outcome not in OUTCOMES:
             raise ValueError(f"esito di un giro sconosciuto: {outcome!r}")
         with self._lock:
             row = self._conn.execute(
@@ -2099,7 +2100,7 @@ class ObservationsStore:
                      "quando_ts": now_ts}
             kept_text, kept_why = row[0], row[1]
             refusal_sql = ""
-            if outcome == "a_mano":
+            if outcome == BY_HAND:
                 entry["scartata"] = kept_text
                 # Il testo cambia, e la ragione con lui: una proposta nuova
                 # con la ragione vecchia sarebbe una riga che non si spiega.
@@ -2109,7 +2110,7 @@ class ObservationsStore:
                 # quella. Con «niente» la forma e' la stessa e il rifiuto
                 # resta vero; con «costruita» la proposta si chiude.
                 refusal_sql = ", automation_refusal=NULL"
-            elif outcome == "niente":
+            elif outcome == NOTHING:
                 entry["perche"] = why
             else:
                 entry["proposta_id"] = built
