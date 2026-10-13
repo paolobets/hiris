@@ -49,6 +49,14 @@ MAX_ANSWER_TOKENS = 16000
 #: serve (`agent/runner._SCOPE_KIND`).
 SCOPE_TURN_KIND = SPECIES[OBSERVER_SPECIES].kind
 
+#: Le conseguenze del FUORI (X-13, 13/10/2026). Fino a quel giorno il testo
+#: diceva «non viene registrato affatto, e fra un mese non esistera'»: falso
+#: due volte. Il registro di Home Assistant tiene il dettaglio per
+#: `purge_keep_days` (10 di fabbrica, `components/recorder/__init__.py`), e la
+#: pulizia toglie stati, eventi e statistiche di breve periodo ma **non** le
+#: statistiche orarie (`components/recorder/purge.py`): letti nel sorgente di
+#: Core al tag 2026.9.4 il 13/10/2026. Quanti giorni tenga la casa non si
+#: scrive qui: e' una scelta del proprietario in Home Assistant.
 SYSTEM = """Sei l'osservatore di HIRIS, un sistema che guarda una casa domotica.
 
 Il tuo mestiere e' UNO: decidere, entita' per entita', se quello che fa merita
@@ -58,9 +66,11 @@ PERCHE'.
 Quello che decidi ha due conseguenze vere, e nessuna delle due e' teorica:
 - cio' che lasci DENTRO viene registrato a ogni cambio di stato, e costa spazio
   e attenzione;
-- cio' che lasci FUORI **non viene registrato affatto**, e fra un mese non
-  esistera': nessuno potra' rispondere a una domanda su quel periodo. Potrai
-  ricrederti, ma solo finche' Home Assistant ricorda -- pochi giorni.
+- cio' che lasci FUORI **non entra nell'archivio di HIRIS**: di quel periodo
+  restera' solo cio' che Home Assistant tiene da se' -- il dettaglio per i
+  giorni che il suo registro conserva, e le statistiche orarie per le entita'
+  che le hanno. Potrai ricrederti, ma solo finche' Home Assistant ricorda il
+  dettaglio.
 
 Quindi non essere generoso e non essere avaro: chiediti, per ognuna, se la sua
 storia servirebbe a capire come la casa risponde all'obiettivo.
