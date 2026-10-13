@@ -250,3 +250,24 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna_origine(tmp_path):
         assert a.read()["integrazioni"][0]["origine"] == "ignore"
     finally:
         a.close()
+
+
+def test_la_sezione_dei_guasti_ha_un_tetto_anche_per_le_integrazioni():
+    """D-47: la sezione dei guasti sta fuori dal taglio del nucleo, e
+    `_integrations_notice` elencava TUTTE le voci rotte. Con duecento
+    integrazioni giu' il nucleo sforava il suo tetto dichiarato
+    (`DEFAULT_CAP`), e niente lo poteva accorciare. Ora se ne nominano le
+    prime, come per i problemi diagnosticati, e il numero delle altre resta."""
+    from hiris.app.home_space.briefing import DEFAULT_CAP
+
+    rotte = [{"dominio": f"integrazione{n:03d}", "titolo": f"Voce numero {n:03d}",
+              "stato": "setup_error",
+              "motivo": f"motivo del guasto della voce {n:03d}, abbastanza lungo"}
+             for n in range(200)]
+    testo, _ = _nucleo(rotte)
+    assert len(testo) <= DEFAULT_CAP, len(testo)
+    assert "200 voci di configurazione" in testo, "il conto resta intero"
+    assert "e altre 195, non elencate" in testo
+    assert 'search(genere="integrazione")' in testo
+    assert "Voce numero 000" in testo
+    assert "Voce numero 199" not in testo
