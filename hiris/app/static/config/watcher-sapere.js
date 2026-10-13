@@ -55,6 +55,7 @@ window.HirisWatcherSapere = (function () {
   var retryButton = S.retryButton;
   var createDisclosure = S.createDisclosure;
   var describeWatchedSubject = S.describeWatchedSubject;
+  var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
   var judgmentField = S.judgmentField;
   var appendMarkedText = S.appendMarkedText;
   var firstSentenceTruncated = S.firstSentenceTruncated;
@@ -470,6 +471,28 @@ window.HirisWatcherSapere = (function () {
     return el('span', cls, g.valore == null ? '—' : g.valore);
   }
 
+  /* Il soggetto di una riga del sapere (C-13, parere di ux-ui-specialist
+     del 13/10/2026): il nome che il server manda (`nome`, il dispositivo di
+     adesso) e' la riga principale; l'id resta sempre visibile sotto, piccolo,
+     perche' e' cio' che si cerca nei registri. Senza nome resta l'id,
+     dichiarato come identificatore. Un nome uguale all'id si dice una volta. */
+  function factSubjectTitle(r) {
+    var d = describeWatchedSubject(r.soggetto || '', r.nome || null);
+    var titolo = el('div', 'sc-row-title');
+    if (d.technical && !r.nome) {
+      titolo.appendChild(el('span', 'field-hint', SUBJECT_IS_ID + ' '));
+      titolo.appendChild(el('span', 'text-mono', d.primary));
+      return titolo;
+    }
+    titolo.appendChild(document.createTextNode(d.primary));
+    return titolo;
+  }
+
+  function factSubjectId(r) {
+    if (!r.nome || r.nome === r.soggetto) return '';
+    return r.soggetto || '';
+  }
+
   /* Una riga: `soggetto | valore | provenienza | azioni` (forma approvata,
      punto 6), a griglia larga e impilata sotto i 768px -- mai una
      `<table>` (CSS: `.jr-row` in hiris-config.css).
@@ -699,8 +722,9 @@ window.HirisWatcherSapere = (function () {
       subheading(body, 'Cosa non ha capito');
       nonCapito.forEach(function (r) {
         var riga = el('div', 'sc-row');
-        riga.appendChild(el('div', 'sc-row-title',
-          describeWatchedSubject(r.soggetto || '', null).primary));
+        riga.appendChild(factSubjectTitle(r));
+        var id = factSubjectId(r);
+        if (id) riga.appendChild(el('div', 'field-hint text-mono', id));
         riga.appendChild(el('div', 'sc-row-why', r.valore || ''));
         var coda = [];
         if (r.chi) coda.push('L’ha scritto ' + r.chi + '.');

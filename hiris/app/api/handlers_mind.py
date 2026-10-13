@@ -299,11 +299,16 @@ async def handle_analysis(request) -> web.Response:
 
 
 
-def _fact_row(fact) -> dict:
+def _fact_row(fact, names: dict) -> dict:
     """Una riga del sapere per la pagina, **in una forma sola** per ogni
     elenco di `handle_knowledge` (fondamenta 3). La chiave di chi l'ha
-    scritta (`said_by`) non esce: alla pagina serve il nome."""
-    return {"specie": fact.subject_kind, "soggetto": fact.subject,
+    scritta (`said_by`) non esce: alla pagina serve il nome.
+
+    `nome` (C-13, 13/10/2026): il nome di adesso del dispositivo, come lo
+    portano le `ricette` (`MindView.device_names`); `None` per gli altri
+    generi di soggetto. Fino ad allora la pagina mostrava l'id nudo."""
+    name = names.get(fact.subject) if fact.subject_kind == "dispositivo" else None
+    return {"specie": fact.subject_kind, "soggetto": fact.subject, "nome": name,
             "campo": fact.field, "valore": fact.value,
             "provenienza": fact.provenance, "verifica": fact.verification,
             "prove": fact.evidence, "fonte": fact.source,
@@ -355,10 +360,10 @@ async def handle_knowledge(request) -> web.Response:
     listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
     return web.json_response({
         "conteggi": sapere.summary(),
-        "non_capito": [_fact_row(f) for f in sapere.not_understood()],
-        "significati": [_fact_row(f) for f in listed if f.field == MEANING_FIELD],
-        "attributi": [_fact_row(f) for f in listed if f.field == ATTRIBUTE_FIELD],
-        "rifiuti": [_fact_row(f) for f in listed if f.field == DECLINED_FIELD],
+        "non_capito": [_fact_row(f, names) for f in sapere.not_understood()],
+        "significati": [_fact_row(f, names) for f in listed if f.field == MEANING_FIELD],
+        "attributi": [_fact_row(f, names) for f in listed if f.field == ATTRIBUTE_FIELD],
+        "rifiuti": [_fact_row(f, names) for f in listed if f.field == DECLINED_FIELD],
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],

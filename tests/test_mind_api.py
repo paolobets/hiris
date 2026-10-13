@@ -1263,6 +1263,33 @@ async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_le_righe_del_sapere_portano_il_nome_del_dispositivo(tmp_path):
+    """C-13 (13/10/2026): le ricette portavano il nome del dispositivo, le
+    righe del sapere (`_fact_row`) solo l'id. Ora il nome di adesso viaggia
+    accanto a `soggetto` in ogni elenco; un soggetto che non e' un
+    dispositivo ha `nome` a `None`, sempre presente (fondamenta 3).
+
+    Rossa prima della correzione: `KeyError: 'nome'`."""
+    fatto = sap.Fact(subject_kind="dispositivo", subject="inv",
+                     field="ricetta_non_capita", value="?", provenance="dedotto",
+                     evidence="le entita' del dispositivo", verification="non_capito",
+                     who="modello (ponte)", when_ts=1787000000.0)
+    tipo = sap.Fact(subject_kind="tipo", subject="inv", field="ricetta_non_capita",
+                    value="?", provenance="dedotto", evidence="le entita' del dispositivo",
+                    verification="non_capito", who="modello (ponte)",
+                    when_ts=1787000000.0)
+    anagrafe = HomeSpace(str(tmp_path))
+    anagrafe.hold_registries({"dispositivi": [{"id": "inv", "name": "Inverter"}],
+                              "entita": []})
+    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere(unexplained=[fatto, tipo]),
+                                           "home_space_store": anagrafe}))
+    righe = json.loads(r.text)["non_capito"]
+    assert righe[0]["nome"] == "Inverter"
+    assert righe[0]["soggetto"] == "inv"
+    assert righe[1]["nome"] is None, "un tipo non prende il nome di un dispositivo"
+
+
+@pytest.mark.asyncio
 async def test_il_sapere_consegna_le_RICETTE_intere(tmp_path):
     """**La quarta fondamenta**, per le ricette (attori, 06/10/2026): la porta
     del sapere le contava e non ne mostrava nessuna, e per leggere come la
