@@ -36,12 +36,11 @@ from ..providers import SUBSCRIPTION
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
 from ..reasoning.queue import JOB_DECIDED, JOB_EXPIRED, JOB_FAILED, JOB_WAITING
 from ..steering import (
-    chain_runner,
+    bridge_in_play,
     chain_turn,
-    declare_downgrade,
     enqueue_turn,
     house_hour,
-    who_answers,
+    start,
     with_hour,
 )
 from .boundary import error_body, error_response, json_object
@@ -745,7 +744,10 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             durata_s=float(job.get("deadline_ts", now))
             - float(job.get("created_ts", now)))
 
-    runner = chain_runner(request.app)
+    # La partenza del turno, da `steering.start` come ogni altro (D-06): il
+    # motivo e' gia' noto (la scadenza), e la dichiarazione del ripiego --
+    # registro e pagina dei consumi (reperto C-5) -- parte se c'e' un runner.
+    runner = start(request.app, "chat", downgrade="scadenza").runner
     contesto = job.get("context") or {}
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
     # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
@@ -810,9 +812,6 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         thinking_budget=0)
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
-    # La scadenza del ponte e' un ripiego come gli altri, e conta nella
-    # pagina dei consumi insieme agli altri (reperto C-5).
-    declare_downgrade(request.app, agent="chat", reason="scadenza")
     note = _who_answered_note(request, reason="scadenza")
     # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
@@ -947,65 +946,42 @@ async def handle_chat(request: web.Request) -> web.Response:
             return error_response(409, "max_turns_reached",
                                   turns=turn_count, limit=max_turns)
 
-    # Il motivo del ripiego a monte, `None` quando non c'è stato: lo legge il
-    # fondo di questa funzione per comporre la nota, DOPO aver saputo chi ha
-    # davvero risposto.
-    _downgrade_reason = None
-
-    # Slice 4b (chat via abbonamento), Task 2: when subscription mode is on
-    # AND the reasoning-queue bridge is wired, hand the turn to the async
-    # queue instead of calling a local runner — subscription mode may have
-    # no runner/API key configured at all locally, that's the point. Task 1
-    # built the receiving end (kind="chat" submit -> chat_store); this is
-    # the sending end. Checked BEFORE the runner-required guard below so
-    # subscription mode works even without CLAUDE_API_KEY.
+    # Slice 4b (chat via abbonamento): with the bridge in play the turn goes
+    # to the async queue instead of a local runner -- subscription mode may
+    # have no runner/API key configured at all locally, that's the point.
     #
-    # fetta «la catena diventa l'unica verità», Task 14: questo `if` non è più
-    # un BIVIO. Fino alla 2.4.1 chi entrava qui non tornava indietro -- la riga
-    # che prende il router sta sotto, e la si saltava -- quindi «il piano non è
-    # disponibile» finiva in un errore invece che nel provider successivo. Il
-    # ramo `else` più sotto è il ritorno: si scende alla catena, che è la riga
-    # subito dopo questo blocco.
-    _route, _subscription_reason = who_answers(request.app)
-    if _route == "ponte" or _subscription_reason:
-        # Slice 4b Task 3: two guards on the async path ONLY -- the sync path
-        # above/below is unaffected when the flag is off. Checked before
-        # anything is persisted/enqueued so a blocked turn leaves no trace.
-        reasoning_queue = request.app["reasoning_queue"]
-        # La guardia «una risposta per volta» resta PRIMA, e adesso conta il
-        # doppio. NON ripiega: due risposte in volo sulla stessa conversazione
-        # sarebbero peggio del 409 -- la seconda arriverebbe in una cronologia
-        # che la prima sta per riscrivere. Sopra il piano che non può
-        # rispondere, perché il caso «tetto pieno E una risposta in volo» è
-        # raggiungibile (il turno numero N sta ancora aspettando quando arriva
-        # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
-        # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
-        # cronologia da solo (`server._submit_chat_reply`).
-        if reasoning_queue.has_pending_chat(thread):
-            return error_response(409, PENDING_REPLY_ERROR)
-        if _subscription_reason:
-            # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
-            # gli manca il token (il worker non parte, `should_start_agent_
-            # worker`) oppure il tetto giornaliero è pieno. Non si accoda un
-            # messaggio in una coda che nessuno servirà, e non si risponde 429:
-            # si scende alla catena. È il ripiego col rapporto migliore fra
-            # costo e valore di tutta la fetta, e non tocca nessuna forma di
-            # risposta -- il turno esce 200, sincrono, come sempre. Il 429 e la
-            # sua stringa ESCONO: un utente che ieri leggeva «Limite
-            # giornaliero raggiunto» oggi riceve una risposta, a consumo, senza
-            # averlo chiesto -- ed è esattamente il caso per cui il ripiego si
-            # annuncia (la `nota` in fondo a questa funzione). Senza quella
-            # riga questo cambio sarebbe un prelievo silenzioso.
-            _downgrade_reason = _subscription_reason
-            # L'imbuto unico (reperto C-5, 23/09/2026): dichiara nel registro
-            # E nell'archivio dei consumi, cosi' la pagina Consumi sa dire
-            # quante volte si e' pagato a consumo, e per chi.
-            declare_downgrade(request.app, agent="chat",
-                              reason=_subscription_reason)
-        else:
-            return await _enqueue_chat_job(request, settings, message, data_dir, thread)
+    # La guardia «una risposta per volta» sta PRIMA della partenza e di ogni
+    # scrittura, cosi' un turno bloccato non lascia traccia, e conta il
+    # doppio. NON ripiega: due risposte in volo sulla stessa conversazione
+    # sarebbero peggio del 409 -- la seconda arriverebbe in una cronologia che
+    # la prima sta per riscrivere. Vale anche quando il piano non può
+    # rispondere, perché il caso «tetto pieno E una risposta in volo» è
+    # raggiungibile (il turno numero N sta ancora aspettando quando arriva
+    # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
+    # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
+    # cronologia da solo (`server._submit_chat_reply`).
+    if (bridge_in_play(request.app)
+            and request.app["reasoning_queue"].has_pending_chat(thread)):
+        return error_response(409, PENDING_REPLY_ERROR)
 
-    runner = chain_runner(request.app)
+    # La partenza, da `steering.start` come ogni altro turno (D-06, Chiusura
+    # 13/10/2026): il ponte, oppure la catena col motivo del ripiego, gia'
+    # dichiarato nel registro e nell'archivio dei consumi (reperto C-5)
+    # quando c'e' un runner. Fino alla 2.4.1 la strada del ponte non tornava
+    # indietro e «il piano non è disponibile» finiva in un errore; adesso il
+    # piano che NON PUÒ rispondere -- niente token (il worker non parte,
+    # `should_start_agent_worker`), o il tetto giornaliero pieno -- manda il
+    # turno alla catena, sincrono, 200 come sempre, e non 429. Un utente che
+    # ieri leggeva «Limite giornaliero raggiunto» oggi riceve una risposta a
+    # consumo senza averlo chiesto: ed è esattamente il caso per cui il
+    # ripiego si annuncia (la `nota` in fondo a questa funzione).
+    # Il motivo del ripiego («» quando non c'è stato) lo legge il fondo di
+    # questa funzione per comporre la nota, DOPO aver saputo chi ha davvero
+    # risposto.
+    route, downgrade_reason, runner = start(request.app, "chat")
+    if route == "ponte":
+        return await _enqueue_chat_job(request, settings, message, data_dir, thread)
+
     if runner is None:
         # E' la PRIMA cosa che legge chi installa HIRIS e apre la chat senza
         # aver ancora configurato niente. Prima diceva, in inglese, «set
@@ -1137,11 +1113,11 @@ async def handle_chat(request: web.Request) -> web.Response:
     # L'annuncio del ripiego a monte. Si compone QUI e non nel ramo che ha
     # deciso di ripiegare, perché prima della chiamata qui sopra non si sa
     # ancora CHI ha risposto -- il router ripiega a sua volta, e il primo della
-    # catena può aver fallito. `_downgrade_reason` resta `None` quando il turno
+    # catena può aver fallito. `downgrade_reason` resta vuoto quando il turno
     # non ha ripiegato, e allora non si scrive niente. `nota` è facoltativa,
     # quindi un client che la ignori continua a funzionare.
-    if _downgrade_reason:
-        note = _who_answered_note(request, reason=_downgrade_reason)
+    if downgrade_reason:
+        note = _who_answered_note(request, reason=downgrade_reason)
         if note:
             payload["nota"] = note
     return web.json_response(payload)

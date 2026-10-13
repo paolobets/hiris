@@ -1028,6 +1028,14 @@ def bridge_model(app) -> str:
             or _STORE_DEFAULTS["ponte"]["modello"])
 
 
+def bridge_in_play(app) -> bool:
+    """Il ponte e' la strada scelta per i turni: acceso e cablato. Vero anche
+    quando il piano, adesso, non puo' rispondere -- e' la domanda che la chat
+    si fa prima di partire, per non mandare un secondo turno mentre il ponte
+    ne ha uno in volo (D-06, Chiusura 13/10/2026)."""
+    return bool(app.get("bridge_active") and _bridge_on(app))
+
+
 def who_answers(app) -> tuple[str, str]:
     """`("ponte", "")` oppure `("catena", motivo)`.
 
@@ -1036,7 +1044,7 @@ def who_answers(app) -> tuple[str, str]:
     modulo per la distinzione, che non e' una sfumatura: e' la differenza fra
     una configurazione e un prelievo.
     """
-    if not (app.get("bridge_active") and _bridge_on(app)):
+    if not bridge_in_play(app):
         return "catena", ""
     can, reason = _subscription_can_answer(app)
     if not can:
@@ -1066,7 +1074,7 @@ class Start(_NamedTuple):
     runner: object | None
 
 
-def start(app, species: str) -> Start:
+def start(app, species: str, *, downgrade: str = "") -> Start:
     """**La partenza di un turno**: chiede `who_answers`, sceglie il runner
     della catena e, se il turno parte davvero sulla catena, dichiara il
     ripiego (`declare_downgrade`).
@@ -1074,8 +1082,12 @@ def start(app, species: str) -> Start:
     E' la sequenza che i giri del cervello e la promessa scrivevano a mano,
     ognuno nel suo ordine. Il ripiego si dichiara solo se c'e' un runner: un
     giro che non parte non e' passato dal forfait al consumo.
+
+    `downgrade` e' il motivo di un ripiego GIA' avvenuto, che nessuno deve
+    chiedere a `who_answers`: il turno della chat che il ponte non ha servito
+    entro la scadenza («scadenza», D-06). La strada e' la catena.
     """
-    route, downgrade = who_answers(app)
+    route, downgrade = ("catena", downgrade) if downgrade else who_answers(app)
     runner = chain_runner(app) if route == "catena" else None
     if runner is not None:
         declare_downgrade(app, agent=species, reason=downgrade)
