@@ -49,7 +49,8 @@ nessuno l'ha fatto, il costruttore dice che non si puo' fare»*.
 Le chiavi della struttura sono inglesi come il resto del codice; i **valori**
 sono dominio -- i nomi delle operazioni (`somma_periodo`, `quota`) sono quelli
 che il proprietario pronuncia, e i nomi dei passi li sceglie chi scrive la
-ricetta. E' la stessa divisione di `GENRES` in `mind/facts.py`.
+ricetta. E' la stessa divisione di `CHRONICLE_GENRES` in
+`home_space/type_vocabulary.py`.
 
 Un ingresso e' una di tre cose, e si riconosce dal primo carattere:
 

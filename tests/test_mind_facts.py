@@ -14,7 +14,8 @@ import pytest
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.type_judgments import TypeJudgments
-from hiris.app.mind.facts import CHRONICLE_RULE, GENRES, aggregate_day, genre_for
+from hiris.app.home_space.type_vocabulary import CHRONICLE_GENRES
+from hiris.app.mind.facts import CHRONICLE_RULE, aggregate_day, genre_for
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 
@@ -65,7 +66,7 @@ def test_il_genere_discende_dalla_natura():
     assert genre_for("problema:sonos.x", None) == "guasto"
     assert genre_for("sensor.camera_t", "temperature") is None
     assert genre_for("binary_sensor.fumo", "smoke") == "sicurezza"
-    for g in GENRES:
+    for g in CHRONICLE_GENRES:
         assert isinstance(g, str)
 
 
@@ -81,16 +82,17 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     assert genre_for("lock.porta_ingresso", None) == "sicurezza"
     assert genre_for("problema:sonos.x", None) == "guasto"
     assert genre_for("integrazione:abc", None) == "guasto"
-    assert "sicurezza" in GENRES
+    assert "sicurezza" in CHRONICLE_GENRES
     # Quattro generi, non sei (16/09/2026, spec «il giudizio dei tipi» §5,
-    # D2): `GENRES` e' diventato `type_vocabulary.CHRONICLE_GENRES`, i soli
+    # D2): `facts.GENRES` e' diventato `type_vocabulary.CHRONICLE_GENRES` (e il
+    # soprannome e' uscito il 13/10/2026, M-67), i soli
     # generi con una FORMA scritta in questo file. "energia" e "bilancio"
     # sono usciti: nessun ramo di `aggregate_day` trattava il primo (una riga
     # `energia` cadeva oltre tutti i rami senza produrre niente), e nessun
     # codice produceva mai il secondo -- la docstring che lo descriveva era
     # una ragione smentita dal file stesso.
-    assert len(GENRES) == 4
-    assert "bilancio" not in GENRES and "energia" not in GENRES
+    assert len(CHRONICLE_GENRES) == 4
+    assert "bilancio" not in CHRONICLE_GENRES and "energia" not in CHRONICLE_GENRES
 
 
 def test_a_log_subject_is_a_fault():

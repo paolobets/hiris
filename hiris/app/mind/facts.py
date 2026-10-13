@@ -68,15 +68,6 @@ from .store import READING_RETENTION_S
 # (`server.py::_report_ingredients`), una lettura per giro e non una per
 # episodio. Renderle `async` "per il futuro" sarebbe generalita' speculativa.
 
-#: I quattro generi che hanno una forma (spec 2026-09-16 §5, D2), spostati in
-#: `type_vocabulary.CHRONICLE_GENRES`: una casa sola, `mind/facts` la importa.
-#: `energia` e `bilancio` sono usciti il 16/09/2026: nessun ramo di
-#: `build_episodes` apre o chiude niente per un contatore (vedi i commenti
-#: dentro la funzione, «I bilanci non entrano piu' qui» subito dopo
-#: `store.readings` e «Un contatore non apre niente» piu' sotto), e nessun
-#: codice produce il genere `"bilancio"`.
-GENRES = CHRONICLE_GENRES
-
 #: I cinque prefissi con cui un `protagonista` NON e' un'entita' di Home
 #: Assistant, ma una condizione di sistema: una voce del registro di errori
 #: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log»),
