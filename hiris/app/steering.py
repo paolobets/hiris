@@ -49,6 +49,7 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
+from .answer_reasons import NO_ANSWER_REASON
 from .models_store import _STORE_DEFAULTS, bridge_deadline_min
 from .providers import subscription_has_token
 from .reasoning.queue import JOB_WAITING, PRIORITY_BACKGROUND, PRIORITY_CHAT
@@ -575,8 +576,9 @@ REFUSED = "scartato"
 TRUNCATED_REASON = ("la risposta e' stata troncata al tetto di token: non "
                     "si legge una risposta che il modello non ha finito")
 
-#: Una risposta vuota non e' un silenzio: e' un modello che non ha risposto.
-NO_ANSWER_REASON = "il modello non ha risposto"
+# `NO_ANSWER_REASON` (una risposta vuota e' un modello che non ha risposto)
+# vive in una foglia, `answer_reasons.py` (N152-2): la legge anche l'archivio
+# delle promesse, che non deve portarsi dietro questo modulo.
 
 #: **Il freno** (Tappa 6, Task 3, passo 5): dopo questi turni troncati o
 #: rifiutati DI FILA (`BRAKE_OUTCOMES`, D10) lo stesso mestiere si ferma e lo

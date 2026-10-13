@@ -47,6 +47,32 @@ async def test_la_chat_sincrona_porta_l_ora_nel_messaggio_e_non_nel_contesto(
     assert [m["content"] for m in scritti] == ["ciao", "ok"]
 
 
+@pytest.mark.asyncio
+async def test_il_dispatcher_riceve_la_frase_senza_l_ora(
+        aiohttp_client, tmp_path, monkeypatch):
+    """La cronaca registra cio' che la persona ha scritto: l'ora va al modello,
+    non alla `frase` del dispatcher (`_chain_chat_turn`). Chiesta dal
+    revisore, giro 153 (N153-3).
+
+    Mutazione ESEGUITA il 13/10/2026: `frase=with_hour(phrase, ...)` --
+    rossa sulla prima asserzione."""
+    vero = handlers_chat.create_tool_dispatcher
+    frasi = []
+
+    def _spia(app, *, frase, **altri):
+        frasi.append(frase)
+        return vero(app, frase=frase, **altri)
+
+    monkeypatch.setattr(handlers_chat, "create_tool_dispatcher", _spia)
+    client, runner = await _build_chat_client(
+        aiohttp_client, tmp_path, archivio_casa=_semina_casa(tmp_path))
+
+    resp = await client.post("/api/chat", json={"message": "ciao"})
+    assert resp.status == 200
+    assert frasi == ["ciao"]
+    assert runner.chat.call_args.kwargs["user_message"].startswith("ciao\n\nAdesso sono le")
+
+
 def test_il_ponte_mette_l_ora_dopo_la_conversazione():
     """Mutazione ESEGUITA il 13/10/2026: `build_chat_messages` che ignora
     `hour` -- rossa."""

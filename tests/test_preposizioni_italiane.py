@@ -392,7 +392,7 @@ _NOTE_ITALIANE = frozenset({
     "_righe_di_percorso_e_parola_chiave", "_ripiego_sala_da_pranzo",
     "_risposta_openai_senza_tool", "_rompe_dalla_lettura", "_scarti_e_alias", "_seme_da",
     "_semina_casa_con_comportamento", "_semina_gli_archivi", "_senza_commenti",
-    "_senza_commenti_html", "_senza_commenti_js", "_senza_conclusione", "_senza_docstring",
+    "_senza_commenti_html", "_senza_commenti_js", "_senza_docstring",
     "_sonda_con", "_sostituzioni_di_identificatori", "_specchio_del_termostato", "_su_disco",
     "_testi_che_legge_l_utente", "_tools_list_come_la_rotta", "_tutte_le_descrizioni",
     "a_ts", "ago_senza_slash", "annuncio_di_un_altra",

@@ -2155,3 +2155,24 @@ def test_gli_estremi_del_giorno_si_calcolano_una_volta_per_scrittura(archivio, m
     chiamate.clear()
     assert facts.rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome")
     assert chiamate == [G]
+
+
+def test_resoconto_e_cronaca_rifatta_portano_l_istante_di_chi_chiama(archivio):
+    """G-14 (Chiusura, N152-1): `aggregate_day` e `rebuild_chronicle` passano
+    a `replace_report` l'istante che ricevono. Mutazione ESEGUITA
+    (13/10/2026): `when_ts` non passato in `rebuild_chronicle` -- rossa."""
+    from hiris.app.mind import facts
+
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+
+    def scritto():
+        return archivio._conn.execute(
+            "SELECT scritto_ts FROM resoconto WHERE giorno = ?", (G,)).fetchone()[0]
+
+    facts.aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                        when_ts=1_790_000_000.0)
+    assert scritto() == 1_790_000_000.0
+    assert facts.rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
+                                   when_ts=1_790_000_060.0)
+    assert scritto() == 1_790_000_060.0

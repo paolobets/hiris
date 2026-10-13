@@ -11,6 +11,7 @@ spostamento (`analisi/2026-10-06-file-monolitici-proposta.md`, passo 2).
 from __future__ import annotations
 
 import logging
+import time
 
 from ..home_space.house import House
 from . import analyst, analyst_turn
@@ -49,6 +50,10 @@ def write_analysis(app, store, day: str, occurrence: dict) -> None:
                 "fondamento": analyst_turn.fondamento(
                     store.report_stamps(limit=ANALYST_DAYS))}
     house = House.read(app.get("home_space_store"), app.get("entity_cache"))
-    store.replace_analysis(day, analyst.bring_back(store, analysis, house))
+    # Un istante solo per la scrittura (G-14): le decisioni del «rimetti
+    # dentro» e l'analisi che le porta nascono nello stesso momento.
+    now = time.time()
+    store.replace_analysis(day, analyst.bring_back(store, analysis, house, when_ts=now),
+                           when_ts=now)
     logger.info("analista: analisi di %s scritta (%d osservazioni)",
                 day, len(analysis.get("osservazioni") or []))

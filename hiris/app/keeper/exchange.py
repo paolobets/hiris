@@ -21,9 +21,7 @@ import logging
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..providers import SUBSCRIPTION
-from ..proxy._sanitize import truncate_with_marker
 from ..steering import (
-    NO_ANSWER_REASON,
     PROMISE_SPECIES,
     chain_turn,
     enqueue_turn,
@@ -32,7 +30,7 @@ from ..steering import (
     start,
     with_hour,
 )
-from .promise import REASON_CAP
+from .promise import unanswered_reason, unfinished_reason
 
 logger = logging.getLogger(__name__)
 
@@ -217,66 +215,19 @@ async def interpreta_promise(app, promise: dict) -> dict:
         # cita la frase del router come fosse del modello. La frase resta,
         # come diagnosi di HIRIS: e' lei che dice perche' (giro 40).
         if not turn.answered:
-            return {"errore": _unanswered_reason(answer)}
+            return {"errore": unanswered_reason(answer)}
         logger.warning("promessa %s: il turno non ha chiamato «conclude»; "
                        "aveva risposto %d caratteri di testo",
                        promise["id"], len(answer or ""))
         # `excerpt`: cio' che il modello aveva risposto, citato dentro il
         # motivo. Chi lo porta in chat lo filtra da solo (fix round 1, 5).
-        return {"errore": _senza_conclusione(answer),
+        return {"errore": unfinished_reason(answer),
                 "excerpt": answer if isinstance(answer, str) else None}
     conclusione = dict(dispatcher.conclusione)
     note = _downgrade_note(downgrade_reason)
     if note:
         conclusione["nota"] = note
     return conclusione
-
-
-def _quoting(prefix: str, detto: str, suffix: str = "") -> str:
-    """Un motivo che cita la risposta del modello: `prefix`, la citazione e
-    `suffix`, col tutto dentro il tetto dei motivi (`promise.REASON_CAP`).
-
-    Il motivo finisce in una colonna di SQLite, in una riga della pagina
-    Promesse e nel racconto di `failure_message`, che lo taglia a quel tetto:
-    si taglia qui la sola citazione, perche' il motivo intero ci stia e il
-    secondo taglio non trovi niente. Fino alla Tappa 8 (B-54) la citazione
-    aveva un tetto suo dello stesso numero (`_CEILING_RIPORTO`): il motivo
-    usciva piu' lungo del tetto, e il racconto lo tagliava di nuovo, perdendo
-    la chiusa della citazione."""
-    room = max(0, REASON_CAP - len(prefix) - len(suffix))
-    return f"{prefix}{truncate_with_marker(detto, room)}{suffix}"
-
-
-def _senza_conclusione(answer) -> str:
-    """Il motivo di un turno che NON ha chiamato `conclude`, con dentro cio'
-    che il modello aveva risposto al suo posto.
-
-    Fino al 21/08/2026 questa funzione non esisteva e il motivo era una
-    costante: «il turno non ha concluso: non so cosa dirti». Vera, e
-    inutilizzabile -- perche' le TRE uscite del ciclo di `claude_runner.chat`
-    che portano qui restituiscono tre stringhe DIVERSE (il testo del modello,
-    `_MAX_ITERATIONS_NOTICE`, `_TRUNCATION_NOTICE`) e quella stringa era
-    l'unica cosa che le distingueva. `interpreta_promise` la scartava: per
-    sapere quale delle tre fosse capitata sulla casa vera e' servita
-    un'indagine con tre riproduzioni sull'add-on vivo.
-
-    Quando non c'e' proprio niente da riportare si torna alla frase di prima:
-    un virgolettato vuoto affermerebbe «ha detto questo», e questo e' niente.
-    """
-    detto = answer.strip() if isinstance(answer, str) else ""
-    if not detto:
-        return "il turno non ha concluso: non so cosa dirti."
-    return _quoting("il turno non ha concluso. Aveva risposto a parole: «", detto, "»")
-
-
-def _unanswered_reason(answer) -> str:
-    """Il motivo di un turno a cui nessun modello ha risposto, con dentro la
-    frase del router: e' la diagnosi («credito esaurito», «nessun provider
-    utilizzabile»), e senza la pagina direbbe solo che e' andata male."""
-    detto = answer.strip() if isinstance(answer, str) else ""
-    if not detto:
-        return f"{NO_ANSWER_REASON}."
-    return _quoting(f"{NO_ANSWER_REASON}: ", detto)
 
 
 def _downgrade_note(reason: str) -> str:

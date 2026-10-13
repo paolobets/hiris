@@ -65,7 +65,8 @@ async def test_dopo_un_turno_sincrono_caduto_il_turno_dopo_non_manda_due_domande
     """Trovato dal revisore (giro 153): il ramo sincrono leggeva la cronologia
     PRIMA di scrivere la domanda. La domanda del turno caduto restava ultima
     nella storia passata al runner, e il runner ci accodava la nuova: due
-    turni utente di fila, che l'API di Claude rifiuta. Ora il ramo sincrono
+    turni utente di fila, che l'API di Claude fonde in uno: il modello
+    rispondeva anche alla domanda vecchia. Ora il ramo sincrono
     scrive e poi legge, come il ponte, e passa la storia senza la domanda di
     adesso.
 

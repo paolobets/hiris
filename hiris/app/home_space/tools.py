@@ -2027,6 +2027,9 @@ class ToolDispatcher:
             ancore=cleaned["ancore"], conditions=cleaned["condizioni"],
             modality=cleaned["forza"], grandezza=cleaned["grandezza"],
             minimum=cleaned["minimo"], maximum=cleaned["massimo"], unit=cleaned["unita"],
+            # L'istante dall'orologio di chi chiama (G-14), come
+            # `agenda.create` e l'officina in questo stesso dispatcher.
+            now=time.time(),
         )
         return {"salvato": True, "id": memory_id, "problemi": problems, "correzioni": corrections}
 

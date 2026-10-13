@@ -2103,3 +2103,19 @@ async def test_calendar_always_declares_the_calendars_it_examined():
     d = _calendar_dispatcher(house)
     result = await d.dispatch("calendar", {})
     assert result["calendari_guardati"] == ["Famiglia", "Personale"]
+
+
+@pytest.mark.asyncio
+async def test_remember_passa_all_archivio_l_istante_del_dispatcher(archivio_casa, memoria,
+                                                                   monkeypatch):
+    """G-14 (Chiusura, N152-1): `remember` prende l'istante dall'orologio del
+    dispatcher, come `agenda.create`, e lo passa a `MemoryStore.remember`.
+    Mutazione ESEGUITA (13/10/2026): `now=` tolto dalla chiamata -- rossa."""
+    from hiris.app.home_space import tools
+
+    monkeypatch.setattr(tools.time, "time", lambda: 1_790_000_000.0)
+    dispatcher = ToolDispatcher(archivio_casa, memoria)
+    esito = await dispatcher.dispatch("remember", {"testo": "la caldaia fa rumore"})
+    detto = memoria._conn.execute("SELECT detto_il FROM ricordi WHERE id = ?",
+                                  (esito["id"],)).fetchone()[0]
+    assert detto == "2026-09-21T14:13:20+00:00"

@@ -1049,8 +1049,9 @@ async def handle_chat(request: web.Request) -> web.Response:
         # cosi' una domanda rimasta sola da un turno caduto e' seguita da
         # questa, e la lettura la toglie (`chat_store._purge_toxic_turns`).
         # Letta prima, restava l'ultima della storia passata al runner, che ci
-        # accodava questa: due turni utente di fila, rifiutati dall'API di
-        # Claude (trovato dal revisore, giro 153).
+        # accodava questa: due turni utente di fila, che l'API di Claude fonde
+        # in uno, e il modello rispondeva anche alla domanda vecchia (trovato
+        # dal revisore, giro 153).
         append_messages([{"role": "user", "content": message}], data_dir,
                         thread=thread)
 
@@ -1109,9 +1110,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # dire un secondo posto in cui si decide chi puo' cosa. Il modello lo
         # sceglie la pagina Modelli, per provider: la chat chiede sempre
         # `auto` (dal 13 agosto il campo `settings.model` non c'e' piu'), e il
-        # tetto d'uscita e' `CHAT_MAX_TOKENS`, piu' alto del `MAX_TOKENS` dei
-        # runner perche' una risposta lunga -- il riepilogo di una casa
-        # grande, un elenco di ricordi -- lo supera legittimamente.
+        # tetto d'uscita e' `CHAT_MAX_TOKENS`.
         response = await _chain_chat_turn(
             request.app, runner, soggetto=request.get("soggetto"),
             soffitto=soffitto, thread=thread, phrase=message,

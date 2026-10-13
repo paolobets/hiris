@@ -1058,18 +1058,13 @@ _MUTE_VOLUTE = {
     # (`main.py`, `logging.INFO`): senso diverso, mutezza giusta.
     ("livello", "radice"),
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
-    # per intero o dentro residui gia' dichiarati
-    # (`keeper/exchange.py::_senza_conclusione`). `("senza", "memory")` e'
-    # uscita con la Tappa 3, Task 9: era `senza_accenti` in
-    # `memory/resolver._normalize`, che e' diventata `home_space/reference.
-    # fold_accents`.
+    # per intero. `("senza", "memory")` e' uscita con la Tappa 3, Task 9: era
+    # `senza_accenti` in `memory/resolver._normalize`, che e' diventata
+    # `home_space/reference.fold_accents`. `("senza", "keeper")` e
+    # `("senza", "reasoning")` sono uscite con D-24 (Chiusura, 13/10/2026):
+    # `keeper/exchange._senza_conclusione` e' diventata
+    # `keeper/promise.unfinished_reason`, e la consegna la importa da li'.
     ("senza", "action"),
-    ("senza", "keeper"),
-    # `reasoning/consegna.py` importa `keeper/exchange._senza_conclusione`: e'
-    # la riga che fino al 06/10/2026 era `("senza", "api")`, quando la
-    # consegna del ponte stava in `api/handlers_reasoning.py` (A-23). Il nome
-    # e' di `keeper`, e li' e' gia' dichiarato.
-    ("senza", "reasoning"),
     # `note (home_space)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `home_space/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "action"), ("note", "usage"),

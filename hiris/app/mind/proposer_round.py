@@ -269,6 +269,9 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
     analysis = store.analysis(day)
     if analysis is None or not occurrence["esiti"]:
         return
+    # Un istante solo per gli esiti di questo turno (G-14): le proposte a
+    # mano che nascono e l'analisi che le cita si scrivono nello stesso momento.
+    now = time.time()
     still_open = {observation_key(o) for o in _open(app, store, day)}
     waiting = {key: entry for key, entry in store.decided_proposals().items()
                if entry["aperta"]}
@@ -293,7 +296,7 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
                     # Il livello di una proposta da fare a mano non lo impone
                     # nessuno: una frase in prosa non porta i domini su cui il
                     # codice imporrebbe `alto` (D13).
-                    stakes=None, now_ts=time.time())
+                    stakes=None, now_ts=now)
             outcome = {"impronta": key, "esito": outcome["esito"],
                        "proposta_id": ident}
         elif outcome["esito"] == proposer_turn.BUILT:
@@ -306,7 +309,8 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
                 logger.info("proponente: la proposta a mano su %s e' superata "
                             "dalla costruita %s", key, outcome["proposta_id"])
         beside.append({k: v for k, v in outcome.items() if k != "osservazione"})
-    store.replace_analysis(day, {**analysis, proposer_turn.OUTCOMES_KEY: beside})
+    store.replace_analysis(day, {**analysis, proposer_turn.OUTCOMES_KEY: beside},
+                           when_ts=now)
 
 #: Il testo della push agli amministratori. Lo scrive il codice, non il
 #: modello: il nome dell'oggetto e' l'unica parte che viene dalla proposta.
