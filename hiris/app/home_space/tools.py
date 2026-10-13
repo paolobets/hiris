@@ -1506,10 +1506,20 @@ class ToolDispatcher:
             return None
         return self._memory.fetch(limit=self._memory.count())
 
-    def _missing_resource(self, tool: Tool) -> str | None:
-        """Quale archivio serve a questo strumento (`Tool.resources`) e non
-        c'e'."""
-        for which in tool.resources:
+    def _unavailable(self, name: str, resources: tuple[str, ...]) -> dict | None:
+        """L'`errore` di uno strumento a cui manca un archivio, o `None`. La
+        stessa frase per la riga (`dispatch`, `Tool.resources`) e per i
+        gestori che chiedono un archivio solo con certi argomenti (`history`
+        fuori dagli errori, l'energia di `mind`): fino al 13/10/2026 quei due
+        avevano la loro, scritta in linea (D-41)."""
+        missing = self._missing_resource(resources)
+        if missing is None:
+            return None
+        return {"errore": f"«{name}» non e' disponibile: {missing}."}
+
+    def _missing_resource(self, resources: tuple[str, ...]) -> str | None:
+        """Quale di questi archivi (`Tool.resources`) non c'e'."""
+        for which in resources:
             if which == "casa" and self._home_space is None:
                 return "la conoscenza della casa non e' ancora stata caricata"
             if which == "memoria" and self._memory is None:
@@ -1558,9 +1568,9 @@ class ToolDispatcher:
         # LEGGIBILI. Dire cosa manca e' anche l'unico modo perche' il modello
         # possa spiegarlo all'utente invece di riprovare all'infinito.
         tool = _TOOL_PER_NAME.get(name)
-        missing = None if tool is None else self._missing_resource(tool)
+        missing = None if tool is None else self._unavailable(name, tool.resources)
         if missing is not None:
-            return {"errore": f"«{name}» non e' disponibile: {missing}."}
+            return missing
         if tool is None:
             # NON "non inventare nomi di tool": se il modello ha chiamato
             # questo nome, gliel'abbiamo dato NOI in un turno precedente (un
@@ -2525,9 +2535,9 @@ class ToolDispatcher:
             known = self._home_space.read() if self._home_space is not None else {}
             return await read_errors(self._ha, query, seal=self._seal(),
                                      manifest=manifest_of(known))
-        if self._home_space is None:
-            return {"errore": "`history` non e' disponibile: la conoscenza della casa "
-                              "non e' ancora stata caricata."}
+        missing = self._unavailable("history", ("casa",))
+        if missing is not None:
+            return missing
         # UNA casa per tutta la chiamata, la stessa del turno.
         return await read_history(self._ha, query, self._turn_house(),
                                   self._home_space.behavior(), cache=self._cache,
@@ -2622,7 +2632,8 @@ class ToolDispatcher:
         if arguments.get("giorno") is not None and not reading.by_day:
             daily = ", ".join(sorted(key for key, row in MIND_READINGS.items() if row.by_day))
             return {"errore": f"«giorno» vale solo per {daily}, non per «{what}»."}
-        return await reading.serve(self, arguments.get("giorno"))
+        return (self._unavailable("mind", reading.resources)
+                or await reading.serve(self, arguments.get("giorno")))
 
     def _mind_missing(self, *, store: bool = True) -> dict | None:
         """Cosa manca alle letture del cervello, o `None`: le letture stesse
@@ -2680,9 +2691,6 @@ class ToolDispatcher:
 
         `statistiche` resta `None`: l'elenco delle statistiche lo chiede il
         giro delle ricette, e qui «non l'ho chiesto» si dice com'e'."""
-        if self._ha is None or self._home_space is None:
-            return {"errore": "la dashboard Energia si legge da Home Assistant, "
-                              "e il collegamento o la casa non ci sono."}
         dashboard = await energy_dashboard(self._ha, self._home_space, self._turn_house())
         if dashboard is None:
             return {"errore": "la dashboard Energia non e' stata letta: Home Assistant "
@@ -2701,6 +2709,9 @@ class MindReading:
     `giorno`."""
     serve: Callable[..., Any]
     by_day: bool = False
+    #: Gli archivi della lettura, come `Tool.resources` per una riga: li
+    #: chiede `_read_mind` prima di servirla (D-41).
+    resources: tuple[str, ...] = ()
 
 
 #: Le letture dello strumento `mind`, per `cosa`. **E' la tabella del
@@ -2712,7 +2723,7 @@ MIND_READINGS: dict[str, MindReading] = {
     "obiettivo": MindReading(ToolDispatcher._mind_objective),
     "resoconti": MindReading(ToolDispatcher._mind_reports, by_day=True),
     "analisi": MindReading(ToolDispatcher._mind_analyses, by_day=True),
-    "energia": MindReading(ToolDispatcher._mind_energy),
+    "energia": MindReading(ToolDispatcher._mind_energy, resources=("ha", "casa")),
 }
 
 MIND_TOOL_DEF = {
@@ -2782,8 +2793,9 @@ TOOLS: tuple[Tool, ...] = (
          read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
     # cose sono gia' visibili nella pagina del cervello a chiunque entri.
-    # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
-    # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
+    # Nessun archivio nella riga: ogni lettura dichiara i suoi
+    # (`MindReading.resources`, l'energia: canale e casa), e le letture del
+    # cervello dicono da se' cosa manca a loro (`_mind_missing`).
     Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True),
 )
 

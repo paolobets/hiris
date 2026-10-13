@@ -241,3 +241,31 @@ def test_la_soglia_della_profondita_la_legge_solo_depth_for():
     Rossa prima del codice (05/10/2026) con
     `['home_space/house_history.py:depth_for', 'home_space/house_query.py:_select']`."""
     assert _readers_of("DETAIL_MEDIUM_MAX") == ["home_space/render.py:rows_depth"]
+
+
+# ---------------------------------------------------------------------------
+# D-41: l'assenza di un archivio si dice in un modo solo. Quando l'archivio
+# dipende dagli argomenti (`history` fuori dagli errori, `mind` per
+# l'energia) il gestore decide QUANDO chiederlo, ma la frase e la forma sono
+# quelle di `dispatch` per la riga: prima `history` e l'energia avevano la
+# loro, scritta in linea.
+
+
+class _Ha:
+    """Un canale vivo: qui conta solo che non sia `None`."""
+
+
+@pytest.mark.asyncio
+async def test_history_senza_casa_lo_dice_come_dispatch():
+    d = ToolDispatcher(None, None, ha=_Ha())
+    from_row = await d.dispatch("search", {"nome": "luce"})
+    answer = await d.dispatch("history", {"riferimento": "light.studio"})
+    assert answer == {"errore": from_row["errore"].replace("«search»", "«history»")}
+
+
+@pytest.mark.asyncio
+async def test_l_energia_senza_canale_lo_dice_come_dispatch():
+    d = ToolDispatcher(None, None)
+    from_row = await d.dispatch("related", {"riferimento": "light.studio"})
+    answer = await d.dispatch("mind", {"cosa": "energia"})
+    assert answer == {"errore": from_row["errore"].replace("«related»", "«mind»")}
