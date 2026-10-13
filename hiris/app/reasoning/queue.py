@@ -173,6 +173,14 @@ def _row(r, archive: str) -> dict | None:
     dell'archivio, che l'utente puo' aver cambiato mentre il turno era in
     volo.
 
+    **Il contesto si scioglie a ogni lettura, ed e' voluto** (D-62,
+    Chiusura). Per un turno in volo porta il nucleo, e il poll della chat lo
+    rilegge ogni 3,5 s: misurato il 13/10/2026, `json.loads` di un contesto
+    di 10.862 caratteri (il nucleo della prima domanda della batteria del
+    13/10 era di 8.503) costa 14 microsecondi, e 73 a 100.000. Una seconda
+    forma della riga senza `context` costerebbe la fondamenta 3 per
+    risparmiare quello.
+
     **Una riga col corpo JSON guasto non si legge** (C-68, Chiusura): la
     guardia e' quella di ogni archivio (`storage.json_column`), che la dice
     nel log una volta sola. Chi chiama la tratta come assente.
