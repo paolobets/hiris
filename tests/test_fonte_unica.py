@@ -15,7 +15,10 @@ chiamante.** Per le letture non si contano piu' le occorrenze fuori da
 `proxy/`: ogni lettura ha il suo proprietario, scritto in `READ_OWNERS` con la
 ragione, e un secondo modulo che la chiama e' un rosso -- a meno che
 `SHARED_READS` non lo ammetta per iscritto, con la ragione e la voce APERTA del
-registro che lo chiudera'. Le due mappe sono liste di AMMISSIONE; l'insieme
+registro che lo chiudera' -- oppure, quando il secondo chiamante e' voluto, con
+`None` al posto della voce e la decisione che lo vuole nella ragione (D2 della
+Chiusura, Paolo 13/10/2026: un'ammissione con la sua ragione non e' un'eccezione;
+lo e' solo quella che rimanda a una voce aperta). Le due mappe sono liste di AMMISSIONE; l'insieme
 delle letture che devono comparirci si CHIEDE a `HAClient`. Si guarda tutto
 `hiris/app/` tranne il client stesso: anche lo specchio e le traduzioni (che
 stanno in `proxy/`) sono chiamanti, e lo specchio e' il proprietario di
@@ -166,12 +169,14 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
     "history": (
         "home_space/house_history.py",
         ("lo storico dettagliato, letto da `read_series` per lo strumento della "
-         "chat e per chi non e' un turno (Tappa 3, Task 13: era in `tools.py`); "
-         "l'altro modo di leggere lo storico (`recorded_changes`) e' A-36")),
+         "chat e per chi non e' un turno (Tappa 3, Task 13: era in `tools.py`). "
+         "`recorded_changes` e' un'altra domanda, e resta: D6 della Tappa 2")),
     "recorded_changes": (
         "mind/cadence.py",
-        ("la cadenza dell'osservatore conta i cambi per finestra; con `history` "
-         "sono due comandi per la stessa domanda, A-36")),
+        ("la cadenza dell'osservatore conta le righe che Home Assistant ricorda "
+         "per finestra, non la serie: D6 della Tappa 2 (Paolo, 03/10/2026, «resta "
+         "REST, la via WS degli attori dichiarata»), scritta nella spec il "
+         "13/10/2026 (A-36, F1 della Chiusura)")),
     "trace": (
         "home_space/house_history.py",
         ("la traccia passo per passo di un'esecuzione (`read_runs`; fino al "
@@ -251,29 +256,31 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
 #: Per ognuno la voce del registro che lo chiudera' (deve essere APERTA) e la
 #: ragione. Lista di AMMISSIONE: una voce si toglie quando il secondo chiamante
 #: smette, e la prova lo pretende.
-SHARED_READS: dict[str, dict[str, tuple[str, str]]] = {
+SHARED_READS: dict[str, dict[str, tuple[str | None, str]]] = {
     # `action/construction/workshop.py` (A-15) e' uscita il 07/10/2026
     # (Tappa 7, Task 3): `_reread` legge il registro delle entita'.
     "get_states": {
         "keeper/recipient.py": (
-            "A-03",
-            ("D4 della Tappa 2 (03/10/2026, «restano», con la condizione di "
+            None,
+            ("voluta: D4 della Tappa 2 (03/10/2026, «restano», con la condizione di "
              "Paolo: nessun dato sensibile ai modelli): `recipients_for` cerca "
              "le `person` per `user_id`, che lo specchio trattiene come "
              "credenziale. Prova: `tests/test_specchio_per_id.py`.")),
     },
     "read_registry": {
         "keeper/recipient.py": (
-            "A-03",
-            ("la stessa ricerca di `recipients_for` (D4): entita' e dispositivi "
+            None,
+            ("voluta: la stessa ricerca di `recipients_for` (D4): entita' e dispositivi "
              "delle `person`, accanto agli stati letti per intero")),
     },
     "extract_from_target": {
         "server.py": (
-            "A-08",
-            ("`tree_comparison_round` verifica l'albero dell'anagrafe contro "
-             "Home Assistant: e' la sorveglianza della copia che A-08 descrive "
-             "(anagrafe e specchio non coordinati)")),
+            None,
+            ("voluta: `tree_comparison_round` verifica l'albero dell'anagrafe "
+             "contro Home Assistant. Anagrafe e specchio sono due fatti di Home "
+             "Assistant, non una copia: A-08 chiusa come voluta da Paolo il "
+             "13/10/2026 (decisioni piccole della Chiusura); questo e' il "
+             "controllo che li tiene d'accordo")),
     },
     # Le tre qui sotto hanno la stessa radice, R13 della spec: le letture
     # degli strumenti sono metodi privati di un oggetto che nasce a ogni turno
@@ -715,7 +722,13 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro():
     # lo stesso patto, e si verifica nello stesso punto.
     cited |= set(json.loads(KNOWN_DUPLICATES.read_text(encoding="utf-8")).values())
     # E i secondi chiamanti di R1 stretto: ognuno cita la voce che lo chiudera'.
-    cited |= {voice for extra in SHARED_READS.values() for voice, _reason in extra.values()}
+    cited |= {voice for extra in SHARED_READS.values() for voice, _reason in extra.values()
+              if voice is not None}
+    # Un secondo chiamante voluto non cita una voce, e dice la decisione.
+    unreasoned = [f"{name}: {module}" for name, extra in SHARED_READS.items()
+                  for module, (voice, reason) in extra.items()
+                  if voice is None and not reason.startswith("voluta: ")]
+    assert not unreasoned, f"secondi chiamanti senza voce ne' decisione: {unreasoned}"
     orphans = sorted(cited - open_ids)
     assert not orphans, f"eccezioni che citano voci chiuse o inesistenti: {orphans}"
 
