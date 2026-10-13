@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import json
 
+from ..answer_reasons import NO_ANSWER_REASON
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
 from ..states import CANCELLED, FAILED, KEPT, SKIPPED, readable
-from ..steering import NO_ANSWER_REASON
 
 VERB = ("fai", "chiedi")
 #: Gli stati che chiudono una promessa. Le parole vivono nel vocabolario

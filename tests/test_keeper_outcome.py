@@ -67,3 +67,21 @@ async def test_una_promessa_gia_conclusa_non_si_riconsegna_ne_si_conta():
 async def test_senza_promessa_o_senza_orologio_non_si_chiude_niente(app):
     assert await keep_concluded(app, "p1", {"testo": "x"}, now=5.0) == UNKNOWN
     assert app["occurrence_registry"].successi == []
+
+
+def test_l_archivio_delle_promesse_non_si_porta_dietro_il_loop_del_modello():
+    """N152-2 (giro 152): `keeper/promise.py` importava `steering` per una
+    stringa sola, e con lui `claude_runner` e la coda del ponte. La frase sta
+    in una foglia (`answer_reasons.py`). La prova importa `promise` in un
+    interprete pulito e guarda cosa si e' portato dietro. Mutazione ESEGUITA
+    (13/10/2026): l'import rimesso da `steering` -- rossa."""
+    import subprocess
+    import sys
+
+    codice = ("import sys, hiris.app.keeper.promise; "
+              "print(sorted(m for m in sys.modules if m in "
+              "('hiris.app.steering', 'hiris.app.claude_runner', "
+              "'hiris.app.reasoning.queue')))")
+    fatto = subprocess.run([sys.executable, "-c", codice], capture_output=True,
+                           text=True, check=True)
+    assert fatto.stdout.strip() == "[]"
