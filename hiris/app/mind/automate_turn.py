@@ -241,7 +241,7 @@ async def _chain(app, row: dict, runner) -> None:
 
 
 def settle(app, ident: str, exchange: str | None, answer, *,
-           truncated: bool = False, presence=None) -> str:
+           truncated: bool = False, presence=None) -> None:
     """La consegna: chiude la proposta col legame, o scrive perche' no.
 
     **L'id lo dice l'archivio delle costruzioni**, non il modello: le
@@ -252,18 +252,22 @@ def settle(app, ident: str, exchange: str | None, answer, *,
 
     Un turno troncato, o senza risposta, **non scrive niente**: e' un guasto
     di passaggio, non un «non si puo'», e il comando torna disponibile.
-    Torna l'esito, una parola sola.
+
+    **Non torna niente** (F7, 13/10/2026): l'esito e' la riga che scrive
+    (`automate_proposal`, `refuse_automation`) o il registro. Fino a quel
+    giorno tornava una parola d'esito che in produzione non leggeva nessuno
+    -- ne' la catena (`_chain`) ne' la consegna (`deliver`) -- e la leggeva
+    una prova sola.
     """
     store = app.get("observations")
     if store is None or not ident:
-        return "senza_archivio"
+        return
     built = _built_in(app, exchange)
     if built is not None:
-        if store.automate_proposal(ident, built):
-            return "automatizzata"
-        logger.info("automazione: %s non era piu' in attesa, la costruzione %s "
-                    "resta da decidere da sola", ident, built)
-        return "gia_decisa"
+        if not store.automate_proposal(ident, built):
+            logger.info("automazione: %s non era piu' in attesa, la costruzione %s "
+                        "resta da decidere da sola", ident, built)
+        return
     data, reason = read_json(answer, shape=dict, what="un oggetto con il perche'",
                              truncated=truncated)
     why = data.get("perche") if isinstance(data, dict) else None
@@ -271,12 +275,11 @@ def settle(app, ident: str, exchange: str | None, answer, *,
         logger.warning("automazione: il turno per %s e' finito senza un'automazione "
                        "e senza un perche' (%s)", ident,
                        reason or "nessun «perche'»")
-        return "senza_esito"
+        return
     why = why.strip()
     if presence is not None:
         why = presence.unmask(why)
     store.refuse_automation(ident, why)
-    return "non_automatizzabile"
 
 
 def deliver(app, job: dict | None, decision: dict) -> None:
