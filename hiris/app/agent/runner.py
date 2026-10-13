@@ -94,13 +94,23 @@ log = logging.getLogger("hiris.agent")
 # Tool LOCALI del CLI sempre vietati (il modello non deve toccare shell/fs del
 # container addon).
 #
-# fetta "il ponte riceve gli strumenti" (parita' B, Task 3): questa stringa NON
-# guadagna `ToolSearch`, e l'assenza e' deliberata. La CLI inserisce un
-# passaggio `ToolSearch` per RISOLVERE gli schemi degli strumenti MCP (progetto
-# 3.4/5): vietarlo qui renderebbe gli strumenti visibili nell'elenco e
-# IRRAGGIUNGIBILI -- il modo peggiore di non averli, perche' il prompt li
-# afferma e la chiamata non arriva mai. E' esattamente il genere di stringa che
-# qualcuno "completa" leggendo l'elenco: non si completa.
+# **Dalla Chiusura (L1, 13/10/2026) non e' piu' la prima serratura.** La prima
+# e' `--tools ""` in `_chat_claude_args`: la CLI non offre al modello NESSUNO
+# strumento suo, e restano solo quelli di HIRIS (`--mcp-config` +
+# `--allowedTools`). Questo elenco resta come seconda: vieta per nome cio' che
+# la prima gia' non offre, nel caso una versione della CLI smettesse di
+# rispettare `--tools`. E' un elenco ricopiato dalla CLI, e lo si sa: invecchia
+# a ogni versione che aggiunge uno strumento (misurato il 13/10/2026 sulla
+# 2.1.286: `Workflow`, `ScheduleWakeup`, `Skill`, `CronCreate`... offerti al
+# modello e non elencati qui). Per questo NON e' lui la difesa, e non va
+# «completato».
+#
+# `ToolSearch` non c'e', ed era deliberato finche' gli strumenti di HIRIS
+# arrivavano RINVIATI: la CLI ci passava per risolverne gli schemi, e vietarlo
+# li avrebbe resi visibili e irraggiungibili. Con `--tools ""` il rinvio si
+# spegne da se' e gli schemi arrivano subito (rapporto FM, v2 contro v4: la
+# stessa richiesta con e senza `ENABLE_TOOL_SEARCH`), quindi la domanda non si
+# pone piu'.
 _LOCAL_TOOLS_DENY = (
     "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
 )
@@ -654,10 +664,20 @@ def _chat_claude_args(system_file: str, model: str, *,
 
     Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
     `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
-    strumenti resta vero per costruzione invece che per fortuna."""
+    strumenti resta vero per costruzione invece che per fortuna.
+
+    `--tools ""` (L1 della Chiusura, 13/10/2026) sta anch'esso su ENTRAMBI i
+    rami, per la stessa ragione di `--strict-mcp-config`: toglie, non concede.
+    Senza, la CLI offre al modello i suoi strumenti (sette definizioni e un
+    blocco d'ambiente, circa 24.100 caratteri a ogni giro, misurati con la
+    2.1.286) e rinvia quelli di HIRIS dietro `ToolSearch`, che costa un giro in
+    ogni domanda con strumenti."""
     argv = [CLI_PONTE, "-p", "--model", model,
             "--system-prompt-file", system_file,
             "--exclude-dynamic-system-prompt-sections",
+            # Nessuno strumento della CLI, su entrambi i rami (L1): vedi il
+            # commento sopra `_LOCAL_TOOLS_DENY`.
+            "--tools", "",
             "--disallowedTools", _LOCAL_TOOLS_DENY,
             "--permission-mode", "default",
             # Su entrambi i rami: vedi I-1 nel docstring.

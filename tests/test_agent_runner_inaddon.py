@@ -1022,13 +1022,9 @@ def test_argv_del_ponte_collega_esattamente_gli_strumenti_del_catalogo():
         f"il divieto sui tool LOCALI del CLI (shell/fs del container addon) e' "
         f"sparito da argv ({argv!r}): il prompt non e' l'unica difesa, e questa "
         f"e' l'altra.")
-    # ToolSearch NON e' nel divieto, e non e' una dimenticanza: la CLI ci passa
-    # per risolvere gli schemi MCP, e vietarlo renderebbe gli strumenti
-    # visibili e IRRAGGIUNGIBILI.
-    assert "ToolSearch" not in runner._LOCAL_TOOLS_DENY, (
-        "ToolSearch e' finito in _LOCAL_TOOLS_DENY: la CLI lo usa per "
-        "risolvere gli schemi degli strumenti MCP, e vietarlo li rende "
-        "irraggiungibili -- il prompt li afferma e la chiamata non arriva mai.")
+    # `ToolSearch` nel divieto non conta piu': con `--tools ""` (L1 della
+    # Chiusura) il rinvio degli strumenti e' spento e la CLI non lo offre. Il
+    # pin di `--tools ""` sta in `tests/test_tools_to_bridge.py`.
 
 
 def test_argv_del_ponte_senza_strumenti_resta_quello_di_prima():

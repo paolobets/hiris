@@ -214,12 +214,38 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
         assert nome.startswith(f"mcp__{handlers_mcp.MCP_SERVER_NAME}__")
 
 
-def test_toolsearch_non_e_vietato_o_gli_strumenti_sono_irraggiungibili():
-    """La CLI passa da `ToolSearch` per risolvere gli schemi degli strumenti
-    MCP: vietarlo li renderebbe visibili nell'elenco e non chiamabili -- il
-    prompt li afferma e la chiamata non arriva mai. E' il genere di stringa
-    che qualcuno «completa» leggendo l'elenco dei tool locali vietati."""
-    assert "ToolSearch" not in runner._LOCAL_TOOLS_DENY
+@pytest.mark.parametrize("active_tools", [False, True],
+                         ids=["senza strumenti", "con strumenti"])
+def test_argv_del_ponte_non_offre_nessuno_strumento_della_cli(active_tools):
+    """L1 della Chiusura (Paolo, 13/10/2026, «Sì, provala»): `--tools ""` su
+    ENTRAMBI i rami. La CLI non offre al modello nessuno strumento suo, e
+    restano solo quelli che HIRIS passa con `--mcp-config` e `--allowedTools`.
+
+    Misurato il 13/10/2026 con la CLI 2.1.286 e l'argv di produzione verso un
+    finto Anthropic (rapporto FM, `chiusura/fm-cattura/`): senza, ogni giro
+    portava 7 definizioni della CLI (17.294 caratteri: `Workflow`,
+    `ScheduleWakeup`, `Skill`...) e un blocco d'ambiente di 6.805, che nessun
+    turno di HIRIS usa; con `--tools ""` la CLI spegne anche il rinvio, carica
+    subito i 12 strumenti di HIRIS, e la chiamata a `mcp__hiris__search`
+    arriva a `/api/mcp`. Ed e' la forma che chiude per difetto: un elenco di
+    strumenti VIETATI (`_LOCAL_TOOLS_DENY`) invecchia a ogni versione della
+    CLI che ne aggiunge uno, un elenco VUOTO di strumenti offerti no.
+
+    Sul ramo di degrado e' la stessa ragione di `--strict-mcp-config`: il
+    prompt dice al modello che non ha strumenti, e senza questa opzione la
+    CLI gliene darebbe di suoi."""
+    argv = runner._chat_claude_args(
+        "/sistema.txt", "sonnet", active_tools=active_tools,
+        mcp_config=runner.config_mcp("http://x", "TOK") if active_tools else "")
+
+    assert "--tools" in argv, (
+        f"`--tools \"\"` e' sparito dall'argv del ponte ({argv!r}): la CLI "
+        f"torna a offrire al modello i suoi strumenti (Workflow, "
+        f"ScheduleWakeup, Skill, CronCreate...) a ogni giro, e il rinvio con "
+        f"`ToolSearch` torna a costare un giro in ogni domanda con strumenti.")
+    assert argv[argv.index("--tools") + 1] == "", (
+        f"`--tools` non e' seguito dall'elenco VUOTO ({argv!r}): ogni nome "
+        f"li' dentro e' uno strumento della CLI offerto al modello di HIRIS.")
 
 
 # ---------------------------------------------------------------------------
