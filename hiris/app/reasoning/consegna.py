@@ -79,8 +79,8 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # gia' azzerato `context_json` (porta il nucleo per intero e non deve
         # restare su disco). `wake` no, ed e' per questo che
         # `keeper/exchange._enqueue_to_bridge` ce lo mette.
-        from ..keeper.exchange import _senza_conclusione
         from ..keeper.outcome import UNKNOWN, fail_unfinished
+        from ..keeper.promise import unfinished_reason
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
         reply = decision.get("reply")
@@ -93,7 +93,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # perche'. Una promessa mantenuta dal ponte si conclude altrove
         # (`api/handlers_mcp`, dove sta il `.successo(...)` gemello).
         closed = fail_unfinished(
-            app, ident, reason=_senza_conclusione(reply), now=now, family="altro",
+            app, ident, reason=unfinished_reason(reply), now=now, family="altro",
             message="promessa sul ponte finita senza chiamare «conclude»",
             durata_s=now - float((job or {}).get("created_ts", now)),
             quoted=reply if isinstance(reply, str) and reply.strip() else None)

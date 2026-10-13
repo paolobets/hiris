@@ -32,11 +32,6 @@ from ..steering import (
 )
 from .promise import unanswered_reason, unfinished_reason
 
-#: Il nome di prima di `promise.unfinished_reason` (D-24, Chiusura), tenuto
-#: solo perche' `reasoning/consegna.py` lo importa da qui: esce con la patch
-#: di F3b che porta la consegna a `promise.unfinished_reason`.
-_senza_conclusione = unfinished_reason
-
 logger = logging.getLogger(__name__)
 
 # I cinque che leggono e basta. Non `execute` (tocca la casa), non `remember`
