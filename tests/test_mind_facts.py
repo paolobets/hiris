@@ -1052,6 +1052,34 @@ def test_aggregate_day_scrive_nel_resoconto_l_obiettivo_di_QUEL_giorno(archivio)
     scritto = archivio.report(G)
     assert scritto["obiettivo"]["testo"] == "quella di allora"
 
+def test_due_obiettivi_nello_stesso_giorno_vale_quello_della_fine(archivio):
+    """**Due obiettivi nello stesso giorno: il resoconto porta l'ultimo** (spec
+    §11, giro 151 N151-2). Il resoconto dice a quale domanda il giorno ha
+    risposto quando e' FINITO: `aggregate_day` legge `store.objective_at` sul
+    confine di fine giorno che `build_episodes` gli restituisce (A-39).
+
+    La prova sopra non distingue i due confini -- con un obiettivo prima del
+    giorno e uno dopo, inizio e fine danno la stessa risposta. Qui il secondo
+    obiettivo nasce alle 14:00 dello stesso giorno: letto all'inizio del
+    giorno il resoconto direbbe ancora quello di prima.
+
+    Mutazione ESEGUITA: in `aggregate_day` prendere il confine d'inizio al
+    posto di quello di fine (`(to_ts, _)` invece di `(_, to_ts)`) -- rossa
+    qui su `'quella del mattino' == 'quella del pomeriggio'`, mentre la prova
+    sopra resta verde.
+    """
+    da_ts, _ = day_boundaries(G, "Europe/Rome")
+    archivio.set_objective("quella del mattino", when_ts=da_ts - 3600.0)
+    archivio.set_objective("quella del pomeriggio", when_ts=ts(14))
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  recipes={}, series={}, names={})
+
+    scritto = archivio.report(G)
+    assert scritto["obiettivo"]["testo"] == "quella del pomeriggio"
+
 def test_il_nome_del_DISPOSITIVO_arriva_alle_misure(archivio):
     """**Difetto trovato leggendo la prima analisi vera, il 15/09/2026**:
     l'analista parlava al proprietario in esadecimale -- «513a6661 ·
