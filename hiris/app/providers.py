@@ -132,6 +132,11 @@ class Provider:
     #: Il valore e' un ALIAS che segue il modello corrente (il piano) o un
     #: identificatore che punta a una cosa fissa (progetto §6.2).
     model_alias: bool = False
+    #: Gli alias che il provider accetta come modello, con la loro nota per la
+    #: pagina Modelli: `(valore, nota)`. Solo il piano ne ha (`model_alias`).
+    #: Fino alla Chiusura (F-09) erano `model_resolution.SUBSCRIPTION_ALIAS`,
+    #: fuori dalla tabella.
+    aliases: tuple[tuple[str, str], ...] = ()
     #: Si governa da `chain_order`. Il piano no: sta in testa o fuori, e la sua
     #: presenza discende da `ponte.attivo` (decisione del proprietario, 13
     #: agosto).
@@ -173,6 +178,17 @@ SUBSCRIPTION = Provider(
     # due economie opposte.
     model_path=("ponte", "modello"),
     model_alias=True,
+    # I TRE ALIAS DEL PIANO, e non uno di più. Non è una semplificazione
+    # dell'interfaccia: `agent/runner.cli_model` riduce QUALUNQUE modello risolto
+    # a `opus`/`haiku`/`sonnet` per sottostringa, perché la CLI dell'abbonamento
+    # non conosce altri nomi. Offrire `claude-opus-4-7` sul piano sarebbe una
+    # precisione finta: sul ponte `claude-opus-4-7` e `claude-opus-4-1` producono
+    # lo stesso identico comportamento (misurato, progetto §0.4).
+    aliases=(
+        ("haiku", "il più rapido"),
+        ("sonnet", "l’equilibrato"),
+        ("opus", "il più capace"),
+    ),
     chain_member=False,
     usage_unit="turni",
     usage_note=("L’abbonamento non espone il prezzo del singolo turno. I token "

@@ -82,7 +82,6 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
-from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..providers import SUBSCRIPTION
 from ..proxy._sanitize import MASK, truncate_with_marker
 from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
@@ -708,13 +707,13 @@ def cli_model(resolved_model: str) -> str:
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
     name = (resolved_model or "").lower()
-    # I tre alias vengono da `model_resolution.SUBSCRIPTION_ALIAS`, che e' anche
+    # I tre alias vengono da `providers.SUBSCRIPTION.aliases`, che e' anche
     # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
     # in ordine diverso e senza nessun test che li legasse. Un quarto alias
     # aggiunto la' sarebbe stato offerto all'utente, scelto, e poi ARCHIVIATO
     # COME `sonnet` da questa funzione, con un warning che nessuno legge: il
     # radio sarebbe tornato indietro da solo, senza spiegazione.
-    for alias, _descrizione in SUBSCRIPTION_ALIAS:
+    for alias, _descrizione in SUBSCRIPTION.aliases:
         if alias in name:
             return alias
     log.warning(

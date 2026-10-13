@@ -208,23 +208,23 @@ def test_i_blocchi_a_tutta_larghezza_restano_a_tutta_larghezza(classe):
 # ── I tre alias del piano e la CLI che li produce ──────────────────────────
 
 def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
-    """`decisione_modelli.SUBSCRIPTION_ALIAS` (quello che il pannello offre) e
+    """`providers.SUBSCRIPTION.aliases` (quello che il pannello offre) e
     `agent/runner.cli_model` (quello che la CLI accetta) erano due liste
     digitate a mano in due file, in ordine diverso: un quarto alias aggiunto
     la' sarebbe stato offerto, scelto, e poi ARCHIVIATO COME `sonnet` con un
     warning che nessuno legge -- il radio tornava indietro da solo, senza
     spiegazione.
 
-    Adesso `cli_model` ITERA `SUBSCRIPTION_ALIAS`, quindi non esiste piu' una
+    Adesso `cli_model` ITERA `SUBSCRIPTION.aliases`, quindi non esiste piu' una
     seconda lista. Questa prova non cerca piu' i letterali nel sorgente: quel
     difetto non puo' piu' esistere, e una prova che lo cercasse non potrebbe
     piu' fallire. Verifica il COMPORTAMENTO -- che ogni alias offerto
     sopravviva davvero al passaggio, e che un nome estraneo ricada
     dichiaratamente su `sonnet` invece di far fallire il turno."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
+    from hiris.app.providers import SUBSCRIPTION
 
-    for alias, _descrizione in SUBSCRIPTION_ALIAS:
+    for alias, _descrizione in SUBSCRIPTION.aliases:
         assert cli_model(alias) == alias
         # Anche nella forma completa con cui arriva da `resolve_model`.
         assert cli_model(f"claude-{alias}-4-5-20250101") == alias
@@ -244,9 +244,9 @@ def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
     piu' sotto: li' era il pannello contro la CLI, qui il pannello contro il
     posto in cui la scelta si ferma."""
     from hiris.app import models_store
-    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
+    from hiris.app.providers import SUBSCRIPTION
 
-    offerti = [v for v, _ in SUBSCRIPTION_ALIAS]
+    offerti = [v for v, _ in SUBSCRIPTION.aliases]
     for alias in offerti:
         assert models_store._clean_bridge({"modello": alias})["modello"] == alias, (
             f"il pannello offre {alias!r} e il salvataggio non lo tiene"
@@ -348,12 +348,12 @@ def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
 def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
     """Il gemello di comportamento del precedente: leggere il sorgente prova che
     i due elenchi coincidono, questo prova che scegliere una voce del pannello
-    e' davvero la voce che arriva alla CLI. Senza, `SUBSCRIPTION_ALIAS` potrebbe
+    e' davvero la voce che arriva alla CLI. Senza, `SUBSCRIPTION.aliases` potrebbe
     contenere `Sonnet` maiuscolo e i due test sarebbero d'accordo su niente."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
+    from hiris.app.providers import SUBSCRIPTION
 
-    assert alias in {v for v, _ in SUBSCRIPTION_ALIAS}
+    assert alias in {v for v, _ in SUBSCRIPTION.aliases}
     assert cli_model(alias) == alias
 
 

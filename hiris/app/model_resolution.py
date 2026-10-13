@@ -833,18 +833,6 @@ def compose_topology(
 # di ieri, e a schermo la frase ci sarebbe stata lo stesso: nessun test se ne
 # sarebbe accorto.
 
-# I TRE ALIAS DEL PIANO, e non uno di più. Non è una semplificazione
-# dell'interfaccia: `agent/runner.cli_model` riduce QUALUNQUE modello risolto
-# a `opus`/`haiku`/`sonnet` per sottostringa, perché la CLI dell'abbonamento
-# non conosce altri nomi. Offrire `claude-opus-4-7` sul piano sarebbe una
-# precisione finta: sul ponte `claude-opus-4-7` e `claude-opus-4-1` producono
-# lo stesso identico comportamento (misurato, progetto §0.4).
-SUBSCRIPTION_ALIAS: tuple[tuple[str, str], ...] = (
-    ("haiku", "il più rapido"),
-    ("sonnet", "l’equilibrato"),
-    ("opus", "il più capace"),
-)
-
 # Gli ospiti che si interrogano davvero (`Provider.host`) e DOVE si scrive la
 # scelta (`Provider.model_path`) erano due tabelle di questo modulo, `_OSPITI`
 # e `_WHERE_WRITTEN`: dal Task 9 della Tappa 7 sono campi della tabella dei
@@ -985,7 +973,7 @@ def compose_panel(
         # stesso sarebbe la pagina che si contraddice in due righe.
         entries: list[dict] = []
     elif is_alias(provider_id):
-        entries = [{"valore": v, "nota": n} for v, n in SUBSCRIPTION_ALIAS]
+        entries = [{"valore": v, "nota": n} for v, n in SUBSCRIPTION.aliases]
     else:
         entries = []
         if auto_resolved:
