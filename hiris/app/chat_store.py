@@ -174,9 +174,10 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 
     Toglie anche la domanda rimasta senza risposta, quando la segue un'altra
     domanda (D-15, Chiusura 13/10/2026): ogni strada della chat scrive la
-    domanda PRIMA del turno e la risposta solo se c'e', e l'API di Claude non
-    accetta due turni utente di fila. L'ultima domanda resta: e' quella a cui
-    il turno sta rispondendo.
+    domanda PRIMA del turno e la risposta solo se c'e'. Due turni utente di
+    fila l'API di Claude li fonde in uno, e il modello risponderebbe anche
+    alla domanda vecchia. L'ultima domanda resta: e' quella a cui il turno
+    sta rispondendo.
     """
     out: list[dict] = []
     for msg in messages:
