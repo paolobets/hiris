@@ -184,15 +184,10 @@ async def interpreta_promise(app, promise: dict) -> dict:
     subject, ceiling = await promise_ceiling(app, promise)
     dispatcher = PromiseDispatcher(create_tool_dispatcher(
         app, soffitto=ceiling, soggetto=subject))
-    try:
-        # Lo STESSO nucleo della chat (`compose_briefing`), non una
-        # composizione parallela: due contesti che descrivono la stessa casa
-        # sono due verita' che divergono.
-        briefing, _summary = compose_briefing(app)
-    except Exception as error:
-        logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promise["id"], type(error).__name__, error)
-        briefing = ""
+    # Lo STESSO nucleo della chat (`compose_briefing`), non una composizione
+    # parallela: due contesti che descrivono la stessa casa sono due verita'
+    # che divergono. Un archivio guasto lo dichiara lei (D-64).
+    briefing, _summary = compose_briefing(app)
 
     try:
         answer, turn = await chain_turn(
@@ -342,12 +337,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     """
     from ..api.handlers_home_space import compose_briefing
 
-    try:
-        briefing, _summary = compose_briefing(app)
-    except Exception as error:
-        logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promise["id"], type(error).__name__, error)
-        briefing = ""
+    briefing, _summary = compose_briefing(app)
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce. La leggono, col

@@ -468,30 +468,10 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     # detto, la casa, cosa e' notevole adesso e cosa la casa fa da sola.
     #
     # Se il nucleo non ha di che comporsi (anagrafe mai letta) `compose()` non
-    # tace: lo dichiara nel testo stesso. Un silenzio non dichiarato e'
-    # indistinguibile da un'assenza di problemi.
-    #
-    # Fix E1-①: `compose_briefing()` non e' protetta, e legge `memory_store`
-    # (SQLite): puo' sollevare su un `memoria.db` corrotto o in lock. Senza
-    # questo try/except ogni `POST /api/chat` risponderebbe 500. Il ripiego
-    # non e' una stringa vuota (che `if briefing_text:` scarterebbe, e che il
-    # modello leggerebbe come "casa vuota" invece che "guasto"): dichiara il
-    # guasto, come il nucleo fa per i registri caduti (`non_disponibili`) e
-    # per lo stato inaffidabile (`stato_non_letto`).
-    try:
-        briefing_text, _briefing_summary = compose_briefing(app, house)
-    except Exception as exc:
-        logger.warning("composizione del nucleo fallita, la chat risponde senza: %s", exc)
-        briefing_text = (
-            "## Cio' che HIRIS ignora\n"
-            "- il nucleo non si e' potuto comporre: un archivio della casa o "
-            "della memoria e' guasto o non leggibile in questo momento. "
-            "Nessuna delle sezioni che normalmente lo precedono (la casa, "
-            "cio' che e' notevole adesso, cio' che la casa fa da sola, cio' "
-            "che le persone hanno detto) e' disponibile in questo turno. "
-            "Non e' una casa vuota -- e' un guasto: dillo a chi ti ha "
-            "scritto, non rispondere come se conoscessi la casa."
-        )
+    # tace: lo dichiara nel testo stesso. E se un archivio e' guasto lo
+    # dichiara `compose_briefing`, che non solleva (D-64): la stessa frase per
+    # la chat, la promessa e GET /api/briefing.
+    briefing_text, _briefing_summary = compose_briefing(app, house)
     # La sezione «Chi ti sta parlando» va PRIMA di tutto (spec §5): il
     # modello deve sapere chi ha scritto prima ancora di leggere la casa.
     context_parts: list[str] = [

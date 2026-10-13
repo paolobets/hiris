@@ -13,6 +13,7 @@ proprie parole e sparirebbe dal censimento invece di comparire come solo-test.
 """
 from __future__ import annotations
 
+import logging
 import time
 
 from aiohttp import web
@@ -23,6 +24,8 @@ from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
 from ..home_space.render import render_entity
 from ..proxy.state_translations import read_for_house
+
+logger = logging.getLogger(__name__)
 
 #: Cio' che l'albero toglie dalla resa media di un'entita' (Tappa 9, F5, D1),
 #: ognuno col suo perche': `area` e' il ramo in cui l'entita' sta, lo stesso
@@ -224,8 +227,30 @@ def house_of(app) -> House:
     return House.read(app.get("home_space_store"), app.get("entity_cache"))
 
 
+#: Il nucleo che non si e' potuto comporre, detto al modello (D-64). Non e'
+#: una stringa vuota -- il modello la leggerebbe come una casa vuota, e la
+#: chat la scartava -- ma il guasto, come il nucleo dichiara i registri caduti
+#: e lo stato non letto. Una frase sola per tutte le porte: la chat, le due
+#: strade della promessa e GET /api/briefing.
+BRIEFING_FAILED = (
+    "## Cio' che HIRIS ignora\n"
+    "- il nucleo non si e' potuto comporre: un archivio della casa o "
+    "della memoria e' guasto o non leggibile in questo momento. "
+    "Nessuna delle sezioni che normalmente lo precedono (la casa, "
+    "cio' che la casa fa da sola, cio' che le persone hanno detto) "
+    "e' disponibile in questo turno. Non e' una casa vuota -- e' un "
+    "guasto: dillo a chi ti ha scritto, non rispondere come se "
+    "conoscessi la casa."
+)
+
+
 def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
+
+    **Non solleva mai** (D-64, Chiusura, 13/10/2026): un archivio guasto o in
+    lock diventa `BRIEFING_FAILED`, col suo riepilogo, qui e solo qui. Fino a
+    quel giorno la chat lo dichiarava con un testo suo, la promessa
+    ripiegava su "" in silenzio e GET /api/briefing rispondeva 500.
 
     Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo),
     da `handlers_chat.compose_chat_context` (il contesto che il modello
@@ -242,6 +267,24 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     anagrafe e lo STESSO specchio, e la gerarchia si costruisce una volta.
     Senza, se ne legge una qui.
     """
+    try:
+        return _compose_briefing(app, house)
+    except Exception as exc:
+        logger.warning("composizione del nucleo fallita (%s: %s)",
+                       type(exc).__name__, exc)
+        # Il riepilogo non mente su cio' che il testo non contiene: i ricordi
+        # esclusi non si sanno (`None`, la pagina scrive «—»), e il guasto e'
+        # l'unica lacuna dichiarata.
+        return BRIEFING_FAILED, {
+            "chars": len(BRIEFING_FAILED), "truncated": False,
+            "excluded_memories": None, "faults": [],
+            "notices": [("il nucleo non si e' potuto comporre: un archivio della "
+                         "casa o della memoria e' guasto o non leggibile")],
+        }
+
+
+def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
+    """La lettura degli archivi e la composizione: vedi `compose_briefing`."""
     if house is None:
         house = house_of(app)
     home_space_store = app.get("home_space_store")
