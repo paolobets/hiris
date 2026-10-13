@@ -218,7 +218,8 @@ veridicita' della soluzione»).
    l'obiettivo «in vigore dal»; la memoria ricavata da analisi e proposte, con `novita` nella
    risposta. **Cambia la domanda dell'analista di produzione** senza dargli ancora gli strumenti
    per scavare (Task 3.6): **si unisce insieme al 3.6** (deciso dal proprietario il 06/10/2026). Dallo stesso giorno «nuova» la scrive il codice, e la ripetizione con la stessa prova si toglie invece di rifiutare l'analisi (D4 cambiata, giro 12 del revisore).
-   D-33 si chiude dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
+   D-33 e' trasferita qui dal registro (fetta F0 della Chiusura, 13/10/2026): il lavoro si chiude
+   dal vivo, quando la misura delle ripetizioni (Task 3.0 Passo 3) scende.
    *Da fare col collegamento del 3.6, o alla Chiusura (giro 66 del revisore, N65-2, 06/10/2026):*
    il «rimetti» dell'analista valida solo la forma dell'`entity_id` (`analyst_turn._back_in`), e
    `analyst.bring_back` lo scrive con autore analista. Un id che la casa oggi non ha diventa cosi'
@@ -316,10 +317,8 @@ reso ripetibile (come le 28 domande della chat) e lanciato prima e dopo ogni str
 **Dopo, non prima**: la riprogettazione della pagina dell'osservatore (analisi di leggibilita' in
 `docs/superpowers/audit-2026-10-01/pagina.md`). Ridisegnarla adesso vorrebbe dire presentare meglio
 un contenuto che non regge.
-Quando la si ridisegna, porta con se' due voci del registro dei doppioni spostate qui dalla Tappa 4
-dello sprint (D10, decisione del proprietario del 05/10/2026): **C-25** (nomi che collidono e notizie
-con due nomi nella pagina) e **C-27** (cronaca e primo piano: lo stesso fatto in piu' voci). Si
-chiudono nel registro con `python scripts/registro.py chiudi`, quando la copia e' uscita.
+Il lavoro ha la sua voce, «La pagina dell'osservatore si riprogetta, dopo gli attori», che porta
+anche **C-25** e **C-27** del registro dei doppioni.
 
 **Argomenti di analisi per il refactor degli attori, dal confronto con i progetti «Jarvis» (02/10/2026).**
 `origine: il proprietario, 02/10/2026 («queste idee possono essere fondamentali»)` · studio in
@@ -421,7 +420,9 @@ Misurato in casa il 02/10/2026: le 21 ricette archiviate usano 7 operazioni, nes
 
 **Da decidere col refactor degli attori**: se l'analista risponde alle sette domande con queste
 operazioni (e allora serve chi gli consegna periodi e letture), o se le domande si servono in un
-altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78.
+altro modo e le dieci escono. Voci del registro dei doppioni: M-12, M-14, M-64, M-65, M-78
+(M-14 trasferita qui dalla fetta F0 della Chiusura, 13/10/2026: `Operation.refuses_when` e le forme
+`SHAPE_*` restano per il refactor degli attori).
 
 **Deciso dal proprietario il 06/10/2026 (D7 del piano strati 3-4): escono otto, restano due per la
 presenza.** Escono `quante_volte`, `quando_succede`, `misure_durante`, `dentro`, `somma_entita`,
@@ -1227,8 +1228,26 @@ in linea (conto del piano della Tappa 4, grep sul codice del 04/10/2026). Il det
 sistemi di variabili sta nel registro v1, fuori da git (`docs/superpowers/audit-2026-10-01/`).
 
 Esce dallo sprint perche' non e' un doppione di dati: e' un doppione di forma, e la sua cura e' un
-lavoro sui fogli. Prima di toccarli si interpella `ux-ui-specialist`. Nel registro si chiude con
-`python scripts/registro.py chiudi C-24`, quando la copia e' uscita.
+lavoro sui fogli. Prima di toccarli si interpella `ux-ui-specialist`.
+
+Porta con se' anche **M-37** (classi CSS definite e mai citate; `hiris-config-override.css` quasi
+tutto vecchia interfaccia), trasferita qui dalla fetta F0 della Chiusura dello sprint (decisione del
+proprietario del 13/10/2026). Le due voci stanno sotto «Trasferite» nel registro dei doppioni e si
+riaprono qui: quando la copia e' uscita, il lavoro si chiude in questa voce.
+
+### La pagina dell'osservatore si riprogetta, dopo gli attori — aperta il 13/10/2026
+
+`origine: il registro dei doppioni, voci C-25 e C-27, trasferite dalla fetta F0 della Chiusura dello sprint (decisione del proprietario del 13/10/2026)` · analisi di leggibilita' in `docs/superpowers/audit-2026-10-01/pagina.md` (fuori da git)
+
+La pagina dell'osservatore si ridisegna **dopo** che gli attori si sono riparati (voce «Gli attori
+si riparano dal basso, e l'attuatore e' in pausa»): ridisegnarla prima vorrebbe dire presentare
+meglio un contenuto che non regge. Porta con se' due voci del registro, spostate dalla Tappa 4 (D10,
+05/10/2026) e trasferite qui il 13/10/2026:
+
+- **C-25** — nomi che collidono e notizie con due nomi nella pagina;
+- **C-27** — cronaca e primo piano: lo stesso fatto in piu' voci.
+
+Prima di disegnare si interpella `ux-ui-specialist`.
 
 ### La storia, con la stessa forma — la fetta successiva a «una porta sola» — **USCITA con la v3.72.0** (30/09/2026); resta la verifica dal vivo
 
