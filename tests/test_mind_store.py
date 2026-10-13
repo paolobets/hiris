@@ -1319,7 +1319,7 @@ def _json_loads_in_store() -> tuple[list[str], list[str]]:
                 and node.func.attr == "loads"
                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "json"):
             where = f"{'.'.join(owners) or '<modulo>'}:{node.lineno}"
-            if any(o == "_json_column" or o.startswith("_migration_") or o in steps
+            if any(o.startswith("_migration_") or o in steps
                    for o in owners):
                 allowed.append(where)
             else:
@@ -1334,19 +1334,21 @@ def _json_loads_in_store() -> tuple[list[str], list[str]]:
 def test_le_letture_json_dello_store_passano_tutte_dal_lettore_unico():
     """C-48: quattro letture con la guardia e sette senza, e con una riga
     storta `proposals()` faceva cadere l'intera `GET /api/constructions`. Ogni
-    lettura passa da `_json_column`; le migrazioni tengono i loro, perche'
-    devono dire fra due anni la stessa cosa.
+    lettura passa da `_json_column`, cioe' dalla guardia di tutti gli archivi
+    (`storage.json_column`, C-68): in questo file il JSON lo leggono solo le
+    migrazioni, che tengono i loro, perche' devono dire fra due anni la
+    stessa cosa.
 
-    La prova vede ancora qualcosa: il lettore e le migrazioni che leggono JSON
-    (8, 9, 14) ci sono, o la derivazione si e' rotta e la prova direbbe si'
-    guardando il vuoto.
+    La prova vede ancora qualcosa: le migrazioni che leggono JSON (8, 9, 14)
+    ci sono, o la derivazione si e' rotta e la prova direbbe si' guardando il
+    vuoto.
 
     Mutazione ESEGUITA: `json.loads(r[6])` rimesso in `proposals` -- rossa qui
     e in `test_constructions_api` (la rotta torna a cadere)."""
     allowed, outside = _json_loads_in_store()
     assert outside == []
     owners = {where.split(":")[0].split(".")[-1] for where in allowed}
-    assert {"_json_column", "_migration_8", "_migration_9", "_migration_14"} <= owners
+    assert {"_migration_8", "_migration_9", "_migration_14"} <= owners
 
 
 def _guasta(store, sql: str, *args) -> None:
@@ -1364,9 +1366,9 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, ca
     rossa sul conteggio delle righe dette."""
     import logging
 
-    from hiris.app.mind import store as modulo
+    from hiris.app import storage
 
-    modulo._unreadable_told.clear()
+    storage._unreadable_told.clear()
     store = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         buona = store.add_proposal(text="a", perche="p", fingerprint="f1", prova={"v": 1},
@@ -1381,7 +1383,7 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_lo_dice_una_volta(tmp_path, ca
         store.replace_analysis("2026-09-02", {"osservazioni": []})
         _guasta(store, "UPDATE analisi SET corpo_json = 'x' WHERE giorno = '2026-09-02'")
 
-        with caplog.at_level(logging.WARNING, logger="hiris.app.mind.store"):
+        with caplog.at_level(logging.WARNING, logger="hiris.app.storage"):
             assert [p["id"] for p in store.proposals()] == [buona]
             assert [p["id"] for p in store.proposals()] == [buona]
             assert store.proposal(rotta) is None
@@ -1599,7 +1601,7 @@ def test_migration_15_marca_regole_null_e_porta_l_obiettivo_a_riferimento(tmp_pa
     import logging
 
     percorso = _resoconti_v14(tmp_path)
-    with caplog.at_level(logging.WARNING, logger="hiris.app.mind.store"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.storage"):
         riaperto = ObservationsStore(percorso)
     try:
         letti = {g: riaperto.report(g) for g in ("2026-08-26", "2026-08-27",
