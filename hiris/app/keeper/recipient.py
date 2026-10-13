@@ -219,7 +219,7 @@ async def recipients_for(subject: dict | None, ha, services) -> Recipients:
         # `app.get("ha_client")`): prima lo copriva l'`except` attorno alla
         # lettura, che il client non solleva piu' (D3).
         return Recipients((), _REASON_HA_DOWN)
-    states = await ha.get_states([])
+    states = await ha.get_states()
     if not isinstance(states, list):
         # Solo la CAUSA del guasto, mai il suo testo: un messaggio di
         # rete puo' portare dentro di se' un frammento della richiesta che

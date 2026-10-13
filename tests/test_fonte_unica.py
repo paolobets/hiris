@@ -587,9 +587,9 @@ def test_il_cancello_vede_la_chiamata_l_alias_e_il_getattr():
     (l'alias e il `getattr` non si contano: 1 invece di 3)."""
     counted = count_in(_fake_product(
         "async def f(ha):\n"
-        "    await ha.get_states([])\n"
+        "    await ha.get_states()\n"
         "    leggi = ha.get_states\n"
-        "    return await getattr(ha, 'get_states')([])\n"))
+        "    return await getattr(ha, 'get_states')()\n"))
     assert counted["letture-del-client"] == {"hiris/app/mind/prova.py": {"get_states": 3}}
 
 

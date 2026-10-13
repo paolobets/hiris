@@ -229,7 +229,7 @@ async def test_il_rifiuto_conserva_il_motivo_e_il_codice_di_home_assistant():
 
 @pytest.mark.asyncio
 async def test_il_rifiuto_REST_porta_lo_stato_http():
-    answer = await CasaFinta({}, refuse={"/api/states": 500}).get_states(["light.a"])
+    answer = await CasaFinta({}, refuse={"/api/states": 500}).get_states()
     assert answer["codice"] == 500
     assert answer["causa"] == "rifiuto"
 
@@ -253,9 +253,3 @@ async def test_una_domanda_malformata_non_parte():
     answer = await house.history(["non valido"], "a", "b")
     assert _is_envelope(answer, "richiesta")
     assert house.connections == []
-
-
-@pytest.mark.asyncio
-async def test_get_states_filtra_ancora():
-    house = CasaFinta({"states": [{"entity_id": "light.a"}, {"entity_id": "light.b"}]})
-    assert await house.get_states(["light.b"]) == [{"entity_id": "light.b"}]

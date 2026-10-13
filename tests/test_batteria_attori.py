@@ -385,7 +385,8 @@ def test_la_batteria_intera_su_una_casa_finta(monkeypatch, capsys):
         return _json.dumps(answers[path]).encode()
 
     async def fake_read(method, *args):
-        assert method == "get_states"
+        # Gli argomenti che il client vero accetta: nessuno (M-55).
+        assert (method, args) == ("get_states", ())
         return [{"entity_id": "sensor.vivo"}]
 
     monkeypatch.setattr(casa, "hiris_get", fake_get)

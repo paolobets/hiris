@@ -520,19 +520,22 @@ class HAClient:
             return _silence(exc)
 
     @cost(rest=1)
-    async def get_states(self, entity_ids: list[str]) -> list[dict] | dict:
-        """Gli stati della casa, tutti (`[]`) o quelli chiesti: una lista, o la
-        busta del guasto. Non solleva (D3, 03/10/2026: prima sollevava, unico
-        con `get_services` fra le letture)."""
+    async def get_states(self) -> list[dict] | dict:
+        """Gli stati della casa, tutti: una lista, o la busta del guasto. Non
+        solleva (D3, 03/10/2026: prima sollevava, unico con `get_services` fra
+        le letture).
+
+        Fino al 13/10/2026 prendeva gli `entity_ids` da tenere, e filtrava qui
+        dopo aver letto l'intero `/api/states`: nessun chiamante di produzione
+        lo usava (passavano tutti `[]`), e chi vuole uno stato per id lo chiede
+        allo specchio (`EntityCache.get`). Il ramo e' uscito (M-55, F1 della
+        Chiusura)."""
         reply = await self._rest_get("/api/states")
         if "errore" in reply:
             return reply
         all_states = reply["corpo"]
         if not isinstance(all_states, list):
             return _failure(SHAPE, "gli stati non sono arrivati come elenco")
-        if entity_ids:
-            return [s for s in all_states
-                    if isinstance(s, dict) and s.get("entity_id") in entity_ids]
         return all_states
 
     @cost(rest=1)
