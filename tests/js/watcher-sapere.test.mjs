@@ -1005,8 +1005,8 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
 });
 
 test('seam _rendiSapere: in «Correzioni» ogni riga dice QUALE campo è', () => {
-  /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
-     Corretto da Paolo» vale identica per `lavoro` e per `da_sapere_subito`.
+  /* Senza, due righe dello stesso soggetto non dicono quale campo correggono:
+     «lock · no» e «lock · {"locking": …}» sono `da_sapere_subito` e `lavoro`.
      Mutazione che la uccide: togliere il campo dalla riga. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [

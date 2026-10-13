@@ -147,9 +147,10 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* L'etichetta italiana di un campo, dall'elenco qui sopra: serve alla riga di
-     «Correzioni», dove righe di campi diversi stanno mescolate e
-     «lock · no · Corretto da Paolo» non distingue `lavoro` da
-     `da_sapere_subito` (revisione finale, I-4). Un campo sconosciuto torna
+     «Correzioni», dove righe di campi diversi stanno mescolate e, senza il
+     nome del campo, non si distinguono: «lock · no» e «lock · {"locking": …}»
+     sono `da_sapere_subito` e `lavoro` dello stesso soggetto, e niente lo
+     dice (revisione finale, I-4). Un campo sconosciuto torna
      com'è scritto: meglio il nome tecnico che il silenzio. */
   function judgmentFieldLabel(campo) {
     for (var i = 0; i < JUDGMENT_FIELD_GROUPS.length; i += 1) {
@@ -478,9 +479,10 @@ window.HirisWatcherSapere = (function () {
      `<table>` (CSS: `.jr-row` in hiris-config.css).
 
      `mostraCampo` (revisione finale, I-4): in «Correzioni» righe di
-     campi diversi stanno mescolate, e senza il nome del campo «lock · no ·
-     Corretto da Paolo» vale identica per `lavoro` e per `da_sapere_subito` --
-     chi legge non sa cosa ha corretto. Dentro «I giudizi del seme» il campo è
+     campi diversi stanno mescolate, e senza il nome del campo non si
+     distinguono: «lock · no» e «lock · {"locking": …}» sono
+     `da_sapere_subito` e `lavoro` dello stesso soggetto -- chi legge non sa
+     cosa ha corretto. Dentro «I giudizi del seme» il campo è
      già il titolo del gruppo e ripeterlo su ogni riga sarebbe rumore. */
   function judgmentRow(g, outerBody, mostraCampo) {
     var riga = el('div', 'sc-row jr-row');
