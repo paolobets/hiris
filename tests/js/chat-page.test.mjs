@@ -424,7 +424,7 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
       return { ok: true, status: 200, json: async () => ({ messages: [
         { role: 'user', content: 'ciao' },
         { role: 'assistant', content: 'risposta salvata' },
-      ] }) };
+      ], turni: 1 }) };
     }
     return { ok: true, status: 200, json: async () => ({}) };
   };
@@ -439,6 +439,26 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
     'il welcome si nasconde quando c\'e\' history');
   assert.equal(window.HirisChatState.turnCount, 1,
     'un turno utente contato dalla history ricaricata');
+});
+
+test('il contatore dei turni viene dal server, non dalla storia tagliata (C-15)', async (t) => {
+  /* La storia arriva tagliata a 30 coppie; il tetto conta l'intera
+     conversazione. Mutazione ESEGUITA il 13/10/2026: il conteggio sui
+     `messages` rimesso in chat/agents.js -- rossa (1 contro 31). */
+  const { window } = setupChat(t);
+  window.fetch = async (url) => {
+    if (String(url).includes('/history')) {
+      return { ok: true, status: 200, json: async () => ({ messages: [
+        { role: 'user', content: 'trentunesima' },
+        { role: 'assistant', content: 'risposta' },
+      ], turni: 31 }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+
+  await window.HirisChatAgents.restore();
+
+  assert.equal(window.HirisChatState.turnCount, 31);
 });
 
 // ---------------------------------------------------------------------------
