@@ -310,8 +310,7 @@ class House:
     def _entity_index(self) -> dict[str, dict]:
         """Le voci dell'anagrafe per id, nell'ordine dell'anagrafe; una volta."""
         if self._entities is None:
-            self._entities = {e["id"]: e for e in self.home_space.get("entita") or []
-                              if isinstance(e, dict) and e.get("id")}
+            self._entities = topology.entity_index(self.home_space)
         return self._entities
 
     def entry(self, entity_id: str) -> dict | None:

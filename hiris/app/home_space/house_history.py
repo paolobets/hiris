@@ -30,6 +30,7 @@ import asyncio
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -1447,7 +1448,7 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
                       attributes=mirror.attributes)
 
 
-def run_key(cache, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
+def run_key(cache, ident: str, entry: Callable[[str], dict | None]) -> tuple[str, str] | None:
     """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,
     o `None` se non si risolve (e allora non si chiede: `trace/list` con
     una chiave sconosciuta torna `[]`, che si leggerebbe «mai partita» --
@@ -1466,12 +1467,12 @@ def run_key(cache, ident: str, registry: dict[str, dict]) -> tuple[str, str] | N
     if domain == "automation":
         config_id = automation_config_id(cache, ident)
         return ("automation", config_id) if config_id else None
-    unique_id = (registry.get(ident) or {}).get("unique_id")
+    unique_id = (entry(ident) or {}).get("unique_id")
     key = unique_id or object_id
     return ("script", str(key)) if key else None
 
 
-async def read_runs(ha, query: HistoryQuery, chosen: Chosen, home: dict, *,
+async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
                     cache, seal) -> dict:
     """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
     (`run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
@@ -1490,10 +1491,10 @@ async def read_runs(ha, query: HistoryQuery, chosen: Chosen, home: dict, *,
         fault = unreadable_inventory_error(cache)
         if fault is not None:
             return {"errore": fault["error"]}
-    # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
-    # seconda lettura.
-    registry = {e.get("id"): e for e in home.get("entita") or []}
-    keys = {s.ident: run_key(cache, s.ident, registry) for s in chosen.subjects}
+    # La casa che `choose` ha gia' letto: la stessa, e la sua voce per id
+    # (`House.entry`), non un secondo indice rifatto qui (A-16, F1 della
+    # Chiusura, 13/10/2026).
+    keys = {s.ident: run_key(cache, s.ident, house.entry) for s in chosen.subjects}
     if query.run_id is not None:
         subject = chosen.subjects[0]
         key = keys[subject.ident]
@@ -1585,14 +1586,14 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     di questa funzione."""
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal)
-    mirror, home = house.mirror, house.home_space
+    mirror = house.mirror
     chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):
         return chosen
     if not chosen.subjects:
         return empty_answer(query, chosen)
     if query.kind == "esecuzioni":
-        return await read_runs(ha, query, chosen, home, cache=cache, seal=seal)
+        return await read_runs(ha, query, chosen, house, cache=cache, seal=seal)
     if query.kind == "valori":
         response = await read_values(ha, query, chosen, mirror)
     else:
