@@ -40,6 +40,7 @@ from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_invent
 from ..proxy.ha_client import SHAPE, _failure
 from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
+from .counts import hourly_consumed, hourly_mean_min_max
 from .historian import (
     day_boundaries,
     home_space_zone,
@@ -703,7 +704,8 @@ def _band_counts(bands: list[dict], state_class) -> dict | None:
     (gia' corretto per gli azzeramenti, misurato il 27/08/2026) e NESSUNA
     media: la media delle letture di fine ora di un contatore non dice niente
     (revisione del Task 4, 30/09/2026). Una misura ha `media`, `minimo`,
-    `massimo` di ogni ora -- ore di peso uguale."""
+    `massimo` di ogni ora -- ore di peso uguale. Le regole dei conti stanno in
+    `counts` (B-13), le stesse delle operazioni delle ricette."""
     if state_class in _COUNTERS:
         states = [x for x in (_number(b.get("a_fine_ora")) for b in bands) if x is not None]
         if not states:
@@ -712,15 +714,15 @@ def _band_counts(bands: list[dict], state_class) -> dict | None:
                   "massimo": max(states)}
         changes = [x for x in (_number(b.get("cambio")) for b in bands) if x is not None]
         if changes:
-            counts["consumato"] = _round(sum(changes))
+            counts["consumato"] = _round(hourly_consumed(changes))
         return counts
-    means = [x for x in (_number(b.get("media")) for b in bands) if x is not None]
-    if not means:
+    hours = [(mean, _number(b.get("minimo")), _number(b.get("massimo")))
+             for b in bands if (mean := _number(b.get("media"))) is not None]
+    found = hourly_mean_min_max(hours)
+    if found is None:
         return None
-    lows = [x for x in (_number(b.get("minimo")) for b in bands) if x is not None]
-    highs = [x for x in (_number(b.get("massimo")) for b in bands) if x is not None]
-    return {"primo": means[0], "ultimo": means[-1], "minimo": min(lows or means),
-            "massimo": max(highs or means), "media": _round(sum(means) / len(means))}
+    return {"primo": hours[0][0], "ultimo": hours[-1][0], "minimo": found["minimo"],
+            "massimo": found["massimo"], "media": _round(found["media"])}
 
 
 def _band_activity(bands: list[dict]) -> float | None:
