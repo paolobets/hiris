@@ -33,6 +33,7 @@ prove sono uscite col Task 5, quando le sei copie sono diventate una):
 
 """
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import sonda_parita
-from _casa_sintetica import synthetic_inputs
+from _casa_sintetica import _entity, synthetic_inputs
+
+from hiris.app.home_space import house_query
 
 CLOCK = 1_790_000_000.0
 
@@ -182,3 +185,60 @@ def test_la_fonte_senza_servizi_non_finge_di_aver_chiesto():
     outcome = sonda_parita.run(sonda_parita.build_inputs(inputs, clock=CLOCK))
     assert outcome["fonte"]["disaccordi"] is None
     assert "servizi" in outcome["fonte"]["errore"]
+
+
+# ── `riferimenti`: la ricerca e la scheda trovano la stessa integrazione ──────
+#
+# I 4 disaccordi della casa vera (M0.4, 13/10/2026: un'integrazione sola, in
+# tutte e quattro le varianti, «esatto» compreso; 69 entita' su 69
+# disabilitate con `disabled_by: config_entry`, e `search` che risponde
+# `trovate: 0, escluse: {disabilitate: 69}`) non erano maiuscole o spazi: la
+# sonda contava solo le righe, e una ricerca che dice «ci sono, ma sono
+# disabilitate» l'integrazione l'ha trovata (D7: le disabilitate non escono
+# mai come righe, si contano). Le due prove di mutazione qui sotto tengono la
+# domanda discriminante sulle due cose che deve vedere.
+
+def _integration_all_disabled() -> dict:
+    """La casa sintetica con un'integrazione le cui entita' sono tutte
+    disabilitate dalla voce di configurazione, come sulla casa vera."""
+    raw = synthetic_inputs()
+    raw["registries"]["entita"].append(_entity(
+        "sensor.marca_tre_spento", "marca_tre", original_name="Spento",
+        disabled_by="config_entry"))
+    return raw
+
+
+def test_riferimenti_su_un_integrazione_tutta_disabilitata_non_discorda():
+    verdict = sonda_parita.references(sonda_parita.build_inputs(
+        _integration_all_disabled(), clock=CLOCK))
+    assert verdict["disaccordi"] == 0, verdict["casi"]
+    assert verdict["integrazioni"] == 4
+
+
+def test_riferimenti_vede_una_ricerca_che_tace_le_escluse(monkeypatch):
+    """Lo stato difettoso: una ricerca che non dice piu' cosa ha escluso. La
+    scheda trova l'integrazione, la ricerca no, in tutte le varianti."""
+    select = sonda_parita.House.select
+
+    def without_excluded(self, *args, **kwargs):
+        chosen = select(self, *args, **kwargs)
+        return replace(chosen, excluded=dict.fromkeys(chosen.excluded, 0))
+
+    monkeypatch.setattr(sonda_parita.House, "select", without_excluded)
+    verdict = sonda_parita.references(sonda_parita.build_inputs(
+        _integration_all_disabled(), clock=CLOCK))
+    assert {(case["id"], case["variante"]) for case in verdict["casi"]} == {
+        ("marca_tre", variant)
+        for variant in ("esatto", "capitalizzato", "maiuscolo", "con spazi")}
+
+
+def test_riferimenti_vede_una_ricerca_che_distingue_le_maiuscole(monkeypatch):
+    """Lo stato di prima del Task 9 della Tappa 3: l'integrazione confrontata
+    esatta. «Marca_uno», «MARCA_UNO» e « marca_uno » non trovano piu' niente,
+    la scheda si'."""
+    monkeypatch.setattr(house_query, "normalize", lambda text: text)
+    verdict = sonda_parita.references(sonda_parita.build_inputs(
+        synthetic_inputs(), clock=CLOCK))
+    variants = {case["variante"] for case in verdict["casi"]
+                if case["genere"] == "integrazione"}
+    assert variants == {"capitalizzato", "maiuscolo", "con spazi"}, verdict["casi"]
