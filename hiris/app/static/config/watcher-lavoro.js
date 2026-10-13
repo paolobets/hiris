@@ -463,7 +463,7 @@ window.HirisWatcherLavoro = (function () {
       return;
     }
     /* Tecnico e' un soggetto con un prefisso (`log:`, `problema:`,
-       `integrazione:`, `automazione:`): non e' un'entita' della casa, e
+       `integrazione:`, `automazione:`): non e' una cosa della casa, e
        nessuno lo ha scelto. La regola e' quella che la pagina usa gia'
        ovunque per riconoscerli (`parseSubjectPrefix`). */
     var tecnici = watching.filter(function (v) { return !!parseSubjectPrefix(v.soggetto).kind; });
