@@ -111,7 +111,7 @@ _RETENTION_DAYS = 90
 CONSERVAZIONE: Retention = {
     "costruzioni": (
         _RETENTION_DAYS,
-        ("le proposte di costruzione e le versioni: la pagina Costruzioni le "
+        ("le proposte di costruzione e le versioni: la pagina Proposte le "
          "mostra, e «Rimetti com'era» rilegge il «prima»; l'ultima applicata "
          "di ogni oggetto e le incerte restano, perche' portano l'unico «prima» "
          "rimasto"),

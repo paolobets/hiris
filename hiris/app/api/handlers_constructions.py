@@ -1,4 +1,4 @@
-"""Le cinque rotte della pagina Costruzioni.
+"""Le cinque rotte della pagina Proposte (le rotte restano `constructions`, C-18).
 
 Non serializzano niente per conto proprio: la forma di una costruzione e' UNA
 e vive in `action/construction/revisions.py::_row`, gia' usata dall'archivio.

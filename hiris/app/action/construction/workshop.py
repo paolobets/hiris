@@ -84,7 +84,7 @@ _UNKNOWN_ID = unknown_id_text("nessuna proposta")
 #: cosa che esiste gia', bruciando un posto sotto il tetto per un doppione.
 #: Non le nomina (decisione 4): dice solo che una pagina le mostra.
 _ORPHANS_ELSEWHERE = ("ci sono proposte in sospeso che non sono nate in questa "
-                     "conversazione: si confermano dalla pagina Costruzioni.")
+                     "conversazione: si confermano dalla pagina Proposte.")
 
 OPERATIONS = ("crea", "modifica", "cancella")
 
@@ -727,7 +727,7 @@ class Workshop:
         # porta un turno -- la pagina.
         if not exchange or not proposal["turno"]:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
-                    "apri la pagina Costruzioni e conferma di la'.")
+                    "apri la pagina Proposte e conferma di la'.")
         if proposal["turno"] == exchange:
             return _BORN_THIS_TURN
         return None
@@ -1148,7 +1148,7 @@ class Workshop:
         spec, non un ramo dormiente.
         """
         if actor not in HUMAN_ACTORS:
-            return refused("un ripristino si conferma dalla pagina Costruzioni.")
+            return refused("un ripristino si conferma dalla pagina Proposte.")
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))

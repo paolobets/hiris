@@ -1754,7 +1754,8 @@ async def test_una_proposta_senza_filo_non_entra_nella_scelta_implicita_di_un_fi
     esito = await officina.apply(None, actor="chat", exchange="t2",
                                  thread=PAOLO, now=ADESSO + 60)
     assert "errore" in esito
-    assert "pagina Costruzioni" in esito["errore"]
+    assert "pagina Proposte" in esito["errore"]
+    assert "Costruzioni" not in esito["errore"]  # C-18: il menu dice «Proposte»
     assert "dimmi cosa vuoi" not in esito["errore"]
 
 
