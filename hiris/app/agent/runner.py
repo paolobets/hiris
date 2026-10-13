@@ -813,11 +813,11 @@ MAX_INVOCATIONS_PER_EXCHANGE = 2
 class StreamOccurrence:
     """Cio' che si ricava da uno stdout `stream-json`.
 
-    - `testo`: il campo `result` dell'evento finale `{"type": "result"}`;
+    - `text`: il campo `result` dell'evento finale `{"type": "result"}`;
     - `init`: l'evento `{"type": "system", "subtype": "init"}` INTERO (o
-      `None`). Porta `mcp_servers` e la lista `tools` risolta: in questo task
-      si logga soltanto -- ci decidera' sopra il Task 4, e per farlo gli serve
-      il dato intero, non un riassunto;
+      `None`). Porta `mcp_servers` e la lista `tools` risolta: ci decide
+      sopra `verify_init` (gli strumenti attesi ci sono davvero?), e per
+      farlo gli serve il dato intero, non un riassunto;
     - `usage`: il blocco `usage` del risultato (o `{}`) -- la misura che chiude
       la domanda aperta 2 (costo del prefisso) dopo la prima settimana di UAT,
       invece di lasciarla a un'opinione;
@@ -826,23 +826,23 @@ class StreamOccurrence:
       di rumore senza che la risposta vada persa, ma il fatto non sparisce;
     - `lines_read`: quante righe non vuote sono arrivate (distingue un flusso
       VUOTO da un flusso pieno di rumore);
-    - `risultato`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
+    - `result`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
       silenzio dichiarato (3) della fetta e non deve mai diventare una stringa
       vuota in silenzio: sarebbe indistinguibile da "il modello non ha risposto
       niente";
     - `tools_called`: fetta "il ponte riceve gli strumenti" (parita' B, Task 5).
       I blocchi `tool_use` degli eventi `assistant`, NELL'ORDINE in cui la CLI
       li ha emessi -- `[{"tool": nome, "input": argomenti}, ...]`, la STESSA
-      forma di `handlers_chat.py` (ramo sincrono): una lista sola da rendere
-      per la UI della E5, non due. Lista VUOTA (mai `None`) quando nessuno
+      forma di `handlers_chat.py` (ramo sincrono): una lista sola, che la
+      chat rende e i raccoglitori degli attori leggono, non due. Lista VUOTA (mai `None`) quando nessuno
       strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
       dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
       (`mcp__hiris__remember`), MAI normalizzato: normalizzarlo nasconderebbe il
-      caso -- il solo che conta per questo task -- in cui il modello chiama
+      caso in cui il modello chiama
       qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
       `is_error: true`, la voce guadagna una terza chiave, `"is_error": True`:
-      cosi' una chiamata riuscita (esito arrived, senza errore) resta
+      cosi' una chiamata riuscita (esito arrivato, senza errore) resta
       bit-per-bit la stessa forma del ramo sincrono, e una fallita resta
       DISTINGUIBILE invece di sparire nella stessa forma di una riuscita.
 
@@ -1033,18 +1033,18 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 # Fix round 1, Important: l'esito e' ARRIVATO -- si segna
                 # SEMPRE (`_risolto`), non solo quando e' un errore. E'
                 # questo marcatore, tolto qui sotto dopo il ciclo, che
-                # distingue "arrived e riuscito" da "mai arrived": senza,
+                # distingue "arrivato e riuscito" da "mai arrivato": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
                 # docstring di `StreamOccurrence.tools_called`).
                 entry["_risolto"] = True
                 if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
-                    # arrived, senza errore) resta bit-per-bit
+                    # arrivato, senza errore) resta bit-per-bit
                     # {"tool":..., "input":...}, identica alla forma del
                     # ramo sincrono (Step 2 del brief).
                     entry["is_error"] = True
     # Fix round 1, Important: le voci il cui `tool_result` non e' MAI
-    # arrived (flusso incompleto, o un `result` di errore/max-turns che
+    # arrivato (flusso incompleto, o un `result` di errore/max-turns che
     # chiude tutto con una chiamata ancora aperta) restano senza il
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
@@ -1104,7 +1104,7 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 #
 # Perche' esiste. I due campi qui sotto sono prove che non si possono ricavare
 # da nessun file del repository -- il `Dockerfile` dice cosa e' stato chiesto,
-# non cosa e' arrived -- e fino a oggi vivevano SOLO dentro una riga di log,
+# non cosa e' arrivato -- e fino a oggi vivevano SOLO dentro una riga di log,
 # leggibile nel momento in cui un turno passava. E' il motivo per cui la
 # verifica del pin 2.1.241 e' stata rimandata il 24 agosto e poi dimenticata
 # per settimane: richiedeva di essere nel posto giusto al momento giusto.
@@ -1139,7 +1139,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
       girando DAVVERO. La ragione non e' caduta col pin, e' migliorata: prima
       serviva a sapere QUALE CLI fosse capitata dentro l'immagine, perche'
       `@2` ne lasciava entrare una qualunque; adesso serve a PROVARE che il
-      pin sia arrived fino al container -- e a smascherare l'immagine
+      pin sia arrivato fino al container -- e a smascherare l'immagine
       installata piu' vecchia di quella che si crede, che il `Dockerfile` da
       solo non puo' dire.
     - `apiKeySource`: e' l'**unica prova a runtime** che questo ponte stia
@@ -1158,12 +1158,12 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     if occurrence.init is None:
         log.warning(
             "flusso stream-json senza evento system/init (job_id=%s): l'init "
-            "non e' arrived. Le cause possibili, in nessun ordine di colpa: "
+            "non e' arrivato. Le cause possibili, in nessun ordine di colpa: "
             "la CLI puo' essere morta prima di emetterlo (guardare rc e "
             "stderr, che questo modulo logga a parte), oppure --verbose non e' "
-            "arrived alla CLI, oppure il formato del flusso e' cambiato. "
+            "arrivato alla CLI, oppure il formato del flusso e' cambiato. "
             "Quando gli strumenti erano attesi questa assenza NON e' una "
-            "conferma e vale come guasto: la decide `verifica_init`", job_id)
+            "conferma e vale come guasto: la decide `verify_init`", job_id)
         return
     tools = occurrence.init.get("tools")
     # Si conserva PRIMA di loggare: la riga di log e' la misura di questo
@@ -1206,7 +1206,7 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
       perche' il prompt li nomina uno per uno.
 
     **Un `init` assente vale guasto, non successo.** Una CLI piu' vecchia, un
-    `--verbose` che non e' arrived o un formato cambiato producono la stessa
+    `--verbose` che non e' arrivato o un formato cambiato producono la stessa
     assenza: trattarla come conferma vorrebbe dire far dipendere la promessa
     del prompt da cio' che NON e' stato detto. Un'assenza non e' una conferma.
 
@@ -1219,7 +1219,7 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
     if occurrence.init is None:
         return False, ("il flusso non porta l'evento system/init: un'assenza "
                        "non e' una conferma (CLI piu' vecchia, --verbose non "
-                       "arrived, o formato cambiato)")
+                       "arrivato, o formato cambiato)")
     server = _declared_servers(occurrence)
     state = next((s.get("status") for s in server if s.get("name") == name), None)
     awaited = set(mcp_names(species))
@@ -1714,25 +1714,16 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # (primo giro, poi secondo), nella stessa lista che diventa
     # `decision["tools_called"]`.
     #
-    # Step 5 del brief -- la nota che va dichiarata, non risolta qui. La
-    # fetta A (Task 5, reasoning/queue.py::submit) azzera `context_json` a
-    # job risolto, ma NON `decision_json` -- la risposta, che serve al poll.
-    # Questa lista vive quindi in `decision["tools_called"]` e resta su
-    # disco fino alla potatura a 7 giorni, con gli INPUT GREZZI che il
-    # modello ha passato agli strumenti (presi dal blocco `tool_use` dello
-    # stream, PRIMA del dispatch -- vedi `occurrence.tools_called.append`
-    # sopra): per `remember`, `testo`, `ancore` e `condizioni`. Fix round 1
-    # (Task 6, "le chat divise"): `detto_da` non e' PIU' un input che
-    # `_remember` legge -- lo schema non lo chiede e un modello che lo mandi
-    # comunque si vede rifiutare l'intera chiamata (`_bad_arguments`) prima
-    # che `_remember` la veda. Ma questa lista accumula l'input grezzo del
-    # modello ANCHE quando il dispatch lo rifiuta: un `detto_da` (un
-    # identificativo di PERSONA) tentato dal modello resta scritto qui lo
-    # stesso, anche se non e' mai arrived all'archivio. Per `search`, la
-    # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
-    # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
-    # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
-    # della fetta A l'aveva appena tolto dal `context`.
+    # **Gli input grezzi restano nella decisione.** `submit` azzera
+    # `context_json` a turno deciso, non `decision_json`: questa lista vive in
+    # `decision["tools_called"]` con gli INPUT che il modello ha passato agli
+    # strumenti, presi dal blocco `tool_use` dello stream PRIMA del dispatch
+    # (per `remember` il `testo` e le `condizioni`, per `search` il `nome`
+    # cercato). Anche un input che il dispatch rifiuta (`_bad_arguments`)
+    # resta scritto qui. Per una chat consegnata la decisione si svuota un
+    # quarto d'ora dopo la consegna (`ReasoningQueue.forget_delivered`,
+    # reperto C-6); per i turni degli attori resta fino alla potatura a sette
+    # giorni (`reasoning/queue.CONSERVAZIONE`).
     tools_called_in_exchange: list = []
     # Il cronometro del TURNO, non di un'invocazione: `_invoca` puo' girare
     # due volte (l'evento `init` smentisce la sonda degli strumenti) e il
@@ -2080,7 +2071,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         notice = (
             f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
             "chiusa senza il messaggio finale del modello: quello che e' "
-            "arrived non e' una risposta completa, e non te la presento come "
+            "arrivato non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
             "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
