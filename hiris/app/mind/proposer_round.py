@@ -22,7 +22,7 @@ import time
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
 from ..keeper.delivery import notify_admins
-from ..reasoning.queue import JOB_DECIDED, turn_answer
+from ..reasoning.queue import turn_answer
 from ..states import SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
@@ -181,9 +181,9 @@ async def _collect(app, store, today: str) -> dict | None:
     turno e' l'ultimo della sua specie.
     """
     queue = app.get("reasoning_queue")
-    turn = (queue.latest(proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY)
+    turn = (queue.latest_if_decided(proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY)
             if queue else None)
-    if not turn or turn.get("status") != JOB_DECIDED:
+    if turn is None:
         return None
     wake = turn.get("wake") or {}
     if wake.get(ROUND_KEY) != today:

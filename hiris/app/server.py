@@ -1710,16 +1710,16 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     queue = app.get("reasoning_queue")
     if queue is None:
         return None
-    turn = queue.latest(analyst_turn.ANALYSIS_TURN_KIND)
-    if not turn:
+    turn = queue.latest_if_decided(analyst_turn.ANALYSIS_TURN_KIND)
+    if turn is None:
         return None
     # **Le due guardie che i fratelli avevano e questo no** (difetto misurato
     # sulla casa vera il 22/09/2026, sei giorni di silenzio).
     #
-    # `status`: un turno ancora `pending` non ha niente da raccogliere, e
-    # provarci produce l'esito finto «il modello non ha risposto» -- che a
-    # valle si legge come un giro gia' fatto. `_collect_recipe_turn` pretende
-    # `decided` da settimane.
+    # `status` (la fa `latest_if_decided`, qui sopra): un turno ancora
+    # `pending` non ha niente da raccogliere, e provarci produce l'esito finto
+    # «il modello non ha risposto» -- che a valle si legge come un giro gia'
+    # fatto.
     #
     # `giorno`: una risposta per un altro giorno non dice niente su oggi.
     # Il giro del proponente lo pretende da sempre.
@@ -1733,8 +1733,6 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     #
     # **Quinta occorrenza della stessa forma**: la porta salta chi ha gia' una
     # risposta, anche quando la risposta e' rotta.
-    if turn.get("status") != "decided":
-        return None
     day = (turn.get("wake") or {}).get("giorno")
     if day != today or store.analysis(day) is not None:
         return None
@@ -1947,8 +1945,8 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     queue = app.get("reasoning_queue")
     if queue is None:
         return None
-    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND)
-    if turn is None or turn["status"] != "decided":
+    turn = queue.latest_if_decided(recipe_turn.RECIPE_TURN_KIND)
+    if turn is None:
         return None
     device_id = (turn.get("wake") or {}).get("dispositivo")
     if not device_id:
@@ -2124,8 +2122,8 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     queue = app.get("reasoning_queue")
     if queue is None:
         return None, False
-    turn = queue.latest(SCOPE_TURN_KIND)
-    if turn is None or turn["status"] != "decided":
+    turn = queue.latest_if_decided(SCOPE_TURN_KIND)
+    if turn is None:
         return None, False
     last = store.last_reconsideration()
     if last is not None and last["quando_ts"] >= turn["created_ts"]:

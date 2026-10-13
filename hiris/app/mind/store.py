@@ -46,10 +46,12 @@ from ..states import (
     readable,
 )
 from ..storage import (
+    UNREADABLE,
     add_missing_columns,
     archive_name,
     connect,
     init_schema,
+    json_column,
     prune_declared,
     rebuild_table,
     table_columns,
@@ -1119,35 +1121,17 @@ ATTEMPT_EXPIRED = "scaduta"
 #: legame senza nascondere niente che qualcuno abbia scritto.
 _SEAL_KEEPS = frozenset({"impronta", "proposta_id", "turno"})
 
-#: Cio' che `_json_column` torna per un corpo che non si legge. Un oggetto e
-#: non `None`: `null` e' un JSON valido, e una riga che lo porta non e' guasta.
-_UNREADABLE = object()
-
-#: Le righe guaste gia' dette nel log, `(tabella, chiave)`: una pagina che si
-#: ricarica ogni pochi secondi non deve ripetere la stessa riga a ogni giro.
-_unreadable_told: set[tuple[str, str]] = set()
+#: L'archivio, come lo nomina il log di una riga guasta (`storage.json_column`).
+_ARCHIVE = "osservazioni"
 
 
 def _json_column(raw, *, table: str, key) -> object:
-    """Il corpo JSON di una colonna, o `_UNREADABLE` se non si legge (C-48,
-    Tappa 8). **L'unico `json.loads` delle letture di questo archivio**: lo
-    pretende `tests/test_mind_store.py`, chiedendolo ad `ast`. Le migrazioni
-    hanno i loro, perche' devono dire fra due anni la stessa cosa.
-
-    Fino alla Tappa 8 quattro letture avevano la guardia e sette no: con una
-    riga storta `proposals()` faceva cadere l'intera `GET /api/constructions`,
-    che fonde le due code. **Chi legge un elenco salta la riga guasta**, e il
-    log lo dice una volta per riga, con la tabella e la chiave per ritrovarla.
-    """
-    try:
-        return json.loads(raw)
-    except (TypeError, ValueError):
-        told = (table, str(key))
-        if told not in _unreadable_told:
-            _unreadable_told.add(told)
-            logger.warning("osservazioni: la riga %s di `%s` ha un corpo JSON "
-                           "illeggibile, e chi legge la salta", key, table)
-        return _UNREADABLE
+    """Il corpo JSON di una colonna di questo archivio, o `UNREADABLE`: la
+    guardia di tutti gli archivi (`storage.json_column`, C-48 e C-68) col nome
+    di questo. **L'unico punto delle letture di questo archivio che legge
+    JSON**: lo pretende `tests/test_mind_store.py`, chiedendolo ad `ast`. Le
+    migrazioni hanno i loro, perche' devono dire fra due anni la stessa cosa."""
+    return json_column(raw, archive=_ARCHIVE, table=table, key=key)
 
 
 def _reading_row(r) -> dict:
@@ -1352,7 +1336,7 @@ class ObservationsStore:
             changed_reports = []
             for r in reports:
                 body = _json_column(r["corpo_json"], table="resoconto", key=r["giorno"])
-                if body is _UNREADABLE:
+                if body is UNREADABLE:
                     continue
                 sealed = resealed(body)
                 if sealed != body:
@@ -1361,7 +1345,7 @@ class ObservationsStore:
             changed_analyses = []
             for r in self._conn.execute("SELECT giorno, corpo_json FROM analisi").fetchall():
                 body = _json_column(r["corpo_json"], table="analisi", key=r["giorno"])
-                if body is _UNREADABLE:
+                if body is UNREADABLE:
                     continue
                 sealed = resealed(body, every=True)
                 if sealed != body:
@@ -1372,7 +1356,7 @@ class ObservationsStore:
                     "SELECT id, testo, perche, esito_nota, giri_json "
                     "FROM proposte").fetchall():
                 rounds = _json_column(r["giri_json"], table="proposte", key=r["id"])
-                if rounds is _UNREADABLE:
+                if rounds is UNREADABLE:
                     continue
                 before = (r["testo"], r["perche"], r["esito_nota"], rounds)
                 after = (prose(r["testo"]), prose(r["perche"]),
@@ -1411,7 +1395,7 @@ class ObservationsStore:
         if row is None:
             return None
         body = _json_column(row["corpo_json"], table="resoconto", key=day)
-        if body is _UNREADABLE:
+        if body is UNREADABLE:
             return None
         self._resolved_objectives([body])
         return body
@@ -1431,7 +1415,7 @@ class ObservationsStore:
                 (int(max(1, limit)),)).fetchall()
         bodies = (_json_column(r["corpo_json"], table="resoconto", key=r["giorno"])
                   for r in righe)
-        kept = [body for body in bodies if body is not _UNREADABLE]
+        kept = [body for body in bodies if body is not UNREADABLE]
         self._resolved_objectives(kept)
         return kept
 
@@ -1992,7 +1976,7 @@ class ObservationsStore:
         for r in rows:
             prova = _json_column(r[6], table="proposte", key=r[0])
             rounds = _json_column(r[7], table="proposte", key=r[0])
-            if prova is _UNREADABLE or rounds is _UNREADABLE:
+            if prova is UNREADABLE or rounds is UNREADABLE:
                 continue
             out.append({"id": r[0], "creata_ts": r[1], "stato": r[2],
                         # La frase dello stato, dal vocabolario (C-10): la
@@ -2109,7 +2093,7 @@ class ObservationsStore:
             # Un filo illeggibile non si riscrive da capo: si perderebbe
             # cio' che c'era. Il giro non si scrive, e il log lo dice.
             rounds = _json_column(row[2], table="proposte", key=ident)
-            if rounds is _UNREADABLE or any(r.get("turno") == turn for r in rounds):
+            if rounds is UNREADABLE or any(r.get("turno") == turn for r in rounds):
                 return False
             entry = {"richiesta": request, "esito": outcome, "turno": turn,
                      "quando_ts": now_ts}
@@ -2157,7 +2141,7 @@ class ObservationsStore:
         decided = {}
         for r in rows:
             prova = _json_column(r[1], table="proposte", key=r[4])
-            if prova is not _UNREADABLE:
+            if prova is not UNREADABLE:
                 decided[r[0]] = {"prova": prova, "aperta": r[2] == PENDING,
                                  "creata_ts": r[3], "id": r[4], "a_mano": True}
         return decided
@@ -2174,7 +2158,7 @@ class ObservationsStore:
         if row is None:
             return None
         body = _json_column(row["corpo_json"], table="analisi", key=day)
-        return None if body is _UNREADABLE else body
+        return None if body is UNREADABLE else body
 
     def analyses(self, *, limit: int = 30) -> list[dict]:
         """Le analisi, **dalla piu' recente**: una cronaca si legge da adesso
@@ -2186,7 +2170,7 @@ class ObservationsStore:
         out = []
         for row in rows:
             body = _json_column(row["corpo_json"], table="analisi", key=row["giorno"])
-            if body is not _UNREADABLE:
+            if body is not UNREADABLE:
                 out.append({**body, "giorno": row["giorno"]})
         return out
 

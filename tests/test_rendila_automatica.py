@@ -218,7 +218,7 @@ async def test_sul_PONTE_si_accoda_e_la_consegna_chiude_col_legame(casa, tmp_pat
                                {"reply": json.dumps({"proposta_id": nata}),
                                 "exchange_id": "turno-ponte"}, now=11.0)
 
-        assert esito == "automazione_automatizzata"
+        assert esito is True
         assert _riga(store, ident)["costruzione_id"] == nata
         assert at.preparing(app) is None
     finally:

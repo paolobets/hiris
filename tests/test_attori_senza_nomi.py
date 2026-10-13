@@ -24,6 +24,7 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.privacy import PresenceMask, person_bound
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst_turn as at
+from hiris.app.reasoning.queue import ReasoningQueue
 
 _NAMES = ("paolo", "giulia")
 
@@ -296,7 +297,10 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
     oggi = historian.today(None).isoformat()
 
     class _Coda:
-        def latest(self, kind):
+        # La domanda dei raccoglitori, quella vera della coda (D-08).
+        latest_if_decided = ReasoningQueue.latest_if_decided
+
+        def latest(self, kind, **_filtro):
             return {"status": "decided", "wake": {"giorno": oggi},
                     "decision": {"reply": json.dumps({"osservazioni": [], "rimetti": [
                         {"id": "sensor.#1", "perche": "la batteria spiega il calo"}]})}}

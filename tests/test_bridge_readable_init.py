@@ -32,14 +32,19 @@ def _init_pulito():
     runner._ULTIMO_INIT.clear()
 
 
-def test_prima_di_ogni_turno_e_none_non_un_valore_inventato():
-    """`None` vuol dire **non ancora visto**, e non «assente».
+def test_prima_di_ogni_turno_lo_stato_dice_non_visto_e_perche():
+    """**Non ancora visto** e' uno stato con il suo nome, non un `None`.
 
-    Sono due fatti diversi: un container appena riavviato non e' un container
-    guasto, e un chiamante che li confondesse leggerebbe un allarme dove c'e'
-    solo un processo giovane.
+    Sono due fatti diversi da «assente»: un container appena riavviato non e'
+    un container guasto. Dal 13/10/2026 (C-30) la parola lo dice invece del
+    vuoto, con la stessa forma degli altri oggetti diagnostici di
+    `/api/health`: `stato` dal vocabolario dichiarato, `perche` una stringa.
     """
-    assert runner.last_bridge_init() is None
+    visto = runner.last_bridge_init()
+    assert visto["stato"] == "non_visto"
+    assert visto["stato"] in runner.INIT_STATES
+    assert isinstance(visto["perche"], str) and visto["perche"]
+    assert "cli" not in visto
 
 
 def test_dopo_un_turno_la_cli_e_la_fonte_della_chiave_si_rileggono():
@@ -58,6 +63,9 @@ def test_dopo_un_turno_la_cli_e_la_fonte_della_chiave_si_rileggono():
     runner._logga_init(esito, job_id="prova")
 
     visto = runner.last_bridge_init()
+    assert visto["stato"] == "visto"
+    assert visto["stato"] in runner.INIT_STATES
+    assert visto["perche"] is None
     assert visto["cli"] == "2.1.999"
     # `none` e' l'UNICA prova a runtime che si stia usando l'abbonamento e non
     # una chiave a consumo: la denylist dei due nomi non puo' provare cio' che

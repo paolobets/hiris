@@ -444,3 +444,43 @@ def test_le_NON_LEGATE_sono_le_sospese_di_chi_le_chiede_senza_impronta(archivio)
     oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
     assert archivio.unbound(actor="proponente", now=oltre) == []
 
+
+
+# -- C-68: le colonne JSON si leggono con la guardia (Chiusura, F4) ---------
+
+def test_una_riga_guasta_si_salta_negli_elenchi_e_vale_assente_da_sola(archivio, caplog):
+    """C-68: fino alla Chiusura `_load` era un `json.loads` nudo, e una riga
+    con un corpo storto faceva cadere ogni lettura che la incontrava -- fino a
+    `GET /api/constructions`, che fonde le due code. Ora passa dalla guardia di
+    tutti gli archivi (`storage.json_column`): l'elenco salta la riga guasta,
+    la lettura di una riga sola la tratta come assente, le decise la saltano,
+    e il log lo dice una volta per riga, con l'archivio e la chiave.
+
+    Mutazione ESEGUITA (13/10/2026): `_load` rimesso a `json.loads(raw)` --
+    rossa qui con `json.decoder.JSONDecodeError` dentro `list`."""
+    import logging
+
+    from hiris.app import storage
+
+    storage._unreadable_told.clear()
+    buona = _proponi(archivio, key="1")["id"]
+    rotta = _proponi(archivio, key="2")["id"]
+    archivio.answers(buona, actor="chat", fingerprint="f1", prova={"v": 1})
+    archivio.answers(rotta, actor="chat", fingerprint="f2", prova={"v": 2})
+    archivio._conn.execute("UPDATE costruzioni SET dopo_json = '{rotto' WHERE id = ?",
+                           (rotta,))
+    archivio._conn.commit()
+
+    with caplog.at_level(logging.WARNING, logger="hiris.app.storage"):
+        assert [r["id"] for r in archivio.list(now=ADESSO)] == [buona]
+        assert [r["id"] for r in archivio.list(now=ADESSO)] == [buona]
+        assert archivio.read(rotta, now=ADESSO) is None
+        assert archivio.read(buona, now=ADESSO)["dopo"]["alias"] == "Tapparelle"
+        archivio._conn.execute("UPDATE costruzioni SET prova_json = '[' WHERE id = ?",
+                               (buona,))
+        archivio._conn.commit()
+        assert "f1" not in archivio.decided_proposals(now=ADESSO)
+    detti = [r.getMessage() for r in caplog.records]
+    assert len(detti) == 2, detti
+    assert all(d.startswith("costruzioni:") for d in detti)
+    assert any(rotta in d for d in detti)
