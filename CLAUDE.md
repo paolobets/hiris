@@ -296,7 +296,9 @@ scripts/                  # gli ATTREZZI: non entrano nell'immagine, e il prodot
                           # verifica_componenti.py; casa.py
                           # (l'unica porta degli attrezzi verso la casa, di sola lettura),
                           # sonda_parita.py, fotografia_porte.py, le batterie di misura;
-                          # censore_tipi.py e istantaneo_pubblicato.py (l'anagrafe dei tipi)
+                          # censore_tipi.py e istantaneo_pubblicato.py (l'anagrafe dei tipi);
+                          # backup-nas.ps1, che nessun file del repo chiama: lo lancia la
+                          # pianificazione di Windows sul PC del proprietario (M-38)
 ```
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
