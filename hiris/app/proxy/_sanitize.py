@@ -35,6 +35,12 @@ can enter the model's context calls one of the two functions below:
   of WHATEVER entity was asked for, not a number by construction. (The
   logbook boundary that stood here left on 30/09/2026 with the four time
   tools.)
+- `proxy/ha_client.py::problems` -- Home Assistant's repair issues
+  (`repairs/list_issues`), which reach the nucleo through
+  `briefing._problem_entry`. Every string of an issue (`domain`, `issue_id`,
+  `translation_key`, the `translation_placeholders`) goes through
+  `sanitize_structure`: an integration writes them, not the owner (D-46,
+  13/10/2026; before that they arrived raw).
 - `home_space/reader.py::build_home_space` -- the single point where the
   registries become the house registry. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,

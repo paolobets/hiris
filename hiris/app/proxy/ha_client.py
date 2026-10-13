@@ -16,7 +16,7 @@ import aiohttp
 # Chi volesse allargarla per riconoscere di piu' altrove si fa la propria
 # espressione: allentare questa e' una decisione di sicurezza.
 from ..home_space.ha_vocabulary import LINK_NAME, domain_of, is_entity_id
-from ._sanitize import sanitize_ha_value
+from ._sanitize import sanitize_ha_value, sanitize_structure
 from ._sanitize import truncate_with_marker as _truncate
 
 # I registri che HIRIS replica. Prima se ne ascoltava UNO — quello delle
@@ -1893,8 +1893,8 @@ class HAClient:
 
         Restituisce `{"problemi": [...]}` con le righe cosi' come HA le manda
         (`domain`, `issue_id`, `severity`, `is_fixable`, `breaks_in_ha_version`,
-        `ignored`, `translation_key`, ...) -- la scelta di cosa dire e cosa
-        tacere NON e' del client: e' di chi compone. Qui si legge soltanto.
+        `ignored`, `translation_key`, ...), col testo sanificato -- la scelta
+        di cosa dire e cosa tacere NON e' del client: e' di chi compone.
 
         Si scartano solo le IGNORATE (`ignored`, cioe' `dismissed_version` non
         nullo): l'utente ha gia' detto «non dirmelo», e ripeterglielo sarebbe
@@ -1911,7 +1911,10 @@ class HAClient:
         result = occurrence["problemi"]
         if not isinstance(result, dict) or not isinstance(result.get("issues"), list):
             return _failure(SHAPE, "risposta in forma inattesa")
-        return {"problemi": [p for p in result["issues"]
+        # I campi sono testo che un'integrazione scrive (`issue_id`, i
+        # `translation_placeholders`...): passano dal sanificatore qui, alla
+        # lettura, come ogni testo libero della casa (D-46, 13/10/2026).
+        return {"problemi": [sanitize_structure(p) for p in result["issues"]
                              if isinstance(p, dict) and not p.get("ignored")]}
 
     @cost(ws=1)
