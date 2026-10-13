@@ -561,6 +561,18 @@ def _split_value(line: dict):
             value, key=lambda k: (_KEY_ORDER.get(k, 9), str(k)))]
     return [(None, value)]
 
+
+def value_parts(line: dict) -> list[dict]:
+    """Le parti del valore di una misura, **gia' in ordine di lettura**:
+    `[{chiave, valore}]`, con `chiave` a `None` per un valore gia' numerico.
+
+    La pagina le riceve cosi' invece di ricopiare `_KEY_ORDER` (C-10,
+    13/10/2026): l'ordine in cui si raccontano «media, minimo, massimo» vive
+    qui, una volta. Una misura senza valore non ha parti.
+    """
+    return [{"chiave": k, "valore": v} for k, v in _split_value(line)
+            if v is not _MISSING]
+
 # ---------------------------------------------------------------------------
 # Il resoconto come lo legge la PAGINA (spec 2026-09-18 §3).
 #
@@ -617,6 +629,9 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     loro livello non dipende dai giudizi.
     """
     page = dict(report)
+    if report.get("misure") is not None:
+        page["misure"] = [{**m, "parti": value_parts(m)} if "valore" in m else m
+                          for m in report["misure"]]
     chronicle = report.get("cronaca")
     if chronicle is None:
         page["primo_piano"] = []

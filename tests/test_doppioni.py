@@ -315,5 +315,5 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # dalla rotta con le loro frasi, e i servizi gia' divisi per stato (C-10).
 # 4 dalla Chiusura, F2 (13/10/2026): il nome dei domini costruibili e dei gesti
 # delle costruzioni arriva dalla rotta (`construction_words`, C-10).
-KNOWN_CEILING = 2
+KNOWN_CEILING = 1
 

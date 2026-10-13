@@ -168,15 +168,6 @@ window.HirisWatcherGiorno = (function () {
     }
   }
 
-  /* L'ordine in cui le parti di un valore composto si leggono. **Lo stesso
-     elenco di `_KEY_ORDER` in `mind/report.py`**, e una prova lo tiene
-     agganciato a quello: «media, minimo, massimo» e' come l'operazione le
-     racconta, mentre in ordine alfabetico uscirebbe «massimo, media, minimo»
-     -- lo stesso dato in un ordine che nessuno userebbe parlando. */
-  var MEASURE_KEY_ORDER = ['media', 'minimo', 'massimo',
-                           'verso', 'pendenza', 'punti',
-                           'differenza', 'variazione'];
-
   /* Le parti di una misura, gia' scritte: la prima e' la piastrella grande,
      le altre la riga sotto.
 
@@ -192,19 +183,15 @@ window.HirisWatcherGiorno = (function () {
      ventiquattro gradi. */
   function parteMisura(m) {
     var unita = m.unita || '';
-    var valore = m.valore;
-    if (valore === null || typeof valore !== 'object') {
-      return [(valore + ' ' + unita).trim()];
+    /* Le parti arrivano gia' in ordine di lettura (`report.value_parts`,
+       C-10): «media, minimo, massimo» lo decide il server, una volta. */
+    var parti = m.parti || [];
+    if (parti.length === 1 && parti[0].chiave === null) {
+      return [(parti[0].valore + ' ' + unita).trim()];
     }
-    var chiavi = Object.keys(valore).sort(function (a, b) {
-      var ia = MEASURE_KEY_ORDER.indexOf(a), ib = MEASURE_KEY_ORDER.indexOf(b);
-      if (ia === -1) ia = MEASURE_KEY_ORDER.length;
-      if (ib === -1) ib = MEASURE_KEY_ORDER.length;
-      return ia - ib || (a < b ? -1 : a > b ? 1 : 0);
-    });
-    var tutteNumeri = chiavi.every(function (k) { return typeof valore[k] === 'number'; });
-    return chiavi.map(function (k, i) {
-      var parte = k + ' ' + valore[k];
+    var tutteNumeri = parti.every(function (p) { return typeof p.valore === 'number'; });
+    return parti.map(function (p, i) {
+      var parte = p.chiave + ' ' + p.valore;
       return (i === 0 && tutteNumeri && unita) ? parte + ' ' + unita : parte;
     });
   }

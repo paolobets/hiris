@@ -528,3 +528,23 @@ def test_senza_i_giudizi_l_impalcatura_NON_si_indovina():
     pagina = as_page(_resoconto(voce), judgments=None)
 
     assert [r["nome"] for r in pagina["primo_piano"]] == ["Hacs"]
+
+
+# ---------------------------------------------------------------------------
+# Le parti di una misura (C-10, 13/10/2026). La pagina ricopiava l'ordine di
+# lettura di `_KEY_ORDER` in `MEASURE_KEY_ORDER`; ora le riceve gia' in fila.
+# ---------------------------------------------------------------------------
+
+
+def test_le_parti_di_una_misura_arrivano_in_ordine_di_lettura():
+    """Mutazione ESEGUITA: `value_parts` con l'ordine alfabetico al posto di
+    `_split_value` -- rossa («massimo» prima di «media»)."""
+    composta = {"misura": "t", "valore": {"massimo": 24.3, "minimo": 23.4, "media": 24.12}}
+    semplice = {"misura": "p", "valore": 23.71}
+    ignota = {"misura": "q", "non_calcolabile": "x", "causa": "y"}
+    resoconto = {**_resoconto(), "misure": [composta, semplice, ignota]}
+    misure = as_page(resoconto, judgments=None)["misure"]
+    assert [p["chiave"] for p in misure[0]["parti"]] == ["media", "minimo", "massimo"]
+    assert misure[1]["parti"] == [{"chiave": None, "valore": 23.71}]
+    assert "parti" not in misure[2], "una misura senza valore non ha parti"
+    assert "parti" not in resoconto["misure"][0], "il resoconto archiviato non si tocca"
