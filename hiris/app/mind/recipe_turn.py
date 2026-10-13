@@ -222,10 +222,14 @@ def build_device_question(objective: str, house: House, device_id: str,
     non puo' esistere.
 
     **`with_series` dice quali entita' sanno produrre una serie**, ed e' la
-    cosa che mancava. Home Assistant tiene statistiche orarie solo per le
-    entita' che dichiarano uno `state_class` -- misurato sulla casa vera il
-    15/09/2026, **130 su 1206, tutte `sensor`** -- e il modello non ha nessun
-    modo di dedurlo dalla riga di un'entita'. Senza, scrive «quanto e' stata
+    cosa che mancava. Home Assistant tiene statistiche orarie solo per alcune
+    entita' -- misurato sulla casa vera il 15/09/2026, **130 su 1206, tutte
+    `sensor`** -- e il modello non ha nessun modo di dedurlo dalla riga di
+    un'entita'. Quali siano lo dice il suo elenco (`statistic_ids`), non una
+    regola sullo `state_class`: le cause di un'assenza le conosce
+    `recipes.silence` (X-12, 13/10/2026: il testo al modello diceva «soltanto
+    per chi dichiara uno `state_class`... oggi e sempre», e `silence` stessa lo
+    smentiva -- solo `sensor`, le disabilitate, le sparite). Senza, scrive «quanto e' stata
     accesa la lavastoviglie»: la domanda giusta sul dispositivo giusto, contro
     una fonte che per quell'entita' non esiste. Nel resoconto del 14/09/2026
     erano **18 rifiuti su 28**.
@@ -283,10 +287,10 @@ def _series_block(house: House, device_id: str,
     if not mute:
         return ("\n\nTutte queste entita' hanno una serie oraria: puoi "
                 "chiedere qualunque operazione su ciascuna.")
-    parts = [("\n\n**Solo alcune di queste entita' hanno una SERIE.** Home "
-             "Assistant tiene statistiche orarie soltanto per chi dichiara uno "
-             "`state_class`: sulle altre ogni operazione rifiuterebbe, oggi e "
-             "sempre.")]
+    parts = [("\n\n**Solo alcune di queste entita' hanno una SERIE.** L'elenco "
+             "e' quello delle statistiche orarie che Home Assistant tiene, "
+             "letto a questo giro: sulle altre ogni operazione rifiuterebbe, "
+             "finche' Home Assistant non le tiene.")]
     parts.append("Hanno una serie: "
                  + (", ".join(con) if con else "nessuna di queste entita'") + ".")
     parts.append("NON ne hanno, e non chiederle: " + ", ".join(mute) + ".")
