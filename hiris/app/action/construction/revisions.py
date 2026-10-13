@@ -504,6 +504,20 @@ class ConstructionStore:
             righe = self._conn.execute(sql, params + (int(limit),)).fetchall()
         return _rows(righe)
 
+    def count(self, *, now: float, pending_only: bool = False) -> int:
+        """Quante righe elencherebbe `list` senza tetto, con lo stesso filtro.
+
+        Serve alla pagina per dichiarare la finestra (C-14, Chiusura,
+        13/10/2026): «le 200 piu' recenti su N»."""
+        cutoff = now - self.DEADLINE_S
+        sql = "SELECT COUNT(*) FROM costruzioni"
+        params: tuple = ()
+        if pending_only:
+            sql += f" WHERE stato IN ({_SOSPESI_SQL}) AND NOT {_EXPIRED_SQL}"
+            params = (cutoff,)
+        with self._lock:
+            return int(self._conn.execute(sql, params).fetchone()[0])
+
     def proposed_in(self, exchange: str | None, *, actor: str) -> frozenset[str]:
         """Gli id delle proposte che `actor` ha fatto nel turno `exchange`.
 

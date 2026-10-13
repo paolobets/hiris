@@ -63,8 +63,15 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     # sul disco prima di elencare, e la chat poteva confermarne una che
     # nessuno aveva ancora aperto (misura del Task 4.0 degli attori).
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
-    return web.json_response(
-        {"constructions": await _both_queues(request.app, store, pending_only)})
+    rows = await _both_queues(request.app, store, pending_only)
+    # La finestra si dichiara (C-14, 13/10/2026): ogni coda e' tagliata alle
+    # sue 200 piu' recenti, e `total` conta le due intere. Le stesse chiavi
+    # della memoria e degli Impegni.
+    observations = request.app.get("observations")
+    total = store.count(now=time.time(), pending_only=pending_only) + (
+        observations.count_proposals(pending_only=pending_only)
+        if observations is not None else 0)
+    return web.json_response({"constructions": rows, "total": total, "shown": len(rows)})
 
 
 #: Chi applica una proposta. Le costruibili le scrive HIRIS in Home Assistant

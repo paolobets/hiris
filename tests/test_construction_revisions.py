@@ -484,3 +484,19 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_vale_assente_da_sola(archivio,
     assert len(detti) == 2, detti
     assert all(d.startswith("costruzioni:") for d in detti)
     assert any(rotta in d for d in detti)
+
+
+def test_count_conta_cio_che_list_elencherebbe_senza_tetto(archivio):
+    """C-14 (13/10/2026): la pagina dichiara «le 200 piu' recenti su N», e N
+    lo dice l'archivio con lo stesso filtro di `list`. Rossa prima della
+    correzione: `AttributeError: count`."""
+    for chiave in ("1", "2", "3"):
+        _proponi(archivio, key=chiave)
+    assert len(archivio.list(now=ADESSO, limit=2)) == 2
+    assert archivio.count(now=ADESSO) == 3
+    assert archivio.count(now=ADESSO, pending_only=True) == len(
+        archivio.list(now=ADESSO, pending_only=True))
+    # Le scadute non sono pendenti, ne' per `list` ne' per `count`.
+    dopo = ADESSO + archivio.DEADLINE_S + 1
+    assert archivio.count(now=dopo, pending_only=True) == len(
+        archivio.list(now=dopo, pending_only=True)) == 0

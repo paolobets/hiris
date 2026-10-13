@@ -928,3 +928,21 @@ test('un rifacimento che non riesce lascia la richiesta scritta', async () => {
   bottone(/^Rifalla$/).click();
   assert.equal(dom.window.document.querySelector('textarea').value, 'dopo le 14');
 });
+
+test('oltre la finestra la pagina lo dice, dentro no (C-14)', async () => {
+  /* Parere ux-ui-specialist del 13/10/2026: una riga field-hint, solo quando
+     il server ne ha di piu' (`total` > `shown`). Mutazione ESEGUITA: la riga
+     tolta -- rossa. */
+  const righe = [{ id: 'c1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
+    chiave: '1', anteprima: '', prima: null, dopo: { alias: 'Uno' }, creata_ts: 1756000000 }];
+  const tagliata = montaCon({ constructions: righe, total: 450, shown: 1 });
+  await tagliata.dom.window.HirisConstructions.mount(
+    tagliata.dom.window.document.getElementById('route-outlet'));
+  assert.match(tagliata.dom.window.document.body.textContent,
+    /Stai vedendo le 1 costruzioni più recenti su 450 in tutto\./);
+
+  const intera = montaCon({ constructions: righe, total: 1, shown: 1 });
+  await intera.dom.window.HirisConstructions.mount(
+    intera.dom.window.document.getElementById('route-outlet'));
+  assert.doesNotMatch(intera.dom.window.document.body.textContent, /più recenti su/);
+});

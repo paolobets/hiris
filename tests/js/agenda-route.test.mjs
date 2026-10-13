@@ -618,6 +618,24 @@ test('se il segno di lettura fallisce, la pagina resta usabile', async () => {
   assert.doesNotMatch(document.getElementById('route-outlet').textContent, /Non è stato possibile/);
 });
 
+test('oltre la finestra lo storico dice «N di M» e una riga dice il taglio (C-14)', async () => {
+  /* Parere ux-ui-specialist del 13/10/2026: «Storico (200 di N)» e una
+     riga field-hint in fondo, solo quando il server ne ha di piu'.
+     Mutazione ESEGUITA: la riga e il «di N» tolti -- rossa. */
+  const { document } = await monta({ get: { agenda: PROMESSE, total: 250, shown: 3 } });
+
+  assert.equal(document.getElementById('agenda-history-toggle').textContent, 'Storico (2 di 249)');
+  assert.match(sezione(document, 'history').textContent,
+    /Stai vedendo le 3 promesse più recenti su 250 in tutto\./);
+});
+
+test('dentro la finestra non si inventa un taglio che non c\'e\'', async () => {
+  const { document } = await monta({ get: { agenda: PROMESSE, total: 3, shown: 3 } });
+
+  assert.equal(document.getElementById('agenda-history-toggle').textContent, 'Storico (2)');
+  assert.doesNotMatch(document.body.textContent, /più recenti su/);
+});
+
 test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
   const { document } = await monta({});
   /* I fogli VERI della pagina, e non `corpo.hidden`. La versione precedente di

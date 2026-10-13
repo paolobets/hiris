@@ -1955,6 +1955,20 @@ class ObservationsStore:
             self._conn.commit()
         return ident
 
+    def count_proposals(self, *, pending_only: bool = False) -> int:
+        """Quante proposte da fare a mano elencherebbe `proposals` senza
+        tetto, con lo stesso filtro (C-14, Chiusura, 13/10/2026): la pagina
+        dichiara la finestra. Conta anche una riga che `proposals` salterebbe
+        perche' illeggibile: e' nell'archivio, e il taglio la nasconde lo
+        stesso."""
+        sql = "SELECT COUNT(*) FROM proposte"
+        args: tuple = ()
+        if pending_only:
+            sql += " WHERE stato = ?"
+            args = (PENDING,)
+        with self._lock:
+            return int(self._conn.execute(sql, args).fetchone()[0])
+
     def proposals(self, *, pending_only: bool = False, limit: int = 200,
                   ident: str | None = None) -> list[dict]:
         """Le proposte da fare a mano, dalla piu' recente. Con `ident`, solo

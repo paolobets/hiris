@@ -428,9 +428,12 @@ window.HirisAgendaRoute = (function () {
      lettura e' fallita): un numero vecchio lasciato li' direbbe una cosa
      falsa sul quando, che e' lo stesso difetto del pallino spento per
      errore (`static/pending-badge.js`). */
-  function setHistoryCount(n) {
+  function setHistoryCount(n, tutte) {
     var btn = byId('agenda-history-toggle');
-    if (btn) btn.textContent = n == null ? 'Storico' : ('Storico (' + n + ')');
+    if (!btn) return;
+    if (n == null) { btn.textContent = 'Storico'; return; }
+    btn.textContent = (tutte != null && tutte > n)
+      ? 'Storico (' + n + ' di ' + tutte + ')' : 'Storico (' + n + ')';
   }
 
   /* I numeri di sezione dicono l'ordine di lettura: 01/02/03 con «Esiti da
@@ -538,7 +541,18 @@ window.HirisAgendaRoute = (function () {
       var disegnati = renderUnread(unread);
       renderPending(pendingBody, pendingDesc, pending, load);
       renderHistory(historyBody, historyDesc, history, disegnati);
-      setHistoryCount(history.length);
+      /* La finestra (C-14): oltre le 200 il server lo dice con `total`. Le
+         escluse sono le piu' vecchie (l'ordine e' per `quando_ts`
+         decrescente), cioe' tutte dello storico: le in sospeso stanno in cima
+         e il loro tetto per filo (`CEILING_IN_SOSPESO`, 50) e' sotto la
+         finestra. */
+      var fuori = (typeof data.total === 'number' && typeof data.shown === 'number')
+        ? Math.max(0, data.total - data.shown) : 0;
+      setHistoryCount(history.length, history.length + fuori);
+      if (fuori) {
+        historyBody.appendChild(el('p', 'field-hint',
+          'Stai vedendo le ' + data.shown + ' promesse più recenti su ' + data.total + ' in tutto.'));
+      }
       renumberSections();
       segnaLetti(disegnati);
     }).catch(function (err) {

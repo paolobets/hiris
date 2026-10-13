@@ -44,6 +44,9 @@ class FintoArchivio:
             return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
 
+    def count(self, *, now, pending_only=False):
+        return len(self.list(now=now, pending_only=pending_only))
+
     def read(self, ident, *, now):
         for r in self._righe:
             if r["id"] == ident:
@@ -182,12 +185,13 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     tutte = _corpo(await handle_get_constructions(FintaRichiesta(app)))
     # L'INVOLUCRO, per nome: e' il contratto che la pagina legge
     # (`static/config/constructions-route.js::dati.constructions`), e nessun
-    # altro test di questa rotta lo nomina.
-    assert set(tutte) == {"constructions"}
+    # altro test di questa rotta lo nomina. `total`/`shown` dichiarano la
+    # finestra dal 13/10/2026 (C-14).
+    assert set(tutte) == {"constructions", "total", "shown"}
     assert [c["id"] for c in tutte["constructions"]] == ["a", "b"]
     aperte = _corpo(await handle_get_constructions(
         FintaRichiesta(app, query={"pending_only": "1"})))
-    assert set(aperte) == {"constructions"}
+    assert set(aperte) == {"constructions", "total", "shown"}
     assert [c["id"] for c in aperte["constructions"]] == ["a"]
 
 
@@ -704,3 +708,14 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
         assert singola["construction"]["sospesa"] is True
     finally:
         osservazioni.close()
+
+
+@pytest.mark.asyncio
+async def test_l_elenco_dichiara_la_finestra_con_total_e_shown():
+    """C-14 (13/10/2026): `total` conta le due code intere, `shown` le righe
+    mandate; le stesse chiavi della memoria e degli Impegni.
+    Rossa prima della correzione: `KeyError: 'total'`."""
+    app = _app(FintoArchivio([{"id": "c1", "stato": "in_attesa", "gesto": "crea",
+                               "dominio": "automation"}]))
+    corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
+    assert (corpo["total"], corpo["shown"]) == (1, 1)

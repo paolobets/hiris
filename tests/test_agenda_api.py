@@ -95,6 +95,17 @@ async def test_get_promesse_tutte_include_le_concluse(client):
 
 
 @pytest.mark.asyncio
+async def test_get_dichiara_la_finestra_con_total_e_shown(client):
+    """C-14 (13/10/2026): la rotta taglia a 200 e lo dice, con le stesse
+    chiavi della pagina della memoria. Rossa prima: `KeyError: 'total'`."""
+    archivio = client.app["agenda"]
+    archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
+                     "domanda": "?"}, thread=SVILUPPO, now=1.0)
+    corpo = await (await client.get("/api/agenda?all=1")).json()
+    assert (corpo["total"], corpo["shown"]) == (1, 1)
+
+
+@pytest.mark.asyncio
 async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",

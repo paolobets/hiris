@@ -67,8 +67,11 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     # adottano prima di agire -- rispondono come per un id che non esiste.
     await adopt_if_owner(request.app, request, thread)
     show_all = request.query.get("all") in ("1", "true", "si")
-    rows = store.list(thread=thread, solo_in_sospeso=not show_all, limit=200)
-    return web.json_response({"agenda": [without_thread(r) for r in rows]})
+    rows, left_out = store.page(thread=thread, solo_in_sospeso=not show_all, limit=200)
+    # La finestra si dichiara (C-14, 13/10/2026): `total` e `shown`, come la
+    # pagina della memoria. Fino ad allora oltre le 200 la pagina taceva.
+    return web.json_response({"agenda": [without_thread(r) for r in rows],
+                              "total": len(rows) + left_out, "shown": len(rows)})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:

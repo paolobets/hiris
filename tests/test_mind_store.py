@@ -1662,3 +1662,16 @@ def test_il_resoconto_salva_l_obiettivo_come_RIFERIMENTO_e_lo_rende_intero(archi
     assert archivio.report("2026-08-24")["obiettivo"] == allora
     assert allora["testo"] == "spendere meno di sera"
     assert archivio.objective()["id"] != allora["id"]
+
+
+def test_count_proposals_conta_cio_che_proposals_elencherebbe(archivio):
+    """C-14 (13/10/2026): la pagina delle Costruzioni dichiara la finestra, e
+    il conto delle proposte a mano lo dice l'archivio con lo stesso filtro.
+    Rossa prima della correzione: `AttributeError: count_proposals`."""
+    for impronta in ("a", "b", "c"):
+        archivio.add_proposal(text=impronta, perche="x", fingerprint=impronta,
+                              prova={"v": 1}, stakes=None, now_ts=1.0)
+    assert len(archivio.proposals(limit=2)) == 2
+    assert archivio.count_proposals() == 3
+    assert archivio.count_proposals(pending_only=True) == len(
+        archivio.proposals(pending_only=True))

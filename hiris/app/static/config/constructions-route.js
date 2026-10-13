@@ -1100,6 +1100,15 @@ window.HirisConstructions = (function () {
       renderSection(historyBody, history, 'Nessuna costruzione nello storico.',
         statusEl, reload, sortHistory);
       setHistoryCount(outlet, history.length);
+      /* La finestra (C-14): ogni coda arriva tagliata alle sue piu' recenti, e
+         `total` le conta intere. Si dice solo quando taglia. Il titolo dello
+         storico resta il numero delle mostrate: qui le escluse possono essere
+         anche proposte a mano ancora aperte, e dividerle fra le sezioni
+         sarebbe indovinare. */
+      if (typeof data.total === 'number' && typeof data.shown === 'number' && data.total > data.shown) {
+        historyBody.appendChild(el('p', 'field-hint',
+          'Stai vedendo le ' + data.shown + ' costruzioni più recenti su ' + data.total + ' in tutto.'));
+      }
       afterDraw(outlet, all, statusEl, reload);
     }).catch(function () {
       /* Una rilettura persa non e' un guasto: al prossimo giro. */
