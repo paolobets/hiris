@@ -571,7 +571,8 @@ una per una, coi loro casi, quando la tappa le tocca.
 
 ## §8 · I criteri di accettazione dello sprint
 
-1. Il registro dei doppioni non ha voci aperte: ogni voce chiusa cancellando la copia, oppure
+1. Il registro dei doppioni non ha voci aperte: ogni voce chiusa cancellando la copia, o chiusa
+   come **voluta** o **falsa** con la decisione scritta nella riga (il precedente di C-35), oppure
    **trasferita** a un lavoro dichiarato fuori dallo sprint, con il titolo della voce del BACKLOG
    che la porta scritto nella riga; `python scripts/registro.py verifica` si ferma se quella voce
    non c'è o è chiusa. *(Cambiato il 13/10/2026, D1 della Chiusura, decisa da Paolo: prima diceva
