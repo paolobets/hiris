@@ -273,6 +273,61 @@ def test_una_trasferita_senza_legame_ferma_la_verifica(tmp_path):
     assert registro.untethered(registro.read_entries(document), backlog) == ["C-24"]
 
 
+def test_la_verifica_vera_si_ferma_su_ogni_difetto(tmp_path, monkeypatch, capsys):
+    """Il cancello e' `main` con «verifica»: si fa girare quello, su copie, e
+    si pretende l'uscita 1 per ogni ramo (giro 143, N143-1: la prova chiamava
+    `untethered` da sola, e il ramo di `main` si poteva togliere a suite verde).
+    Mutazioni ESEGUITE, ognuna rossa sul suo caso: in `problems` tolto il
+    ramo di `untethered`; tolto il ramo di `malformed`; tolto quello di
+    `unfinished`; in `main` l'uscita 1 tolta."""
+    document, backlog = _transfer_copies(tmp_path)
+    registro.transfer(document, "C-24", backlog="I fogli di stile: due sistemi",
+                      note="x", backlog_path=backlog)
+    monkeypatch.setattr(registro, "REGISTER", document)
+    monkeypatch.setattr(registro, "BACKLOG", backlog)
+    monkeypatch.setattr(sys, "argv", ["registro.py", "verifica"])
+    registro.main()
+    assert "nessuna chiusa a meta'" in capsys.readouterr().out
+    healthy = document.read_text(encoding="utf-8")
+    broken = {
+        "trasferite": (backlog, _BACKLOG_TEXT.replace("— aperta il 05/10/2026", "— CHIUSA")),
+        "chiudibile": (document, healthy.replace(
+            "| C-26 | altra | E | PS | reg |",
+            "| C-26 | altra | E | PS | reg · **chiudibile al rilascio** senza commit |")),
+        "senza versione": (document, healthy.replace("| 3.73.0 | 1111111 |", "|  | 1111111 |")),
+    }
+    for what, (path, text) in broken.items():
+        original = path.read_text(encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
+        with pytest.raises(SystemExit) as stopped:
+            registro.main()
+        assert stopped.value.code == 1, what
+        assert what in capsys.readouterr().err, what
+        path.write_text(original, encoding="utf-8")
+
+
+def test_una_trasferita_non_porta_segno_ne_verdetto(tmp_path):
+    """Una trasferita non si chiude al rilascio e non conta fra i doppioni
+    aperti, anche se la sua riga porta ancora segno e verdetti (giro 143).
+    Mutazioni ESEGUITE: in `releasable` `entry.closed` al posto di `is_open`
+    -- rossa; in `verdicts` lo stesso -- rossa."""
+    document, _backlog = _transfer_copies(tmp_path)
+    document.write_text(_WITH_TRANSFERRED.replace(
+        "| C-24 | fogli di stile | D | DP | reg |",
+        "| C-24 | fogli di stile | D | DP | reg · **chiudibile al rilascio** `abc1234`: x |"),
+        encoding="utf-8")
+    rows = document.read_text(encoding="utf-8").splitlines()
+    moved = next(row for row in rows if row.startswith("| C-24 |"))
+    rows.remove(moved)
+    rows.insert(rows.index("|---|---|---|---|") + 1, moved)
+    document.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    entries = {entry.id: entry for entry in registro.read_entries(document)}
+    assert entries["C-24"].transferred
+    assert registro.releasable(entries["C-24"]) is None
+    assert registro.verdicts(list(entries.values())) == {
+        "stato": {"E": 1}, "unirla": {"PS": 1}}
+
+
 def test_trasferire_o_chiudere_una_trasferita_si_rifiuta(tmp_path):
     """Chiudere una trasferita direbbe «copia cancellata» di una copia che
     resta nel codice.

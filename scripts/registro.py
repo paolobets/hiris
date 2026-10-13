@@ -168,9 +168,6 @@ def close(path: Path, entry_id: str, *, version: str, commit: str, note: str) ->
     Rifiuta una voce che non c'e' e una gia' chiusa: chiudere due volte
     vorrebbe dire che qualcuno ha contato due volte lo stesso lavoro.
     """
-    matching = [entry for entry in read_entries(path) if entry.id == entry_id]
-    if not matching:
-        raise SystemExit(f"registro: la voce {entry_id} non esiste")
     entry = _the_open_entry(path, entry_id)
     _move(path, entry, CLOSED_HEADING,
           f"| {entry_id} | {entry.text} | {version} | {commit} | {note} |")
@@ -323,6 +320,25 @@ def unfinished(entries: list[Entry]) -> list[str]:
                                  or not entry.cells[3])]
 
 
+def problems(entries: list[Entry], backlog_path: Path) -> list[str]:
+    """Cio' che ferma `verifica`, il cancello: una frase per difetto, vuota se
+    il registro e' sano. Sta fuori da `main` perche' ogni ramo abbia la sua
+    prova: un ramo del cancello che si puo' togliere a suite verde non e' un
+    cancello."""
+    found = []
+    half_closed = unfinished(entries)
+    if half_closed:
+        found.append(f"voci chiuse senza versione o commit: {half_closed}")
+    crooked = malformed(entries)
+    if crooked:
+        found.append(f"segno «chiudibile al rilascio» illeggibile in: {crooked}")
+    loose = untethered(entries, backlog_path)
+    if loose:
+        found.append("voci trasferite a una voce del BACKLOG che non c'e' "
+                     f"o e' chiusa: {loose}")
+    return found
+
+
 def _print_count(entries: list[Entry]) -> None:
     tally = count(entries)
     for chapter in sorted(tally):
@@ -393,20 +409,10 @@ def main() -> None:
     if args.command == "conta":
         _print_count(entries)
         return
-    half_closed = unfinished(entries)
-    if half_closed:
-        print(f"registro: voci chiuse senza versione o commit: {half_closed}",
-              file=sys.stderr)
-        sys.exit(1)
-    crooked = malformed(entries)
-    if crooked:
-        print(f"registro: segno «chiudibile al rilascio» illeggibile in: {crooked}",
-              file=sys.stderr)
-        sys.exit(1)
-    loose = untethered(entries)
-    if loose:
-        print(f"registro: voci trasferite a una voce del BACKLOG che non c'e' "
-              f"o e' chiusa: {loose}", file=sys.stderr)
+    found = problems(entries, BACKLOG)
+    for sentence in found:
+        print(f"registro: {sentence}", file=sys.stderr)
+    if found:
         sys.exit(1)
     print(f"registro: {len(entries)} voci lette, nessuna chiusa a meta'")
 
