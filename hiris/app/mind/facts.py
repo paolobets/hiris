@@ -260,8 +260,14 @@ def _opening_attributes(row: dict):
 
 def build_episodes(*, store, day: str, timezone: str | None,
                    judgments: TypeJudgments = REPO_JUDGMENTS,
-                   house: House | None = None) -> list[dict]:
-    """Gli episodi di un giorno, nella forma che `report.build_report` riceve.
+                   house: House | None = None
+                   ) -> tuple[list[dict], set[str], tuple[float, float]]:
+    """Gli episodi di un giorno, nella forma che `report.build_report` riceve;
+    con loro i soggetti che il grezzo ha ancora prima del giorno, dentro la
+    finestra (per chi rifa' una cronaca, `rebuild_chronicle`: A-39, prima la
+    lettura si chiedeva due volte), e gli estremi del giorno, che i due
+    chiamanti ricalcolavano (A-39, Chiusura: un conto puro, ma lo stesso
+    conto in tre posti).
 
     Ogni episodio e' `{"genere", "protagonista", "inizio", "fine",
     "corpo_base"}`: `fine` a `None` quando a fine giornata e' ancora in corso.
@@ -303,15 +309,6 @@ def build_episodes(*, store, day: str, timezone: str | None,
     07/09/2026). Tace come `nome` quando non c'e'. Vedi `close()` qui
     sotto e `proxy/state_translations.py`.
     """
-    return _episodes(store=store, day=day, timezone=timezone, judgments=judgments,
-                     house=house)[0]
-
-
-def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments,
-              house: House | None) -> tuple[list[dict], set[str]]:
-    """`build_episodes`, piu' i soggetti che il grezzo ha ancora prima del
-    giorno, dentro la finestra: la stessa lettura, per chi rifa' una cronaca
-    (`rebuild_chronicle`, A-39 del registro: prima la chiedeva due volte)."""
     from_ts, to_ts = day_boundaries(day, timezone)
     rows = store.readings(from_ts=from_ts, to_ts=to_ts)
 
@@ -781,7 +778,7 @@ def _episodes(*, store, day: str, timezone: str | None, judgments: TypeJudgments
     # La perdita che si temeva non esisteva: non c'era niente da perdere.
     # E ogni giorno che aveva oggetti (26/08 -> 14/09) aveva gia' il suo
     # resoconto, quindi nemmeno la storia si e' persa.
-    return episodes, subjects_before
+    return episodes, subjects_before, (from_ts, to_ts)
 
 
 def _episode_position(episode: dict) -> tuple:
@@ -994,9 +991,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     `mind/seed.balance_recipe`, e' uscito il 01/10/2026: le ricette che aveva
     seminato restano).
     """
-    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments,
-                              house=house)
-    _, to_ts = day_boundaries(day, timezone)
+    episodes, _, (_, to_ts) = build_episodes(store=store, day=day, timezone=timezone,
+                                             judgments=judgments, house=house)
     # **Si scrive SEMPRE, anche senza ricette.** Fino al 15/09/2026 un
     # chiamante che non portava le ricette non faceva scrivere niente, e la
     # ragione era buona: un resoconto con meta' delle misure vuota per un
@@ -1102,12 +1098,11 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     report = store.report(day)
     if report is None:
         return False
-    episodes, raw_subjects = _episodes(store=store, day=day, timezone=timezone,
-                                       judgments=judgments, house=house)
+    episodes, raw_subjects, (from_ts, _) = build_episodes(
+        store=store, day=day, timezone=timezone, judgments=judgments, house=house)
     rebuilt = build_report(day=day, episodes=episodes, series={}, recipes={}, names={},
                            judgment=chronicle_mark(judgments))
     chronicle = list(rebuilt["cronaca"])
-    from_ts, _ = day_boundaries(day, timezone)
     rebuilt_ids = {(v.get("chi"), v.get("quando_ts")) for v in chronicle}
     for entry in report.get("cronaca") or []:
         started = entry.get("quando_ts")

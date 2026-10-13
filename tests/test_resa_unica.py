@@ -121,7 +121,7 @@ ADMITTED: dict[str, str] = {
         "un episodio del resoconto (un'assenza): `stato`, `classe` e `dominio` "
         "sono quelli scritti nel grezzo quando l'entita' e' sparita -- un "
         "fatto PASSATO, che vive piu' dei cambi. La resa dice la casa di adesso"),
-    "mind/facts.py::_episodes": (
+    "mind/facts.py::build_episodes": (
         "un episodio aperto del resoconto: lo `stato` e la `classe` del cambio "
         "che l'ha aperto, dal grezzo -- un fatto passato, non la casa di adesso"),
     "mind/facts.py::close": (

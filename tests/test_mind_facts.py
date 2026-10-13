@@ -2101,3 +2101,28 @@ def test_senza_finestre_la_cronaca_non_cambia(archivio):
         _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
     assert [v["chi"] for v in cronaca(archivio)] == ["integrazione:e_irr"]
+
+
+def test_gli_estremi_del_giorno_si_calcolano_una_volta_per_scrittura(archivio, monkeypatch):
+    """A-39 (Chiusura): `aggregate_day` e `rebuild_chronicle` ricalcolavano
+    gli estremi del giorno che `_episodes` aveva appena calcolato. Ora
+    tornano con gli episodi, e il conto si fa una volta per scrittura.
+    Mutazione ESEGUITA (13/10/2026): la riga `day_boundaries(...)` rimessa in
+    `rebuild_chronicle` -- rossa (due chiamate)."""
+    from hiris.app.mind import facts
+
+    chiamate = []
+    vera = facts.day_boundaries
+
+    def conta(day, timezone):
+        chiamate.append(day)
+        return vera(day, timezone)
+
+    monkeypatch.setattr(facts, "day_boundaries", conta)
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+    facts.aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    assert chiamate == [G]
+    chiamate.clear()
+    assert facts.rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome")
+    assert chiamate == [G]
