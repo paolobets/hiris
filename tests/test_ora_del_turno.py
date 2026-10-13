@@ -8,6 +8,7 @@ catena e sul ponte -- e cio' che resta in cronologia.
 """
 import pytest
 
+from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts
 from hiris.app.api import handlers_chat
 from hiris.app.steering import SPECIES, house_hour, with_hour
@@ -88,3 +89,29 @@ def test_la_promessa_sul_ponte_porta_l_ora_nel_job(monkeypatch):
     assert accodati[0]["adesso"].startswith("Adesso sono le")
     assert "Adesso sono le" not in accodati[0]["contesto"]
 
+
+def test_il_lavoratore_del_ponte_passa_l_ora_del_job_alla_CLI():
+    """La riga di `agent/runner._reason_chat` che legge `adesso` dal job:
+    senza, il ponte resterebbe senza ora (la catena la riceve da chi la
+    chiama).
+
+    Mutazione ESEGUITA il 13/10/2026: tolta quella riga -- rossa."""
+    from unittest.mock import patch
+
+    from hiris.app.agent import runner
+    from tests.test_bridge_receives_briefing import _Proc
+
+    ora = "Adesso sono le 21:01 del 13/10/2026 (fuso Europe/Rome)."
+    catturato = {}
+
+    def _fake_run(argv, *a, **k):
+        catturato["user"] = k.get("input")
+        return _Proc()
+
+    job = {"kind": "chat", "deadline_ts": SCADENZA_LONTANA, "job_id": "job-ora",
+           "context": {"model": "sonnet", "history": [{"role": "user", "content": "ciao"}],
+                       "system_prompt": "Sei HIRIS.", "contesto": "Cucina.",
+                       "adesso": ora}}
+    with patch.object(runner.subprocess, "run", _fake_run):
+        runner._reason_chat(job, "live")
+    assert ora in catturato["user"]

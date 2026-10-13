@@ -1850,6 +1850,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                        if isinstance(context, dict) else "")
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
+            hour=(context.get("adesso") or "") if isinstance(context, dict) else "",
             # I NOMI degli strumenti del mestiere, dalla sua dichiarazione:
             # il compositore da' le regole di quelli e basta (Tappa 6, T7).
             active_tools=turn_tools if active_tools else (),
