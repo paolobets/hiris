@@ -22,7 +22,6 @@ from ..home_space.type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     JUDGMENT_FIELD_NAMES,
-    OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
     SCAFFOLDING_FIELD,
@@ -58,7 +57,7 @@ CORRECTION_ORIGIN = "correzione"
 #: `da_sapere_subito` coppia -> dominio (spec `2026-09-18-da-sapere-subito.md`
 #: §2: stessa forma di `working_of`, per la stessa ragione -- `binary_sensor`
 #: dice «no» in generale e «si'» sulle classi che lo meritano, mai su
-#: un'entita' singola); `operable_domains` e `parameter_limits` solo il
+#: un'entita' singola); `parameter_limits` solo il
 #: dominio. Una riga a un livello che nessuna domanda legge non si scrive: il
 #: proprietario la vedrebbe accettata e la casa non cambierebbe.
 #:
@@ -72,7 +71,6 @@ _LEVELS = {
     WORKING_FIELD: frozenset({"coppia", "dominio"}),
     DA_SAPERE_SUBITO_FIELD: frozenset({"coppia", "dominio"}),
     SCAFFOLDING_FIELD: frozenset({"integrazione"}),
-    OPERABLE_FIELD: frozenset({"dominio"}),
     PARAMETER_LIMITS_FIELD: frozenset({"dominio"}),
 }
 

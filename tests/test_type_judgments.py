@@ -175,22 +175,18 @@ def test_una_chiave_DOPPIA_e_storta():
     assert len(e.value.rows) == 2
 
 
-def test_accendibile_limiti_lavoro():
+def test_limiti_lavoro():
     """Le domande del giudizio che hanno ancora un lettore. (Fino al
     29/09/2026 la prova chiedeva anche `is_notable`, uscita col suo unico
     lettore, «Notevole adesso» del nucleo; il campo `notevole` e' uscito dai
-    giudizi il 02/10/2026.)
-
-    Mutazione ESEGUITA: `operable_domains` che restituisce un insieme vuoto
-    -- rossa su `== frozenset({"light"})`."""
-    j = _j(("tipo", "light", "accendibile", "si"),
-           ("tipo", "light", "limiti_parametri",
+    giudizi il 02/10/2026. Fino al 13/10/2026 chiedeva `operable_domains`,
+    uscita con il giudizio `accendibile`, M-61: nessun lettore nel prodotto.)"""
+    j = _j(("tipo", "light", "limiti_parametri",
             ('{"color_temp_kelvin": {"min": "min_color_temp_kelvin",'
              ' "max": "max_color_temp_kelvin"},'
              ' "effect": {"options": "effect_list"}}')),
            ("tipo", "alarm_control_panel", "lavoro",
             '{"triggered": "e\' il fatto piu\' notevole"}'))
-    assert j.operable_domains() == frozenset({"light"})
     assert j.parameter_limits("light", "color_temp_kelvin")["min"] == "min_color_temp_kelvin"
     assert j.parameter_limits("light", "effect")["options"] == "effect_list"
     assert j.parameter_limits("light", "brightness") is None

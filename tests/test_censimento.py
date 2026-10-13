@@ -1099,7 +1099,6 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 #: scrivere quelle due parole -- o citare una voce aperta qualunque -- per
 #: passare (eseguito dal revisore il 02/10/2026).
 ADMITTED_EXCEPTIONS = {
-    ("simbolo-solo-test", "operable_domains"): "M-61",
     ("rotta-solo-test", "/api/misure"): "M-22",
 }
 
@@ -1133,7 +1132,8 @@ def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_po
     `test_fonte_unica.py`.
 
     Mutazioni ESEGUITE, tutte rosse col nome dell'eccezione: tolta «Voce
-    M-61» dalla ragione di `operable_domains`; la stessa ragione riscritta
+    M-61» dalla ragione di `operable_domains` (eccezione guarita il 13/10/2026,
+    con M-61); la stessa ragione riscritta
     «Serve. Voce X-12 del registro.» (aperta, ma un'altra); la ragione di
     `actuator_round` riscritta «Falso positivo: fidati di me, serve.»."""
     import re

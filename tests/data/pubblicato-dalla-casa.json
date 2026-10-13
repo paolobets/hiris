@@ -777,23 +777,5 @@
       2,
       4
     ]
-  },
-  "domini_accendibili": [
-    "automation",
-    "camera",
-    "climate",
-    "cover",
-    "fan",
-    "homeassistant",
-    "humidifier",
-    "input_boolean",
-    "light",
-    "media_player",
-    "remote",
-    "script",
-    "siren",
-    "switch",
-    "valve",
-    "water_heater"
-  ]
+  }
 }

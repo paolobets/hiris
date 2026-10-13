@@ -169,7 +169,7 @@ def genre_for(subject: str, device_class: str | None, *,
     condizione di sistema -- nascono, durano, finiscono o restano aperti -- ma
     una porta aperta con la chiave e un'integrazione Sonos rotta non sono lo
     stesso genere di fatto. Nel seme sono righe `genere` `sicurezza`, e una
-    sirena (accendibile anche lei) e' `sicurezza`, non `funzionamento`.
+    sirena (che si accende e si spegne) e' `sicurezza`, non `funzionamento`.
 
     **Il monossido misurato resta fuori, e restare fuori e' la decisione**: un
     `sensor` di classe `carbon_monoxide` MISURA una concentrazione, non SCATTA.

@@ -580,6 +580,39 @@ def _migration_10(conn) -> None:
             row["value"], row["provenance"], row["verification"], row["who"])
 
 
+#: Il giudizio che la migrazione 11 toglie. Per esteso e non importato: il
+#: nome e' uscito dal prodotto (`type_judgments`), e la migrazione deve dire
+#: fra due anni la stessa cosa che dice adesso.
+_RETIRED_JUDGMENT = "accendibile"
+
+
+def _migration_11(conn) -> None:
+    """v10 -> v11: esce il giudizio `accendibile` (M-61, decisione del
+    proprietario del 13/10/2026 sulla Chiusura dello sprint).
+
+    Nessun lettore del prodotto decideva niente con lui: lo leggevano il
+    censore dei tipi (un attrezzo), la pagina del sapere che lo mostrava, e la
+    regola d'importazione del vocabolario, che da quel giorno si chiede al
+    genere. Senza questa migrazione le righe gia' scritte resterebbero negli
+    archivi delle case avviate, e l'istantanea dei giudizi le rifiuterebbe
+    tutte all'avvio come campo che non e' un giudizio (`TypeJudgments.
+    from_rows`).
+
+    Come la migrazione 9: **toglie anche una riga corretta a mano** (il campo
+    non ha un valore da difendere, di chiunque sia), e **ogni riga tolta si
+    nomina nel registro, col suo valore**."""
+    rows = conn.execute(
+        "SELECT subject_kind, subject, field, value, provenance, who FROM knowledge "
+        "WHERE field = ? ORDER BY subject_kind, subject",
+        (_RETIRED_JUDGMENT,)).fetchall()
+    for row in rows:
+        logger.info(
+            "sapere: riga tolta, nessun codice la leggeva piu' -- %s/%s/%s = %r "
+            "(%s, scritta da %s)", row["subject_kind"], row["subject"], row["field"],
+            row["value"], row["provenance"], row["who"])
+    conn.execute("DELETE FROM knowledge WHERE field = ?", (_RETIRED_JUDGMENT,))
+
+
 def _why_from_evidence(evidence: str | None) -> str:
     """Il `why` del modello dentro le prove, o la stringa vuota.
 
@@ -611,7 +644,7 @@ def _why_from_evidence(evidence: str | None) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-_SCHEMA_VERSION = 10
+_SCHEMA_VERSION = 11
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts", "said_by")
@@ -695,7 +728,8 @@ class KnowledgeStore:
                                 4: _migration_4, 5: _migration_5,
                                 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
-                                9: _migration_9, 10: _migration_10})
+                                9: _migration_9, 10: _migration_10,
+                                11: _migration_11})
         self._version = 0
 
     def version(self) -> int:

@@ -21,7 +21,7 @@ from hiris.app.mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.mind.knowledge import _SCHEMA_VERSION, Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
 from tests._casa_sintetica import synthetic_inputs
 
@@ -414,7 +414,8 @@ def test_porta_RIFIUTA_guasto(tmp_path):
 # Il livello del soggetto: una riga che nessuna domanda consulta non si scrive
 # (revisione del Task 1). Le domande di `TypeJudgments`: `genre_of` e
 # `resting_of` salgono entita' -> coppia -> dominio; `working_of` coppia ->
-# dominio; `operable_domains` e `parameter_limits` solo dominio. (Fino al
+# dominio; `parameter_limits` solo dominio (`operable_domains` e' uscita il
+# 13/10/2026 col giudizio `accendibile`, M-61). (Fino al
 # 29/09/2026 c'era anche `is_notable`, coppia -> dominio: uscita col suo unico
 # lettore, «Notevole adesso» del nucleo. Il campo `notevole` e' uscito dai
 # giudizi il 02/10/2026: una riga cosi' la porta la rifiuta come ogni campo
@@ -430,17 +431,13 @@ _LIVELLI_LETTI = [
      lambda j: j.resting_of("sensor", "power") == frozenset({"on"})),
     ("tipo", "binary_sensor.occupancy", "lavoro", '{"on": "occupato"}',
      lambda j: dict(j.working_of("binary_sensor", "occupancy")) == {"on": "occupato"}),
-    ("tipo", "sensor", "accendibile", "si",
-     lambda j: "sensor" in j.operable_domains()),
     ("tipo", "sensor", "limiti_parametri", '{"x": {"options": "y"}}',
      lambda j: dict(j.parameter_limits("sensor", "x")) == {"options": "y"}),
 ]
 
 _LIVELLI_MUTI = [
     ("entita", "light.x", "lavoro", '{"on": "acceso"}'),
-    ("entita", "light.x", "accendibile", "si"),
     ("entita", "climate.x", "limiti_parametri", '{"x": {"options": "y"}}'),
-    ("tipo", "sensor.power", "accendibile", "si"),
     ("tipo", "climate.hvac", "limiti_parametri", '{"x": {"options": "y"}}'),
     # D1 della fetta 2026-09-18: `_LEVELS` dichiara i livelli a cui
     # `da_sapere_subito` e' davvero CONSULTATO -- coppia e dominio, come
@@ -1148,7 +1145,7 @@ def test_migrazione_10_LASCIA_sul_disco_le_righe_coi_valori_che_escono(tmp_path,
 
 def test_migrazione_10_una_seconda_apertura_non_cambia_niente(tmp_path, caplog):
     """La migrazione si prova due volte: la seconda apertura trova l'archivio
-    alla 10 e non tocca niente, ne' scrive di nuovo nel registro."""
+    all'ultima versione e non tocca niente, ne' scrive di nuovo nel registro."""
     import logging
 
     db = _archivio_v9(tmp_path)
@@ -1160,7 +1157,7 @@ def test_migrazione_10_una_seconda_apertura_non_cambia_niente(tmp_path, caplog):
         secondo = KnowledgeStore(db)
     try:
         assert _disco(secondo) == prima
-        assert secondo._conn.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert secondo._conn.execute("PRAGMA user_version").fetchone()[0] == _SCHEMA_VERSION
         assert not [r for r in caplog.records if "sapere:" in r.getMessage()]
     finally:
         secondo.close()
