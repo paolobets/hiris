@@ -167,11 +167,13 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         "home_space/house_history.py",
         ("lo storico dettagliato, letto da `read_series` per lo strumento della "
          "chat e per chi non e' un turno (Tappa 3, Task 13: era in `tools.py`); "
-         "l'altro modo di leggere lo storico (`recorded_changes`) e' A-36")),
+         "l'altro modo di leggere lo storico (`recorded_changes`) resta: D6 della "
+         "Tappa 2, A-36 chiusa come voluta il 13/10/2026")),
     "recorded_changes": (
         "mind/cadence.py",
-        ("la cadenza dell'osservatore conta i cambi per finestra; con `history` "
-         "sono due comandi per la stessa domanda, A-36")),
+        ("la cadenza dell'osservatore conta i cambi per finestra; `history` da' "
+         "la serie: due domande diverse, che restano (D6 della Tappa 2, A-36 "
+         "chiusa come voluta il 13/10/2026)")),
     "trace": (
         "home_space/house_history.py",
         ("la traccia passo per passo di un'esecuzione (`read_runs`; fino al "
