@@ -640,6 +640,58 @@ async def _enqueue_chat_job(
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
+async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
+                           soffitto: dict, thread: ChatThread | None,
+                           phrase: str, history: list[dict],
+                           system_prompt: str, context_str: str,
+                           restrict_to_home: bool, response_mode: str,
+                           thinking_budget: int,
+                           house: House | None = None) -> str:
+    """**Un turno di chat sulla catena**, per le due strade che lo fanno: il
+    ramo sincrono di `handle_chat` e il ripiego a scadenza del ponte (D-17,
+    Chiusura 13/10/2026). Fino a quel giorno ognuna scriveva a mano i dodici
+    argomenti di `chain_turn`, la rete sul runner che solleva e la scrittura
+    della risposta.
+
+    Conia l'identita' del turno (una richiesta HTTP, un turno: la guardia
+    dell'officina, vedi `create_tool_dispatcher`), mette l'ora della casa in
+    coda alla frase (D-51) e passa al dispatcher la frase SENZA l'ora: la
+    cronaca registra cio' che la persona ha scritto. Il turno passa dal ciclo
+    di ripiego del router (`model="auto"`, l'unico che esiste). Scrive in
+    cronologia la sola risposta, e solo se il turno ha risposto davvero e non
+    e' tossica (D-15): la domanda l'ha gia' scritta chi chiama.
+    """
+    answered = False
+    try:
+        answer, turn = await chain_turn(
+            runner, "chat", usage=app.get("usage"), soggetto=soggetto,
+            user_message=with_hour(phrase, house_hour(app)),
+            system_prompt=system_prompt, context_str=context_str,
+            conversation_history=history, model="auto",
+            max_tokens=CHAT_MAX_TOKENS, restrict_to_home=restrict_to_home,
+            response_mode=response_mode, thinking_budget=thinking_budget,
+            tools=KNOWLEDGE_TOOLS,
+            dispatcher=create_tool_dispatcher(
+                app, exchange=secrets.token_urlsafe(8), soffitto=soffitto,
+                soggetto=soggetto, frase=phrase, thread=thread, house=house))
+        answered = turn.answered
+    except RunnerBackendError as exc:
+        # `runner` puo' essere `app["claude_runner"]`, cioe' un backend
+        # diretto che SOLLEVA invece di consegnare una frase come il router.
+        answer = exc.friendly_message
+    if answered and not _is_toxic_assistant(answer):
+        if thread is not None:
+            append_messages([{"role": "assistant", "content": answer}],
+                            app["data_dir"], thread=thread)
+        else:
+            # Un job senza filo (accodato prima delle chat divise) non arriva
+            # qui dal poll -- e' un 404 -- ma se ci arrivasse la risposta non
+            # si scrive in un filo inventato.
+            logger.warning("turno di chat senza filo: risposta non scritta "
+                           "in cronologia")
+    return answer
+
+
 async def _downgrade_to_chain(request: web.Request, job_id: str):
     """Rifà sulla catena il turno che il piano non ha servito in tempo.
 
@@ -695,7 +747,6 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
 
     runner = chain_runner(request.app)
     contesto = job.get("context") or {}
-    data_dir = request.app["data_dir"]
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
     # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
     # scadenza (spec §4). Il poll di un altro filo e' gia' un 404, ma il turno
@@ -724,81 +775,39 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     if not isinstance(cronologia, list):
         cronologia = []
     ultimo = last_phrase(cronologia) or ""
-    try:
-        # L'identita' di QUESTO turno, coniata UNA volta qui e non dentro il
-        # dispatcher: questa funzione risponde a UNA sola richiesta HTTP (il
-        # poll che ha scoperto la scadenza), quindi una sola identita' le
-        # basta -- vedi il docstring di `create_tool_dispatcher` per
-        # la guardia che la usa.
-        #
-        # Review indipendente (I3, fetta «costruire»): CONVERSAZIONALMENTE
-        # e' lo stesso turno del lavoro sul ponte che e' appena scaduto, ma
-        # riceve un'identita' NUOVA, diversa da quella (se mai ce n'e' stata
-        # una) che il ponte aveva coniato per quel job. Oggi non morde: la
-        # cronologia del ripiego (`contesto.get("history")`, sopra) porta
-        # solo messaggi utente/assistente, un `proposta_id` non ci arriva
-        # mai, e questo ramo non puo' quindi confermare una proposta nata sul
-        # ponte. Ma e' a un cambiamento di distanza dall'aprire il cancello
-        # in silenzio: se un giorno il contesto del ripiego portasse anche lo
-        # stato di una `propose` in sospeso, questa identita' nuova la
-        # renderebbe confermabile qui -- fuori dal turno che l'ha proposta,
-        # ed e' esattamente cio' che la guardia esiste per impedire. Chi
-        # tocca questo contesto deve saperlo.
-        exchange_id = secrets.token_urlsafe(8)
-        # Il ripiego dalla coda alla catena e' un turno di chat: la
-        # specie e' quella di chi ha scritto, non della strada che il
-        # turno ha dovuto prendere.
-        answer, turn = await chain_turn(
-            runner, "chat", usage=request.app.get("usage"),
-            soggetto=soggetto,
-            # L'ora di ADESSO, non quella dell'accodamento (D-51).
-            user_message=with_hour(ultimo, house_hour(request.app)),
-            system_prompt=contesto.get("system_prompt", ""),
-            context_str=contesto.get("contesto", ""),
-            # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
-            # da `test_job_context_history_includes_current_user_turn`):
-            # passarla intera come `conversation_history` E ripetere il
-            # messaggio come `user_message` lo manderebbe due volte.
-            conversation_history=cronologia[:-1],
-            # Il turno passa dal ciclo di ripiego del router, nell'ordine
-            # della catena: e' l'unico modo che esiste (il ramo del modello
-            # esplicito e' uscito con la Tappa 0). Qui va SCRITTO, non
-            # ereditato.
-            model="auto",
-            max_tokens=CHAT_MAX_TOKENS,
-            restrict_to_home=bool(contesto.get("restrict_to_home")),
-            response_mode=contesto.get("response_mode", "auto"),
-            # Il contesto del job NON porta `thinking_budget` (otto chiavi,
-            # pinnate da `test_context_del_job_porta_esattamente_queste_
-            # otto_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
-            # applicare al ripiego un'impostazione che il ponte aveva
-            # dichiarato inapplicabile, con un log, al momento
-            # dell'accodamento.
-            thinking_budget=0,
-            tools=KNOWLEDGE_TOOLS,
-            dispatcher=create_tool_dispatcher(
-                request.app, exchange=exchange_id,
-                # Il soffitto di chi ha scritto il messaggio, dal soggetto
-                # DEL JOB: e' la stessa regola del ramo sincrono e della
-                # rotta MCP, non quella di chi fa il poll.
-                soffitto=await ceiling_for(request.app, soggetto),
-                soggetto=soggetto,
-                # Lo STESSO testo che il modello ha davanti come ultimo turno
-                # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
-                # da un'altra parte, la cronaca registrerebbe una frase
-                # diversa da quella su cui il modello ha deciso.
-                frase=ultimo,
-                # Il filo DEL JOB (letto in cima a questa funzione),
-                # non quello di chi per caso fa il poll che scopre la
-                # scadenza (spec §4, come `soggetto` qui sopra).
-                thread=thread),
-        )
-        answered = turn.answered
-    except RunnerBackendError as exc:
-        # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
-        # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
-        answer = exc.friendly_message
-        answered = False
+    # Il ripiego dalla coda alla catena e' un turno di chat: la specie e'
+    # quella di chi ha scritto, non della strada che il turno ha dovuto
+    # prendere. Soggetto, soffitto e filo sono quelli DEL JOB, non di chi fa
+    # il poll (spec §4). La cronologia del job CONTIENE GIÀ il turno
+    # dell'utente (pinnato da `test_job_context_history_includes_current_
+    # user_turn`): passarla intera e ripetere il messaggio lo manderebbe due
+    # volte. Il contesto del job NON porta `thinking_budget` (otto chiavi,
+    # pinnate da `test_context_del_job_porta_esattamente_queste_otto_chiavi_
+    # ne_una_di_piu`): inventarne uno qui applicherebbe al ripiego
+    # un'impostazione che il ponte aveva dichiarato inapplicabile, con un
+    # log, al momento dell'accodamento.
+    #
+    # Review indipendente (I3, fetta «costruire»): CONVERSAZIONALMENTE e' lo
+    # stesso turno del lavoro sul ponte che e' appena scaduto, ma riceve
+    # un'identita' NUOVA (`_chain_chat_turn` la conia), diversa da quella (se
+    # mai ce n'e' stata una) che il ponte aveva coniato per quel job. Oggi non
+    # morde: la cronologia del ripiego porta solo messaggi utente/assistente,
+    # un `proposta_id` non ci arriva mai, e questo ramo non puo' quindi
+    # confermare una proposta nata sul ponte. Ma e' a un cambiamento di
+    # distanza dall'aprire il cancello in silenzio: se un giorno il contesto
+    # del ripiego portasse anche lo stato di una `propose` in sospeso,
+    # l'identita' nuova la renderebbe confermabile qui -- fuori dal turno che
+    # l'ha proposta, ed e' esattamente cio' che la guardia esiste per
+    # impedire. Chi tocca questo contesto deve saperlo.
+    answer = await _chain_chat_turn(
+        request.app, runner, soggetto=soggetto,
+        soffitto=await ceiling_for(request.app, soggetto), thread=thread,
+        phrase=ultimo, history=cronologia[:-1],
+        system_prompt=contesto.get("system_prompt", ""),
+        context_str=contesto.get("contesto", ""),
+        restrict_to_home=bool(contesto.get("restrict_to_home")),
+        response_mode=contesto.get("response_mode", "auto"),
+        thinking_budget=0)
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
     # La scadenza del ponte e' un ripiego come gli altri, e conta nella
@@ -809,23 +818,6 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
     queue.resolve_downgrade(job_id, {"reply": answer, "nota": note}, time.time())
-    if answered and not _is_toxic_assistant(answer):
-        # SOLO la risposta, e solo se c'e' (la regola del ramo sincrono, D-15):
-        # il turno dell'utente è già in cronologia da prima dell'accodamento
-        # (`_enqueue_chat_job`), e riscriverlo lo duplicherebbe. E SOLO la
-        # risposta anche rispetto alla nota: una nota persistita diventa
-        # contesto che il modello rilegge al turno dopo e su cui ragiona -- è
-        # la stessa famiglia del difetto dichiarato su «Errore temporaneo del
-        # servizio AI», che in cronologia ci finisce e non dovrebbe.
-        if thread is not None:
-            append_messages([{"role": "assistant", "content": answer}], data_dir,
-                            thread=thread)
-        else:
-            # Un job senza filo (accodato prima delle chat divise) non arriva
-            # qui dal poll -- e' un 404 -- ma se ci arrivasse la risposta non
-            # si scrive in un filo inventato.
-            logger.warning("ripiego del job %s senza filo: risposta non "
-                           "scritta in cronologia", job_id)
     payload = {"status": "done", "reply": answer}
     if note:
         payload["nota"] = note
@@ -1114,95 +1106,23 @@ async def handle_chat(request: web.Request) -> web.Response:
                                                history),
                                            house=house)
 
-        # Gli strumenti della chat -- il perche' di ogni riga sta
-        # nel docstring di `create_tool_dispatcher` (sopra), che dalla
-        # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
-        # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
-        # che possono divergere.
-        #
-        # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
-        # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
-        # HTTP sola, quindi un turno le
-        # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
-        # il docstring di `create_tool_dispatcher`).
-        exchange_id = secrets.token_urlsafe(8)
-        # Lo STESSO `soffitto` letto sopra per la sezione "Chi ti sta parlando" --
-        # accanto all'identita' del turno, si porta nel dispatcher. Leggerlo
-        # dentro lo strumento vorrebbe dire un secondo posto in cui si decide
-        # chi puo' cosa.
-        tool_dispatcher = create_tool_dispatcher(
-            request.app, exchange=exchange_id,
-            soffitto=soffitto,
-            soggetto=request.get("soggetto"),
-            # Lo STESSO testo che va al modello come `user_message` piu' sotto.
-            frase=message,
-            # Il filo di chi scrive, calcolato in cima a questa funzione: serve
-            # alla guardia dell'officina (spec §5, «confirm e' del filo»).
-            thread=thread, house=house)
-
-        # fetta "la catena diventa l'unica verita'": qui c'era
-        # `agent_model = settings.model`. Il campo e' uscito con la decisione
-        # del proprietario del 13 agosto: il modello si sceglie per provider, nella
-        # pagina Modelli, e la chat chiede SEMPRE `auto`: il turno passa dal ciclo
-        # di ripiego di `LLMRouter.chat`, l'unico che esiste.
-        agent_model = "auto"
-        # La chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
-        # modulo dei runner, perche' una risposta lunga -- il riepilogo di una
-        # casa grande, un elenco di ricordi -- lo supera legittimamente.
-        agent_max_tokens = CHAT_MAX_TOKENS
-        agent_restrict = settings.restrict_to_home
-        agent_response_mode = settings.response_mode
-        agent_thinking_budget = settings.thinking_budget
-
-        answered = False
-        try:
-            response, turn = await chain_turn(
-                runner, "chat", usage=request.app.get("usage"),
-                soggetto=request.get("soggetto"),
-                # L'ora della casa in coda al messaggio, non nel nucleo (D-51):
-                # in cronologia e nella cronaca resta la frase di chi scrive.
-                user_message=with_hour(message, house_hour(request.app)),
-                system_prompt=system_prompt,
-                context_str=context_str,
-                conversation_history=context_history,
-                model=agent_model,
-                max_tokens=agent_max_tokens,
-                restrict_to_home=agent_restrict,
-                response_mode=agent_response_mode,
-                thinking_budget=agent_thinking_budget,
-                tools=KNOWLEDGE_TOOLS,
-                dispatcher=tool_dispatcher,
-            )
-            answered = turn.answered
-        except RunnerBackendError as exc:
-            # Review C/#13: runners now raise instead of returning a friendly
-            # string on API failure, so LLMRouter's auto-fallback loop actually
-            # engages — reproduce the exact same string-shaped degraded response
-            # so everything below (toxicity/persistence/serialization) is
-            # unaffected.
-            #
-            # fetta "la catena diventa l'unica verita'" (Task 4): questo commento
-            # diceva «that loop only ever raises here when `agent_model` pins an
-            # explicit non-"auto" model». Non e' piu' vero, perche' `agent_model`
-            # e' SEMPRE "auto" (sopra): quel ramo di `LLMRouter.chat` non esiste
-            # piu' per nessun turno. Sul ramo "auto" il router cattura ogni
-            # eccezione di ogni backend e restituisce una stringa, quindi
-            # attraverso `app["llm_router"]` questo `except` non e' piu'
-            # raggiungibile. Resta perche' `runner` puo' anche essere
-            # `app["claude_runner"]` (handle_chat, la riga che sceglie il
-            # runner), cioe' un backend diretto che invece SOLLEVA: e' li' che
-            # questa rete serve ancora. Detto, non taciuto: un ramo che non si sa
-            # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
-            response = exc.friendly_message
-
-        # La risposta, solo se c'e': non una frase sintetica del router o di un
-        # runner (nessuno ha risposto, il ripiego fermato dopo una scrittura),
-        # ne' una sentinella tossica. Il turno dopo non deve ereditarla come
-        # se l'avesse detta il modello; l'utente la legge comunque in questa
-        # risposta.
-        if answered and not _is_toxic_assistant(response):
-            append_messages([{"role": "assistant", "content": response}],
-                            data_dir, thread=thread)
+        # Il turno: `_chain_chat_turn`, lo stesso del ripiego a scadenza
+        # (D-17). Lo STESSO `soffitto` letto sopra per la sezione «Chi ti sta
+        # parlando» va al dispatcher: leggerlo dentro lo strumento vorrebbe
+        # dire un secondo posto in cui si decide chi puo' cosa. Il modello lo
+        # sceglie la pagina Modelli, per provider: la chat chiede sempre
+        # `auto` (dal 13 agosto il campo `settings.model` non c'e' piu'), e il
+        # tetto d'uscita e' `CHAT_MAX_TOKENS`, piu' alto del `MAX_TOKENS` dei
+        # runner perche' una risposta lunga -- il riepilogo di una casa
+        # grande, un elenco di ricordi -- lo supera legittimamente.
+        response = await _chain_chat_turn(
+            request.app, runner, soggetto=request.get("soggetto"),
+            soffitto=soffitto, thread=thread, phrase=message,
+            history=context_history, system_prompt=system_prompt,
+            context_str=context_str,
+            restrict_to_home=settings.restrict_to_home,
+            response_mode=settings.response_mode,
+            thinking_budget=settings.thinking_budget, house=house)
 
     # Stessa scelta del ramo del ponte qui sopra: i NOMI degli strumenti vanno
     # nei log a debug, non nella risposta. Fino al 13/10/2026 (M-31) la
