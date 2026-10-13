@@ -131,7 +131,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
                  silent: dict[str, NotComputable] | None = None,
                  judgment: dict | None = None,
-                 muted: dict[str, dict] | None = None) -> dict:
+                 muted: dict[str, NotComputable] | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, obiettivo, regole, misure, forme,
     cronaca, giudizio}`.
 
@@ -172,7 +172,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     **`muted`** porta le ricette che non possono produrre niente perche' ogni
     loro entita' tace per una causa che non passa da sola
     (`recipes.muted_recipes`, piano degli attori, Task 1.5; G-02, G-03):
-    `{dispositivo: {non_calcolabile, causa}}`. Escono con UNA riga per
+    `{dispositivo: NotComputable}`. Escono con UNA riga per
     dispositivo, non con un rifiuto per passo; chi chiama non le mette fra
     `recipes`.
 
@@ -188,7 +188,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
 
 def _measurements(series: dict, recipes: dict, names: dict,
                   silent: dict[str, NotComputable] | None = None,
-                  muted: dict[str, dict] | None = None
+                  muted: dict[str, NotComputable] | None = None
                   ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
@@ -227,8 +227,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
         if subject in muted:
             # Il dispositivo tace tutto: una riga, non un rifiuto per passo.
             out.append({**base, "misura": "(la ricetta)",
-                        "non_calcolabile": muted[subject]["non_calcolabile"],
-                        "causa": muted[subject]["causa"]})
+                        **muted[subject].as_fields()})
             continue
         recipe = Recipe(recipes[subject])
         needed = {e: series.get(e) or [] for e in recipe.entities()}
@@ -242,7 +241,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
             # dispositivo sarebbe il contrario di cio' che questo strato
             # promette.
             out.append({**base, "misura": "(la ricetta)",
-                        "non_calcolabile": str(error), "causa": RECIPE_BROKEN})
+                        **NotComputable(str(error), cause=RECIPE_BROKEN).as_fields()})
             logger.warning("resoconto: ricetta non valida per %s -- %s",
                            subject, error)
             continue
@@ -279,8 +278,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
                     shapes.append(row)
                     continue
             else:
-                row["non_calcolabile"] = outcome.reason
-                row["causa"] = outcome.cause
+                row.update(outcome.as_fields())
             out.append(row)
     return out, shapes
 
