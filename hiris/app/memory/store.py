@@ -136,6 +136,12 @@ CONSERVAZIONE: Retention = {
 }
 
 
+def _said_at(now: float | None) -> str:
+    """`detto_il` sul disco: ISO in UTC al secondo, da `now` o da adesso."""
+    when = datetime.now(UTC) if now is None else datetime.fromtimestamp(now, UTC)
+    return when.isoformat(timespec="seconds")
+
+
 class MemoryStore:
     CONSERVAZIONE = CONSERVAZIONE
 
@@ -165,8 +171,13 @@ class MemoryStore:
                 said_by: str | None = None, ancore=(), conditions=(),
                 modality: str | None = None, grandezza: str | None = None,
                 minimum: float | None = None, maximum: float | None = None,
-                unit: str | None = None) -> int:
+                unit: str | None = None, now: float | None = None) -> int:
         """Archivia un ricordo nuovo, con le sue ancore e condizioni.
+
+        `now` e' l'istante in cui e' stato detto, dall'orologio di chi chiama
+        (G-14, Chiusura), come `prune(now)`; senza, vale adesso. Sul disco
+        resta ISO in UTC (D8 della Tappa 8: il disco cambia forma solo con la
+        rinomina); chi legge lo riceve in epoca.
 
         Un ricordo nudo (nessuna ancora, nessuna condizione, nessuna forza)
         e' un ricordo intero, non un ricordo a meta': la struttura e'
@@ -189,7 +200,7 @@ class MemoryStore:
                 "INSERT INTO ricordi "
                 "(testo, detto_da, said_by, detto_il, forza, grandezza, minimo, massimo, unita) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (text, detto_da, said_by, datetime.now(UTC).isoformat(timespec="seconds"),
+                (text, detto_da, said_by, _said_at(now),
                  modality, grandezza, minimum, maximum, unit))
             ricordo_id = cursore.lastrowid
             self._write_ancore(ricordo_id, ancore)

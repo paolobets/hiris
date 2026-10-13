@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 
+from ..answer_reasons import NO_ANSWER_REASON
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
@@ -106,7 +107,7 @@ DELIVERY_TITLE = "HIRIS"
 PUSH_MESSAGE_CAP = 500
 # Il tetto di un motivo o di un errore che entra in un racconto (vincolo
 # 3.7): una riga da leggere, non un allegato. E' anche il tetto del motivo che
-# cita la risposta del modello (`exchange._quoting`): un tetto solo (B-54).
+# cita la risposta del modello (`_quoting`): un tetto solo (B-54).
 REASON_CAP = 300
 # La frase originale citata nel messaggio d'esito: e' di chi ha chiesto e
 # torna a lui, ma resta un campo limitato come gli altri.
@@ -350,3 +351,54 @@ def bridge_silence_reason(provider_name: str, minutes: int) -> str:
     Come `delay_reason`, dice cio' che si e' misurato e nient'altro."""
     return (f"ho aspettato il {provider_name} per {minutes} minuti e non ha "
             "risposto: non so cosa dirti.")
+
+
+def _quoting(prefix: str, detto: str, suffix: str = "") -> str:
+    """Un motivo che cita la risposta del modello: `prefix`, la citazione e
+    `suffix`, col tutto dentro il tetto dei motivi (`REASON_CAP`).
+
+    Il motivo finisce in una colonna di SQLite, in una riga della pagina
+    Promesse e nel racconto di `failure_message`, che lo taglia a quel tetto:
+    si taglia qui la sola citazione, perche' il motivo intero ci stia e il
+    secondo taglio non trovi niente. Fino alla Tappa 8 (B-54) la citazione
+    aveva un tetto suo dello stesso numero (`_CEILING_RIPORTO`): il motivo
+    usciva piu' lungo del tetto, e il racconto lo tagliava di nuovo, perdendo
+    la chiusa della citazione."""
+    room = max(0, REASON_CAP - len(prefix) - len(suffix))
+    return f"{prefix}{truncate_with_marker(detto, room)}{suffix}"
+
+
+def unfinished_reason(answer) -> str:
+    """Il motivo di un turno che NON ha chiamato `conclude`, con dentro cio'
+    che il modello aveva risposto al suo posto.
+
+    Vive qui con gli altri motivi di chiusura (D-24, Chiusura): fino al
+    13/10/2026 stava in `keeper/exchange.py` come `_senza_conclusione`,
+    mentre il suo gemello del silenzio (`bridge_silence_reason`) stava qui.
+
+    Fino al 21/08/2026 questa funzione non esisteva e il motivo era una
+    costante: «il turno non ha concluso: non so cosa dirti». Vera, e
+    inutilizzabile -- perche' le TRE uscite del ciclo di `claude_runner.chat`
+    che portano qui restituiscono tre stringhe DIVERSE (il testo del modello,
+    `_MAX_ITERATIONS_NOTICE`, `_TRUNCATION_NOTICE`) e quella stringa era
+    l'unica cosa che le distingueva. `interpreta_promise` la scartava: per
+    sapere quale delle tre fosse capitata sulla casa vera e' servita
+    un'indagine con tre riproduzioni sull'add-on vivo.
+
+    Quando non c'e' proprio niente da riportare si torna alla frase di prima:
+    un virgolettato vuoto affermerebbe «ha detto questo», e questo e' niente.
+    """
+    detto = answer.strip() if isinstance(answer, str) else ""
+    if not detto:
+        return "il turno non ha concluso: non so cosa dirti."
+    return _quoting("il turno non ha concluso. Aveva risposto a parole: «", detto, "»")
+
+
+def unanswered_reason(answer) -> str:
+    """Il motivo di un turno a cui nessun modello ha risposto, con dentro la
+    frase del router: e' la diagnosi («credito esaurito», «nessun provider
+    utilizzabile»), e senza la pagina direbbe solo che e' andata male."""
+    detto = answer.strip() if isinstance(answer, str) else ""
+    if not detto:
+        return f"{NO_ANSWER_REASON}."
+    return _quoting(f"{NO_ANSWER_REASON}: ", detto)

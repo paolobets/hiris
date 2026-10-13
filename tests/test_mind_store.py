@@ -1662,3 +1662,57 @@ def test_il_resoconto_salva_l_obiettivo_come_RIFERIMENTO_e_lo_rende_intero(archi
     assert archivio.report("2026-08-24")["obiettivo"] == allora
     assert allora["testo"] == "spendere meno di sera"
     assert archivio.objective()["id"] != allora["id"]
+
+
+# -- G-24: gli esiti del proponente hanno una casa sola (Chiusura, F4) -----
+
+def test_i_giri_del_rifalla_chiedono_gli_esiti_alla_foglia_e_non_li_ricopiano(tmp_path):
+    """G-24: `add_proposal_round` ricopiava gli esiti del proponente in un
+    letterale (`("a_mano", "niente", "costruita")`), perche' la loro casa,
+    `proposer_turn`, sta sopra `mind/store` negli import. Ora vivono in una
+    foglia (`mind/proposer_outcomes.py`) che leggono tutti e due.
+
+    La prova chiede ad `ast` che il corpo di `add_proposal_round` non porti
+    nessuna delle parole come letterale, e che ogni esito della foglia sia
+    accettato. Mutazione ESEGUITA (13/10/2026): il letterale rimesso al posto
+    di `OUTCOMES` -- rossa qui, con la riga che lo porta."""
+    import ast
+    import inspect
+    import textwrap
+
+    from hiris.app.mind import proposer_outcomes
+
+    sorgente = textwrap.dedent(inspect.getsource(ObservationsStore.add_proposal_round))
+    letterali = [(n.value, n.lineno) for n in ast.walk(ast.parse(sorgente))
+                 if isinstance(n, ast.Constant) and n.value in proposer_outcomes.OUTCOMES]
+    assert letterali == []
+
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for i, esito in enumerate(proposer_outcomes.OUTCOMES):
+            ident = store.add_proposal(text="a", perche="p", fingerprint=f"f{i}",
+                                       prova={"v": i}, stakes=None, now_ts=1.0)
+            assert store.add_proposal_round(ident, request="r", outcome=esito,
+                                            turn="t", now_ts=2.0, text="b", why="w",
+                                            built="x") is True
+        with pytest.raises(ValueError):
+            store.add_proposal_round(ident, request="r", outcome="inventato",
+                                     turn="t2", now_ts=3.0)
+    finally:
+        store.close()
+
+
+def test_resoconto_e_analisi_ricevono_l_istante_da_chi_chiama(tmp_path):
+    """G-14 (Chiusura): `replace_report` e `replace_analysis` prendevano
+    l'orologio da se', mentre le altre scritture di questo archivio ricevono
+    `when_ts`. Mutazione ESEGUITA (13/10/2026): `when_ts` ignorato in
+    `replace_report` -- rossa."""
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        store.replace_report("2026-09-21", {"giorno": "2026-09-21"}, when_ts=1_790_000_000.0)
+        store.replace_analysis("2026-09-21", {"osservazioni": []}, when_ts=1_790_000_060.0)
+        righe = {t: store._conn.execute(f"SELECT scritto_ts FROM {t}").fetchone()[0]
+                 for t in ("resoconto", "analisi")}
+    finally:
+        store.close()
+    assert righe == {"resoconto": 1_790_000_000.0, "analisi": 1_790_000_060.0}

@@ -29,6 +29,18 @@ un contratto interno in inglese, `reasoning/queue.py`), i tentativi
 dell'osservatore (`mind/store.ATTEMPT_*`, vincolati dal loro `CHECK`), gli
 esiti di un turno (`steering.py`) e lo stato derivato del «Rifalla».
 
+**E gli esiti di una richiesta di «rimetti dentro»** (`mind/analyst.py`,
+`BACK_IN`, `ALREADY_INSIDE`, `BACK_IN_REFUSED`; G-19, Chiusura). Non sono
+lo stato di una coda: sono cio' che ne e' stato di una richiesta
+dell'analista, scritto una volta accanto a lei dentro l'analisi archiviata,
+e non cambiano piu'. Il loro `rifiutata` («lo scope o la casa hanno detto
+di no», con la ragione accanto) non e' il «no» di una persona, che qui e'
+`disdetta`: e' lo stesso caso degli esiti del turno, che pero' fino all'08/10
+dicevano `rifiutata` di una risposta del modello e sono diventati `scartato`
+(D4). Questi restano: la parola e' vera per cio' che dicono, e nessuna
+pagina li mostra accanto alle code (nessun file di `static/` cita le tre
+parole, letto il 13/10/2026).
+
 Foglia: non importa niente del prodotto, e lo importano tutti.
 """
 from __future__ import annotations

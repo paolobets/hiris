@@ -294,3 +294,17 @@ def test_rileggere_tutti_i_ricordi_costa_due_letture_quanti_che_siano(memory):
     assert sette["condizioni"] == [{"tipo": "stagione", "valore": "inverno"},
                                    {"tipo": "presenza", "valore": "7"}]
     assert memory.get(sette["id"]) == sette, "get e fetch danno la stessa forma"
+
+
+def test_detto_il_viene_dall_orologio_di_chi_chiama(tmp_path):
+    """G-14 (Chiusura): `remember` prendeva l'orologio da se'. Ora riceve
+    `now` come `prune(now)`, e il disco resta ISO in UTC (D8 della Tappa 8).
+    Mutazione ESEGUITA (13/10/2026): `_said_at` che ignora `now` -- rossa."""
+    m = MemoryStore(str(tmp_path / "memoria.db"))
+    try:
+        ident = m.remember("la caldaia va spenta d'estate", now=1_790_000_000.0)
+        detto = m._conn.execute("SELECT detto_il FROM ricordi WHERE id = ?",
+                                (ident,)).fetchone()[0]
+    finally:
+        m.close()
+    assert detto == "2026-09-21T14:13:20+00:00"

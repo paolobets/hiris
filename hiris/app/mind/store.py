@@ -56,6 +56,7 @@ from ..storage import (
     rebuild_table,
     table_columns,
 )
+from .proposer_outcomes import BY_HAND, NOTHING, OUTCOMES
 from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
@@ -491,6 +492,17 @@ CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 -- **Il silenzio si archivia.** «Ho guardato e non c'era niente da dire» e «non
 -- ho guardato» sono due cose diverse, ed e' la stessa legge del resoconto
 -- vuoto: un'analisi con zero osservazioni e' una riga, non un'assenza.
+--
+-- **Le osservazioni portano i numeri del resoconto, ed e' voluto** (A-17,
+-- Chiusura). `osservazioni[]` ricopia le misure su cui l'analista ha
+-- ragionato (`valore`, `mediana`, `base`..., che il codice attacca e il
+-- modello non scrive: `analyst_turn.NUMERIC_FIELDS`). Non e' un doppione
+-- del resoconto: e' la fotografia di cio' che l'analista ha visto quel
+-- giorno. Il resoconto si riscrive (un recupero, un giudizio corretto: lo
+-- dice il `fondamento`), e un'analisi che rimandasse al resoconto di adesso
+-- direbbe di aver visto numeri che non ha visto. La prova dell'anti-
+-- ripetizione (`analyst.evidence_of`) e' fatta di quei numeri: confrontarla
+-- con quelli di oggi e' il punto.
 CREATE TABLE IF NOT EXISTS analisi (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -559,6 +571,12 @@ CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC)
 -- (`{"id": null}` quello di fabbrica, `null` se non dichiarato), e si risolve in
 -- lettura (A-17, Tappa 8); `regole` dice con quali regole e' stato misurato,
 -- `null` prima che il resoconto lo dicesse (G-03, `report.rules_mark`).
+-- `giudizio` e' `{"impronta", "regola"}` (`facts.chronicle_mark`): non una
+-- copia dei giudizi sui tipi, ma un'impronta calcolata da loro, come l'id di
+-- una versione. E' voluta (A-17, Chiusura): quando un giudizio cambia, il
+-- confronto fra l'impronta scritta e quella di adesso dice quali giorni
+-- rifare (`facts.chronicle_is_stale`), e i giudizi di allora non vivono da
+-- nessun'altra parte.
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -1252,7 +1270,8 @@ class ObservationsStore:
 
     # -- il resoconto --------------------------------------------------
 
-    def replace_report(self, day: str, report: dict) -> None:
+    def replace_report(self, day: str, report: dict, *,
+                       when_ts: float | None = None) -> None:
         """Scrive il resoconto di un giorno, **sostituendo** quello che c'era.
 
         **Rifare un giorno lo sostituisce e non lo accoda.** Sbagliare un
@@ -1264,6 +1283,10 @@ class ObservationsStore:
         `{"id", "testo", "scritto_ts"}` resta `{"id"}`, perche' il testo vive
         nella tabella `objective` per sempre e una copia accanto sarebbe un
         doppione. `report` e `reports` lo risolvono.
+
+        `when_ts` e' l'istante della scrittura, come per le altre scritture di
+        questo archivio (`decide_scope`, `record_attempt`...): chi chiama
+        passa il suo orologio (G-14, Chiusura); senza, vale adesso.
         """
         aim = _objective_ref(report)
         if aim is not None:
@@ -1273,7 +1296,8 @@ class ObservationsStore:
                 "INSERT INTO resoconto(giorno, corpo_json, scritto_ts) "
                 "VALUES(?,?,?) ON CONFLICT(giorno) DO UPDATE SET "
                 "corpo_json=excluded.corpo_json, scritto_ts=excluded.scritto_ts",
-                (day, json.dumps(report, ensure_ascii=False), _time.time()))
+                (day, json.dumps(report, ensure_ascii=False),
+                 float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
 
     def reseal(self, seal_text) -> dict[str, int]:
@@ -1884,18 +1908,21 @@ class ObservationsStore:
 
     # -- l'analisi (spec §10) ------------------------------------------
 
-    def replace_analysis(self, day: str, analysis: dict) -> None:
+    def replace_analysis(self, day: str, analysis: dict, *,
+                         when_ts: float | None = None) -> None:
         """Scrive l'analisi di un giorno, sostituendo quella che c'era.
 
         Stessa disciplina di `replace_report`: rifare un giorno lo RIFA', non
         lo accoda -- e un'analisi accodata darebbe due verita' sullo stesso
-        giorno, che e' il difetto che «costruire» ha gia' pagato.
+        giorno, che e' il difetto che «costruire» ha gia' pagato. Anche
+        `when_ts` come `replace_report` (G-14).
         """
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO analisi(giorno,corpo_json,scritto_ts) "
                 "VALUES(?,?,?)",
-                (day, json.dumps(analysis, ensure_ascii=False), _time.time()))
+                (day, json.dumps(analysis, ensure_ascii=False),
+                 float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
 
     def report_stamps(self, *, limit: int = 30) -> list[tuple[str, float]]:
@@ -2072,7 +2099,7 @@ class ObservationsStore:
         Un giro **non chiude niente**: la proposta resta com'e', in attesa o
         no -- la chiude, quando serve, chi lo chiama.
 
-        `outcome` e' l'esito del proponente (`proposer_turn.OUTCOMES`, attori,
+        `outcome` e' l'esito del proponente (`proposer_outcomes.OUTCOMES`, attori,
         Task 4.4):
         - **a mano**: `text` e `why` sostituiscono testo e perche', e il
           giro conserva la forma scartata;
@@ -2082,7 +2109,7 @@ class ObservationsStore:
         `turn` e' l'identita' del turno che ha risposto: **lo stesso turno non
         scrive due giri**, ed e' cio' che rende innocua una seconda consegna.
         """
-        if outcome not in ("a_mano", "niente", "costruita"):
+        if outcome not in OUTCOMES:
             raise ValueError(f"esito di un giro sconosciuto: {outcome!r}")
         with self._lock:
             row = self._conn.execute(
@@ -2099,7 +2126,7 @@ class ObservationsStore:
                      "quando_ts": now_ts}
             kept_text, kept_why = row[0], row[1]
             refusal_sql = ""
-            if outcome == "a_mano":
+            if outcome == BY_HAND:
                 entry["scartata"] = kept_text
                 # Il testo cambia, e la ragione con lui: una proposta nuova
                 # con la ragione vecchia sarebbe una riga che non si spiega.
@@ -2109,7 +2136,7 @@ class ObservationsStore:
                 # quella. Con «niente» la forma e' la stessa e il rifiuto
                 # resta vero; con «costruita» la proposta si chiude.
                 refusal_sql = ", automation_refusal=NULL"
-            elif outcome == "niente":
+            elif outcome == NOTHING:
                 entry["perche"] = why
             else:
                 entry["proposta_id"] = built

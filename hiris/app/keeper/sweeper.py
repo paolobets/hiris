@@ -238,7 +238,7 @@ class Sweeper:
             return
         if "errore" in answer:
             # Il motivo puo' citare cio' che il modello aveva risposto al posto
-            # di concludere (`exchange._senza_conclusione`): quella citazione,
+            # di concludere (`promise.unfinished_reason`): quella citazione,
             # `excerpt`, passa dal filtro dei veleni da sola.
             if self._store.concludi(promise["id"], state=FAILED, now=now,
                                     reason=answer["errore"]):

@@ -5,7 +5,9 @@ col suo scrittore montato) e le due strade che chiudono una promessa FUORI
 dall'orologio (ruling 3.8) -- la scadenza del turno sul ponte
 (`reasoning/consegna.close_expired_promise`) e il turno del ponte finito senza
 «conclude» (`reasoning/consegna.consegna`), che passano tutte e due da
-`fail_unfinished`. Le regole sono le stesse per tutti:
+`fail_unfinished`. Il gemello di successo, `keep_concluded`, chiude la
+promessa quando il turno sul ponte ha chiamato `conclude` (D-24, Chiusura).
+Le regole sono le stesse per tutti:
 solo se c'e' un filo, filtro dei veleni (anche sul testo del modello citato,
 `quoted`), mai un'eccezione. E dalle due strade di fuori nessuna push: non
 c'e' una risposta da portare al telefono, solo un fallimento da dichiarare.
@@ -109,3 +111,41 @@ def fail_unfinished(app, ident: str, *, reason: str, now: float, family: str,
                             message=message, durata_s=durata_s)
     return CLOSED
 
+
+
+async def keep_concluded(app, ident: str, conclusione: dict, *, now: float) -> str:
+    """Chiude una promessa presa in carico con la conclusione del modello.
+
+    **Il gemello di successo di `fail_unfinished`** (D-24, Chiusura): fino al
+    13/10/2026 la rotta MCP (`api/handlers_mcp._call_tool`) rifaceva a mano
+    lo stesso giro -- rileggere la promessa, concluderla solo se ancora
+    presa in carico, contarla nel registro degli esiti -- mentre il fallimento
+    lo faceva qui. Stesso giro, stessa casa, stesse tre parole d'esito.
+
+    A concludere e' l'orologio (`Sweeper.concludi_chiedi`), non chi chiama:
+    un secondo punto che decide se notificare e con quali parole sarebbe
+    libero di divergere dal primo. La promessa si rilegge adesso, non al
+    primo controllo dell'intestazione: fra i due puo' essere arrivata la
+    scadenza, o un `conclude` gemello, e una promessa gia' chiusa non si
+    riconsegna (niente seconda riga in chat, niente seconda push).
+
+    Il successo si conta qui (rilievo R1 della revisione indipendente sul
+    tratto `v3.22.2..HEAD`): prima nessun punto del prodotto registrava un
+    successo per una promessa mantenuta dal ponte. Il modello HA concluso: e'
+    un fatto gia' accertato, non un'ipotesi.
+
+    `UNKNOWN` anche quando manca l'orologio: senza, non c'e' chi possa
+    chiuderla, e chi chiama lo dice al modello.
+    """
+    sweeper = app.get("sweeper")
+    store = app.get("agenda")
+    row = store.read(ident) if (store is not None and ident) else None
+    if sweeper is None or row is None:
+        return UNKNOWN
+    if row.get("stato") != TAKEN:
+        return ALREADY_CLOSED
+    await sweeper.concludi_chiedi(row, conclusione, now=now)
+    registry = app.get("occurrence_registry")
+    if registry is not None:
+        registry.successo(SUBSCRIPTION.id)
+    return CLOSED
