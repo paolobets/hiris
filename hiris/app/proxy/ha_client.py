@@ -165,6 +165,16 @@ MAX_CALENDAR_EVENTS = 2000
 
 logger = logging.getLogger(__name__)
 
+#: Il Supervisor, dentro la rete dell'add-on. Home Assistant sta sotto di lui
+#: (`http://supervisor/core`); qui si chiede solo cio' che sa il Supervisor
+#: stesso (`own_slug`).
+SUPERVISOR_URL = "http://supervisor"
+
+#: La forma di uno slug del Supervisor (`6354e165_hiris` sulla casa, 27/09/2026).
+#: Si usa con `fullmatch`, non con `match` e `^...$`: `$` accetta anche un
+#: a-capo finale, e `"6354e165_hiris\n"` passerebbe.
+SLUG_SHAPE = re.compile(r"[a-z0-9_]+")
+
 # Le cause di un guasto di lettura (decisione D3 del 03/10/2026, A-29/A-30).
 # Prima «Home Assistant non ha risposto» si diceva in nove modi e otto forme:
 # un'eccezione, `{}`, `None`, «risposta in forma inattesa» per una connessione
@@ -453,7 +463,7 @@ class HAClient:
         #: si accendeva una volta e non si spegneva mai). E' il segno che il
         #: nucleo di Home Assistant risponde: lo aspetta l'avvio prima di
         #: leggere la casa (D2 della Tappa 2), e chi deve fare UNA chiamata
-        #: all'avvio (`panel_visibility`) -- l'add-on parte prima del nucleo
+        #: all'avvio (`action/installation.py`) -- l'add-on parte prima del nucleo
         #: (`startup: services`).
         self.ws_ready = asyncio.Event()
         #: Le connessioni autenticate finora: la prima non avvisa «riconnessione».
@@ -477,19 +487,22 @@ class HAClient:
         if self._session:
             await self._session.close()
 
-    async def _rest_get(self, path: str) -> dict:
-        """L'UNICA lettura REST verso Home Assistant: `GET <base><path>` sulla
-        sessione del client. Rende `{"corpo": json}` oppure la busta del
-        guasto, e non solleva: uno stato diverso da 200 e' un rifiuto (col suo
-        numero in `codice`), un corpo che non e' JSON e' una forma, ogni altro
-        guasto del trasporto e' un silenzio.
+    async def _rest_get(self, path: str, *, base: str | None = None) -> dict:
+        """L'UNICA lettura REST verso Home Assistant e il Supervisor: `GET
+        <base><path>` sulla sessione del client. Rende `{"corpo": json}`
+        oppure la busta del guasto, e non solleva: uno stato diverso da 200 e'
+        un rifiuto (col suo numero in `codice`), un corpo che non e' JSON e'
+        una forma, ogni altro guasto del trasporto e' un silenzio.
+
+        `base` e' l'indirizzo di Home Assistant se non si dice altro; il solo
+        altro e' `SUPERVISOR_URL` (`own_slug`, E-06).
 
         Le tre primitive della configurazione (`read_configuration`,
         `save_configuration`, `delete_configuration`) e `call_service` non
         passano di qui: sono il canale delle scritture, e leggono il motivo
         di un rifiuto dal corpo (`_http_reason`). La busta e' la stessa."""
         try:
-            async with self._session.get(f"{self._base_url}{path}") as resp:
+            async with self._session.get(f"{base or self._base_url}{path}") as resp:
                 if resp.status != 200:
                     return _failure(REFUSAL, f"Home Assistant ha risposto {resp.status}",
                                     resp.status)
@@ -937,6 +950,59 @@ class HAClient:
         if not isinstance(occurrence["pannelli"], dict):
             return _failure(SHAPE, "l'elenco dei pannelli non è arrivato come oggetto")
         return occurrence
+
+    @cost(ws=1)
+    async def lovelace_resources(self) -> dict:
+        """Le risorse Lovelace della casa: `{"risorse": [...]}` oppure il
+        motivo. Un solo lettore, la disinstallazione della vecchia card
+        (`action/installation.py`): le risorse le ha scritte l'add-on fino
+        alla fetta E5, e chi ha installato disinstalla. La forma di ogni
+        risorsa (`id`, `url`, `type`) la legge chi chiama."""
+        (msg,) = await self._ws_send([("lovelace/resources", None)])
+        occurrence = self._ws_occurrence(msg, "risorse")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["risorse"], list):
+            return _failure(SHAPE, "l'elenco delle risorse Lovelace non è arrivato "
+                                   "come elenco")
+        return occurrence
+
+    @cost(ws=1)
+    async def delete_lovelace_resource(self, resource_id: str) -> dict:
+        """Toglie UNA risorsa Lovelace, per `id`. Primitiva nuda: chi decide
+        quale togliere e' la disinstallazione della card, che riconosce solo
+        le risorse che l'add-on stesso aveva registrato."""
+        (msg,) = await self._ws_send([("lovelace/resources/delete",
+                                       {"resource_id": resource_id})])
+        occurrence = self._ws_occurrence(msg, "_")
+        return occurrence if "errore" in occurrence else {"cancellato": True}
+
+    @cost(rest=1)
+    async def own_slug(self) -> dict:
+        """Lo slug di HIRIS secondo il Supervisor: `{"slug": ...}` oppure il
+        motivo. Serve alla voce di menu, che si scrive per `url_path`.
+
+        `GET /addons/self/info` risolve l'add-on che chiama (Supervisor
+        2026.09.2, `supervisor/api/apps.py::get_app_for_request`, verificato il
+        27/09/2026) e risponde `{"result": "ok", "data": {...}}`. Il token
+        della sessione e' gia' quello del Supervisor (`SUPERVISOR_TOKEN`): fino
+        alla Chiusura (E-06) questa domanda apriva un client suo, in
+        `panel_visibility.read_own_slug`.
+
+        **Il corpo non esce mai da qui**: `data` porta anche le opzioni
+        dell'add-on, chiavi API comprese. Esce solo lo slug, e solo se ha la
+        forma di uno slug (`SLUG_SHAPE`): arriva da una risposta HTTP, e un
+        valore strano deve fermare il comando, non viaggiare fino a HA.
+        """
+        read = await self._rest_get("/addons/self/info", base=SUPERVISOR_URL)
+        if "errore" in read:
+            return read
+        body = read["corpo"]
+        data = body.get("data") if isinstance(body, dict) else None
+        slug = data.get("slug") if isinstance(data, dict) else None
+        if not isinstance(slug, str) or not SLUG_SHAPE.fullmatch(slug):
+            return _failure(SHAPE, "il Supervisor non ha dato uno slug di forma attesa")
+        return {"slug": slug}
 
     @cost(ws=1)
     async def create_label(self, name: str) -> dict:

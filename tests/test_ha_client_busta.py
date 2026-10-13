@@ -67,6 +67,7 @@ SUCCESS = {
     "config/category_registry/list": [],
     "config/auth/list": [],
     "get_panels": {},
+    "lovelace/resources": [],
     "extract_from_target": {},
     "history/history_during_period": {},
     "recorder/list_statistic_ids": [],
@@ -114,6 +115,9 @@ class _Session:
             return _Response(500, None)
         if self._state == "forma":
             return _Response(200, "non una forma")
+        if url.endswith("/addons/self/info"):
+            # Il Supervisor (`own_slug`): `api_return_ok`, Supervisor 2026.09.2.
+            return _Response(200, {"result": "ok", "data": {"slug": "abc_hiris"}})
         return _Response(200, [])
 
 

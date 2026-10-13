@@ -60,6 +60,7 @@ ARGUMENTS = {
     "keys": [("automation", "1")],
     "target": {"entity_id": ["automation.a"]},
     "language": "it",
+    "resource_id": "r1",
     # Le categorie: la strada piu' lunga di `read_registry`, un comando per
     # ambito sulla stessa connessione.
     "registry": "categorie",
