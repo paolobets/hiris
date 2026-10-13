@@ -165,8 +165,16 @@ def refusal(row: dict, *, pending: str, in_flight: str | None,
 
 
 def build_question(row: dict, *, presence=None) -> str:
-    """La domanda: la proposta, il suo perche', la prova su cui si regge e il
-    filo dei «Rifalla», perche' il modello non ricomponga una forma scartata."""
+    """La domanda per la catena, col contratto di risposta in fondo. Il ponte
+    prende la domanda senza contratto (`build_question_body`) e il contratto
+    come `istruzione` (D-05, 13/10/2026: sul ponte viaggiava due volte)."""
+    return build_question_body(row, presence=presence) + "\n\n" + ANSWER_CONTRACT
+
+
+def build_question_body(row: dict, *, presence=None) -> str:
+    """La domanda senza il contratto: la proposta, il suo perche', la prova su
+    cui si regge e il filo dei «Rifalla», perche' il modello non ricomponga
+    una forma scartata."""
     lines = ["La proposta da fare a mano che chi amministra la casa vuole automatica:",
              f"  {row.get('testo')}",
              f"  perche': {row.get('perche')}"]
@@ -174,14 +182,14 @@ def build_question(row: dict, *, presence=None) -> str:
     if prova:
         lines.append(f"  la prova dell'osservazione da cui e' nata: {prova}")
     lines += round_lines(row.get("giri") or [])
-    lines += ["", ANSWER_CONTRACT]
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
 
 
 def bridge_turn(row: dict, *, presence=None) -> dict:
     """Il turno da accodare al ponte: la stessa forma degli altri mestieri."""
-    return {"history": [{"role": "user", "content": build_question(row, presence=presence)}],
+    return {"history": [{"role": "user",
+                         "content": build_question_body(row, presence=presence)}],
             "system_prompt": SYSTEM,
             "istruzione": ANSWER_CONTRACT}
 

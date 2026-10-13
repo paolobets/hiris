@@ -278,7 +278,19 @@ def open_observations(analysis: dict | None, decided: dict,
 
 def build_question(observations, *, refused: list[str] | None = None,
                    presence=None, unbound=()) -> str | None:
-    """La domanda intera, o `None` se non c'e' niente da chiedere.
+    """La domanda intera per la catena, col contratto di risposta in fondo, o
+    `None` se non c'e' niente da chiedere. Il ponte prende la domanda senza
+    contratto (`build_question_body`) e il contratto come `istruzione` (D-05,
+    13/10/2026: sul ponte viaggiava due volte)."""
+    body = build_question_body(observations, refused=refused, presence=presence,
+                               unbound=unbound)
+    return None if body is None else body + "\n" + ANSWER_CONTRACT
+
+
+def build_question_body(observations, *, refused: list[str] | None = None,
+                        presence=None, unbound=()) -> str | None:
+    """La domanda senza il contratto di risposta, o `None` se non c'e' niente
+    da chiedere.
 
     Le osservazioni si consegnano **numerate**, e il modello si riferisce a
     una col suo numero: ricopiarne il testo vorrebbe dire poterlo sbagliare.
@@ -303,7 +315,6 @@ def build_question(observations, *, refused: list[str] | None = None,
                      for row in unbound)
         lines.append("")
     lines.extend(refused_lines(refused))
-    lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
 
@@ -329,8 +340,8 @@ def bridge_turn(observations, *, refused: list[str] | None = None,
                 presence=None, unbound=()) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere: la
     stessa forma di `analyst_turn.bridge_turn`."""
-    question = build_question(observations, refused=refused, presence=presence,
-                              unbound=unbound)
+    question = build_question_body(observations, refused=refused,
+                                   presence=presence, unbound=unbound)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],

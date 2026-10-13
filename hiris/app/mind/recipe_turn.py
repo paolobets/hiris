@@ -215,7 +215,22 @@ def build_device_question(objective: str, house: House, device_id: str,
                           *, with_series: set[str] | None = None,
                           energy: dict | None = None,
                           repair: Repair | None = None) -> str | None:
-    """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
+    """La domanda intera per la catena, col contratto di risposta in fondo, o
+    `None` se non c'e' da chiedere. Il ponte prende la domanda senza contratto
+    (`build_device_question_body`) e il contratto come `istruzione` (D-05,
+    13/10/2026: sul ponte viaggiava due volte)."""
+    body = build_device_question_body(objective, house, device_id,
+                                      with_series=with_series, energy=energy,
+                                      repair=repair)
+    return None if body is None else body + "\n" + ANSWER_CONTRACT
+
+
+def build_device_question_body(objective: str, house: House, device_id: str,
+                               *, with_series: set[str] | None = None,
+                               energy: dict | None = None,
+                               repair: Repair | None = None) -> str | None:
+    """La domanda per un dispositivo senza il contratto di risposta, o `None`
+    se non c'e' da chiedere.
 
     `None` quando il dispositivo non ha entita': non ci sarebbe niente da
     mostrare al modello, e la domanda costerebbe un giro per una risposta che
@@ -269,7 +284,6 @@ def build_device_question(objective: str, house: House, device_id: str,
         + _repair_block(repair)
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
-        + "\n" + ANSWER_CONTRACT
     )
 
 
@@ -810,9 +824,9 @@ def bridge_turn(objective: str, house: House, device_id: str,
     gira altrove e non ha gli archivi, e `istruzione` serve perche' altrimenti
     l'istruzione di chiusura della chat gli vieta il JSON che qui si chiede.
     """
-    question = build_device_question(objective, house, device_id,
-                                     with_series=with_series, energy=energy,
-                                     repair=repair)
+    question = build_device_question_body(objective, house, device_id,
+                                          with_series=with_series, energy=energy,
+                                          repair=repair)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
