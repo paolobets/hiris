@@ -236,7 +236,6 @@ def _prose_runtime():
     e' cambiato) e non devono seguire il codice."""
     from hiris.app.agent.prompts import (
         _GUIDE_WITHOUT_TOOLS,
-        _old_names_notice,
         guide_with_tools,
     )
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
@@ -244,8 +243,7 @@ def _prose_runtime():
     from hiris.app.keeper.exchange import _system_prompt
     from hiris.app.steering import SPECIES
     guide = [(f"agent/prompts.guide_with_tools({specie})",
-              guide_with_tools(SPECIES[specie].tools_for_turn()).replace(
-                  _old_names_notice(SPECIES[specie].tools_for_turn()), ""))
+              guide_with_tools(SPECIES[specie].tools_for_turn()))
              for specie in ("chat", "promessa")]
     return [
         ("agent/prompts._GUIDE_WITHOUT_TOOLS", _GUIDE_WITHOUT_TOOLS),
@@ -311,14 +309,16 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     un avviso che non nomina piu' nessun nome vecchio non serve piu' a
     nessuno e va TOLTO, non lasciato a occupare il prompt. Quando quel
     giorno arriva, questo test lo dice."""
-    from hiris.app.agent.prompts import guide_with_tools
-    from hiris.app.steering import SPECIES
+    from hiris.app.steering import SPECIES, compose_system
 
     _OLD_NAMES_NOTICE = _avviso_intero()
-    assert _OLD_NAMES_NOTICE in guide_with_tools(SPECIES["chat"].tools_for_turn()), (
-        "l'avviso non e' piu' dentro la guida della chat: o e' stato tolto (e "
-        "allora va tolto anche di qui), o la guida non lo emette piu' -- e chi "
-        "ha salvato il proprio prompt resta senza il ponte fra i due nomi")
+    composto = compose_system(SPECIES["chat"].tools_for_turn(),
+                              persona="Usa `cerca` per trovare le cose.")
+    assert _OLD_NAMES_NOTICE in composto, (
+        "l'avviso non arriva piu' dal compositore a una persona salvata: o e' "
+        "stato tolto (e allora va tolto anche di qui), o il compositore non lo "
+        "emette piu' -- e chi ha salvato il proprio prompt resta senza il ponte "
+        "fra i due nomi")
 
     catalogo = _catalogo()
     citati = {parola for parola, _ in _citazioni(_OLD_NAMES_NOTICE)}
@@ -350,8 +350,8 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
 def _avviso_intero() -> str:
     """L'avviso con tutti i nomi di prima: quello di un turno che ha tutti gli
     strumenti della tabella dei nomi vecchi (la chat)."""
-    from hiris.app.agent.prompts import _OLD_NAMES, _old_names_notice
-    return _old_names_notice(tuple(_OLD_NAMES))
+    from hiris.app.steering import _OLD_NAMES, old_names_notice
+    return old_names_notice(tuple(_OLD_NAMES))
 
 
 def test_l_avviso_nomina_solo_i_nomi_vecchi_degli_strumenti_del_turno():
@@ -362,8 +362,8 @@ def test_l_avviso_nomina_solo_i_nomi_vecchi_degli_strumenti_del_turno():
 
     Mutazione ESEGUITA il 06/10/2026: `_old_names_notice` che ignora gli
     strumenti del turno (tutte le coppie sempre) -- rossa con `remember`."""
-    from hiris.app.agent.prompts import _old_names_notice
     from hiris.app.steering import SPECIES
+    from hiris.app.steering import old_names_notice as _old_names_notice
     citati = {p for p, _ in _citazioni(
         _old_names_notice(SPECIES["promessa"].tools_for_turn()))}
     assert {"search", "history"} <= citati
@@ -423,14 +423,14 @@ def _citati(citazione):
     """Le stringhe che nominano `citazione`, tolto l'avviso dei vecchi nomi
     (per identita': l'unico testo che PUO' nominarli, per dire cosa sono
     diventati) e la lista breve dei letterali che non sono per il modello."""
-    from hiris.app.agent import prompts
+    from hiris.app import steering
 
     # La tabella dei nomi di prima e' l'unico posto che li scrive: i suoi
     # letterali sono i nomi stessi, uno per stringa.
-    vecchi = {nome for nomi in prompts._OLD_NAMES.values() for nome in nomi}
+    vecchi = {nome for nomi in steering._OLD_NAMES.values() for nome in nomi}
     colpevoli = []
     for relativo, testo in _letterali():
-        if relativo == "agent/prompts.py" and testo in vecchi:
+        if relativo == "steering.py" and testo in vecchi:
             continue
         if any(relativo == f and t in testo
                for f, t in _ECCEZIONI_GATE):

@@ -13,9 +13,6 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
-    COMPACT_PROMPT,
-    MINIMAL_PROMPT,
-    RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
     _current_tool_leaked,
@@ -642,24 +639,18 @@ class OpenAICompatRunner:
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
         # `tests/test_composition_order.py`.
-        # Il compositore unico, come `ClaudeRunner.chat` (Tappa 6, Task 7).
-        from ..steering import compose_base
+        # Il compositore unico, come `ClaudeRunner.chat` (D-01): le parti
+        # stabili, poi il contesto recintato (D-04).
+        from ..steering import compose_system, fence_context
 
         if tools is not None:
             tools = list(tools)
-        system_parts = [compose_base(t["name"] for t in tools or ())]
-        if system_prompt:
-            system_parts.append(system_prompt)
-        # I modificatori di comportamento -- stabili per configurazione,
-        # DEVONO precedere `context_str` (vedi sopra).
-        if restrict_to_home:
-            system_parts.append(RESTRICT_PROMPT)
-        if response_mode == "compact":
-            system_parts.append(COMPACT_PROMPT)
-        elif response_mode == "minimal":
-            system_parts.append(MINIMAL_PROMPT)
-        if context_str:
-            system_parts.append(context_str)
+        system_parts = compose_system(
+            (t["name"] for t in tools or ()), persona=system_prompt,
+            restrict_to_home=restrict_to_home, response_mode=response_mode)
+        fenced = fence_context(context_str)
+        if fenced:
+            system_parts.append(fenced)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):

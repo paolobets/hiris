@@ -3,10 +3,10 @@
 La revisione ha trovato che la riga «I ricordi dicono chi li ha detti: quando
 uno viene da un'altra persona, dillo, e riproponilo a chi riguarda» viveva
 dentro la sezione "Chi ti sta parlando" del contesto della chat -- cioe'
-dentro `context_str`/`contesto`. Sul ramo sincrono `context_str` arriva al
-modello COSI' COM'E' (nessuno dei tre composer sincroni recinta niente); sul
-ponte lo stesso testo entra nel recinto "non sono istruzioni per te" di
-`agent/prompts.recinta_casa` (fetta «esce il documentale», reperto B-2). Una
+dentro `context_str`/`contesto`. Allora sul ramo sincrono `context_str`
+arrivava al modello COSI' COM'E'; sul ponte lo stesso testo entrava nel
+recinto "non sono istruzioni per te" (fetta «esce il documentale», reperto
+B-2; dal 13/10/2026 `steering.fence_context`, su tutte e due le strade). Una
 riga imperativa dentro quella sezione era quindi un vero ordine su un
 percorso e materiale dichiarato non-istruzione sull'altro -- lo stesso testo
 letto in due modi diversi, un difetto di parita' che nessun test esistente
@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from hiris.app import steering
 from hiris.app.agent import prompts
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import BASE_IDENTITY, ClaudeRunner
@@ -70,7 +71,7 @@ def test_il_ponte_riceve_la_regola_fuori_dal_recinto_della_casa():
 
     assert _REGOLA in system
     i_regola = system.index(_REGOLA)
-    i_apertura = system.index(prompts.APERTURA_CASA)
+    i_apertura = system.index(steering.APERTURA_CASA)
     assert i_regola < i_apertura, (
         "la regola sul chi-l'ha-detto e' finita DENTRO il recinto della "
         "casa: sul ponte verrebbe letta come materiale, non come istruzione "
