@@ -40,7 +40,9 @@ from ..steering import (
     chain_turn,
     declare_downgrade,
     enqueue_turn,
+    house_hour,
     who_answers,
+    with_hour,
 )
 from .boundary import error_body, error_response, json_object
 from .canali import SERVICE_SPECIES
@@ -609,8 +611,11 @@ async def _enqueue_chat_job(
         # legge da `job["thread"]`. Una copia nel context sarebbe una seconda
         # casa, libera di divergere.
         "soggetto": request.get("soggetto"),
+        # L'ora della casa all'accodamento, fuori dal nucleo (D-51): il ponte
+        # la mette nel prompt utente (`prompts.build_chat_messages`).
+        "adesso": house_hour(request.app),
     }
-    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta sette
+    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta otto
     # chiavi e `thinking_budget` NON e' fra loro -- il ponte parla con la CLI
     # dell'abbonamento, che non espone un budget di ragionamento per turno.
     # Finche' quel valore si poteva cambiare solo scrivendo a mano il JSON in
@@ -746,7 +751,8 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         answer, _turn = await chain_turn(
             runner, "chat", usage=request.app.get("usage"),
             soggetto=soggetto,
-            user_message=ultimo,
+            # L'ora di ADESSO, non quella dell'accodamento (D-51).
+            user_message=with_hour(ultimo, house_hour(request.app)),
             system_prompt=contesto.get("system_prompt", ""),
             context_str=contesto.get("contesto", ""),
             # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
@@ -762,9 +768,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             max_tokens=CHAT_MAX_TOKENS,
             restrict_to_home=bool(contesto.get("restrict_to_home")),
             response_mode=contesto.get("response_mode", "auto"),
-            # Il contesto del job NON porta `thinking_budget` (sette chiavi,
+            # Il contesto del job NON porta `thinking_budget` (otto chiavi,
             # pinnate da `test_context_del_job_porta_esattamente_queste_
-            # sette_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+            # otto_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
             # applicare al ripiego un'impostazione che il ponte aveva
             # dichiarato inapplicabile, con un log, al momento
             # dell'accodamento.
@@ -1142,7 +1148,9 @@ async def handle_chat(request: web.Request) -> web.Response:
             response, _turn = await chain_turn(
                 runner, "chat", usage=request.app.get("usage"),
                 soggetto=request.get("soggetto"),
-                user_message=message,
+                # L'ora della casa in coda al messaggio, non nel nucleo (D-51):
+                # in cronologia e nella cronaca resta la frase di chi scrive.
+                user_message=with_hour(message, house_hour(request.app)),
                 system_prompt=system_prompt,
                 context_str=context_str,
                 conversation_history=context_history,

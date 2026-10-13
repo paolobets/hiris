@@ -187,20 +187,20 @@ def test_l_etichetta_senza_fuso_resta_il_giorno_utc(tmp_path):
     assert "[2026-08-21] parlato della caldaia" in contesto, contesto
 
 
-# -- l'ora del nucleo: il fuso da historian, il ripiego dichiarato ---------------
+# -- l'ora della casa: il fuso da historian, il ripiego dichiarato --------------
 
-def test_l_ora_del_nucleo_dice_il_fuso_vero_e_dichiara_il_ripiego():
-    """`briefing._now_line` non costruisce piu' il suo fuso: lo chiede a
+def test_l_ora_della_casa_dice_il_fuso_vero_e_dichiara_il_ripiego():
+    """`briefing.now_line` non costruisce piu' il suo fuso: lo chiede a
     `historian`. Quando il nome non vale, l'ora e' in UTC E lo dice -- il
     nome sbagliato accanto a un'ora UTC sarebbe un'ora falsa.
 
     Mutazione ESEGUITA: `label = name` senza il confronto con UTC -- rossa
     (la riga diceva «fuso Non/Esiste» accanto alle 22:30)."""
-    from hiris.app.home_space.briefing import _now_line
+    from hiris.app.home_space.briefing import now_line
 
-    assert _now_line({"fuso": "Europe/Rome"}, HALF_PAST_MIDNIGHT_ROME) == (
+    assert now_line({"fuso": "Europe/Rome"}, HALF_PAST_MIDNIGHT_ROME) == (
         "Adesso sono le 00:30 del 22/08/2026 (fuso Europe/Rome).")
-    assert _now_line({"fuso": "Non/Esiste"}, HALF_PAST_MIDNIGHT_ROME) == (
+    assert now_line({"fuso": "Non/Esiste"}, HALF_PAST_MIDNIGHT_ROME) == (
         "Adesso sono le 22:30 del 21/08/2026 (fuso UTC).")
-    assert _now_line({}, HALF_PAST_MIDNIGHT_ROME) == (
+    assert now_line({}, HALF_PAST_MIDNIGHT_ROME) == (
         "Adesso sono le 22:30 del 21/08/2026 (fuso UTC).")

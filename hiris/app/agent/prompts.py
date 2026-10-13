@@ -168,7 +168,8 @@ def build_chat_messages(system_prompt: str, history: list, *,
                         active_tools: tuple[str, ...] = (),
                         restrict_to_home: bool = False,
                         response_mode: str = "",
-                        istruzione: str = "") -> tuple[str, str]:
+                        istruzione: str = "",
+                        hour: str = "") -> tuple[str, str]:
     """Chat-via-abbonamento: separa il SYSTEM prompt dal prompt UTENTE
     (trascritto della conversazione + istruzione di formato). Il system va
     alla CLI in un file (`--system-prompt-file`), cosi' il modello E' HIRIS
@@ -198,7 +199,11 @@ def build_chat_messages(system_prompt: str, history: list, *,
     mestiere se la sonda `probe_tools` li ha trovati, niente altrimenti --
     lo stesso valore che decide l'argv. Il default e' vuoto perche' vuoto e'
     il ramo di DEGRADO, e un degrado deve essere cio' che si ottiene quando
-    non si sa."""
+    non si sa.
+
+    `hour` e' l'ora della casa all'accodamento (`steering.house_hour`), che
+    il job porta accanto al contesto (la chiave `adesso`): entra nel prompt
+    utente, dopo la conversazione."""
     system_parts = [part.strip() for part in compose_system(
         active_tools, persona=system_prompt, restrict_to_home=restrict_to_home,
         response_mode=response_mode)]
@@ -230,6 +235,11 @@ def build_chat_messages(system_prompt: str, history: list, *,
         speaker = "Assistente" if role == "assistant" else "Utente"
         lines.append(f"{speaker}: {content}")
     lines.append("")
+    # L'ora della casa sta qui, dopo la conversazione, e non nel system: il
+    # nucleo resta uguale da un turno all'altro (D-51). Vuota per i turni
+    # che non la portano.
+    if hour:
+        lines.extend((hour, ""))
     # L'istruzione di chiusura della chat impone testo semplice e vieta
     # esplicitamente il JSON; l'osservatore chiede **un solo array JSON**. Il
     # contratto di risposta appartiene a chi pone la domanda, non alla porta

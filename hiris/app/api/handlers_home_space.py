@@ -14,7 +14,6 @@ proprie parole e sparirebbe dal censimento invece di comparire come solo-test.
 from __future__ import annotations
 
 import logging
-import time
 
 from aiohttp import web
 
@@ -399,13 +398,6 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         attributes=mirror.attributes,
-        # L'orologio entra QUI, nell'unico compositore di produzione (chat
-        # sincrona, ponte, promesse e GET /api/briefing passano tutti di qua), perche'
-        # `compose` e' pura e non legge nulla da sola. Senza questa riga il
-        # parametro esisterebbe, i test di `compose` passerebbero, e il modello
-        # continuerebbe a indovinare l'ora quando `promise` gli chiede di
-        # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
-        now=time.time(),
     )
 
 

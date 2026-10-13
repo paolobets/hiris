@@ -369,8 +369,14 @@ def _house_zone(frame: dict | None):
     return timezone, (name if timezone is not UTC else "UTC")
 
 
-def _now_line(frame: dict | None, now: float | None) -> str:
+def now_line(frame: dict | None, now: float | None) -> str:
     """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
+
+    **Non sta nel nucleo** (D-51, Chiusura, 13/10/2026): il nucleo e' cio' che
+    e' stabile, e un'ora al minuto lo rendeva diverso a ogni turno -- con lui
+    la cronologia che lo segue, che la cache del prompt non poteva piu'
+    riusare. L'ora entra nel messaggio del turno (`steering.with_hour`), e
+    il nucleo resta uguale finche' la casa non cambia.
 
     Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `promise`
     ordina al modello «`quando` e' un istante ISO-8601 col fuso: risolvilo tu
@@ -397,7 +403,7 @@ def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
     """Il comportamento qui sotto non e' quello dell'ultima rilettura (G-16,
     Tappa 8): la guardia di `behavior.reread` ha conservato la replica, e la
     frase lo dice con la data della replica, nel fuso della casa e col fuso
-    scritto (come `_now_line`). Vuota quando la replica e' fresca."""
+    scritto (come `now_line`). Vuota quando la replica e' fresca."""
     if not kept:
         return ""
     reason = str(kept.get("motivo") or "").strip()
@@ -450,7 +456,7 @@ def _vocabulary_freshness_line(frame: dict | None) -> str:
     )
 
 
-def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list[str]:
+def _reference_frame_lines(frame: dict | None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
     Va PRIMA di tutto il resto perche' e' cio' che rende leggibile tutto il
@@ -493,15 +499,6 @@ def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list
     freshness_line = _vocabulary_freshness_line(frame)
     if freshness_line:
         lines.append(freshness_line)
-    # Subito dopo il fuso, perche' e' lo stesso oggetto: l'ora e il sistema in
-    # cui leggerla. Dentro `reference_frame_lines` e non accanto, cosi' eredita il peso
-    # 0 del taglio (`home_space_weights` in `compose`): un nucleo che tronca via
-    # l'orologio rimetterebbe il modello a indovinare l'ora proprio nei casi
-    # in cui la casa e' grande.
-    now_line = _now_line(frame, now)
-    if now_line:
-        lines.append(now_line)
-
     unit = frame.get("sistema_unita") or {}
     if isinstance(unit, dict):
         # Ordine dichiarato da `_MEASUREMENT_NAMES`, non quello del dizionario che
@@ -1464,7 +1461,6 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
-            now: float | None = None,
             floors: list[dict] | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
@@ -1724,7 +1720,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte
     # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
-    reference_frame_lines = _reference_frame_lines(reference_frame, now)
+    reference_frame_lines = _reference_frame_lines(reference_frame)
     home_space_lines = reference_frame_lines + _home_space_lines(floors, device_names)
 
     # Lo stato NON entra nel nucleo (dal 29/09/2026), ma resta vero che uno

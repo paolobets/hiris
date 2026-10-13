@@ -498,6 +498,32 @@ def fence_context(contesto: str) -> str:
         (DICHIARAZIONE_CASA, APERTURA_CASA, contesto, CHIUSURA_CASA))
 
 
+def house_hour(app, now: float | None = None) -> str:
+    """Che ore sono nella casa, per il turno che parte adesso (D-51).
+
+    Esce dal nucleo e va nel messaggio del turno: il nucleo resta uguale da
+    un turno all'altro, e la cache del prompt riusa lui e la cronologia che
+    lo segue. Il fuso lo legge `historian.house_timezone`, l'unico lettore;
+    un archivio che non risponde non ferma il turno -- l'ora si dice in UTC,
+    scritto (`briefing.now_line`)."""
+    from .home_space.briefing import now_line
+    from .home_space.historian import house_timezone
+
+    try:
+        zone = house_timezone(app.get("home_space_store"))
+    except Exception as exc:
+        logger.warning("fuso della casa non leggibile (%s: %s): l'ora si dice "
+                       "in UTC", type(exc).__name__, exc)
+        zone = None
+    return now_line({"fuso": zone or ""}, _time.time() if now is None else now)
+
+
+def with_hour(message: str, hour: str) -> str:
+    """Il messaggio del turno con l'ora della casa in coda (D-51). Senza ora,
+    il messaggio cosi' com'e'."""
+    return f"{message}\n\n{hour}" if hour else message
+
+
 #: I nomi dei mestieri: una vista sulle dichiarazioni.
 SPECIE = frozenset(SPECIES)
 

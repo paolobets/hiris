@@ -27,8 +27,10 @@ from ..steering import (
     PROMISE_SPECIES,
     chain_turn,
     enqueue_turn,
+    house_hour,
     refused_tool,
     start,
+    with_hour,
 )
 from .promise import REASON_CAP
 
@@ -193,7 +195,8 @@ async def interpreta_promise(app, promise: dict) -> dict:
         answer, turn = await chain_turn(
             runner, PROMISE_SPECIES, usage=app.get("usage"),
             max_tokens=PROMISE_MAX_TOKENS,
-            user_message=_domanda(promise),
+            # L'ora della casa in coda alla domanda, non nel nucleo (D-51).
+            user_message=with_hour(_domanda(promise), house_hour(app)),
             system_prompt=_system_prompt(),
             context_str=briefing,
             conversation_history=[],
@@ -356,6 +359,9 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
             "history": [{"role": "user", "content": _domanda(promise)}],
             "system_prompt": _system_prompt(),
             "contesto": briefing,
+            # L'ora della casa, fuori dal nucleo (D-51): il ponte la mette
+            # nel prompt utente (`prompts.build_chat_messages`).
+            "adesso": house_hour(app),
         },
         # Il filo di chi l'ha chiesta (spec 2026-09-26 §2.4): nelle colonne
         # della coda, non nel contesto -- il turno resta in sola lettura
