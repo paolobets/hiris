@@ -109,6 +109,17 @@ CREATE TABLE IF NOT EXISTS fallback (
 -- non e' normalizzazione per gusto: la moltiplicazione della latenza avviene
 -- per giro, e una media per turno la nasconderebbe.
 --
+-- **Chi le legge, e quando escono** (G-09; D8 della Tappa 8, deciso dal
+-- proprietario l'08/10/2026). Le colonne di misura di `turn` e tutte quelle
+-- di `payload` le legge solo la rotta delle misure (`api/handlers_misure.py`),
+-- cioe' gli attrezzi delle batterie (`scripts/misure.py`,
+-- `scripts/batteria_attori.py`): la batteria degli attori e' un criterio di
+-- accettazione dello sprint. `turns()` lo legge anche `steering.py`, ma solo
+-- per `species` e `outcome`/`problems`: il freno dei troncati
+-- (`TRUNCATION_BRAKE`) e i problemi del turno rifiutato. **Restano finche'
+-- c'e' la rotta, ed escono con lei** (M-22): allora `payload` esce intera, e
+-- di `turn` resta cio' che `steering.py` legge.
+--
 -- `tools` porta i NOMI in ordine; `tool_args` (dal 29/09/2026, spec «una porta
 -- sola» §7) i loro ARGOMENTI, ridotti (testi a 200 caratteri, 20 chiavi) e
 -- allineati per posizione. Il 29/09 nessuno ha saputo dire quale `search`
