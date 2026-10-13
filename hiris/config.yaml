@@ -91,8 +91,9 @@ ports_description:
   "8099/tcp": >-
     HIRIS API (DEBUG) — imposta a 8099 SOLO durante sessioni dev/diagnostica:
     da quel momento la porta e' raggiungibile dalla LAN in HTTP, senza
-    cifratura. Fuori dall'ingress /api/* risponde solo a un servizio accoppiato
-    dalla pagina Servizi di HIRIS, che firma ogni richiesta. Lascia vuoto in
+    cifratura. Fuori dall'ingress /api/* risponde solo a un servizio accoppiato,
+    che firma ogni richiesta; nei dieci minuti in cui apri l'accoppiamento dalla
+    pagina Servizi di HIRIS, anche alla sua presentazione. Lascia vuoto in
     produzione.
 
 # ===========================================================================
