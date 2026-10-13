@@ -4,8 +4,8 @@ reply into chat_store instead of actuating the house via execute_decision.
 Fetta «le chat divise»: la cronologia e' per FILO. `submit_chat_reply` prende
 `(reply_text, thread)` -- il filo del job, letto dalle colonne della coda -- e
 chiama `append_messages([{"role": "assistant", ...}], data_dir, thread=thread)`.
-Un job di chat senza filo (accodato prima della fetta) non consegna:
-`chat_reply_senza_filo`, provato in tests/test_chat_divise.py.
+Un job di chat senza filo (accodato prima della fetta) non scrive in
+nessuna cronologia, provato in tests/test_chat_divise.py.
 Il `context_json` di un job puo' ancora portare una chiave `chatbot_id`
 (scritta da un client/server piu' vecchio, o qui sotto per continuare a
 coprire "una chiave qualsiasi nel context non rompe nulla") ma
@@ -77,7 +77,7 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(tmp_path):
     assert c["job_id"] == "C1"
     assert c["kind"] == "chat"
 
-    assert esito is not None
+    assert esito is True
     assert recorded == ["ciao!"]
 
 
@@ -93,7 +93,7 @@ async def test_chat_job_missing_reply_fails_closed_but_job_resolved(tmp_path):
 
     _c, esito = await _serve_turn(app, q, {"reply": ""})
 
-    assert esito is not None
+    assert esito is True
     assert recorded == []  # empty reply -> no chat_store write
 
     job = q.get("C2")
@@ -124,8 +124,7 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(tmp_path):
 
     _c, esito = await _serve_turn(app, q, {"reply": "ciao!"})
 
-    assert esito is not None
-    assert esito == "chat_reply_recorded"
+    assert esito is True
     assert recorded == ["ciao!"]
     assert q.get("C3")["status"] == "decided"
 
@@ -138,7 +137,7 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(tmp_path):
 # costruzione prima della cancellazione: con l'hook rimosso l'assert
 # `body["outcome"] == "notify"` falliva (`outcome` resta "recorded"). Il suo
 # gemello per il caso "nessun hook wired" resta vivo in
-# test_consegna.py::test_consegna_non_chat_registra_e_dichiara
+# test_consegna.py::test_la_consegna_di_un_attore_registra_e_tace
 # -- e' quello, non piu' un ramo alternativo, il comportamento reale oggi.
 
 
@@ -151,7 +150,7 @@ async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(tmp_pat
 
     _c, esito = await _serve_turn(app, q, {"reply": "ciao!"})
 
-    assert esito is not None
+    assert esito is True
     assert q.get("C4")["status"] == "decided"
 
 
@@ -172,7 +171,7 @@ async def test_chat_reply_lands_in_real_chat_store(tmp_path):
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C5", now=1.0, thread=T)
 
     _c, esito = await _serve_turn(app, q, {"reply": "risposta dalla coda"})
-    assert esito is not None
+    assert esito is True
 
     history = load_history(data_dir, thread=T)
     assert history == [{"role": "assistant", "content": "risposta dalla coda"}]

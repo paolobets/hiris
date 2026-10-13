@@ -213,7 +213,7 @@ class _ProcFelice:
     stderr = ""
 
 
-def _servi(job, client, *, esito="recorded"):
+def _servi(job, client, *, esito=True):
     """Serve un turno gia' preso, come `run_loop`: torna l'esito del giro e le
     consegne ricevute."""
     consegnate = []
@@ -373,7 +373,7 @@ async def test_run_loop_does_not_block_event_loop(monkeypatch, tmp_path):
     _accoda(coda, "J")
 
     async def _consegna(*a):
-        return "recorded"
+        return True
 
     ticks = 0
 
@@ -419,7 +419,7 @@ async def test_il_lavoratore_non_interroga_la_coda_vuota_e_si_sveglia_al_turno_n
     async def _consegna(job_id, nonce, decision, now):
         consegnate.append((job_id, decision))
         servito.set()
-        return "recorded"
+        return True
 
     task = await _avvia(coda, _consegna)
     try:
@@ -457,7 +457,7 @@ async def test_il_turno_accodato_da_un_altro_thread_sveglia_il_lavoratore(
 
     async def _consegna(*a):
         servito.set()
-        return "recorded"
+        return True
 
     task = await _avvia(coda, _consegna)
     try:
@@ -488,7 +488,7 @@ async def test_il_lavoratore_serve_anche_i_turni_gia_in_coda_all_avvio(
 
     async def _consegna(job_id, *a):
         serviti.append(job_id)
-        return "recorded"
+        return True
 
     task = await _avvia(coda, _consegna)
     await asyncio.sleep(0.1)
@@ -513,7 +513,7 @@ async def test_un_turno_che_fallisce_non_ferma_il_lavoratore(monkeypatch, tmp_pa
 
     async def _consegna(job_id, *a):
         serviti.append(job_id)
-        return "recorded"
+        return True
 
     task = await _avvia(coda, _consegna)
     await asyncio.sleep(0.1)
@@ -534,7 +534,7 @@ async def test_una_coda_guasta_non_fa_girare_il_lavoratore_a_vuoto(
     coda = _CodaSpia(str(tmp_path / "r.db"), claim_rotto=True)
 
     async def _consegna(*a):
-        return "recorded"
+        return True
 
     with caplog.at_level(logging.WARNING, logger="hiris.agent"):
         task = await _avvia(coda, _consegna)
@@ -552,7 +552,7 @@ async def test_fermato_il_lavoratore_la_coda_non_lo_sveglia_piu(monkeypatch, tmp
     coda = _CodaSpia(str(tmp_path / "r.db"))
 
     async def _consegna(*a):
-        return "recorded"
+        return True
 
     task = await _avvia(coda, _consegna)
     assert coda.vera._on_enqueue is not None
@@ -603,10 +603,10 @@ def test_serve_job_non_chat_consegna_la_decisione_vuota_senza_chiamare_claude():
 
 
 def test_serve_dice_failed_quando_la_coda_rifiuta_la_consegna():
-    """`consegna` torna `None` quando la coda rifiuta (nonce, scadenza): il
+    """`consegna` torna `False` quando la coda rifiuta (nonce, scadenza): il
     giro non e' riuscito, e il registro lo deve dire."""
     job = {"job_id": "J", "nonce": "N", "kind": "holistic", "context": {}}
-    out, _consegnate = _servi(job, _Client(), esito=None)
+    out, _consegnate = _servi(job, _Client(), esito=False)
     assert out == "failed"
 
 
@@ -1116,7 +1116,7 @@ async def test_il_lavoratore_fermato_non_toglie_la_sveglia_del_successore(
     coda = _CodaSpia(str(tmp_path / "r.db"))
 
     async def _consegna(*a):
-        return "recorded"
+        return True
 
     vecchio = await _avvia(coda, _consegna)
     successore = lambda: None  # la sveglia di un altro lavoratore

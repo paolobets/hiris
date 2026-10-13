@@ -2197,7 +2197,7 @@ async def serve(job: dict, consegna, client, base_url: str, get_headers,
         None, lambda: reason(job, mode, client=client, base_url=base_url,
                              headers=headers))
     delivered = await consegna(job["job_id"], job["nonce"], decision, clock())
-    return "failed" if delivered is None else "done"
+    return "done" if delivered else "failed"
 
 
 async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
