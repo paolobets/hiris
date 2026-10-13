@@ -1863,7 +1863,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_35_with_185_fields():
+def test_product_dataclasses_are_35_with_186_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -2012,13 +2012,17 @@ def test_product_dataclasses_are_35_with_185_fields():
     (`hiris/app/home_space/log_source.py`) coi suoi due campi -- `names`,
     `loggers` -- cio' che il manifest delle integrazioni dice a chi nomina un
     logger: il nome di ogni integrazione, e di chi e' ogni libreria.
+
+    **Trentacinque e 186 dalla Chiusura** (F2, D-41): il terzo campo di
+    `MindReading`, `resources` -- gli archivi di una lettura dello strumento
+    `mind`, come `Tool.resources` per una riga.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (35, 185), (classi, campi)
+    assert (classi, campi) == (35, 186), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:
