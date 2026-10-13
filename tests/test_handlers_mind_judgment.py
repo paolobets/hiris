@@ -98,9 +98,9 @@ async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
             "campo": "genere", "valore": "presenza"}))
         assert r.status == 200
         corpo = json.loads(r.text)
-        assert corpo["impronta"] != prima
-        assert corpo["impronta"] == app["type_judgments_status"]["impronta"]
-        assert corpo["provenienza_istantanea"] == "sapere"
+        assert corpo["istantanea"]["impronta"] != prima
+        assert corpo["istantanea"] == app["type_judgments_status"]
+        assert corpo["istantanea"]["stato"] == "sapere"
         assert corpo["riga"]["valore"] == "presenza"
         assert corpo["riga"]["chi"] == HA_NAME
     finally:
@@ -190,7 +190,7 @@ async def test_scrittura_non_in_vigore_409(tmp_path):
         assert r.status == 409
         corpo = json.loads(r.text)
         assert "solo seme" in corpo["error"]
-        assert corpo["provenienza_istantanea"] == "solo seme"
+        assert corpo["istantanea"]["stato"] == "solo seme"
         assert corpo["riga"]["valore"] == "presenza"
     finally:
         s.close()

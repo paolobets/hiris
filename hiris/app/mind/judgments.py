@@ -127,7 +127,7 @@ def build_judgments(knowledge, *, unavailable_reason: str | None = None) -> tupl
         why = "il sapere non e' disponibile"
         if unavailable_reason:
             why += ": " + unavailable_reason
-        return REPO_JUDGMENTS, _status("solo seme", why, REPO_JUDGMENTS)
+        return REPO_JUDGMENTS, _status(SEED_ONLY, why, REPO_JUDGMENTS)
     facts, skipped = knowledge.judgment_rows_and_skipped()
     # **Le righe che l'archivio ha saltato si DICONO** (giro di correzioni 1,
     # punto 6, differito dal Task 3 al Task 7 e mai fatto). Una riga di
@@ -136,7 +136,7 @@ def build_judgments(knowledge, *, unavailable_reason: str | None = None) -> tupl
     # finiva solo nel registro dell'add-on, che da fuori non si legge: la casa
     # diceva che il suo giudizio veniva dal sapere, e una riga di quel sapere
     # non c'era. L'istantanea resta buona (la riga saltata non la sporca):
-    # cambia `perche`, non `provenienza_istantanea`.
+    # cambia `perche`, non `stato`.
     skipped_why = (None if not skipped else
                    "righe del sapere che l'archivio non riesce a leggere, e che quindi "
                    "NON sono in vigore: " + "; ".join(skipped))
@@ -148,8 +148,8 @@ def build_judgments(knowledge, *, unavailable_reason: str | None = None) -> tupl
         why = "righe del sapere che non si interpretano: " + "; ".join(error.reasons)
         if skipped_why:
             why += " -- e inoltre " + skipped_why
-        return REPO_JUDGMENTS, _status("solo seme", why, REPO_JUDGMENTS)
-    return judgments, _status("sapere", skipped_why, judgments)
+        return REPO_JUDGMENTS, _status(SEED_ONLY, why, REPO_JUDGMENTS)
+    return judgments, _status(FROM_KNOWLEDGE, skipped_why, judgments)
 
 
 def _writing(operation, *args, **kwargs):
@@ -168,18 +168,26 @@ def _writing(operation, *args, **kwargs):
             f"il sapere non ha potuto scrivere ({type(error).__name__}: {error})") from error
 
 
+#: Il vocabolario chiuso di `stato` nell'istantanea dei giudizi: da dove e'
+#: stata costruita.
+FROM_KNOWLEDGE = "sapere"
+SEED_ONLY = "solo seme"
+SNAPSHOT_STATES = (FROM_KNOWLEDGE, SEED_ONLY)
+
+
 def _status(source: str, why: str | None, judgments: TypeJudgments) -> dict:
     """Lo stato dell'istantanea: **da dove viene**, perche', e la sua impronta.
 
-    **`provenienza_istantanea` e non `da`** (giro di correzioni 1, punto 3,
-    fondamenta 3): `da` e' gia' l'origine di una RIGA in `judgment_listing`
-    (`seme`/`correzione`/`altro`), e qui vale una cosa diversa -- da dove e'
-    stata costruita l'istantanea intera (`sapere`/`solo seme`). Due cose con
-    una parola sola si separano **alla fonte**, che e' questa riga: cosi'
-    nessuna delle porte a valle (`/api/health`, la risposta della POST, il
-    409) deve ribattezzarla per conto suo.
+    **La forma comune degli oggetti diagnostici** (C-30, Chiusura, F7,
+    13/10/2026): `stato` (una parola di `SNAPSHOT_STATES`) e `perche` (una
+    frase, o `None`), come la riparazione e il ponte in `/api/health`. Fino a
+    quel giorno la chiave era `provenienza_istantanea`, scelta per non
+    confondersi con `da` di `judgment_listing` (giro di correzioni 1, punto
+    3): la confusione non torna, perche' ogni porta consegna questo oggetto
+    INTERO sotto il nome `istantanea` (`/api/health`, la risposta della POST,
+    il 409), mai le sue chiavi sciolte accanto a una riga.
     """
-    return {"provenienza_istantanea": source, "perche": why,
+    return {"stato": source, "perche": why,
             "impronta": judgments.chronicle_fingerprint()}
 
 
@@ -232,8 +240,8 @@ def judgment_listing(knowledge) -> list[dict]:
     compare. La chiave non esce: alla pagina serve il nome.
 
     **`da` qui e' l'origine della RIGA**, e non si confonde con la provenienza
-    dell'ISTANTANEA, che si chiama `provenienza_istantanea` da dove nasce
-    (`_status`): giro di correzioni 1, punto 3.
+    dell'ISTANTANEA, che e' lo `stato` dell'oggetto `istantanea` (`_status`):
+    giro di correzioni 1, punto 3.
     """
     seeded = _seed_values()
     listing = []
@@ -319,7 +327,9 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                    author_name: str, said_by: str, now=_time.time) -> dict:
     """**La porta unica** (spec §4): valida, scrive, ricostruisce l'istantanea e
     sostituisce INSIEME `app["type_judgments"]` e `app["type_judgments_status"]`
-    -- la correzione vale subito (spec §0, decisione 2).
+    -- la correzione vale subito (spec §0, decisione 2). Torna `{"riga",
+    "istantanea"}`: la riga scritta e lo stato dell'istantanea intero
+    (`_status`), lo stesso oggetto di `/api/health`.
 
     `value=None` torna al seme: se il seme ha la chiave, la riga gli torna
     (`knowledge.forget_and_seed`, **una transazione sola**, cosi' che anche
@@ -365,7 +375,6 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     row = None if fact is None else {
         "soggetto_genere": fact.subject_kind, "soggetto": fact.subject, "campo": fact.field,
         "valore": fact.value, "chi": fact.who, "quando_ts": fact.when_ts}
-    if status["provenienza_istantanea"] != "sapere":
+    if status["stato"] != FROM_KNOWLEDGE:
         raise JudgmentNotInEffect(row, status)
-    return {"riga": row, "impronta": status["impronta"],
-            "provenienza_istantanea": status["provenienza_istantanea"]}
+    return {"riga": row, "istantanea": status}

@@ -52,7 +52,7 @@ def test_sapere_seminato_rende_istantanea_repo(tmp_path):
     try:
         s.seed(judgment_seed(when_ts=1.0), priority=2)
         j, stato = build_judgments(s)
-        assert stato["provenienza_istantanea"] == "sapere" and stato["perche"] is None
+        assert stato["stato"] == "sapere" and stato["perche"] is None
         assert j.rows() == tv.REPO_JUDGMENTS.rows()
         assert stato["impronta"] == j.chronicle_fingerprint()
     finally:
@@ -87,7 +87,7 @@ def test_riga_storta_tiene_avvio_DICHIARANDO_perche(tmp_path):
         s.write(Fact(subject_kind="tipo", subject="light", field="genere",
                      value="acceso", provenance="nostro", who="proprietario", when_ts=2.0))
         j, stato = build_judgments(s)
-        assert stato["provenienza_istantanea"] == "solo seme"
+        assert stato["stato"] == "solo seme"
         assert "light" in stato["perche"]
         assert j.rows() == tv.REPO_JUDGMENTS.rows()
     finally:
@@ -107,7 +107,7 @@ def test_riga_che_l_archivio_SALTA_e_NOMINATA_dalla_salute(tmp_path):
     scritto solo nel log e' un esito perso.
 
     **L'istantanea resta buona** -- la riga saltata non la sporca, quindi
-    `provenienza_istantanea` resta `sapere` -- ma `perche` la nomina. E la riga
+    lo `stato` resta `sapere` -- ma `perche` la nomina. E la riga
     **non** compare nel listato della pagina (`judgment_listing` legge lo stesso
     `_facts`): le due porte dicono la stessa cosa, ciascuna a modo suo.
 
@@ -126,7 +126,7 @@ def test_riga_che_l_archivio_SALTA_e_NOMINATA_dalla_salute(tmp_path):
         s._conn.commit()
 
         j, stato = build_judgments(s)
-        assert stato["provenienza_istantanea"] == "sapere"
+        assert stato["stato"] == "sapere"
         assert stato["perche"] and "light" in stato["perche"] and "genere" in stato["perche"]
         assert not any(g["soggetto"] == "light" and g["campo"] == "genere"
                        for g in judgment_listing(s))
@@ -139,7 +139,7 @@ def test_riga_che_l_archivio_SALTA_e_NOMINATA_dalla_salute(tmp_path):
 def test_sapere_assente_torna_seme_DICHIARANDO_perche():
     """Mutazione: `perche` a `None` nel ramo senza archivio -- rossa."""
     j, stato = build_judgments(None)
-    assert stato["provenienza_istantanea"] == "solo seme" and stato["perche"]
+    assert stato["stato"] == "solo seme" and stato["perche"]
     assert j is tv.REPO_JUDGMENTS
 
 
@@ -176,7 +176,7 @@ def test_sapere_che_NON_si_apre_NON_ferma_avvio_e_la_salute_dice_l_errore(tmp_pa
     assert app["knowledge"] is None
     assert app["type_judgments"] is tv.REPO_JUDGMENTS
     status = app["type_judgments_status"]
-    assert status["provenienza_istantanea"] == "solo seme"
+    assert status["stato"] == "solo seme"
     assert "OperationalError: unable to open database file" in status["perche"], status
     assert status["impronta"] == tv.REPO_JUDGMENTS.chronicle_fingerprint()
     # Con la traccia (fix round 1): mutazione ESEGUITA `logger.error` senza
@@ -207,7 +207,7 @@ def test_sapere_che_si_apre_arriva_in_app_seminato(tmp_path):
     server._open_knowledge(app, str(tmp_path))
     try:
         assert isinstance(app["knowledge"], KnowledgeStore)
-        assert app["type_judgments_status"]["provenienza_istantanea"] == "sapere"
+        assert app["type_judgments_status"]["stato"] == "sapere"
         assert app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()
     finally:
         app["knowledge"].close()
@@ -253,13 +253,13 @@ def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
                                field="genere", value="presenza", now=lambda: 2.0)
         assert genre_for("binary_sensor.fp300", "occupancy",
                          judgments=app["type_judgments"]) == "presenza"
-        assert esito["impronta"] == app["type_judgments"].chronicle_fingerprint()
-        assert esito["impronta"] != prima["impronta"]
+        impronta = esito["istantanea"]["impronta"]
+        assert impronta == app["type_judgments"].chronicle_fingerprint()
+        assert impronta != prima["impronta"]
         assert app["type_judgments_status"] is not prima
-        assert app["type_judgments_status"] == {"provenienza_istantanea": "sapere",
-                                                "perche": None,
-                                                "impronta": esito["impronta"]}
-        assert esito["provenienza_istantanea"] == "sapere"
+        assert app["type_judgments_status"] == {"stato": "sapere", "perche": None,
+                                                "impronta": impronta}
+        assert esito["istantanea"] == app["type_judgments_status"]
         assert esito["riga"] == {"soggetto_genere": "tipo",
                                  "soggetto": "binary_sensor.occupancy",
                                  "campo": "genere", "valore": "presenza",
@@ -516,9 +516,9 @@ def test_scrittura_NON_IN_VIGORE_si_dichiara(tmp_path):
             _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                            field="genere", value="presenza", now=lambda: 3.0)
         assert "solo seme" in str(preso.value) and "light" in str(preso.value)
-        assert preso.value.status["provenienza_istantanea"] == "solo seme"
+        assert preso.value.status["stato"] == "solo seme"
         assert preso.value.row["valore"] == "presenza"
-        assert app["type_judgments_status"]["provenienza_istantanea"] == "solo seme"
+        assert app["type_judgments_status"]["stato"] == "solo seme"
         assert app["type_judgments"] is tv.REPO_JUDGMENTS
         assert s.get("tipo", "binary_sensor.occupancy", "genere").value == "presenza"
     finally:
@@ -558,7 +558,10 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
       listato e la *provenienza dell'istantanea* (`sapere`/`solo seme`) nella
       risposta della scrittura, nel 409 e nello stato. La seconda diventa
       `provenienza_istantanea` **dove nasce** (`judgments._status`), cosi' che
-      nessuna porta a valle debba ribattezzarla; la prima tiene `da`.
+      nessuna porta a valle debba ribattezzarla; la prima tiene `da`. Dal
+      13/10/2026 (C-30) la provenienza e' lo `stato` dell'oggetto
+      `istantanea`, consegnato intero da ogni porta: la forma comune degli
+      oggetti diagnostici di `/api/health`.
 
     Rosse prima della correzione: `KeyError: 'istantanea'` sulla salute e
     `KeyError: 'provenienza_istantanea'` sull'esito della scrittura.
@@ -567,10 +570,10 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
     try:
         esito = _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                                field="genere", value="presenza", now=lambda: 2.0)
-        assert esito["provenienza_istantanea"] == "sapere"
+        assert esito["istantanea"]["stato"] == "sapere"
         assert "da" not in esito, "`da` nel listato e' l'origine della RIGA: non si riusa qui"
         stato = app["type_judgments_status"]
-        assert set(stato) == {"provenienza_istantanea", "perche", "impronta"}
+        assert set(stato) == {"stato", "perche", "impronta"}
 
         response = await server.handle_health(SimpleNamespace(app=app, get={}.get))
         salute = json.loads(response.body)
@@ -884,11 +887,11 @@ def test_una_correzione_di_da_sapere_subito_NON_cambia_l_impronta(tmp_path):
         prima = app["type_judgments_status"]["impronta"]
         esito = _scrivi(app, subject_kind="tipo", subject="light",
                                field="da_sapere_subito", value="si", now=lambda: 5.0)
-        assert esito["impronta"] == prima
+        assert esito["istantanea"]["impronta"] == prima
         # E il contro-caso, che rende la prova discriminante: `genere` la muove.
         dopo = _scrivi(app, subject_kind="tipo", subject="light",
                               field="genere", value="nessuno", now=lambda: 6.0)
-        assert dopo["impronta"] != prima
+        assert dopo["istantanea"]["impronta"] != prima
     finally:
         s.close()
 
