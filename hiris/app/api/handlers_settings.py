@@ -73,7 +73,7 @@ import logging
 
 from aiohttp import web
 
-from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from ..chat_settings import DEFAULT_SYSTEM_PROMPT, MESSAGE_CAP, ChatSettings
 from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
@@ -283,6 +283,9 @@ def _payload(settings: ChatSettings) -> dict:
         "retention_days": settings.retention_days,
         "response_modes": list(RESPONSE_MODES),
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
+        # Il tetto di un messaggio, che la pagina della chat mette sul campo
+        # (`chat_settings.MESSAGE_CAP`): una costante, non un'impostazione.
+        "max_message_chars": MESSAGE_CAP,
     }
 
 
@@ -292,7 +295,7 @@ def _payload(settings: ChatSettings) -> dict:
 #: della pagina Impostazioni, che a lei e' chiusa. Scritto a mano perche' e'
 #: una decisione; che coincida con cio' che la chat legge lo prova
 #: `test_la_riduzione_e_cio_che_la_CHAT_legge`.
-CHAT_PAGE_FIELDS = ("name", "max_chat_turns")
+CHAT_PAGE_FIELDS = ("name", "max_chat_turns", "max_message_chars")
 
 
 async def handle_get_settings(request: web.Request) -> web.Response:

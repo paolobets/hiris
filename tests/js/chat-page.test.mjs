@@ -125,6 +125,36 @@ test('inviare un messaggio fa POST a api/chat con X-Requested-With (niente più 
   assert.equal('chatbot_id' in body, false, 'un solo assistente non ha piu\' bisogno di dirsi quale');
 });
 
+test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non conta un turno', async (t) => {
+  /* Parere ux-ui-specialist del 13/10/2026. Mutazione che la uccide:
+     togliere il ramo 413 -- la bolla resterebbe «inviata», il turno contato
+     e il campo vuoto. */
+  const { window, document } = setupChat(t);
+  window.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('api/chat-settings')) {
+      return { ok: true, status: 200, json: async () => ({ max_chat_turns: 0, max_message_chars: 4000 }) };
+    }
+    if (u.endsWith('api/chat')) {
+      return { ok: false, status: 413, json: async () => ({ error: 'message too long (max 4000 chars)' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  await window.HirisChatAgents.loadSettings();
+  const input = document.getElementById('input');
+  assert.equal(input.maxLength, 4000, 'il tetto del campo e\' quello dichiarato dal server');
+  const prima = window.HirisChatState.turnCount;
+
+  await window.HirisChatSend.send('un messaggio lunghissimo');
+
+  assert.equal(input.value, 'un messaggio lunghissimo', 'il testo torna nel campo');
+  assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'niente bolla «inviata»');
+  assert.equal(window.HirisChatState.turnCount, prima, 'il turno non si conta');
+  assert.match(document.body.textContent,
+    /Il messaggio è troppo lungo: al massimo 4000 caratteri\. Accorcialo o dividilo in due messaggi\./);
+  assert.doesNotMatch(document.body.textContent, /message too long/);
+});
+
 // ---------------------------------------------------------------------------
 // Risposta 202 (chat via abbonamento) -> il polling completa e la risposta
 // viene renderizzata nella bolla placeholder.

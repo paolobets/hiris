@@ -439,7 +439,8 @@ async def test_il_get_non_porta_piu_un_modello(client):
     ESATTO delle chiavi, non l'assenza di una: un campo aggiunto in silenzio è
     lo stesso difetto della prossima volta."""
     body = await (await client.get(ROTTA)).json()
-    assert set(body) == set(FIELDS) | {"response_modes", "default_system_prompt"}
+    assert set(body) == set(FIELDS) | {"response_modes", "default_system_prompt",
+                                       "max_message_chars"}
 
 
 def test_model_non_e_piu_un_campo_ammesso():
@@ -453,3 +454,19 @@ def test_model_non_e_piu_un_campo_ammesso():
         "thinking_budget", "max_chat_turns", "restrict_to_home",
         "retention_days",
     )
+
+
+@pytest.mark.asyncio
+async def test_il_tetto_del_messaggio_e_uno_per_la_chat_e_per_la_pagina(client):
+    """Il 413 di `POST /api/chat` e il `max_message_chars` che la pagina mette
+    sul campo sono lo stesso numero (`chat_settings.MESSAGE_CAP`, 13/10/2026):
+    prima il 4000 era scritto in linea nella rotta e la pagina non lo sapeva.
+
+    Mutazione ESEGUITA: il 4000 rimesso in linea in `handle_chat` e
+    `MESSAGE_CAP` a 3000 -- rossa."""
+    cap = (await (await client.get("/api/chat-settings")).json())["max_message_chars"]
+    assert cap > 0
+    troppo = await client.post("/api/chat", json={"message": "x" * (cap + 1)},
+                               headers={"X-Requested-With": "fetch"})
+    assert troppo.status == 413
+    assert str(cap) in (await troppo.json())["error"]

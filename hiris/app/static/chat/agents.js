@@ -144,6 +144,10 @@
       if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
       var data = await r.json();
       state.maxChatTurns = data.max_chat_turns || 0;
+      /* Il tetto di un messaggio lo dice il server (413 oltre): il campo non
+         lascia scrivere di piu', e la pagina non scrive un numero suo. */
+      state.maxMessageChars = data.max_message_chars || 0;
+      if (state.maxMessageChars) state.els.input.maxLength = state.maxMessageChars;
       updateAgentPill(data.name);
     } catch (e) {
       console.error('loadSettings failed', e);

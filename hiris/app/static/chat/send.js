@@ -143,13 +143,20 @@
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
+  function tooLongText() {
+    var cap = state.maxMessageChars;
+    return cap
+      ? 'Il messaggio è troppo lungo: al massimo ' + cap + ' caratteri. Accorcialo o dividilo in due messaggi.'
+      : 'Il messaggio è troppo lungo. Accorcialo o dividilo in due messaggi.';
+  }
+
   async function send(text) {
     text = (text !== undefined) ? text : state.els.input.value.trim();
     if (!text || state.isLoading) return;
     state.els.input.value = '';
     autoResize();
     setLoadingState(true);
-    window.HirisChatMessages.appendMsg('user', text);
+    var userRow = window.HirisChatMessages.appendMsg('user', text);
     /* L'indicatore d'attesa e la risposta sono LO STESSO NODO, su tutti e due i
        percorsi. Prima il ramo diretto creava una riga d'attesa, la rimuoveva e
        ne aggiungeva un'altra: un fotogramma di vuoto, un cambio d'altezza e uno
@@ -180,6 +187,17 @@
         window.HirisChatMessages.waitSafeOnServer(pending, CHAT_POLL_MAX_MS);
         handedOff = true;
         pollChatReply(data.job_id, pending);
+        return;
+      }
+      if (r.status === 413) {
+        /* Troppo lungo (parere ux-ui-specialist, 13/10/2026): il server non
+           l'ha preso, quindi niente bolla inviata, niente turno contato, e il
+           testo torna nel campo per accorciarlo. Il tetto si dice solo se il
+           server lo ha dichiarato. */
+        window.HirisChatMessages.updateBubble(pending, tooLongText());
+        if (userRow && userRow.parentNode) userRow.parentNode.removeChild(userRow);
+        state.els.input.value = text;
+        autoResize();
         return;
       }
       if (data.error === 'max_turns_reached') {

@@ -5,6 +5,7 @@ from contextlib import nullcontext
 
 from aiohttp import web
 
+from ..chat_settings import MESSAGE_CAP
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -935,8 +936,8 @@ async def handle_chat(request: web.Request) -> web.Response:
     message = body.get("message", "").strip()
     if not message:
         return error_response(400, "Manca il messaggio: il campo `message` è vuoto.")
-    if len(message) > 4000:
-        return error_response(413, "message too long (max 4000 chars)")
+    if len(message) > MESSAGE_CAP:
+        return error_response(413, f"message too long (max {MESSAGE_CAP} chars)")
 
     data_dir = request.app["data_dir"]
     settings = request.app["chat_settings"]
