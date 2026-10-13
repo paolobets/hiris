@@ -1582,7 +1582,6 @@ class HAClient:
             self._base_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/api/websocket"
         )
-        token = self._headers["Authorization"].removeprefix("Bearer ")
         types = [t for t, _ in commands]
         try:
             async with (
@@ -1593,13 +1592,13 @@ class HAClient:
                 # contano dal vivo le connessioni che HIRIS apre.
                 logger.debug("_ws_send: una connessione, %d comandi (%s)",
                              len(commands), types)
-                handshake = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                if handshake.get("type") == "auth_required":
-                    await ws.send_json({"type": "auth", "access_token": token})
-                    auth = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
-                    if auth.get("type") != "auth_ok":
-                        logger.warning("HA WS auth failed in _ws_send(%s)", types)
-                        return replies
+                # L'autenticazione e' quella del WebSocket di lunga vita
+                # (`_authenticate`): fino al 13/10/2026 qui ce n'era una
+                # seconda copia, riga per riga (A-28, F1 della Chiusura).
+                refusal = await self._authenticate(ws)
+                if refusal is not None:
+                    logger.warning("HA WS auth failed in _ws_send(%s): %s", types, refusal)
+                    return replies
                 for msg_id, (msg_type, extra) in enumerate(commands, start=1):
                     payload = {"id": msg_id, "type": msg_type}
                     if extra:
