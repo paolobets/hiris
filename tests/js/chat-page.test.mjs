@@ -136,7 +136,7 @@ test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non c
       return { ok: true, status: 200, json: async () => ({ max_chat_turns: 0, max_message_chars: 4000 }) };
     }
     if (u.endsWith('api/chat')) {
-      return { ok: false, status: 413, json: async () => ({ error: 'message too long (max 4000 chars)' }) };
+      return { ok: false, status: 413, json: async () => ({ error: 'Frase del server.' }) };
     }
     return { ok: true, status: 200, json: async () => ({}) };
   };
@@ -150,9 +150,11 @@ test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non c
   assert.equal(input.value, 'un messaggio lunghissimo', 'il testo torna nel campo');
   assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'niente bolla «inviata»');
   assert.equal(window.HirisChatState.turnCount, prima, 'il turno non si conta');
+  /* La frase e' quella del server, la pagina aggiunge solo il consiglio
+     (N155-2). Mutazione ESEGUITA il 13/10/2026: la frase ricomposta nella
+     pagina col tetto di `maxMessageChars` -- rossa. */
   assert.match(document.body.textContent,
-    /Il messaggio è troppo lungo: al massimo 4000 caratteri\. Accorcialo o dividilo in due messaggi\./);
-  assert.doesNotMatch(document.body.textContent, /message too long/);
+    /Frase del server\. Accorcialo o dividilo in due messaggi\./);
 });
 
 // ---------------------------------------------------------------------------

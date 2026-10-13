@@ -143,11 +143,13 @@
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
-  function tooLongText() {
-    var cap = state.maxMessageChars;
-    return cap
-      ? 'Il messaggio è troppo lungo: al massimo ' + cap + ' caratteri. Accorcialo o dividilo in due messaggi.'
-      : 'Il messaggio è troppo lungo. Accorcialo o dividilo in due messaggi.';
+  /* La frase del 413 e' del server (`handlers_chat`, col tetto di
+     `chat_settings.MESSAGE_CAP`): qui si aggiunge solo il consiglio (N155-2,
+     giro 155: la pagina la riscriveva). Il ripiego vale per un 413 che non
+     viene dalla nostra rotta (un proxy davanti). */
+  function tooLongText(serverText) {
+    return (serverText || 'Il messaggio è troppo lungo.')
+      + ' Accorcialo o dividilo in due messaggi.';
   }
 
   async function send(text) {
@@ -192,9 +194,8 @@
       if (r.status === 413) {
         /* Troppo lungo (parere ux-ui-specialist, 13/10/2026): il server non
            l'ha preso, quindi niente bolla inviata, niente turno contato, e il
-           testo torna nel campo per accorciarlo. Il tetto si dice solo se il
-           server lo ha dichiarato. */
-        window.HirisChatMessages.updateBubble(pending, tooLongText());
+           testo torna nel campo per accorciarlo. */
+        window.HirisChatMessages.updateBubble(pending, tooLongText(data.error));
         if (userRow && userRow.parentNode) userRow.parentNode.removeChild(userRow);
         state.els.input.value = text;
         autoResize();
