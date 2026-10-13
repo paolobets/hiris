@@ -20,8 +20,6 @@ from __future__ import annotations
 from ..providers import OPENROUTER
 from .openai_compat_runner import OpenAICompatRunner
 
-_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-
 # Il modello che questo runner usa quando nessuno ne ha scelto uno: pagante ma
 # affidabile, e NON quello di OpenAI (`OPENAI.auto_model`, che su OpenRouter
 # darebbe un nome inesistente). Era una stringa scritta dentro
@@ -59,7 +57,7 @@ class OpenRouterRunner(OpenAICompatRunner):
         # sceglie l'utente nella pagina Modelli (`read_model`); senza una
         # scelta vale `OPENROUTER.auto_model` (`_resolve_model`, qui sotto).
         super().__init__(
-            base_url=_OPENROUTER_BASE_URL,
+            base_url=OPENROUTER.api_base,
             api_key=api_key,
             read_model=read_model,
             log_usage=log_usage,

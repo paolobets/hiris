@@ -25,9 +25,6 @@ _APP = Path(__file__).resolve().parent.parent / "hiris" / "app"
 
 #: Ammissioni: (classe, attributo) -> perche' quel backend non lo porta.
 _DELIBERATELY_ABSENT = {
-    ("OpenAICompatRunner", "last_thinking_blocks"):
-        "le API compatibili OpenAI non hanno l'Extended Thinking di Anthropic: "
-        "`thinking_budget` si accetta e si ignora, e chi legge ripiega su None",
     ("ClaudeRunner", "provider_name"):
         "chi misura riceve il ROUTER, che scrive da se' chi ha risposto "
         "(`LLMRouter.provider_name`, dalla sua ContextVar): Claude e' uno solo, "

@@ -1041,3 +1041,15 @@ def test_un_comportamento_mai_letto_e_conservato_lo_dice_senza_data():
                                         "letto_il": None})
     assert any("non si e' ancora potuto leggere (inventario non pronto)" in a
                for a in summary["notices"])
+
+
+def test_i_problemi_del_comportamento_si_dicono_con_le_loro_parole():
+    """D-49: l'avviso diceva «id duplicati, voci malformate», cause che nessun
+    codice produce. L'unico produttore (`home_space/behavior.py`) scrive la
+    sua causa per intero: il nucleo la riporta, senza inventarne altre."""
+    causa = "«secrets.yaml» non letto: i corpi non si archiviano"
+    testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       behavior_problems=(causa,))
+    assert causa in testo
+    assert "id duplicati" not in testo
+    assert "voci malformate" not in testo

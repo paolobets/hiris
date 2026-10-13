@@ -49,6 +49,14 @@ MAX_ANSWER_TOKENS = 16000
 #: serve (`agent/runner._SCOPE_KIND`).
 SCOPE_TURN_KIND = SPECIES[OBSERVER_SPECIES].kind
 
+#: Le conseguenze del FUORI (X-13, 13/10/2026). Fino a quel giorno il testo
+#: diceva «non viene registrato affatto, e fra un mese non esistera'»: falso
+#: due volte. Il registro di Home Assistant tiene il dettaglio per
+#: `purge_keep_days` (10 di fabbrica, `components/recorder/__init__.py`), e la
+#: pulizia toglie stati, eventi e statistiche di breve periodo ma **non** le
+#: statistiche orarie (`components/recorder/purge.py`): letti nel sorgente di
+#: Core al tag 2026.9.4 il 13/10/2026. Quanti giorni tenga la casa non si
+#: scrive qui: e' una scelta del proprietario in Home Assistant.
 SYSTEM = """Sei l'osservatore di HIRIS, un sistema che guarda una casa domotica.
 
 Il tuo mestiere e' UNO: decidere, entita' per entita', se quello che fa merita
@@ -58,9 +66,11 @@ PERCHE'.
 Quello che decidi ha due conseguenze vere, e nessuna delle due e' teorica:
 - cio' che lasci DENTRO viene registrato a ogni cambio di stato, e costa spazio
   e attenzione;
-- cio' che lasci FUORI **non viene registrato affatto**, e fra un mese non
-  esistera': nessuno potra' rispondere a una domanda su quel periodo. Potrai
-  ricrederti, ma solo finche' Home Assistant ricorda -- pochi giorni.
+- cio' che lasci FUORI **non entra nell'archivio di HIRIS**: di quel periodo
+  restera' solo cio' che Home Assistant tiene da se' -- il dettaglio per i
+  giorni che il suo registro conserva, e le statistiche orarie per le entita'
+  che le hanno. Potrai ricrederti, ma solo finche' Home Assistant ricorda il
+  dettaglio.
 
 Quindi non essere generoso e non essere avaro: chiediti, per ognuna, se la sua
 storia servirebbe a capire come la casa risponde all'obiettivo.
@@ -114,6 +124,15 @@ def presence_handles(ids) -> dict[str, str]:
     la rende ricostruibile quando la risposta torna -- sul ponte minuti dopo,
     da un altro processo -- a partire dallo stesso insieme."""
     return handles(i for i in ids if domain_of(i) in MOVING_DOMAINS)
+
+
+def masks_presences(house: House, only: set[str] | None = None) -> bool:
+    """Se le righe di questo turno portano un segnaposto: lo chiede agli id
+    (`presence_handles` sul lotto di `watched_ids`), non alla riga scritta per
+    il modello. Fino al 13/10/2026 `build_house_question` lo cercava spezzando
+    ogni riga sul separatore (D-54): un secondo lettore della forma della
+    riga, che si sarebbe sbagliato in silenzio il giorno che la resa cambia."""
+    return bool(presence_handles(watched_ids(house, only)))
 
 
 def house_lines(house: House, only: set[str] | None = None) -> list[str]:
@@ -225,7 +244,8 @@ ANSWER_CONTRACT = (
 )
 
 
-def build_question(objective: str, lines: list[str], gone: list[str] = ()) -> str:
+def build_question(objective: str, lines: list[str], gone: list[str] = (),
+                   *, masked: bool = False) -> str:
     """La domanda intera: l'obiettivo, la casa, e il contratto di risposta.
 
     E' la forma che serve alla **catena**, dove tutto viaggia in un messaggio
@@ -233,7 +253,8 @@ def build_question(objective: str, lines: list[str], gone: list[str] = ()) -> st
     `bridge_turn`): la domanda in cronologia, il contratto come istruzione di
     chiusura.
     """
-    return build_house_question(objective, lines, gone) + "\n" + ANSWER_CONTRACT
+    return (build_house_question(objective, lines, gone, masked=masked)
+            + "\n" + ANSWER_CONTRACT)
 
 
 #: Cosa si dice al modello quando fra le righe ci sono segnaposti: senza,
@@ -244,12 +265,14 @@ PRESENCE_HINT = (
     "giudicali per quello che sono, e nella risposta usa il segnaposto come id.\n")
 
 
-def build_house_question(objective: str, lines: list[str], gone: list[str] = ()) -> str:
+def build_house_question(objective: str, lines: list[str], gone: list[str] = (),
+                         *, masked: bool = False) -> str:
     """L'obiettivo e la casa, **senza** il contratto di risposta.
 
     `gone` sono le righe di `gone_lines`: i soggetti che guardi e che tacciono
-    fuori dalla casa che ti si mostra. Vengono dopo, a parte, solo se ci sono."""
-    masked = any(f".{PRESENCE_MARK}" in line.split(" · ", 1)[0] for line in lines)
+    fuori dalla casa che ti si mostra. Vengono dopo, a parte, solo se ci sono.
+    `masked` e' `masks_presences` sullo stesso lotto delle righe: se c'e' un
+    segnaposto, la domanda dice come leggerlo (`PRESENCE_HINT`)."""
     question = (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Queste sono le {len(lines)} entita' che ti competono. Ogni riga e':\n"
@@ -333,7 +356,8 @@ def bridge_turn(store, house: House, only: set[str] | None = None, *,
         "history": [{"role": "user",
                      "content": build_house_question(
                          store.objective()["testo"], house_lines(house, only),
-                         gone_lines(store, house) if opening else [])}],
+                         gone_lines(store, house) if opening else [],
+                         masked=masks_presences(house, only))}],
         "system_prompt": SYSTEM,
         # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
         # che chiude ogni turno di chat dice «usa testo semplice: niente
@@ -459,7 +483,8 @@ async def reconsider(runner, store, house: House, *, reason: str,
     # I soggetti che tacciono solo nella domanda che apre la campagna (quella
     # che annota la riconsiderazione): vedi `bridge_turn`.
     question = build_question(objective, lines,
-                              gone_lines(store, house) if record else [])
+                              gone_lines(store, house) if record else [],
+                              masked=masks_presences(house, only))
     try:
         # `user_message=` per nome e non posizionale: `LLMRouter.chat` --
         # il runner vero, quello con la catena di ripiego -- prende `**kwargs`

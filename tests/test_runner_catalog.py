@@ -101,7 +101,7 @@ async def _claude_chat_tools(runner, **kw) -> set:
         return m
 
     runner._client.messages.create = capture
-    await runner.chat("Ciao", **kw)
+    await runner.chat("Ciao", max_tokens=4096, **kw)
     return {t["name"] for t in catturati["tools"]}
 
 
@@ -228,7 +228,7 @@ async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_r
 
     claude_runner._client.messages.create = AsyncMock(side_effect=[msg1, msg2])
     result = await claude_runner.chat(
-        "cerca il bagno", tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
+        "cerca il bagno", tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher, max_tokens=4096
     )
 
     assert result == "trovato"
@@ -261,7 +261,7 @@ async def test_openai_con_dispatcher_esterno_chiama_linterfaccia_minima(openai_r
     openai_runner._client.chat.completions.create = AsyncMock(side_effect=[resp1, resp2])
     result = await openai_runner.chat(
         user_message="cerca il bagno", model="gpt-4o",
-        tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher,
+        tools=KNOWLEDGE_TOOLS, dispatcher=finto_dispatcher, max_tokens=4096
     )
 
     assert result == "trovato"

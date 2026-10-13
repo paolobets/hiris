@@ -425,6 +425,33 @@ class House:
         return House(self.home_space, self.mirror, self.unavailable, statistic_ids,
                      self.energy)
 
+    def calendars(self) -> list[dict]:
+        """I calendari di questa casa, `{id, nome}`, dallo specchio (A-34, F1
+        della Chiusura, 13/10/2026): le entita' `calendar.*`, ognuna col suo
+        nome vivo (`name`), nell'ordine per nome.
+
+        Fino a quel giorno lo strumento `calendar` chiedeva l'elenco a Home
+        Assistant (`GET /api/calendars`) a ogni domanda, mentre lo specchio
+        lo aveva gia'. La rotta, letta nel sorgente (tag `2026.10.1`,
+        `components/calendar/__init__.py`, `CalendarListView.get`), rende per
+        ogni entita' del componente `{"name": state.name, "entity_id"}` e le
+        ordina con `sorted(..., key=name)`: lo stesso insieme degli stati
+        `calendar.*` (il token del Supervisor passa il filtro per permesso), e
+        l'ordine si rifa' qui con la stessa chiave. Misurato sulla casa il
+        13/10/2026 (HA 2026.10.1): 2 calendari dalla rotta, 2 nello specchio,
+        2 in entrambi, nome uguale al `friendly_name` in 2 su 2, stesso ordine.
+
+        Il nome e' quello di `name`, non `state.name`: senza `friendly_name`
+        Home Assistant ripiega sull'`object_id` con gli spazi, HIRIS sul nome
+        del registro e poi sull'id, come per ogni altra entita' (fondamenta
+        3). Sulla casa i `friendly_name` vuoti erano 0.
+
+        Uno specchio che non si legge non e' «nessun calendario»: chi chiama
+        lo chiede prima (`entity_cache.unreadable_inventory_error`)."""
+        rows = [{"id": eid, "nome": self.name("entita", eid)}
+                for eid in self.mirror.state if domain_of(eid) == "calendar"]
+        return sorted(rows, key=lambda row: row["nome"])
+
     def instance(self, entry_id: str | None) -> dict | None:
         """L'istanza d'integrazione dell'anagrafe (`reader._integration`) con
         questo `entry_id`; `None` se l'anagrafe non la conosce."""

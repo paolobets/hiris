@@ -108,7 +108,7 @@ async def test_ClaudeRunner_dice_la_troncatura(stop_reason, troncato):
     runner._client.messages.create = AsyncMock(
         return_value=_risposta_anthropic(stop_reason))
 
-    testo = await runner.chat("ciao", model="claude-sonnet-4-6")
+    testo = await runner.chat("ciao", model="claude-sonnet-4-6", max_tokens=4096)
 
     assert runner.last_truncated is troncato
     if stop_reason == "max_tokens":
@@ -124,9 +124,9 @@ async def test_ClaudeRunner_azzera_il_segnale_a_ogni_chiamata():
     runner._client.messages.create = AsyncMock(side_effect=[
         _risposta_anthropic("max_tokens"), _risposta_anthropic("end_turn")])
 
-    await runner.chat("uno", model="claude-sonnet-4-6")
+    await runner.chat("uno", model="claude-sonnet-4-6", max_tokens=4096)
     assert runner.last_truncated is True
-    await runner.chat("due", model="claude-sonnet-4-6")
+    await runner.chat("due", model="claude-sonnet-4-6", max_tokens=4096)
     assert runner.last_truncated is False
 
 
@@ -152,7 +152,7 @@ async def test_OpenAICompatRunner_dice_la_troncatura(finish_reason, troncato):
     runner._client.chat.completions.create = AsyncMock(
         return_value=_risposta_openai(finish_reason))
 
-    await runner.chat(user_message="ciao", model="gpt-4o")
+    await runner.chat(user_message="ciao", model="gpt-4o", max_tokens=4096)
 
     assert runner.last_truncated is troncato
 
@@ -165,7 +165,7 @@ async def test_il_router_dice_la_troncatura_di_chi_ha_risposto():
         return_value=_risposta_openai("length"))
     router = LLMRouter(openai=runner, model_chain=["openai"])
 
-    await router.chat(user_message="ciao", model="auto")
+    await router.chat(user_message="ciao", model="auto", max_tokens=4096)
 
     assert router.last_truncated is True
 
@@ -181,7 +181,7 @@ async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
     # la ContextVar condivisa, e un runner qualunque la scrive.
     ClaudeRunner(api_key="sk-prova").last_truncated = True
 
-    await router.chat(user_message="ciao", model="auto")
+    await router.chat(user_message="ciao", model="auto", max_tokens=4096)
 
     assert router.last_truncated is False
 

@@ -38,8 +38,8 @@ non da un campo che il modello potrebbe compilare da solo. Vedi
 `action/construction/workshop.py` per il giro intero e la guardia.
 
 `history` passa per `home_space/house_history.py`; che cosa si chiede lo
-dice `cosa`, un argomento esplicito. `calendar` legge ogni calendario
-(`HAClient.calendars()`/`calendar_events()`) e compone gli impegni
+dice `cosa`, un argomento esplicito. `calendar` legge ogni calendario dello
+specchio (`House.calendars`, `HAClient.calendar_events()`) e compone gli impegni
 (`home_space/appointments.py`) in un unico elenco ordinato; un calendario che
 non riesce a leggere finisce in `non_letti`, perche' la leggibilita' si
 verifica LEGGENDO, non dallo stato (un calendario rotto e uno senza impegni
@@ -100,11 +100,11 @@ from ..memory.interpretation import validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
 from ..memory.store import MemoryStore
 from ..proxy._sanitize import sanitize_ha_value
-from ..proxy.entity_cache import states_by_id
+from ..proxy.entity_cache import NO_INVENTORY_ERROR, states_by_id, unreadable_inventory_error
 from ..proxy.state_translations import read_for_house
 from ..usage.giro import pesa_in_caratteri
 from . import historian
-from .appointments import merge_calendars, readable_calendars
+from .appointments import merge_calendars
 from .behavior import without_body
 from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
@@ -125,6 +125,7 @@ from .house_query import (
     parse_filters,
     query_house,
 )
+from .log_source import manifest_of
 from .privacy import (
     ADMIN_ONLY_HISTORY_KINDS,
     HA_CORE_USER_SERVICES,
@@ -2512,7 +2513,11 @@ class ToolDispatcher:
         if isinstance(query, dict):
             return query
         if query.kind == "errori":
-            return await read_errors(self._ha, query, seal=self._seal())
+            # I nomi del manifest dall'anagrafe, senza costruire la casa del
+            # turno (B-50): gli errori non la guardano.
+            known = self._home_space.read() if self._home_space is not None else {}
+            return await read_errors(self._ha, query, seal=self._seal(),
+                                     manifest=manifest_of(known))
         if self._home_space is None:
             return {"errore": "`history` non e' disponibile: la conoscenza della casa "
                               "non e' ancora stata caricata."}
@@ -2533,9 +2538,10 @@ class ToolDispatcher:
         calendari illeggibili e fondere gli impegni e' di
         `appointments.merge_calendars`, che e' puro e dice perche'.
 
-        **Se l'elenco dei calendari stesso non arriva**, non c'e' niente da
-        provare a leggere: si propaga il suo `errore` cosi' com'e' (un
-        passthrough puro).
+        **Se lo specchio non si legge**, l'elenco dei calendari non c'e' e non
+        c'e' niente da provare a leggere: si dice, con le parole
+        dell'inventario (`entity_cache`), invece di rispondere «nessun
+        calendario».
 
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
         la stessa fonte di `_history` -- non se ne apre una seconda): serve
@@ -2566,11 +2572,14 @@ class ToolDispatcher:
                             ceiling=MAX_CALENDAR_DAYS_AHEAD)
         behind = _clamp_days(arguments.get("giorni_indietro"),
                              default=0, ceiling=MAX_CALENDAR_DAYS_BACK)
-        ha = self._ha
-        listing = await ha.calendars()
-        if "errore" in listing:
-            return listing
-        calendars = readable_calendars(listing)
+        # L'elenco dallo specchio (A-34, F1 della Chiusura): uno specchio che
+        # non si legge (`Mirror.readable`, composto in `read_mirror`) non e'
+        # «nessun calendario», si dice -- con le parole dell'inventario.
+        house = self._turn_house()
+        if not house.mirror.readable:
+            fault = unreadable_inventory_error(self._cache)
+            return {"errore": fault["error"] if fault else NO_INVENTORY_ERROR}
+        calendars = house.calendars()
 
         timezone = self._timezone()
         zone = historian.home_space_zone(timezone)
@@ -2580,9 +2589,10 @@ class ToolDispatcher:
 
         # Tutti insieme (A-34, Tappa 2): l'attesa e' quella del calendario
         # piu' lento, non la somma. `gather` rende nell'ordine chiesto, cioe'
-        # quello di Home Assistant: `calendari_guardati` e `non_letti` non
-        # dipendono da chi risponde prima. `calendar_events` non solleva.
-        answers = await asyncio.gather(*(ha.calendar_events(entry["entity_id"], start, end)
+        # quello per nome di `House.calendars`: `calendari_guardati` e
+        # `non_letti` non dipendono da chi risponde prima. `calendar_events`
+        # non solleva.
+        answers = await asyncio.gather(*(self._ha.calendar_events(entry["id"], start, end)
                                          for entry in calendars))
         return merge_calendars(calendars, answers, timezone=timezone)
 

@@ -88,10 +88,11 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* I campi dei giudizi, nell'ordine approvato -- letterale, identico a
-     GENRE_FIELD/RESTING_FIELD/OPERABLE_FIELD/PARAMETER_LIMITS_FIELD/
+     GENRE_FIELD/RESTING_FIELD/PARAMETER_LIMITS_FIELD/
      WORKING_FIELD/DA_SAPERE_SUBITO_FIELD/SCAFFOLDING_FIELD di
      home_space/type_judgments.py (contati nel sorgente Python, non
-     ricopiati da una variabile). `notevole` e' uscito il 02/10/2026: dal
+     ricopiati da una variabile). `accendibile` e' uscito il 13/10/2026
+     (M-61): nessun lettore del prodotto lo usava. `notevole` e' uscito il 02/10/2026: dal
      29/09 nessuna domanda lo consultava, e la pagina lo mostrava come un
      giudizio che conta. Fix round 1, IMPORTANT 2: `da_sapere_subito`
      (Task 1, spec 2026-09-18-da-sapere-subito.md §2) era un settimo campo nel
@@ -103,7 +104,6 @@ window.HirisWatcherSapere = (function () {
   var JUDGMENT_FIELD_GROUPS = [
     { campo: 'genere', etichetta: 'Genere' },
     { campo: 'riposo', etichetta: 'Riposo' },
-    { campo: 'accendibile', etichetta: 'Accendibile' },
     { campo: 'limiti_parametri', etichetta: 'Limiti dei parametri' },
     { campo: 'lavoro', etichetta: 'Lavoro' },
     { campo: 'da_sapere_subito', etichetta: 'Da sapere subito' },
@@ -134,7 +134,7 @@ window.HirisWatcherSapere = (function () {
 
      **Solo per questi la pagina può promettere che «la cronaca dei giorni
      passati si rifà da sola»** (revisione finale, I-4): l'impronta non
-     comprende `accendibile`, `lavoro`, `limiti_parametri` né
+     comprende `lavoro`, `limiti_parametri` né
      `da_sapere_subito`, e correggere uno di quelli non fa rifare nessun
      giorno. Prometterlo lo stesso era la pagina che diceva il falso proprio a
      chi corregge il campo di quella fetta. */
@@ -145,9 +145,10 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* L'etichetta italiana di un campo, dall'elenco qui sopra: serve alla riga di
-     «Correzioni», dove righe di campi diversi stanno mescolate e
-     «lock · no · Corretto da Paolo» non distingue `accendibile` da
-     `da_sapere_subito` (revisione finale, I-4). Un campo sconosciuto torna
+     «Correzioni», dove righe di campi diversi stanno mescolate e, senza il
+     nome del campo, non si distinguono: «lock · no» e «lock · {"locking": …}»
+     sono `da_sapere_subito` e `lavoro` dello stesso soggetto, e niente lo
+     dice (revisione finale, I-4). Un campo sconosciuto torna
      com'è scritto: meglio il nome tecnico che il silenzio. */
   function judgmentFieldLabel(campo) {
     for (var i = 0; i < JUDGMENT_FIELD_GROUPS.length; i += 1) {
@@ -498,9 +499,10 @@ window.HirisWatcherSapere = (function () {
      `<table>` (CSS: `.jr-row` in hiris-config.css).
 
      `mostraCampo` (revisione finale, I-4): in «Correzioni» righe di
-     campi diversi stanno mescolate, e senza il nome del campo «lock · no ·
-     Corretto da Paolo» vale identica per `accendibile` e per `da_sapere_subito` --
-     chi legge non sa cosa ha corretto. Dentro «I giudizi del seme» il campo è
+     campi diversi stanno mescolate, e senza il nome del campo non si
+     distinguono: «lock · no» e «lock · {"locking": …}» sono
+     `da_sapere_subito` e `lavoro` dello stesso soggetto -- chi legge non sa
+     cosa ha corretto. Dentro «I giudizi del seme» il campo è
      già il titolo del gruppo e ripeterlo su ogni riga sarebbe rumore. */
   function judgmentRow(g, outerBody, mostraCampo) {
     var riga = el('div', 'sc-row jr-row');

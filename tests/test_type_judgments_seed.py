@@ -115,10 +115,11 @@ def test_il_seme_conta_98_celle_campo_per_campo():
     """
     import collections
     per_campo = collections.Counter(field for _, _, field, _ in tv.judgment_seed_rows())
-    assert per_campo == {"genere": 26, "riposo": 18, "accendibile": 13,
+    assert per_campo == {"genere": 26, "riposo": 18,
                          "limiti_parametri": 10, "lavoro": 9, "da_sapere_subito": 16,
                          "impalcatura": 6}
-    assert sum(per_campo.values()) == 98
+    # 98 fino al 13/10/2026: le 13 righe `accendibile` sono uscite (M-61).
+    assert sum(per_campo.values()) == 85
 
 
 def test_l_impronta_del_seme_vero_e_QUESTA():
@@ -199,11 +200,13 @@ def test_OGNI_tipo_da_sapere_subito_HA_un_riposo_O_un_lavoro():
     `alarm_control_panel` e la sua riga `_vocabulary.extend` che da'
     `working_states` (entrambe in `home_space/type_vocabulary.py`, citate per
     soggetto e non per numero di riga: vedi la voce di backlog «Le citazioni per
-    numero di riga marciscono»). Prima provato su `siren`, ma `siren` e'
-    dichiarato accendibile (`operable=Ours(True)`) e un'altra guardia del
-    modulo (`_verify_operable_types_bring_their_rest`) rifiuta l'import prima
-    ancora che questa prova giri; `alarm_control_panel` non e' accendibile e
-    arriva alla prova. Rossa su questo file: `assert ['alarm_control_panel']
+    numero di riga marciscono»). Prima provato su `siren`, ma `siren` era
+    dichiarato accendibile (`operable=Ours(True)`, uscito il 13/10/2026) e
+    un'altra guardia del modulo rifiutava l'import prima ancora che questa
+    prova girasse; `alarm_control_panel` non lo era e arrivava alla prova.
+    (Dal 13/10/2026 quella guardia si chiede al genere,
+    `_verify_genre_types_bring_their_rest`, e rifiuterebbe anche lui.)
+    Rossa su questo file: `assert ['alarm_control_panel']
     == []`. Ripristinate entrambe le righe con l'editor, verificato con
     `git diff` che il file torna identico a prima.
     """

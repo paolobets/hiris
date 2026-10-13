@@ -346,6 +346,12 @@ async def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
     ({"thinking_budget": "abc", "nome": "Casa"}, "thinking_budget"),
     ({"max_chat_turns": [3], "nome": "Casa"}, "max_chat_turns"),
     ({"giorni_conservazione": "trenta", "nome": "Casa"}, "giorni_conservazione"),
+    # `Infinity` e' JSON che `json.load` accetta, e `int(inf)` solleva
+    # `OverflowError`, non `ValueError` (F0 della Chiusura, eseguito il
+    # 13/10/2026): fermava ancora l'avvio.
+    ({"thinking_budget": float("inf"), "nome": "Casa"}, "thinking_budget"),
+    ({"max_chat_turns": float("-inf"), "nome": "Casa"}, "max_chat_turns"),
+    ({"giorni_conservazione": float("inf"), "nome": "Casa"}, "giorni_conservazione"),
 ])
 def test_un_valore_storto_torna_al_default_e_lo_dice_nel_log(tmp_path, caplog,
                                                              contenuto, campo):

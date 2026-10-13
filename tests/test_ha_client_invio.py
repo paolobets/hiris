@@ -152,7 +152,7 @@ def test_la_derivazione_contiene_le_letture_di_oggi():
     assert len(reads) > 20, sorted(reads)
     for name in ("get_states", "get_services", "history", "read_dashboards",
                  "read_registries", "problems", "get_config", "statistic_ids",
-                 "get_translations", "calendars"):
+                 "get_translations", "calendar_events"):
         assert name in reads, f"`{name}` e' uscita dalle letture derivate"
     assert set(reads) <= set(_ports())
 

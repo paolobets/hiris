@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.briefing import compose, now_line
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
@@ -123,7 +123,7 @@ def _house(**faults):
     (`silence=`, `refuse=`)."""
     return CasaFinta({"registries": {"piani": [], "aree": [], "dispositivi": [],
                                      "entita": [], "etichette": [], "categorie": [],
-                                     "integrazioni": []},
+                                     "integrazioni": [], "manifesti": []},
                       "states": [], "ha_config": _CONFIG}, **faults)
 
 
@@ -224,7 +224,7 @@ def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
     assert "vale la pena rileggere" not in text
 
 
-def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
+def test_l_ora_della_casa_si_dichiara_nel_suo_fuso():
     """«Domani alle 8» non vuol dire niente senza il fuso -- e «fra un'ora»
     non vuol dire niente senza SAPERE CHE ORA E'.
 
@@ -238,39 +238,37 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
     che HIRIS possiede, e poi lo si giudicava con la propria copia.
 
     L'istante sta accanto al fuso perche' e' lo stesso oggetto: un orario
-    senza il suo fuso e' il «72» senza i gradi."""
+    senza il suo fuso e' il «72» senza i gradi.
+
+    Dal 13/10/2026 (D-51) la frase non sta nel nucleo ma nel messaggio del
+    turno: la prova la chiede alla funzione che la scrive."""
     # 21/08/2026, 17:00:00 a Roma (l'istante del risveglio andato male).
-    testo, _ = compose({"entita": []}, [], [], {},
-                       reference_frame=reference_frame(_CONFIG),
-                       now=1787324400.0)
+    testo = now_line(reference_frame(_CONFIG), 1787324400.0)
     assert "17:00" in testo, "senza l'ora il modello se la inventa"
     assert "21/08/2026" in testo, "senza la data «alle 17» e' ambiguo fra oggi e domani"
+    assert now_line(reference_frame(_CONFIG), None) == "", "senza istante non se ne inventa uno"
 
 
-def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
+def test_il_turno_VERO_porta_l_orologio_e_il_nucleo_no(archivio):
     """Chi lo riempie? La domanda che questo progetto ha gia' pagato tre volte.
 
-    `compose` e' pura e riceve `adesso`: se `compose_briefing` -- l'unico
-    compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
-    GET /api/briefing -- non gliela passa, il parametro esiste, i test passano,
-    e il modello continua a indovinare l'ora esattamente come prima."""
+    Fino al 13/10/2026 l'ora stava nel nucleo, e cambiava a ogni minuto il
+    testo che la cache del prompt doveva riusare (D-51). Adesso esce dal
+    nucleo e la porta `steering.house_hour`, che chat e promesse mettono nel
+    messaggio del turno: se nessuno la riempisse, il modello tornerebbe a
+    indovinare l'ora come il 21/08/2026.
+
+    Mutazione ESEGUITA il 13/10/2026: rimessa la riga dell'ora nel nucleo --
+    rossa sull'ultima asserzione."""
     from hiris.app.api.handlers_home_space import compose_briefing
+    from hiris.app.steering import house_hour
 
     archivio.hold_registries({}, [], reference_frame=reference_frame(_CONFIG))
 
+    ora = house_hour({"home_space_store": archivio})
+    assert ora.startswith("Adesso sono le") and ora.endswith("(fuso Europe/Rome).")
     testo, _ = compose_briefing({"home_space_store": archivio})
-
-    assert "Adesso sono le" in testo, (
-        "il nucleo di produzione non porta l'ora: il parametro c'e' e nessuno "
-        "lo riempie")
-    assert "(fuso Europe/Rome)" in testo
-
-
-def test_senza_l_istante_il_nucleo_non_ne_inventa_uno():
-    """Stessa disciplina del fuso: tacere e' meglio che affermare un'ora a
-    caso. `compose` resta PURA -- non legge l'orologio, lo riceve."""
-    testo = _nucleo(reference_frame(_CONFIG))
-    assert "adesso sono le" not in testo.lower()
+    assert "Adesso sono le" not in testo, "l'ora e' tornata nel nucleo"
 
 
 def test_senza_riferimento_il_nucleo_non_ne_inventa_uno():

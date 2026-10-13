@@ -28,7 +28,7 @@ from datetime import timedelta
 
 from ..home_space import historian
 from ..home_space.house import House
-from ..home_space.log_source import integration_of
+from ..home_space.log_source import Manifest, integration_of, manifest_of
 from ..home_space.topology import read_mirror
 from . import proposer_turn
 from .analyst import observation_key
@@ -107,7 +107,8 @@ class MindView:
             return None
         store = self.store
         return {
-            "watching": _with_integration(self.watcher.watching(house=self._house_read())),
+            "watching": _with_integration(self.watcher.watching(house=self._house_read()),
+                                          self.manifest()),
             "fuori": self._left_out(),
             "obiettivo": store.objective() if store is not None else None,
             "riconsiderazione": store.last_reconsideration() if store is not None else None,
@@ -203,7 +204,8 @@ class MindView:
         found = {**found,
                  "misure": _named(names, found.get("misure")),
                  "forme": _named(names, found.get("forme"))}
-        return as_page(found, judgments=self._judgments, names=self.entity_names())
+        return as_page(found, judgments=self._judgments,
+                       manifest=self.manifest(), names=self.entity_names())
 
     @staticmethod
     def nightly_time() -> str:
@@ -256,6 +258,14 @@ class MindView:
         return {device_id: house.name("dispositivo", device_id)
                 for device_id in house.device_ids()}
 
+    def manifest(self) -> Manifest:
+        """Il manifest delle integrazioni dall'anagrafe (`log_source.manifest_of`,
+        B-50), vuoto se l'anagrafe non c'e': allora ogni nome ripiega sullo
+        slug."""
+        if self._home_space is None:
+            return Manifest()
+        return manifest_of(self._home_space.read())
+
     def entity_names(self) -> dict:
         """I nomi **vivi** delle entita', dallo specchio, o `{}` se non c'e'.
 
@@ -271,7 +281,7 @@ class MindView:
         return read_mirror(self._cache).names
 
 
-def _with_integration(lines: list[dict]) -> list[dict]:
+def _with_integration(lines: list[dict], manifest: Manifest) -> list[dict]:
     """Le voci tecniche con **l'integrazione da cui vengono, e il suo nome**.
 
     Misurato il 18/09/2026: dei 153 soggetti guardati 39 sono tecnici, e
@@ -281,7 +291,8 @@ def _with_integration(lines: list[dict]) -> list[dict]:
     **La regola e' quella del primo piano** (`home_space/log_source.integration_of`),
     e non una seconda scritta qui o in JavaScript: due letture dello stesso
     logger darebbero due nomi per la stessa cosa nelle due schede della stessa
-    pagina. Le voci che non sono tecniche non guadagnano nessuna chiave:
+    pagina; `manifest` viene dall'anagrafe (`MindView.manifest`, B-50). Le
+    voci che non sono tecniche non guadagnano nessuna chiave:
     `light.studio` ha un dominio, non un'integrazione."""
     seen = []
     for line in lines or []:
@@ -289,9 +300,9 @@ def _with_integration(lines: list[dict]) -> list[dict]:
         slug = None
         if subject.startswith("log:"):
             rest = subject[len("log:"):]
-            slug = integration_of(rest.split("@")[0])
+            slug = integration_of(rest.split("@")[0], manifest)
         elif subject.startswith("problema:"):
-            slug = integration_of(subject[len("problema:"):])
+            slug = integration_of(subject[len("problema:"):], manifest)
         if slug:
             name, identifier = slug
             line = {**line, "integrazione": identifier, "nome": name}

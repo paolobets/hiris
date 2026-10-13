@@ -292,9 +292,9 @@ def test_una_ricetta_che_non_puo_produrre_si_riconosce_dalla_fonte():
     assert set(muted) == {"d_spenta"}
     # La causa e' quella della prima entita' nominata (in ordine), come il
     # rifiuto di un passo: dal vocabolario del Task 8, non una parola nuova.
-    assert muted["d_spenta"]["causa"] == "spenta_dal_proprietario"
-    assert "spenta dal proprietario" in muted["d_spenta"]["non_calcolabile"]
-    assert "light.sparita" in muted["d_spenta"]["non_calcolabile"]
+    assert muted["d_spenta"].cause == "spenta_dal_proprietario"
+    assert "spenta dal proprietario" in muted["d_spenta"].reason
+    assert "light.sparita" in muted["d_spenta"].reason
 
 
 @pytest.mark.parametrize("entity_id", ["light.irraggiungibile", "light.ricreata",
@@ -340,7 +340,7 @@ def test_il_resoconto_porta_una_riga_per_il_dispositivo_muto():
                           names={"d_spenta": "Lampade spente"}, muted=muted)
     assert report["misure"] == [{
         "soggetto": "d_spenta", "nome": "Lampade spente", "misura": "(la ricetta)",
-        "non_calcolabile": muted["d_spenta"]["non_calcolabile"],
+        "non_calcolabile": muted["d_spenta"].reason,
         "causa": "spenta_dal_proprietario"}]
 
 

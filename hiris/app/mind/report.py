@@ -58,6 +58,7 @@ import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.log_source import (
+    Manifest,
     integration_name,
     integration_slug,
 )
@@ -131,7 +132,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
                  silent: dict[str, NotComputable] | None = None,
                  judgment: dict | None = None,
-                 muted: dict[str, dict] | None = None) -> dict:
+                 muted: dict[str, NotComputable] | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, obiettivo, regole, misure, forme,
     cronaca, giudizio}`.
 
@@ -172,7 +173,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     **`muted`** porta le ricette che non possono produrre niente perche' ogni
     loro entita' tace per una causa che non passa da sola
     (`recipes.muted_recipes`, piano degli attori, Task 1.5; G-02, G-03):
-    `{dispositivo: {non_calcolabile, causa}}`. Escono con UNA riga per
+    `{dispositivo: NotComputable}`. Escono con UNA riga per
     dispositivo, non con un rifiuto per passo; chi chiama non le mette fra
     `recipes`.
 
@@ -188,7 +189,7 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
 
 def _measurements(series: dict, recipes: dict, names: dict,
                   silent: dict[str, NotComputable] | None = None,
-                  muted: dict[str, dict] | None = None
+                  muted: dict[str, NotComputable] | None = None
                   ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
@@ -227,8 +228,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
         if subject in muted:
             # Il dispositivo tace tutto: una riga, non un rifiuto per passo.
             out.append({**base, "misura": "(la ricetta)",
-                        "non_calcolabile": muted[subject]["non_calcolabile"],
-                        "causa": muted[subject]["causa"]})
+                        **muted[subject].as_fields()})
             continue
         recipe = Recipe(recipes[subject])
         needed = {e: series.get(e) or [] for e in recipe.entities()}
@@ -242,7 +242,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
             # dispositivo sarebbe il contrario di cio' che questo strato
             # promette.
             out.append({**base, "misura": "(la ricetta)",
-                        "non_calcolabile": str(error), "causa": RECIPE_BROKEN})
+                        **NotComputable(str(error), cause=RECIPE_BROKEN).as_fields()})
             logger.warning("resoconto: ricetta non valida per %s -- %s",
                            subject, error)
             continue
@@ -279,8 +279,7 @@ def _measurements(series: dict, recipes: dict, names: dict,
                     shapes.append(row)
                     continue
             else:
-                row["non_calcolabile"] = outcome.reason
-                row["causa"] = outcome.cause
+                row.update(outcome.as_fields())
             out.append(row)
     return out, shapes
 
@@ -599,7 +598,8 @@ FRONT_PAGE_ORDER = ("da_sapere_subito", "guasto", "avviso")
 #: portare una riga in piu' in primo piano, mai una in meno.
 _WARNING_LEVEL = "WARNING"
 
-def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
+def as_page(report: dict, *, judgments, manifest: Manifest,
+            names: dict | None = None) -> dict:
     """Il resoconto di un giorno **con il nome sempre e il primo piano**, per la
     pagina dell'osservatore (spec §3).
 
@@ -609,7 +609,8 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
 
     - **`nome`, sempre.** Chi ce l'ha tiene il suo (e' quello di ALLORA, ed e'
       piu' vero: un dispositivo si puo' rinominare); una voce di sistema lo
-      ricava dal `dominio` che gia' porta; un'entita' lo prende da `names`, i
+      ricava dal `dominio` che gia' porta, col `manifest` delle integrazioni
+      (`log_source.manifest_of`; B-50); un'entita' lo prende da `names`, i
       nomi vivi. Chi non ha nessuna delle tre resta **senza**: la pagina mostra
       l'identificativo dicendo che e' un identificativo, e nessuno inventa un
       nome dall'`entity_id`.
@@ -639,7 +640,7 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     seen, band = [], []
     for entry in chronicle:
         entry = dict(entry)
-        name = _resolved_name(entry, names)
+        name = _resolved_name(entry, names, manifest)
         if name:
             entry["nome"] = name
         mark = _front_page_mark(entry, judgments)
@@ -652,12 +653,12 @@ def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     return page
 
 
-def _resolved_name(entry: dict, names: dict | None) -> str | None:
+def _resolved_name(entry: dict, names: dict | None, manifest: Manifest) -> str | None:
     stored = entry.get("nome")
     if stored:
         return stored
     if entry.get("dominio"):
-        return integration_name(entry["dominio"])
+        return integration_name(entry["dominio"], manifest)
     return (names or {}).get(entry.get("chi"))
 
 

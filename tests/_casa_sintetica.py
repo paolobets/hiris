@@ -91,6 +91,15 @@ def synthetic_inputs() -> dict:
              "state": "loaded", "source": "user"},
             {"entry_id": "voce_due", "domain": "marca_due", "title": "Marca Due",
              "state": "loaded", "source": "user"}],
+        # Il manifest delle integrazioni caricate (`manifest/list`, B-50), con
+        # le chiavi che Home Assistant manda (misurate il 13/10/2026).
+        "manifesti": [
+            {"domain": "marca_uno", "name": "Marca UNO", "codeowners": [],
+             "documentation": None, "iot_class": "local_polling", "is_built_in": False,
+             "loggers": [], "overwrites_built_in": False, "requirements": []},
+            {"domain": "zha", "name": "Zigbee Home Automation", "codeowners": [],
+             "documentation": None, "iot_class": "local_polling", "is_built_in": True,
+             "loggers": [], "requirements": []}],
     }
     states = [
         _state("sensor.sensore_a_temperatura", "21.5", "Sensore A Temperatura",

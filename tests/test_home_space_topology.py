@@ -40,7 +40,7 @@ _REGISTRI = {
         {"entity_id": "sensor.spenta", "device_id": "d1", "area_id": None,
          "disabled_by": "user"},
     ],
-    "etichette": [], "categorie": [], "integrazioni": [],
+    "etichette": [], "categorie": [], "integrazioni": [], "manifesti": [],
 }
 
 
@@ -192,7 +192,7 @@ def test_un_registro_dispositivi_caduto_non_svuota_le_stanze(archivio):
         "dispositivi": [],
         "entita": [{"entity_id": f"light.cucina_{i}", "device_id": "d1", "area_id": None}
                    for i in range(3)],
-        "etichette": [], "categorie": [], "integrazioni": [],
+        "etichette": [], "categorie": [], "integrazioni": [], "manifesti": [],
     }
     archivio.hold_registries(registri, ["dispositivi"])
     piani = hierarchy(archivio.read(), ("dispositivi",))
@@ -207,7 +207,7 @@ def test_un_registro_piani_caduto_non_diventa_una_casa_senza_piani(archivio):
         "piani": [],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [],
-        "etichette": [], "categorie": [], "integrazioni": [],
+        "etichette": [], "categorie": [], "integrazioni": [], "manifesti": [],
     }
     archivio.hold_registries(registri, ["piani"])
     piani = hierarchy(archivio.read(), ("piani",))
@@ -348,7 +348,7 @@ def test_il_gruppo_senza_area_nasce_anche_con_sole_disabilitate(archivio):
         "dispositivi": [],
         "entita": [{"entity_id": "sensor.unica_disabilitata_orfana", "device_id": None,
                     "area_id": None, "disabled_by": "user"}],
-        "etichette": [], "categorie": [], "integrazioni": [],
+        "etichette": [], "categorie": [], "integrazioni": [], "manifesti": [],
     }
     archivio.hold_registries(registri)
     aree = _pseudo_aree(hierarchy(archivio.read()))

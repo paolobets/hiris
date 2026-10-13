@@ -1,7 +1,4 @@
 {
- "simbolo-solo-test": {
-  "operable_domains": "Lo legge il censore dei tipi, che e' un attrezzo (scripts/censore_tipi.py): il giudizio «accendibile» non ha lettori nel prodotto, e se serve lo decide il proprietario. Voce M-61 del registro."
- },
  "rotta-solo-test": {
   "/api/misure": "La leggono gli attrezzi di misura (scripts/misure.py, scripts/batteria_attori.py), che il rilevatore non conta fra i chiamanti: dichiarazione D5 della Tappa 0. Voce M-22 del registro."
  }

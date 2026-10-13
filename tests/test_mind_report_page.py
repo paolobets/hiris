@@ -27,6 +27,7 @@ domanda) sarebbero state la pagina intera.
 import pytest
 
 from hiris.app.home_space import type_vocabulary as tv
+from hiris.app.home_space.log_source import Manifest
 from hiris.app.home_space.type_judgments import TypeJudgments
 from hiris.app.mind.report import as_page
 
@@ -91,7 +92,7 @@ def test_una_voce_di_log_prende_il_nome_dal_DOMINIO_che_gia_porta():
     pagina = as_page(_resoconto(_guasto(
         "log:homeassistant.components.hydrawise@helpers/update_coordinator.py:447",
         titolo="Timeout fetching hydrawise data",
-        dominio="homeassistant.components.hydrawise")), judgments=_giudizi())
+        dominio="homeassistant.components.hydrawise")), judgments=_giudizi(), manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Hydrawise"
 
 
@@ -104,7 +105,8 @@ def test_un_log_di_componente_CUSTOM_prende_il_nome_dell_integrazione_non_della_
     pagina = as_page(_resoconto(_guasto(
         "log:custom_components.alarmo.alarm_control_panel@custom_components/alarmo/x.py:1140",
         cosa="WARNING", titolo="Alarm is triggered!",
-        dominio="custom_components.alarmo.alarm_control_panel")), judgments=_giudizi())
+        dominio="custom_components.alarmo.alarm_control_panel")),
+        judgments=_giudizi(), manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Alarmo"
 
 
@@ -116,7 +118,7 @@ def test_un_logger_che_non_e_ne_core_ne_custom_resta_il_suo_nome_intero():
     Mutazione: spezzare comunque sul punto -- rossa."""
     pagina = as_page(_resoconto(_guasto(
         "log:aioamazondevices@components/alexa_devices/coordinator.py:191",
-        dominio="aioamazondevices")), judgments=_giudizi())
+        dominio="aioamazondevices")), judgments=_giudizi(), manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Aioamazondevices"
 
 
@@ -130,7 +132,7 @@ def test_un_guasto_del_NUCLEO_di_home_assistant_si_chiama_col_nome_del_prodotto(
     pagina = as_page(_resoconto(_guasto(
         "log:homeassistant.helpers.entity@helpers/entity.py:1265", cosa="WARNING",
         titolo="Updating state for climate.camera_t", dominio="homeassistant.helpers.entity")),
-        judgments=_giudizi())
+        judgments=_giudizi(), manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Home Assistant"
 
 
@@ -142,7 +144,7 @@ def test_la_riga_della_primo_piano_CITA_lo_stato_con_la_parola_della_cronaca():
     Mutazione: rinominare la chiave -- rossa."""
     pagina = as_page(_resoconto(_episodio("alarm_control_panel.piano_terra", "triggered",
                                           genere="sicurezza", quando_ts=3.0, fine_ts=9.0)),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     riga, = pagina["primo_piano"]
     assert riga["cosa"] == "triggered"
     assert riga["fine_ts"] == 9.0
@@ -155,7 +157,8 @@ def test_il_nome_ARCHIVIATO_vince_su_quello_di_oggi():
 
     Mutazione: sovrascrivere col nome vivo -- rossa."""
     pagina = as_page(_resoconto(_episodio("light.studio", "on", nome="Studio")),
-                     judgments=_giudizi(), names={"light.studio": "Studio nuovo"})
+                     judgments=_giudizi(), names={"light.studio": "Studio nuovo"},
+                     manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Studio"
 
 
@@ -164,7 +167,8 @@ def test_un_entita_senza_nome_archiviato_prende_quello_VIVO():
     pagina = as_page(_resoconto(_episodio("alarm_control_panel.piano_terra", "disarmed",
                                           genere="sicurezza")),
                      judgments=_giudizi(),
-                     names={"alarm_control_panel.piano_terra": "Allarme piano terra"})
+                     names={"alarm_control_panel.piano_terra": "Allarme piano terra"},
+                     manifest=Manifest())
     assert pagina["cronaca"][0]["nome"] == "Allarme piano terra"
 
 
@@ -175,7 +179,7 @@ def test_un_entita_che_nessuno_conosce_resta_SENZA_nome():
 
     Mutazione: ripiegare su `chi` -- rossa."""
     pagina = as_page(_resoconto(_episodio("light.mai_vista", "on")),
-                     judgments=_giudizi(), names={})
+                     judgments=_giudizi(), names={}, manifest=Manifest())
     assert "nome" not in pagina["cronaca"][0]
 
 
@@ -192,7 +196,7 @@ def test_un_ERROR_di_sistema_e_un_guasto_in_primo_piano_con_la_frase_VERA():
     Mutazione: mettere il livello al posto del titolo -- rossa."""
     pagina = as_page(_resoconto(_guasto(
         "log:x@a.py:1", titolo="Timeout fetching hydrawise data",
-        dominio="homeassistant.components.hydrawise")), judgments=_giudizi())
+        dominio="homeassistant.components.hydrawise")), judgments=_giudizi(), manifest=Manifest())
     riga, = pagina["primo_piano"]
     assert riga["sorta"] == "guasto"
     assert riga["titolo"] == "Timeout fetching hydrawise data"
@@ -206,7 +210,7 @@ def test_un_WARNING_di_sistema_e_un_AVVISO_non_un_guasto():
     Mutazione: una sorta sola per ogni voce di sistema -- rossa."""
     pagina = as_page(_resoconto(_guasto("log:x@a.py:1", cosa="WARNING",
                                         dominio="homeassistant.components.x")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"][0]["sorta"] == "avviso"
 
 
@@ -217,7 +221,7 @@ def test_un_livello_che_non_conosciamo_NON_si_declassa_ad_avviso():
     Mutazione: `avviso` come ripiego -- rossa."""
     pagina = as_page(_resoconto(_guasto("log:x@a.py:1", cosa="CRITICAL",
                                         dominio="homeassistant.components.x")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"][0]["sorta"] == "guasto"
 
 
@@ -228,7 +232,7 @@ def test_l_allarme_DISARMED_non_entra_in_primo_piano():
     Mutazione: «il genere sicurezza entra sempre» -- rossa."""
     pagina = as_page(_resoconto(_episodio("alarm_control_panel.piano_terra", "disarmed",
                                           genere="sicurezza")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"] == []
     assert "primo_piano" not in pagina["cronaca"][0]
 
@@ -240,7 +244,7 @@ def test_l_allarme_TRIGGERED_entra_in_primo_piano_con_la_RAGIONE_scritta_nel_giu
     Mutazione: scrivere una frase qui -- rossa (non combacia col seme)."""
     pagina = as_page(_resoconto(_episodio("alarm_control_panel.piano_terra", "triggered",
                                           genere="sicurezza")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     riga, = pagina["primo_piano"]
     assert riga["sorta"] == "da_sapere_subito"
     assert riga["perche"] == _giudizi().working_of("alarm_control_panel")["triggered"]
@@ -256,7 +260,7 @@ def test_una_LUCE_accesa_non_entra_in_primo_piano():
     `judgments.stato_da_sapere_subito(...)`, cosi' che ogni stato conosciuto
     entri in primo piano -- rossa."""
     pagina = as_page(_resoconto(_episodio("light.studio", "on", nome="Studio")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"] == []
 
 
@@ -269,7 +273,7 @@ def test_la_serratura_INCEPPATA_entra_in_primo_piano_SENZA_ragione():
 
     Mutazione: pretendere una ragione per entrare -- rossa."""
     pagina = as_page(_resoconto(_episodio("lock.ingresso", "jammed", genere="sicurezza")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     riga, = pagina["primo_piano"]
     assert riga["sorta"] == "da_sapere_subito"
     assert "perche" not in riga
@@ -282,7 +286,7 @@ def test_la_serratura_SBLOCCATA_non_entra_in_primo_piano():
 
     Mutazione: il ramo dell'elenco messo DOPO il lavoro -- rossa."""
     pagina = as_page(_resoconto(_episodio("lock.ingresso", "unlocked", genere="sicurezza")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"] == []
 
 
@@ -296,7 +300,7 @@ def test_cambiare_il_GIUDIZIO_cambia_la_primo_piano_senza_toccare_il_codice():
     riscrittura del giudizio non sposterebbe niente)."""
     casa = _giudizi(("tipo", "light", "da_sapere_subito", "si"))
     pagina = as_page(_resoconto(_episodio("light.studio", "on", nome="Studio")),
-                     judgments=casa)
+                     judgments=casa, manifest=Manifest())
     assert [r["sorta"] for r in pagina["primo_piano"]] == ["da_sapere_subito"]
 
 
@@ -308,7 +312,7 @@ def test_lo_stesso_guasto_ripetuto_e_UNA_riga_con_le_VOLTE():
     Mutazione: nessun raggruppamento -- rossa (tre righe invece di una)."""
     voci = [_guasto("log:x@a.py:1", titolo="Timeout", dominio="homeassistant.components.x",
                     quando_ts=t, fine_ts=t + 60) for t in (100.0, 200.0, 300.0)]
-    pagina = as_page(_resoconto(*voci), judgments=_giudizi())
+    pagina = as_page(_resoconto(*voci), judgments=_giudizi(), manifest=Manifest())
     riga, = pagina["primo_piano"]
     assert riga["volte"] == 3
     assert riga["quando_ts"] == 100.0
@@ -323,7 +327,7 @@ def test_due_guasti_DIVERSI_della_stessa_integrazione_restano_due_righe():
     pagina = as_page(_resoconto(
         _guasto("log:x@a.py:1", titolo="Timeout", dominio="homeassistant.components.x"),
         _guasto("log:x@a.py:9", titolo="Client error", dominio="homeassistant.components.x"),
-    ), judgments=_giudizi())
+    ), judgments=_giudizi(), manifest=Manifest())
     assert len(pagina["primo_piano"]) == 2
 
 
@@ -340,7 +344,7 @@ def test_la_primo_piano_mette_PRIMA_cio_che_va_saputo_subito_poi_i_guasti_poi_gl
                 quando_ts=20.0),
         _episodio("alarm_control_panel.piano_terra", "triggered", genere="sicurezza",
                   quando_ts=30.0),
-    ), judgments=_giudizi())
+    ), judgments=_giudizi(), manifest=Manifest())
     assert [r["sorta"] for r in pagina["primo_piano"]] == ["da_sapere_subito", "guasto", "avviso"]
 
 
@@ -352,7 +356,7 @@ def test_la_voce_di_cronaca_porta_lo_STESSO_marchio_della_primo_piano():
     Mutazione: marchiare solo il primo piano -- rossa."""
     pagina = as_page(_resoconto(_episodio("alarm_control_panel.piano_terra", "triggered",
                                           genere="sicurezza")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["cronaca"][0]["primo_piano"]["sorta"] == "da_sapere_subito"
 
 
@@ -365,7 +369,7 @@ def test_il_contratto_CRESCE_e_non_perde_nessun_campo():
                      nome="Termostato", classe="thermostat")
     voce["attributi"] = [{"quando_ts": 6.0, "valori": {"hvac_action": "heating"}}]
     resoconto = _resoconto(voce)
-    pagina = as_page(resoconto, judgments=_giudizi())
+    pagina = as_page(resoconto, judgments=_giudizi(), manifest=Manifest())
     assert pagina["giorno"] == "2026-09-17"
     assert pagina["obiettivo"] == "l'efficientamento energetico"
     assert pagina["cronaca"][0].items() >= voce.items()
@@ -380,7 +384,7 @@ def test_il_resoconto_di_partenza_non_viene_TOCCATO():
     resoconto = _resoconto(_guasto("log:x@a.py:1", titolo="Timeout",
                                    dominio="homeassistant.components.x"))
     prima = {k: str(v) for k, v in resoconto["cronaca"][0].items()}
-    as_page(resoconto, judgments=_giudizi())
+    as_page(resoconto, judgments=_giudizi(), manifest=Manifest())
     assert {k: str(v) for k, v in resoconto["cronaca"][0].items()} == prima
     assert "primo_piano" not in resoconto
 
@@ -392,7 +396,7 @@ def test_un_giorno_SENZA_niente_da_dire_ha_una_primo_piano_vuota_non_assente():
 
     Mutazione: omettere la chiave quando e' vuota -- rossa."""
     pagina = as_page(_resoconto(_episodio("light.studio", "on", nome="Studio")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"] == []
 
 
@@ -406,7 +410,7 @@ def test_senza_l_istantanea_dei_giudizi_la_primo_piano_NON_si_inventa():
     pagina = as_page(_resoconto(
         _guasto("log:x@a.py:1", titolo="Timeout", dominio="homeassistant.components.x"),
         _episodio("alarm_control_panel.piano_terra", "triggered", genere="sicurezza"),
-    ), judgments=None)
+    ), judgments=None, manifest=Manifest())
     assert [r["sorta"] for r in pagina["primo_piano"]] == ["guasto"]
 
 
@@ -415,7 +419,8 @@ def test_una_cronaca_assente_non_diventa_un_elenco_vuoto():
     guadagnare una chiave che non aveva: sarebbe un dato inventato.
 
     Mutazione: `resoconto.setdefault("cronaca", [])` -- rossa."""
-    pagina = as_page({"giorno": "2026-09-17", "misure": []}, judgments=_giudizi())
+    pagina = as_page({"giorno": "2026-09-17", "misure": []}, judgments=_giudizi(),
+                     manifest=Manifest())
     assert "cronaca" not in pagina
     assert pagina["primo_piano"] == []
 
@@ -430,7 +435,7 @@ def test_uno_stato_NON_LO_SO_non_entra_mai_in_primo_piano(stato):
     Mutazione: passare lo stato senza filtro -- rossa."""
     pagina = as_page(_resoconto(_episodio("binary_sensor.fumo_cucina", stato,
                                           genere="sicurezza", classe="smoke")),
-                     judgments=_giudizi())
+                     judgments=_giudizi(), manifest=Manifest())
     assert pagina["primo_piano"] == []
 
 
@@ -452,7 +457,7 @@ def test_una_condizione_dell_IMPALCATURA_non_sale_ma_RESTA_nella_cronaca():
     Mutazione: toglierla anche dalla cronaca -- rossa (la storia sparisce)."""
     voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
                    dominio="custom_components.hacs")
-    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+    pagina = as_page(_resoconto(voce), judgments=_giudizi(), manifest=Manifest())
 
     assert pagina["primo_piano"] == []
     assert pagina["cronaca"][0]["nome"] == "Hacs"
@@ -467,7 +472,7 @@ def test_la_stessa_condizione_di_un_integrazione_di_CASA_sale():
     voce = _guasto("log:homeassistant.components.hydrawise@x.py:1",
                    titolo="Timeout fetching hydrawise data",
                    dominio="homeassistant.components.hydrawise")
-    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+    pagina = as_page(_resoconto(voce), judgments=_giudizi(), manifest=Manifest())
 
     assert [r["nome"] for r in pagina["primo_piano"]] == ["Hydrawise"]
 
@@ -484,7 +489,7 @@ def test_i_TRE_logger_di_una_stessa_integrazione_sono_UNA_integrazione():
                     titolo=f"Timeout {modulo}",
                     dominio=f"homeassistant.components.hassio.{modulo}")
             for modulo in ("handler", "coordinator", "http")]
-    pagina = as_page(_resoconto(*voci), judgments=_giudizi())
+    pagina = as_page(_resoconto(*voci), judgments=_giudizi(), manifest=Manifest())
 
     assert pagina["primo_piano"] == []
 
@@ -498,7 +503,7 @@ def test_il_numero_di_versione_del_FRONTEND_non_fa_un_integrazione_nuova():
     Mutazione: prendere piu' di un segmento -- rossa."""
     voce = _guasto("log:frontend.js.modern.202608267@x.py:1", cosa="WARNING",
                    titolo="Uncaught error", dominio="frontend.js.modern.202608267")
-    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+    pagina = as_page(_resoconto(voce), judgments=_giudizi(), manifest=Manifest())
 
     assert pagina["primo_piano"] == []
 
@@ -512,7 +517,7 @@ def test_la_casa_puo_RIMETTERE_in_primo_piano_cio_che_il_seme_ha_zittito():
     voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
                    dominio="custom_components.hacs")
     casa = _giudizi(("integrazione", "hacs", "impalcatura", "no"))
-    pagina = as_page(_resoconto(voce), judgments=casa)
+    pagina = as_page(_resoconto(voce), judgments=casa, manifest=Manifest())
 
     assert [r["nome"] for r in pagina["primo_piano"]] == ["Hacs"]
 
@@ -525,7 +530,7 @@ def test_senza_i_giudizi_l_impalcatura_NON_si_indovina():
     Mutazione: zittire per assenza di giudizi -- rossa."""
     voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
                    dominio="custom_components.hacs")
-    pagina = as_page(_resoconto(voce), judgments=None)
+    pagina = as_page(_resoconto(voce), judgments=None, manifest=Manifest())
 
     assert [r["nome"] for r in pagina["primo_piano"]] == ["Hacs"]
 

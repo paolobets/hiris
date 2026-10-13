@@ -165,8 +165,16 @@ def refusal(row: dict, *, pending: str, in_flight: str | None,
 
 
 def build_question(row: dict, *, presence=None) -> str:
-    """La domanda: la proposta, il suo perche', la prova su cui si regge e il
-    filo dei «Rifalla», perche' il modello non ricomponga una forma scartata."""
+    """La domanda per la catena, col contratto di risposta in fondo. Il ponte
+    prende la domanda senza contratto (`build_question_body`) e il contratto
+    come `istruzione` (D-05, 13/10/2026: sul ponte viaggiava due volte)."""
+    return build_question_body(row, presence=presence) + "\n\n" + ANSWER_CONTRACT
+
+
+def build_question_body(row: dict, *, presence=None) -> str:
+    """La domanda senza il contratto: la proposta, il suo perche', la prova su
+    cui si regge e il filo dei «Rifalla», perche' il modello non ricomponga
+    una forma scartata."""
     lines = ["La proposta da fare a mano che chi amministra la casa vuole automatica:",
              f"  {row.get('testo')}",
              f"  perche': {row.get('perche')}"]
@@ -174,14 +182,14 @@ def build_question(row: dict, *, presence=None) -> str:
     if prova:
         lines.append(f"  la prova dell'osservazione da cui e' nata: {prova}")
     lines += round_lines(row.get("giri") or [])
-    lines += ["", ANSWER_CONTRACT]
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
 
 
 def bridge_turn(row: dict, *, presence=None) -> dict:
     """Il turno da accodare al ponte: la stessa forma degli altri mestieri."""
-    return {"history": [{"role": "user", "content": build_question(row, presence=presence)}],
+    return {"history": [{"role": "user",
+                         "content": build_question_body(row, presence=presence)}],
             "system_prompt": SYSTEM,
             "istruzione": ANSWER_CONTRACT}
 
@@ -233,7 +241,7 @@ async def _chain(app, row: dict, runner) -> None:
 
 
 def settle(app, ident: str, exchange: str | None, answer, *,
-           truncated: bool = False, presence=None) -> str:
+           truncated: bool = False, presence=None) -> None:
     """La consegna: chiude la proposta col legame, o scrive perche' no.
 
     **L'id lo dice l'archivio delle costruzioni**, non il modello: le
@@ -244,18 +252,22 @@ def settle(app, ident: str, exchange: str | None, answer, *,
 
     Un turno troncato, o senza risposta, **non scrive niente**: e' un guasto
     di passaggio, non un «non si puo'», e il comando torna disponibile.
-    Torna l'esito, una parola sola.
+
+    **Non torna niente** (F7, 13/10/2026): l'esito e' la riga che scrive
+    (`automate_proposal`, `refuse_automation`) o il registro. Fino a quel
+    giorno tornava una parola d'esito che in produzione non leggeva nessuno
+    -- ne' la catena (`_chain`) ne' la consegna (`deliver`) -- e la leggeva
+    una prova sola.
     """
     store = app.get("observations")
     if store is None or not ident:
-        return "senza_archivio"
+        return
     built = _built_in(app, exchange)
     if built is not None:
-        if store.automate_proposal(ident, built):
-            return "automatizzata"
-        logger.info("automazione: %s non era piu' in attesa, la costruzione %s "
-                    "resta da decidere da sola", ident, built)
-        return "gia_decisa"
+        if not store.automate_proposal(ident, built):
+            logger.info("automazione: %s non era piu' in attesa, la costruzione %s "
+                        "resta da decidere da sola", ident, built)
+        return
     data, reason = read_json(answer, shape=dict, what="un oggetto con il perche'",
                              truncated=truncated)
     why = data.get("perche") if isinstance(data, dict) else None
@@ -263,12 +275,11 @@ def settle(app, ident: str, exchange: str | None, answer, *,
         logger.warning("automazione: il turno per %s e' finito senza un'automazione "
                        "e senza un perche' (%s)", ident,
                        reason or "nessun «perche'»")
-        return "senza_esito"
+        return
     why = why.strip()
     if presence is not None:
         why = presence.unmask(why)
     store.refuse_automation(ident, why)
-    return "non_automatizzabile"
 
 
 def deliver(app, job: dict | None, decision: dict) -> None:

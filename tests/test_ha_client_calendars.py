@@ -1,7 +1,8 @@
-"""«Cosa ho in agenda?» -- il client legge i calendari e i loro eventi.
+"""«Cosa ho in agenda?» -- il client legge gli eventi di un calendario.
 
-`HAClient.calendars()` legge `GET /api/calendars`, `HAClient.calendar_events()`
-legge `GET /api/calendars/<entity_id>?start=&end=` -- stessa disciplina dei
+`HAClient.calendar_events()` legge `GET /api/calendars/<entity_id>?start=&end=`
+(l'elenco dei calendari viene dallo specchio, `House.calendars`, A-34 del
+13/10/2026: `HAClient.calendars()` e' uscito) -- stessa disciplina dei
 tre fratelli (`system_log()`, `traces()`, `trace()`,
 `ha_client.py`):
 
@@ -15,11 +16,9 @@ tre fratelli (`system_log()`, `traces()`, `trace()`,
 fratelli parlano WebSocket, i calendari REST -- verificato su
 `home-assistant/core`, `homeassistant/components/calendar/__init__.py`, sui
 tag RILASCIATI `2024.7.0` (il minimo dichiarato da `hiris/config.yaml:22`) e
-`2026.9.0` (il piu' recente visto finora): `CalendarListView` (`url =
-"/api/calendars"`) e `CalendarEventView` (`url =
-"/api/calendars/{entity_id}"`) rispondono ENTRAMBE con una LISTA NUDA su
-entrambi i tag -- non con un dizionario a chiave, e non diversamente fra
-loro (a differenza dei tre fratelli, dove `trace/get` rompeva la simmetria).
+`2026.9.0` (il piu' recente visto finora): `CalendarEventView` (`url =
+"/api/calendars/{entity_id}"`) risponde con una LISTA NUDA su entrambi i
+tag, non con un dizionario a chiave.
 
 **I campi degli eventi**, misurati sulla casa il 06/09/2026 su 297 eventi
 veri e confermati alla stessa fonte (`CalendarEvent`, dataclass a otto campi,
@@ -89,108 +88,6 @@ def _event(**fields):
            "uid": None, "recurrence_id": None, "rrule": None}
     row.update(fields)
     return row
-
-
-# --------------------------------------------------------------------------
-# calendars() -- GET /api/calendars
-# --------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_calendars_are_read_as_home_assistant_sends_them():
-    """Il client legge e non giudica: le righe escono coi campi di HA,
-    `entity_id` compreso -- perche' cosa dire e cosa tacere e' di chi
-    compone. Confrontata con una COPIA fatta prima della chiamata: un client
-    che modificasse le righe sul posto passerebbe verde contro l'oggetto
-    dato alla finta stessa.
-
-    Mutazione: proiettare i calendari su un sottoinsieme che scarta
-    `entity_id` -- il test torna rosso su
-    `assert calendar["entity_id"] == "calendar.lavoro"`. Un client che
-    aggiungesse una chiave in piu' SUL POSTO (nessuno dei due campi
-    asseriti direttamente cambierebbe) arrossisce piu' in basso, su
-    `assert outcome["calendari"] == expected`.
-    """
-    rows = [{"name": "Casa", "entity_id": "calendar.casa"},
-            {"name": "Lavoro", "entity_id": "calendar.lavoro"}]
-    expected = copy.deepcopy(rows)
-    c = _client([_FakeResponse(200, rows)])
-    outcome = await c.calendars()
-    calendar = outcome["calendari"][1]
-    assert calendar["name"] == "Lavoro"
-    assert calendar["entity_id"] == "calendar.lavoro"
-    assert outcome["calendari"] == expected
-
-
-@pytest.mark.asyncio
-async def test_calendars_are_asked_at_the_right_url():
-    """Nessuna query, nessun parametro: `GET /api/calendars` e basta.
-
-    Mutazione: comporre l'URL con una `/` finale o un parametro spurio
-    (es. `f"{self._base_url}/api/calendars/"`) -- il test torna rosso su
-    `assert c._session.urls_requested == ["http://ha.local/api/calendars"]`.
-    """
-    c = _client([_FakeResponse(200, [])])
-    await c.calendars()
-    assert c._session.urls_requested == ["http://ha.local/api/calendars"]
-
-
-@pytest.mark.asyncio
-async def test_a_failed_calendars_read_says_error_not_an_empty_list():
-    """Un elenco vuoto significherebbe «questa casa non ha calendari»: un
-    guasto di lettura non ha il diritto di affermarlo.
-
-    Mutazione: tornare `{"calendari": []}` invece di `{"errore": ...}` -- il
-    test torna rosso su `assert "errore" in outcome`.
-    """
-    c = _client([_FakeResponse(500)])
-    outcome = await c.calendars()
-    assert "errore" in outcome
-    assert "calendari" not in outcome
-
-
-@pytest.mark.asyncio
-async def test_a_transport_failure_reading_calendars_says_error_not_an_empty_list():
-    """Il ramo `except Exception` deve restare distinto da un HTTP 500: qui
-    la connessione cade DENTRO `async with`, prima ancora di leggere uno
-    status.
-
-    Mutazione: nel blocco `except`, tornare `{"calendari": []}` invece di
-    `{"errore": ...}` -- il test torna rosso su
-    `assert "errore" in outcome`.
-    """
-    c = _client([_FakeResponse(200, raises=OSError("HA irraggiungibile"))])
-    outcome = await c.calendars()
-    assert "errore" in outcome
-    assert "calendari" not in outcome
-
-
-@pytest.mark.asyncio
-async def test_a_calendars_response_of_unexpected_shape_says_error_not_an_empty_list():
-    """`/api/calendars` risponde una lista nuda: un dizionario al suo posto
-    e' una forma che questo metodo non sa leggere, non un elenco vuoto.
-
-    Mutazione: togliere il controllo `isinstance(data, list)` -- il test
-    torna rosso su `assert "errore" in outcome`.
-    """
-    c = _client([_FakeResponse(200, {"calendari": "non una lista nuda"})])
-    outcome = await c.calendars()
-    assert "errore" in outcome
-    assert "calendari" not in outcome
-
-
-@pytest.mark.asyncio
-async def test_an_empty_calendar_list_stays_empty_not_an_error():
-    """L'inverso, altrettanto necessario: una casa senza calendari (o un
-    token senza permesso su nessuno) risponde davvero `[]`, e non e' un
-    guasto.
-
-    Mutazione: `if not data: return {"errore": "..."}` subito dopo il
-    controllo di forma -- il test torna rosso su
-    `assert outcome == {"calendari": []}`.
-    """
-    c = _client([_FakeResponse(200, [])])
-    outcome = await c.calendars()
-    assert outcome == {"calendari": []}
 
 
 # --------------------------------------------------------------------------

@@ -118,10 +118,19 @@ def round_lines(rounds) -> list[str]:
 
 def build_question(proposal: dict, request: str, observation: dict | None, *,
                    presence=None) -> str:
-    """La domanda del rifacimento: l'osservazione col numero 0, la proposta di
-    adesso, il filo dei giri e la richiesta. **Senza la forma scartata il
-    modello potrebbe riproporla**, ed e' il motivo per cui il filo si accoda
-    (spec dell'attuatore, §7)."""
+    """La domanda del rifacimento per la catena, col contratto di risposta in
+    fondo. Il ponte prende la domanda senza contratto (`bridge_turn`): fino al
+    13/10/2026 ci viaggiava due volte (D-05)."""
+    return (build_question_body(proposal, request, observation, presence=presence)
+            + "\n\n" + proposer_turn.ANSWER_CONTRACT)
+
+
+def build_question_body(proposal: dict, request: str, observation: dict | None, *,
+                        presence=None) -> str:
+    """La domanda del rifacimento senza il contratto: l'osservazione col
+    numero 0, la proposta di adesso, il filo dei giri e la richiesta. **Senza
+    la forma scartata il modello potrebbe riproporla**, ed e' il motivo per
+    cui il filo si accoda (spec dell'attuatore, §7)."""
     lines = [REDO_RULE, "", "L'osservazione a cui la proposta risponde:"]
     if observation is not None:
         lines.extend(proposer_turn.observation_lines(0, observation))
@@ -132,10 +141,19 @@ def build_question(proposal: dict, request: str, observation: dict | None, *,
               f"  {proposal['testo']}",
               f"  (il perche' che avevi scritto: {proposal['perche']})"]
     lines += round_lines(proposal.get("giri") or [])
-    lines += ["", "Cosa ti chiede di cambiare:", f"  {request}", "",
-              proposer_turn.ANSWER_CONTRACT]
+    lines += ["", "Cosa ti chiede di cambiare:", f"  {request}"]
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
+
+
+def bridge_turn(proposal: dict, request: str, observation: dict | None, *,
+                presence=None) -> dict:
+    """Il turno da accodare al ponte: la stessa forma di
+    `proposer_turn.bridge_turn`, col contratto solo come `istruzione`."""
+    return {"history": [{"role": "user", "content": build_question_body(
+                proposal, request, observation, presence=presence)}],
+            "system_prompt": proposer_turn.SYSTEM,
+            "istruzione": proposer_turn.ANSWER_CONTRACT}
 
 
 def _presence(app):
@@ -173,10 +191,7 @@ async def redo(app, store, proposal: dict, request: str, *,
     route, downgrade, runner = start(app, PROPOSER_SPECIES)
     observation = observation_of(store, proposal)
     if route == "ponte":
-        job = {"history": [{"role": "user", "content": build_question(
-                   proposal, request, observation, presence=_presence(app))}],
-               "system_prompt": proposer_turn.SYSTEM,
-               "istruzione": proposer_turn.ANSWER_CONTRACT}
+        job = bridge_turn(proposal, request, observation, presence=_presence(app))
         _job_id, deadline_min = enqueue_turn(
             app, PROPOSER_SPECIES, {WAKE_KEY: ident, "richiesta": request}, job,
             priority=PRIORITY_CHAT)

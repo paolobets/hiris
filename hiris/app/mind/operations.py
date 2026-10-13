@@ -345,6 +345,14 @@ class NotComputable(Result):
     def __repr__(self) -> str:
         return f"NotComputable({self._reason!r}, cause={self._cause!r})"
 
+    def as_fields(self) -> dict:
+        """Il rifiuto come campi di una riga: `non_calcolabile` (la frase) e
+        `causa` (la parola). **Una forma sola da ogni porta** (B-27,
+        13/10/2026): fino a quel giorno il resoconto, i passi di un calcolo e
+        le ricette mute la scrivevano ognuno a mano, e l'analista diceva il
+        suo «non lo so» con la sola frase, senza causa."""
+        return {"non_calcolabile": self._reason, "causa": self._cause}
+
 
 @dataclass(frozen=True)
 class Exclusion:
@@ -613,8 +621,15 @@ def _known_points(series, expected_parts: int | None = None) -> tuple[list, floa
     """
     points = list(series or [])
     known = [p for p in points if isinstance(p, dict) and p.get("valore") is not None]
+    return known, _coverage(known, points, expected_parts)
+
+
+def _coverage(known: list, points: list, expected_parts: int | None) -> float:
+    """La copertura: i punti con un valore sulle parti attese, o sui punti
+    della serie quando chi chiama non le sa (`_known_points` dice perche'
+    conta). Una regola sola per le due letture della serie (B-27)."""
     expected = expected_parts if expected_parts else len(points)
-    return known, (len(known) / expected if expected else 0.0)
+    return len(known) / expected if expected else 0.0
 
 
 def _instant_points(series, expected_parts: int | None = None) -> tuple[list, float]:
@@ -633,8 +648,9 @@ def _instant_points(series, expected_parts: int | None = None) -> tuple[list, fl
     media oraria del consumo» resta una domanda legittima invece di diventare
     un rifiuto.
     """
+    raw = list(series or [])
     points = []
-    for p in list(series or []):
+    for p in raw:
         if not isinstance(p, dict):
             continue
         middle = p.get("media")
@@ -647,8 +663,7 @@ def _instant_points(series, expected_parts: int | None = None) -> tuple[list, fl
         points.append({"valore": middle,
                        "minimo": middle if low is None else low,
                        "massimo": middle if high is None else high})
-    expected = expected_parts if expected_parts else len(list(series or []))
-    return points, (len(points) / expected if expected else 0.0)
+    return points, _coverage(points, raw, expected_parts)
 
 
 def _looks_instantaneous(series) -> bool:
@@ -831,15 +846,25 @@ def _difference(first: Result, second: Result) -> Result:
     - **la copertura e' la PEGGIORE delle due**, non la media: un numero
       calcolato su due serie di cui una quasi vuota vale quanto la piu' debole.
     """
+    refusal = _refuse_pair(first, second, "la differenza")
+    if refusal is not None:
+        return refusal
+    return Measurement(round(first.value - second.value, 2), unit=first.unit,
+                  coverage=min(first.coverage, second.coverage))
+
+
+def _refuse_pair(first: Result, second: Result, what: str) -> NotComputable | None:
+    """Le due regole che `differenza_fra` e `somma_fra` condividono, scritte
+    una volta (B-27): il «non lo so» si propaga, e unita' diverse non si
+    combinano. `None` quando la coppia si puo' combinare."""
     for r in (first, second):
         if not r.computable:
             return r
     if first.unit != second.unit:
         return NotComputable(
-            f"unita' diverse ({first.unit} e {second.unit}): la differenza "
+            f"unita' diverse ({first.unit} e {second.unit}): {what} "
             "sarebbe un numero senza significato", cause=RECIPE_BROKEN)
-    return Measurement(round(first.value - second.value, 2), unit=first.unit,
-                  coverage=min(first.coverage, second.coverage))
+    return None
 
 
 _register(Operation(
@@ -862,13 +887,9 @@ def _sum(first: Result, second: Result) -> Result:
     catena, ed e' il passo che un modello sbaglia piu' facilmente. Le tre
     regole sono quelle di `differenza_fra`, per le stesse ragioni.
     """
-    for r in (first, second):
-        if not r.computable:
-            return r
-    if first.unit != second.unit:
-        return NotComputable(
-            f"unita' diverse ({first.unit} e {second.unit}): la somma "
-            "sarebbe un numero senza significato", cause=RECIPE_BROKEN)
+    refusal = _refuse_pair(first, second, "la somma")
+    if refusal is not None:
+        return refusal
     return Measurement(round(first.value + second.value, 2), unit=first.unit,
                        coverage=min(first.coverage, second.coverage))
 

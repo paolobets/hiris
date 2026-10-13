@@ -82,7 +82,7 @@ async def test_claude_runner_system_prompt_carries_memory_rule():
     instance.messages.create = AsyncMock(return_value=fake_message)
     runner._client = instance
 
-    await runner.chat("ciao", tools=KNOWLEDGE_TOOLS)
+    await runner.chat("ciao", tools=KNOWLEDGE_TOOLS, max_tokens=4096)
 
     sent_system = instance.messages.create.call_args.kwargs["system"]
     assert NOME_RICORDA in _sys_text(sent_system)

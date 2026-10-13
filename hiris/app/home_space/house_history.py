@@ -55,7 +55,7 @@ from .house_query import (
     page_rows,
     parse_filters,
 )
-from .log_source import integration_of
+from .log_source import Manifest, integration_of, manifest_of
 from .privacy import MOVING_DOMAINS, redact_nested, redact_row, redact_state
 from .queries import ROWS_MAX
 from .redaction import seal_free_text
@@ -1260,7 +1260,7 @@ def _source(raw) -> str | None:
     return None if raw is None else str(raw)
 
 
-def error_rows(query: HistoryQuery, entries: list) -> dict:
+def error_rows(query: HistoryQuery, entries: list, manifest: Manifest) -> dict:
     """Il registro di Home Assistant (spec §3): una forma sola, la corta, una
     riga per voce -- livello, messaggio accorciato, `codice`, `volte`, prima e
     ultima volta, e l'ultima riga dell'eccezione (il «cosa»). Filtrato per
@@ -1281,7 +1281,9 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
     chiacchierona diceva «nessun altro errore» a finestra intera.
 
     `integrazione` e' la stessa lettura del logger del primo piano
-    (`log_source.integration_of`), non una seconda."""
+    (`log_source.integration_of`), non una seconda, col manifest
+    (`manifest`, `log_source.manifest_of`; B-50): la riga di una libreria
+    porta l'integrazione che la dichiara, e `integrazione` la filtra."""
     zone = query.start.tzinfo
     start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
     ranked = []
@@ -1294,16 +1296,18 @@ def error_rows(query: HistoryQuery, entries: list) -> dict:
         level = str(entry.get("level") or "").upper() or None
         if query.level and level != query.level:
             continue
-        found = integration_of(str(entry.get("name") or ""))
+        found = integration_of(str(entry.get("name") or ""), manifest)
         integration = found[1] if found else None
         # `{id, nome}` come da ogni altra porta (fondamenta 3, vocabolario dei
         # campi): fino al 12/10/2026 qui usciva lo slug nudo (Tappa 9,
-        # chiusura). Il nome e' quello del primo piano (`integration_of`),
-        # dedotto dallo slug: da `search` e `related` la stessa integrazione
-        # porta il titolo della sua istanza (`render._integration_of`), e i
-        # due nomi possono differire. E' B-50, aperta: gli errori non leggono
-        # l'anagrafe. L'id di un logger di libreria (`aioamazondevices`) non e'
-        # un'integrazione che `search` ritrovi.
+        # chiusura). Il nome e' quello del primo piano (`integration_of`):
+        # quello del manifest, dal 13/10/2026 (B-50), e la riga di una
+        # libreria (`aioamazondevices`) e' dell'integrazione che la dichiara
+        # nei suoi `loggers` (`alexa_devices`, N151b-1); lo slug reso resta
+        # per cio' che il manifest non conosce. Da `search` e `related`
+        # un'entita' porta invece il titolo della sua ISTANZA
+        # (`render._integration_of`): un altro fatto, l'istanza e non
+        # l'integrazione.
         if query.who.platform and normalize(integration or "") != normalize(query.who.platform):
             continue
         last = _epoch(entry.get("timestamp"))
@@ -1555,10 +1559,11 @@ def sealed_log(entries: list, seal) -> list[dict]:
     return sealed
 
 
-async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
+async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> dict:
     """Il registro degli errori di Home Assistant, sigillato, nelle righe di
     `error_rows`. Non guarda la casa: gli errori si chiedono anche con
-    l'anagrafe non ancora caricata.
+    l'anagrafe non ancora caricata, e `manifest` (`log_source.manifest_of`)
+    e' allora vuoto -- i nomi ripiegano sullo slug.
 
     `system_log/list` e' `require_admin` in Home Assistant (la fonte sta in
     `privacy.ADMIN_ONLY_HISTORY_KINDS`): chi lo chiama ha GIA' deciso che puo'
@@ -1566,7 +1571,7 @@ async def read_errors(ha, query: HistoryQuery, *, seal) -> dict:
     answer = await ha.system_log()
     if not isinstance(answer.get("voci"), list):
         return read_failure(answer, "il registro di Home Assistant non ha risposto")
-    return error_rows(query, sealed_log(answer["voci"], seal))
+    return error_rows(query, sealed_log(answer["voci"], seal), manifest)
 
 
 async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
@@ -1587,7 +1592,8 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     (`privacy.ADMIN_ONLY_HISTORY_KINDS`): il cancello sta in chi chiama, prima
     di questa funzione."""
     if query.kind == "errori":
-        return await read_errors(ha, query, seal=seal)
+        return await read_errors(ha, query, seal=seal,
+                                 manifest=manifest_of(house.home_space))
     mirror = house.mirror
     chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):

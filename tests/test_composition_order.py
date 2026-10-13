@@ -145,7 +145,7 @@ async def test_claude_runner_mette_i_modificatori_prima_del_contesto(tmp_path):
     testi = [b["text"] for b in blocchi]
     _asserisci_ordine("\n\n".join(testi))
 
-    assert testi[-1] == _CONTESTO, "il contesto volatile non e' l'ultimo blocco"
+    assert _CONTESTO in testi[-1], "il contesto volatile non e' l'ultimo blocco"
     assert "cache_control" not in blocchi[-1], (
         "il breakpoint di cache e' finito sul blocco VOLATILE: e' proprio "
         "cio' che l'ordine dei blocchi esiste per evitare")

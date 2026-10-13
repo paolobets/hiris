@@ -155,14 +155,10 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
     "read_dashboards": (
         "home_space/behavior.py",
         "l'unico lettore delle plance, per lo stesso comportamento"),
-    "calendars": (
-        "home_space/tools.py",
-        ("lo strumento calendario della chat; l'elenco dallo specchio e' A-34, "
-         "che il piano della Tappa 2 lascia aperta: la vista REST filtra per "
-         "permesso dell'utente, e la misura sulla casa non c'e'")),
     "calendar_events": (
         "home_space/tools.py",
-        "lo stesso strumento calendario: gli impegni di ogni calendario (A-34)"),
+        ("lo strumento calendario della chat: gli impegni di ogni calendario; "
+         "l'elenco dei calendari viene dallo specchio (`House.calendars`, A-34)")),
     "history": (
         "home_space/house_history.py",
         ("lo storico dettagliato, letto da `read_series` per lo strumento della "

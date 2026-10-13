@@ -40,7 +40,6 @@ from istantaneo_pubblicato import (
     published_state_classes,
     published_states,
     single_bits,
-    switchable_domains,
 )
 
 # Le chiavi sono MISURATE, non inventate: `sensor` pubblica 62 classi e nessuna
@@ -314,7 +313,7 @@ def test_un_registro_mai_letto_non_e_un_registro_senza_bit():
 
     (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: questa prova
     copriva anche `capability_bits_of`, cancellata perche' senza chiamante di
-    produzione -- vedi `scripts/istantaneo_pubblicato.py` sopra `switchable_domains`. Il pezzo che
+    produzione -- vedi `scripts/istantaneo_pubblicato.py`. Il pezzo che
     resta, sul solo `capability_bits`, e' verificabile: nessun altro test
     tocca i suoi rami `unreachable`.)
 
@@ -326,25 +325,3 @@ def test_un_registro_mai_letto_non_e_un_registro_senza_bit():
     mai_letto = ServiceRegistry()
     assert capability_bits(mai_letto)["silenzio"] == SILENCE_UNREACHABLE
     assert capability_bits(None)["silenzio"] == SILENCE_UNREACHABLE
-
-
-def test_i_domini_accendibili_si_derivano_e_non_si_scrivono():
-    """`mind/facts.py:14-27` afferma che Home Assistant «non dichiara da
-    nessuna parte quale dominio funziona come un interruttore». **Lo
-    dichiara**: `turn_on` e `turn_off`, oppure `toggle`.
-
-    E la derivazione NON coincide col nostro giudizio, in entrambi i versi:
-    prende `switch` e `cover` (che ha `toggle`), e **perde `vacuum`**, che
-    Home Assistant comanda con `start`/`stop`. E' il motivo per cui questa
-    lista SORVEGLIA il giudizio invece di sostituirlo.
-
-    Mutazione ESEGUITA: in `switchable_domains`, richiedere `turn_on` e
-    `turn_off` E ANCHE `toggle` (`<=` su tutti e tre) -- `cover` e `switch`
-    escono e la prova arrossisce.
-    """
-    accendibili = switchable_domains(_registro(SERVIZI))["valore"]
-    assert "switch" in accendibili
-    assert "cover" in accendibili          # ha `toggle`
-    assert "media_player" in accendibili   # ha `turn_on` e `turn_off`
-    assert "vacuum" not in accendibili     # HA lo comanda con start/stop
-    assert switchable_domains(ServiceRegistry())["silenzio"] == SILENCE_UNREACHABLE

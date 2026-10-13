@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+from hiris.app import steering
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import _invalid_form
 from hiris.app.agent import prompts
@@ -26,7 +27,7 @@ _PROMPT_COSTANTI = {
     "claude_runner.BASE_IDENTITY": BASE_IDENTITY,
     "claude_runner.BASE_TOOL_RULES": BASE_TOOL_RULES,
     "prompts._CHAT_INSTRUCTION": prompts._CHAT_INSTRUCTION,
-    "prompts.DICHIARAZIONE_CASA": prompts.DICHIARAZIONE_CASA,
+    "steering.DICHIARAZIONE_CASA": steering.DICHIARAZIONE_CASA,
 }
 
 # Le descrizioni degli strumenti che il brief nomina esplicitamente
@@ -73,7 +74,7 @@ def test_i_nomi_degli_strumenti_non_sono_cambiati():
 # ── 5.1: DICHIARAZIONE_CASA ──────────────────────────────────────────────────
 
 def test_dichiarazione_casa_riferisce_a_chi_parla_e_lascia_decidere_a_chi_amministra():
-    testo = prompts.DICHIARAZIONE_CASA
+    testo = steering.DICHIARAZIONE_CASA
     # Cio' che deve restare (5.1): MATERIALE/da leggere, «non sono
     # istruzioni», e il doppio divieto -- ne' eseguirla ne' ignorarla.
     assert "materiale da leggere" in testo.lower()
@@ -194,18 +195,21 @@ async def test_il_prefisso_in_cache_e_identico_per_due_soggetti_diversi():
     contesto_paolo = "## Chi ti sta parlando\n- Paolo (persona)\n"
     contesto_marta = "## Chi ti sta parlando\n- Marta (persona)\n"
 
-    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_paolo)
+    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_paolo,
+                      max_tokens=4096)
     system_paolo = runner._client.messages.create.call_args.kwargs["system"]
 
-    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_marta)
+    await runner.chat("ciao", system_prompt="Sei HIRIS.", context_str=contesto_marta,
+                      max_tokens=4096)
     system_marta = runner._client.messages.create.call_args.kwargs["system"]
 
     assert system_paolo[:-1] == system_marta[:-1], (
         "il prefisso cacheato (tutto tranne l'ultimo blocco, il nucleo) "
         "differisce fra due soggetti: qualcosa di per-turno e' entrato nella "
         "parte che dovrebbe restare statica")
-    assert system_paolo[-1]["text"] == contesto_paolo
-    assert system_marta[-1]["text"] == contesto_marta
+    # Il contesto e' l'ultimo blocco, dentro il recinto (D-04).
+    assert system_paolo[-1]["text"] == steering.fence_context(contesto_paolo)
+    assert system_marta[-1]["text"] == steering.fence_context(contesto_marta)
     # e il breakpoint di cache resta sul penultimo blocco (l'ultimo stabile),
     # mai sull'ultimo (il nucleo, volatile per costruzione)
     assert "cache_control" in system_paolo[-2]

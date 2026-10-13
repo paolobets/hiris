@@ -115,7 +115,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
         runner = AsyncMock()
         runner.chat = AsyncMock(return_value="sync reply")
         runner.last_tool_calls = []
-        runner.last_thinking_blocks = []
+        runner.last_unanswered = False
 
     app = web.Application()
     app["llm_router"] = runner
@@ -164,14 +164,15 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_context_del_job_porta_esattamente_queste_sette_chiavi_ne_una_di_piu(tmp_path):
+async def test_context_del_job_porta_esattamente_queste_otto_chiavi_ne_una_di_piu(tmp_path):
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4, Step 3): il pin
     # dell'INSIEME ESATTO -- il silenzio su cio' che NON attraversa il ponte.
     # Dopo i Task 1-4 il context porta `history` + `system_prompt` (originari,
     # Slice 4b) + `contesto` (Task 1/2) + `restrict_to_home`/`response_mode`
     # (Task 3) + `model` (Task 4, questo task) + `soggetto` (fetta «le chat
     # divise», Task 3: il soggetto intero, che il ripiego usa per la cronaca
-    # e il soffitto). Il filo NON e' nel context: vive nelle colonne della
+    # e il soffitto) + `adesso` (D-51, Chiusura 13/10/2026: l'ora della casa
+    # fuori dal nucleo, nel prompt utente). Il filo NON e' nel context: vive nelle colonne della
     # coda (`job["thread"]`), la sua casa sola -- una copia qui sarebbe una
     # seconda casa che nessuno legge (review finale, rilievo 1).
     # Chi resta fuori, e perche':
@@ -198,7 +199,7 @@ async def test_context_del_job_porta_esattamente_queste_sette_chiavi_ne_una_di_p
     assert set(job["context"]) == {
         "history", "system_prompt", "contesto",
         "restrict_to_home", "response_mode", "model",
-        "soggetto",
+        "soggetto", "adesso",
     }
     assert "thread" not in job["context"]
 
@@ -1047,7 +1048,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
 
 # ---------------------------------------------------------------------------
 # fetta E5 Task 2, fix round 1 (I-2): thinking_budget non attraversa il ponte,
-# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle sette chiavi (sopra)
+# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle otto chiavi (sopra)
 # certifica l'ASSENZA; questo certifica che l'assenza non sia piu' MUTA.
 # ---------------------------------------------------------------------------
 
@@ -1074,7 +1075,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     assert "NON viene applicato" in detto
     assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"
     # L'assenza dal context resta vera e non si aggira: la certifica il pin
-    # dell'insieme esatto delle sette chiavi, qui sopra in questo stesso file.
+    # dell'insieme esatto delle otto chiavi, qui sopra in questo stesso file.
 
 
 @pytest.mark.asyncio
@@ -1316,10 +1317,9 @@ async def test_il_ripiego_a_monte_si_annuncia_e_dice_chi_ha_risposto(tmp_path, m
         "OpenRouter, a consumo.")
     # La forma della risposta NON cambia: `nota` si aggiunge, non sostituisce.
     assert body["response"] == "sync reply"
-    # `debug` resta nel payload del ramo sincrono ma NON porta piu' i nomi
-    # degli strumenti (17/08/2026): ci vive solo `thinking_blocks`, che e' il
-    # ragionamento che l'utente ha chiesto di vedere, non un nome di funzione.
-    assert body["debug"] == {}
+    # Niente `debug` (M-31, 13/10/2026): ne' i nomi degli strumenti, usciti il
+    # 17/08/2026, ne' il ragionamento esteso, che nessuna pagina leggeva.
+    assert "debug" not in body
 
 
 @pytest.mark.asyncio
@@ -1397,8 +1397,9 @@ async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sul
     assert body == {"status": "done", "reply": "sync reply"}
     kwargs = runner.chat.await_args.kwargs
     # La cronologia del job CONTIENE GIA' il turno dell'utente: passarla intera
-    # e ripetere il messaggio lo manderebbe due volte.
-    assert kwargs["user_message"] == "ciao"
+    # e ripetere il messaggio lo manderebbe due volte. In coda c'e' l'ora di
+    # ADESSO, non quella dell'accodamento (D-51, 13/10/2026).
+    assert kwargs["user_message"].startswith("ciao\n\nAdesso sono le")
     assert kwargs["conversation_history"] == []
     # "auto" e' l'UNICO valore che fa girare il ciclo di ripiego del router.
     assert kwargs["model"] == "auto"

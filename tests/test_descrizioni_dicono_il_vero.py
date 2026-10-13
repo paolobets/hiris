@@ -39,7 +39,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
-from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -205,8 +204,6 @@ _SCENE = {"guasta": False}
 
 
 def _calendars(path):
-    if urlsplit(path).path == "/api/calendars":
-        return [{"name": "Famiglia", "entity_id": "calendar.famiglia"}]
     if _SCENE["guasta"]:
         return Refused(500)
     start = _NOW + timedelta(days=1)
@@ -249,7 +246,7 @@ def _house(inputs):
             i: bands[i] for i in extra["statistic_ids"] if i in bands},
         "trace/list": _traces,
         "trace/get": lambda extra: copy.deepcopy(_RUN),
-        "/api/calendars": _calendars,
+        "/api/calendars/": _calendars,
         "extract_from_target": lambda extra: {
             "referenced_entities": ["light.luce_uno", "sensor.sensore_a_temperatura"],
             "referenced_devices": [], "referenced_areas": ["stanza_uno"],
@@ -275,6 +272,11 @@ def _house(inputs):
          "last_changed": _ago(1), "last_updated": _ago(1)})
     series["sensor.ciclo_uno"] = [{"quando": _ago(3), "valore": "2.0"},
                                   {"quando": _ago(1), "valore": "3.1"}]
+    # Il calendario sta nello specchio (A-34): la casa ne ha uno.
+    inputs["states"].append(
+        {"entity_id": "calendar.famiglia", "state": "off",
+         "attributes": {"friendly_name": "Famiglia"},
+         "last_changed": _ago(1), "last_updated": _ago(1)})
     inputs["system_log"]["voci"] = [
         {"level": "ERROR", "message": ["zigbee giu'"], "name": "zha", "source": ["zha.py", 1],
          "count": 3, "first_occurred": _NOW.timestamp() - 3600 * 200,
@@ -353,6 +355,17 @@ def _broken(app):
         _SCENE["guasta"] = False
 
 
+@contextlib.contextmanager
+def _calendars_broken(app):
+    """La casa dell'avvio, coi calendari che non rispondono: lo specchio si
+    legge (l'elenco dei calendari e' suo, A-34), gli impegni no."""
+    _SCENE["guasta"] = True
+    try:
+        yield _dispatcher(app)
+    finally:
+        _SCENE["guasta"] = False
+
+
 #: I giri: per strumento, le chiamate che fanno uscire le forme che la sua
 #: descrizione nomina -- la riuscita, il rifiuto, il taglio, il vuoto, il
 #: guasto -- ognuna nella sua scena.
@@ -404,7 +417,8 @@ CALLS: dict[str, list[tuple[dict, Callable]]] = {
                 ({"cosa": "errori"}, _healthy),
                 ({"riferimento": "light.luce_uno"}, _broken),
                 ({"cosa": "esecuzioni"}, _broken)],
-    "calendar": [({}, _healthy), ({}, _few_events), ({}, _broken)],
+    "calendar": [({}, _healthy), ({}, _few_events), ({}, _calendars_broken),
+                 ({}, _broken)],
     "mind": [({"cosa": "scope"}, _healthy)],
 }
 

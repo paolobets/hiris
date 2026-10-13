@@ -13,7 +13,7 @@ proprie parole e sparirebbe dal censimento invece di comparire come solo-test.
 """
 from __future__ import annotations
 
-import time
+import logging
 
 from aiohttp import web
 
@@ -24,6 +24,8 @@ from ..home_space.house import House
 from ..home_space.reader import TABLES
 from ..home_space.render import render_entity
 from ..proxy.state_translations import read_for_house
+
+logger = logging.getLogger(__name__)
 
 #: Le parole con cui una persona legge i registri dell'anagrafe (C-10). Stavano
 #: nel JavaScript (`NOMI_REGISTRI`, common.js), legate alle tabelle da una
@@ -170,7 +172,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # suo posto (`HomeSpace.unavailable_since`, S-36): `None` se quel
         # registro non ha mai risposto e la tabella e' vuota.
         "non_disponibili_letti_il": store.unavailable_since(),
-        "conteggi": {key: len(value) for key, value in home_space.items()},
+        # Le tabelle esposte, non quelle interne (`reader.INTERNAL_TABLES`, B-50).
+        "conteggi": {key: len(home_space[key]) for key in TABLES if key in home_space},
         # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
         # versione di Home Assistant. Esposto qui e non solo nel nucleo perche'
         # e' lo stesso fatto: se il modello lo legge nel digesto e la pagina no,
@@ -247,8 +250,30 @@ def house_of(app) -> House:
     return House.read(app.get("home_space_store"), app.get("entity_cache"))
 
 
+#: Il nucleo che non si e' potuto comporre, detto al modello (D-64). Non e'
+#: una stringa vuota -- il modello la leggerebbe come una casa vuota, e la
+#: chat la scartava -- ma il guasto, come il nucleo dichiara i registri caduti
+#: e lo stato non letto. Una frase sola per tutte le porte: la chat, le due
+#: strade della promessa e GET /api/briefing.
+BRIEFING_FAILED = (
+    "## Cio' che HIRIS ignora\n"
+    "- il nucleo non si e' potuto comporre: un archivio della casa o "
+    "della memoria e' guasto o non leggibile in questo momento. "
+    "Nessuna delle sezioni che normalmente lo precedono (la casa, "
+    "cio' che la casa fa da sola, cio' che le persone hanno detto) "
+    "e' disponibile in questo turno. Non e' una casa vuota -- e' un "
+    "guasto: dillo a chi ti ha scritto, non rispondere come se "
+    "conoscessi la casa."
+)
+
+
 def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
+
+    **Non solleva mai** (D-64, Chiusura, 13/10/2026): un archivio guasto o in
+    lock diventa `BRIEFING_FAILED`, col suo riepilogo, qui e solo qui. Fino a
+    quel giorno la chat lo dichiarava con un testo suo, la promessa
+    ripiegava su "" in silenzio e GET /api/briefing rispondeva 500.
 
     Condivisa da `handle_get_briefing` (GET /api/briefing, la verifica dal vivo),
     da `handlers_chat.compose_chat_context` (il contesto che il modello
@@ -265,6 +290,24 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     anagrafe e lo STESSO specchio, e la gerarchia si costruisce una volta.
     Senza, se ne legge una qui.
     """
+    try:
+        return _compose_briefing(app, house)
+    except Exception as exc:
+        logger.warning("composizione del nucleo fallita (%s: %s)",
+                       type(exc).__name__, exc)
+        # Il riepilogo non mente su cio' che il testo non contiene: i ricordi
+        # esclusi non si sanno (`None`, la pagina scrive «—»), e il guasto e'
+        # l'unica lacuna dichiarata.
+        return BRIEFING_FAILED, {
+            "chars": len(BRIEFING_FAILED), "truncated": False,
+            "excluded_memories": None, "faults": [],
+            "notices": [("il nucleo non si e' potuto comporre: un archivio della "
+                         "casa o della memoria e' guasto o non leggibile")],
+        }
+
+
+def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
+    """La lettura degli archivi e la composizione: vedi `compose_briefing`."""
     if house is None:
         house = house_of(app)
     home_space_store = app.get("home_space_store")
@@ -379,13 +422,6 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         attributes=mirror.attributes,
-        # L'orologio entra QUI, nell'unico compositore di produzione (chat
-        # sincrona, ponte, promesse e GET /api/briefing passano tutti di qua), perche'
-        # `compose` e' pura e non legge nulla da sola. Senza questa riga il
-        # parametro esisterebbe, i test di `compose` passerebbero, e il modello
-        # continuerebbe a indovinare l'ora quando `promise` gli chiede di
-        # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
-        now=time.time(),
     )
 
 

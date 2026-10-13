@@ -16,7 +16,6 @@ from hiris.app.home_space import appointments as appointments_module
 from hiris.app.home_space.appointments import (
     merge_calendars,
     read_appointment,
-    readable_calendars,
     sort_appointments,
 )
 
@@ -404,11 +403,8 @@ def test_merge_calendars_si_prova_senza_un_client_finto():
 
     Mutazione ESEGUITA il 05/10/2026: tolto `unreadable.append(name)` sul
     ramo `errore` -- rossa su `non_letti` (KeyError: la chiave non esce)."""
-    calendars = readable_calendars({"calendari": [
-        {"entity_id": "calendar.personale", "name": "Personale"},
-        {"entity_id": "calendar.rotto", "name": "Rotto"},
-        "una voce malformata",
-    ]})
+    calendars = [{"id": "calendar.personale", "nome": "Personale"},
+                 {"id": "calendar.rotto", "nome": "Rotto"}]
     answers = [{"eventi": [_timed_event()]}, {"errore": "non risponde"}]
 
     result = merge_calendars(calendars, answers, timezone="Europe/Rome")
@@ -425,10 +421,8 @@ def test_due_calendari_tagliati_sommano_le_restano():
     calendario (Tappa 9, F7, C-38).
 
     Mutazione ESEGUITA: `left_out =` invece di `left_out +=` -- rossa con 4."""
-    calendars = readable_calendars({"calendari": [
-        {"entity_id": "calendar.personale", "name": "Personale"},
-        {"entity_id": "calendar.famiglia", "name": "Famiglia"},
-    ]})
+    calendars = [{"id": "calendar.personale", "nome": "Personale"},
+                 {"id": "calendar.famiglia", "nome": "Famiglia"}]
     answers = [{"eventi": [_timed_event()], "oltre": {"restano": 3}},
                {"eventi": [_timed_event()], "oltre": {"restano": 4}}]
     result = merge_calendars(calendars, answers, timezone="Europe/Rome")

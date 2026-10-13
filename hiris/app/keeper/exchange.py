@@ -27,8 +27,10 @@ from ..steering import (
     PROMISE_SPECIES,
     chain_turn,
     enqueue_turn,
+    house_hour,
     refused_tool,
     start,
+    with_hour,
 )
 from .promise import REASON_CAP
 
@@ -51,8 +53,8 @@ logger = logging.getLogger(__name__)
 # `action/actuator.py` ne' dall'officina.
 #
 # `calendar` (fetta «i calendari», Task 3) entra anche lui, per la STESSA
-# ragione e non per contagio: legge e basta (due chiamate REST,
-# `HAClient.calendars()`/`calendar_events()`, mai una scrittura), e senza di
+# ragione e non per contagio: legge e basta (l'elenco dallo specchio, gli
+# impegni con `HAClient.calendar_events()`, mai una scrittura), e senza di
 # lui il ponte non potrebbe mai tenere una promessa del tipo «avvisami la
 # sera prima di un impegno». Deliberato, non automatico: questo elenco resta
 # di AMMISSIONE, e uno strumento nuovo non ci entra da solo finche' qualcuno
@@ -184,21 +186,17 @@ async def interpreta_promise(app, promise: dict) -> dict:
     subject, ceiling = await promise_ceiling(app, promise)
     dispatcher = PromiseDispatcher(create_tool_dispatcher(
         app, soffitto=ceiling, soggetto=subject))
-    try:
-        # Lo STESSO nucleo della chat (`compose_briefing`), non una
-        # composizione parallela: due contesti che descrivono la stessa casa
-        # sono due verita' che divergono.
-        briefing, _summary = compose_briefing(app)
-    except Exception as error:
-        logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promise["id"], type(error).__name__, error)
-        briefing = ""
+    # Lo STESSO nucleo della chat (`compose_briefing`), non una composizione
+    # parallela: due contesti che descrivono la stessa casa sono due verita'
+    # che divergono. Un archivio guasto lo dichiara lei (D-64).
+    briefing, _summary = compose_briefing(app)
 
     try:
         answer, turn = await chain_turn(
             runner, PROMISE_SPECIES, usage=app.get("usage"),
             max_tokens=PROMISE_MAX_TOKENS,
-            user_message=_domanda(promise),
+            # L'ora della casa in coda alla domanda, non nel nucleo (D-51).
+            user_message=with_hour(_domanda(promise), house_hour(app)),
             system_prompt=_system_prompt(),
             context_str=briefing,
             conversation_history=[],
@@ -342,12 +340,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     """
     from ..api.handlers_home_space import compose_briefing
 
-    try:
-        briefing, _summary = compose_briefing(app)
-    except Exception as error:
-        logger.warning("nucleo non componibile per la promessa %s (%s: %s)",
-                       promise["id"], type(error).__name__, error)
-        briefing = ""
+    briefing, _summary = compose_briefing(app)
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce. La leggono, col
@@ -366,6 +359,9 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
             "history": [{"role": "user", "content": _domanda(promise)}],
             "system_prompt": _system_prompt(),
             "contesto": briefing,
+            # L'ora della casa, fuori dal nucleo (D-51): il ponte la mette
+            # nel prompt utente (`prompts.build_chat_messages`).
+            "adesso": house_hour(app),
         },
         # Il filo di chi l'ha chiesta (spec 2026-09-26 §2.4): nelle colonne
         # della coda, non nel contesto -- il turno resta in sola lettura

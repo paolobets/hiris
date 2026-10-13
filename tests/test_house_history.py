@@ -12,6 +12,7 @@ import pytest
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space import house_query as hq
 from hiris.app.home_space.house import House
+from hiris.app.home_space.log_source import Manifest
 from hiris.app.home_space.render import render_entity
 from tests.test_briefing import _casa_grande
 from tests.test_house_query import (
@@ -1273,7 +1274,7 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
 
     Mutazione ESEGUITA: non filtrare per finestra -- rossa (quattro voci);
     non ordinare per l'ultima volta -- rossa (zha prima di meteo)."""
-    uscita = hh.error_rows(_q(cosa="errori"), _REGISTRO)
+    uscita = hh.error_rows(_q(cosa="errori"), _REGISTRO, Manifest())
     assert uscita["trovate"] == 3 and uscita["profondita"] == "corta"
     assert [v["messaggio"] for v in uscita["voci"]] == [
         "lento", "zigbee giu'", "senza istante"]
@@ -1298,7 +1299,7 @@ def test_descrizione_errori_nomina_campi_riga():
 
     from hiris.app.home_space.tools import HISTORY_TOOL_DEF
 
-    riga = hh.error_rows(_q(cosa="errori"), _REGISTRO)["voci"][1]
+    riga = hh.error_rows(_q(cosa="errori"), _REGISTRO, Manifest())["voci"][1]
     frase = HISTORY_TOOL_DEF["description"].split("Errori: ", 1)[1].split(". ", 1)[0]
     citati = re.findall(r"`([^`]+)`", frase)
     assert citati, "la frase sugli errori non cita piu' nessun campo"
@@ -1314,11 +1315,11 @@ def test_gli_errori_si_filtrano_per_livello_e_integrazione():
     dell'identificativo (`found[0]`) -- rossa (giro di correzioni: la
     lettura propria del logger e' uscita, era un doppione)."""
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(cosa="errori", livello="WARNING"), _REGISTRO)["voci"]] == ["lento"]
+        _q(cosa="errori", livello="WARNING"), _REGISTRO, Manifest())["voci"]] == ["lento"]
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(cosa="errori", integrazione="meteo"), _REGISTRO)["voci"]] == ["lento"]
+        _q(cosa="errori", integrazione="meteo"), _REGISTRO, Manifest())["voci"]] == ["lento"]
     assert [v["messaggio"] for v in hh.error_rows(
-        _q(cosa="errori", integrazione="zha"), _REGISTRO)["voci"]] == ["zigbee giu'"]
+        _q(cosa="errori", integrazione="zha"), _REGISTRO, Manifest())["voci"]] == ["zigbee giu'"]
 
 
 def test_salta_su_un_registro_senza_voci_non_promette_voci():
@@ -1328,7 +1329,8 @@ def test_salta_su_un_registro_senza_voci_non_promette_voci():
 
     Mutazione ESEGUITA: togliere la guardia `> 0` sulle righe in
     `house_query.page_rows` -- rossa (`oltre` con `disponibili: 0`)."""
-    uscita = hh.error_rows(_q(cosa="errori", integrazione="nessuna", salta=5), _REGISTRO)
+    uscita = hh.error_rows(_q(cosa="errori", integrazione="nessuna", salta=5), _REGISTRO,
+                           Manifest())
     assert uscita["trovate"] == 0 and uscita["voci"] == []
     assert "oltre" not in uscita
 
@@ -1347,7 +1349,7 @@ def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
 
     lungo = [{"level": "ERROR", "message": "x" * 1000, "timestamp": T0 - 1,
               "exception": "Traceback\n  File y\nValueError: " + "z" * 1000}]
-    riga = hh.error_rows(_q(cosa="errori"), lungo)["voci"][0]
+    riga = hh.error_rows(_q(cosa="errori"), lungo, Manifest())["voci"][0]
     assert riga["messaggio"] == truncate_with_marker("x" * 1000, hh.MESSAGE_MAX)
     assert len(riga["messaggio"]) == hh.MESSAGE_MAX
     assert len(riga["eccezione"]) == hh.MESSAGE_MAX
@@ -1358,11 +1360,11 @@ def test_gli_errori_si_impaginano_con_oltre():
     """La pagina e `oltre` di `search` (`_page`, `_oltre`), anche oltre la fine.
 
     Mutazione ESEGUITA: `voci` senza `_page` -- rossa."""
-    prima = hh.error_rows(_q(cosa="errori", limite=1), _REGISTRO)
+    prima = hh.error_rows(_q(cosa="errori", limite=1), _REGISTRO, Manifest())
     assert [v["messaggio"] for v in prima["voci"]] == ["lento"]
     assert prima["oltre"]["restano"] == 2 and prima["oltre"]["salta"] == 1
     assert "consiglio" in prima["oltre"]
-    fuori = hh.error_rows(_q(cosa="errori", salta=9), _REGISTRO)
+    fuori = hh.error_rows(_q(cosa="errori", salta=9), _REGISTRO, Manifest())
     assert fuori["voci"] == [] and fuori["oltre"]["disponibili"] == 3
 
 
@@ -1375,13 +1377,13 @@ def test_un_registro_che_non_copre_la_finestra_lo_dice():
     Mutazione ESEGUITA: non spostare `da` -- rossa; prendere la piu' vecchia
     DOPO il filtro del livello -- rossa (`da` diventa quella del WARNING)."""
     corto = [voce for voce in _REGISTRO if voce.get("timestamp") != T0 - 3 * 86400]
-    uscita = hh.error_rows(_q(cosa="errori", ore=168, livello="WARNING"), corto)
+    uscita = hh.error_rows(_q(cosa="errori", ore=168, livello="WARNING"), corto, Manifest())
     assert uscita["finestra"]["da"] == datetime.fromtimestamp(
         T0 - 600, ZoneInfo(ROMA)).isoformat()
     assert uscita["finestra"]["chiesta_da"] == datetime.fromtimestamp(
         T0 - 168 * 3600, ZoneInfo(ROMA)).isoformat()
     assert "riavvio" in uscita["finestra"]["troncata"]
-    intero = hh.error_rows(_q(cosa="errori"), _REGISTRO)
+    intero = hh.error_rows(_q(cosa="errori"), _REGISTRO, Manifest())
     assert "troncata" not in intero["finestra"]
 
 
@@ -1393,7 +1395,7 @@ def test_a_parita_di_istante_decide_anche_il_livello():
     rossa."""
     gemelle = [{"level": livello, "message": "uguale", "source": ["a.py", 1],
                 "timestamp": T0 - 5} for livello in ("WARNING", "ERROR")]
-    assert [v["livello"] for v in hh.error_rows(_q(cosa="errori"), gemelle)["voci"]] \
+    assert [v["livello"] for v in hh.error_rows(_q(cosa="errori"), gemelle, Manifest())["voci"]] \
         == ["ERROR", "WARNING"]
 
 
@@ -1406,12 +1408,12 @@ def test_le_librerie_di_un_integrazione_si_dichiarano_col_filtro():
     Mutazione ESEGUITA: non scrivere `nota_integrazione` -- rossa."""
     voci = [*_REGISTRO, {"name": "zigpy.application", "level": "ERROR",
                          "message": ["radio giu'"], "timestamp": T0 - 30}]
-    tutte = hh.error_rows(_q(cosa="errori"), voci)
+    tutte = hh.error_rows(_q(cosa="errori"), voci, Manifest())
     # `{id, nome}` come da ogni porta (Tappa 9, chiusura): fino al 12/10/2026
     # lo slug nudo. Mutazione ESEGUITA: di nuovo lo slug -- rossa.
     assert tutte["voci"][0]["integrazione"] == {"id": "zigpy", "nome": "Zigpy"}
     assert "nota_integrazione" not in tutte
-    zha = hh.error_rows(_q(cosa="errori", integrazione="zha"), voci)
+    zha = hh.error_rows(_q(cosa="errori", integrazione="zha"), voci, Manifest())
     assert [v["messaggio"] for v in zha["voci"]] == ["zigbee giu'"]
     assert "zigpy" in zha["nota_integrazione"]
 

@@ -24,7 +24,6 @@ from hiris.app.home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
     CAPABILITY_NAMES,
     GENRE,
-    OPERABLE,
     RESTING_STATES,
     UNKNOWN_STATES,
     Field,
@@ -95,7 +94,7 @@ def test_una_riga_rifiuta_un_valore_nudo():
     assert "provenienza" in str(errore.value)
     # E la stessa guardia vale dalla porta che si usa davvero.
     with pytest.raises(TypeError):
-        TypeVocabulary().add("sensor", operable="comfort")
+        TypeVocabulary().add("sensor", genre="comfort")
 
 
 def test_un_importato_senza_la_sua_fonte_non_si_costruisce():
@@ -138,14 +137,14 @@ def test_ogni_campo_di_ogni_riga_dichiara_la_propria_provenienza():
 
 def test_i_giudizi_sono_nostri_e_le_capacita_sono_importate():
     """La provenienza non e' un'etichetta decorativa: dice il vero su ogni
-    campo. Il genere, l'accendibile e il riposo sono giudizi che nessuna API di
+    campo. Il genere e il riposo sono giudizi che nessuna API di
     Home Assistant puo' darci; i nomi dei bit di `supported_features` sono
     `IntFlag` nel sorgente, quindi importati e datati.
 
     Mutazione: dichiarare le tabelle dei bit con `Ours(...)` invece di
     `Imported(...)` -- il secondo ciclo arrossisce."""
     for row in _vocabulary.rows():
-        for name in (OPERABLE, RESTING_STATES):
+        for name in (GENRE, RESTING_STATES):
             field = row.fields.get(name)
             if field is not None:
                 assert field.provenance is Provenance.OURS, f"{row.key}.{name}"
@@ -198,10 +197,10 @@ def test_se_coppia_e_dominio_dicono_due_cose_vince_la_coppia():
     """Mutazione ESEGUITA: in `TypeVocabulary.field` guardare la riga di
     dominio PRIMA della coppia -- la prima asserzione arrossisce."""
     vocabolario = TypeVocabulary()
-    vocabolario.add("binary_sensor", operable=Ours(False))
-    vocabolario.add("binary_sensor", "smoke", operable=Ours(True))
-    assert vocabolario.value("binary_sensor", "smoke", OPERABLE) is True
-    assert vocabolario.value("binary_sensor", "door", OPERABLE) is False
+    vocabolario.add("binary_sensor", genre=Ours("funzionamento"))
+    vocabolario.add("binary_sensor", "smoke", genre=Ours("sicurezza"))
+    assert vocabolario.value("binary_sensor", "smoke", GENRE) == "sicurezza"
+    assert vocabolario.value("binary_sensor", "door", GENRE) == "funzionamento"
 
 
 def test_nessuna_coppia_ripete_un_valore_che_il_suo_dominio_gia_dice():
@@ -234,9 +233,9 @@ def test_una_coppia_orfana_non_si_costruisce():
     `TypeVocabulary.add` -- la costruzione riesce e questa prova arrossisce."""
     vocabolario = TypeVocabulary()
     with pytest.raises(KeyError):
-        vocabolario.add("sensor", "energy", operable=Ours(True))
+        vocabolario.add("sensor", "energy", genre=Ours("funzionamento"))
     vocabolario.add("sensor")
-    vocabolario.add("sensor", "energy", operable=Ours(True))  # ora si collega
+    vocabolario.add("sensor", "energy", genre=Ours("funzionamento"))  # ora si collega
 
 
 def test_un_tipo_non_puo_avere_due_righe():
@@ -247,55 +246,65 @@ def test_un_tipo_non_puo_avere_due_righe():
     Mutazione: togliere la guardia `if key in self._rows` da `add` -- la
     seconda riga passa e questa prova arrossisce."""
     vocabolario = TypeVocabulary()
-    vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}))
+    vocabolario.add("light", genre=Ours("funzionamento"), resting_states=Ours({"off"}))
     with pytest.raises(ValueError):
         vocabolario.add("light", genre=Ours("luce"))
     # E un campo gia' dichiarato non si sovrascrive in silenzio.
     with pytest.raises(ValueError):
-        vocabolario.extend("light", operable=Ours(False))
+        vocabolario.extend("light", resting_states=Ours({"on"}))
 
 
-# --- la regola: un tipo accendibile porta il suo riposo -------------------
+# --- la regola: un tipo che porta un genere porta il suo riposo ----------
 
-def test_un_tipo_accendibile_porta_i_suoi_stati_di_riposo():
+def test_un_tipo_col_genere_porta_i_suoi_stati_di_riposo():
     """**La regola che era un commento e ora e' una prova** (`facts.py:85-91`
     fino al 07/09/2026): «un dominio dimenticato cade in silenzio; un dominio
     aggiunto a meta' produce oggetti che non si chiudono mai -- lo stesso
     costo, dai due lati opposti dello stesso elenco».
 
+    Fino al 13/10/2026 la regola si chiedeva al giudizio «accendibile», uscito
+    con M-61: il genere apre l'episodio, il riposo lo chiude, ed e' al genere
+    che la regola si chiede (`_verify_genre_types_bring_their_rest`). I tipi
+    col genere si chiedono al vocabolario, non si elencano.
+
     Mutazione: togliere `resting_states` dalla riga di `water_heater` --
     arrossisce, e con lei l'`import` del modulo (vedi la prova sotto)."""
-    assert type_vocabulary.REPO_JUDGMENTS.operable_domains()
-    for domain in sorted(type_vocabulary.REPO_JUDGMENTS.operable_domains()):
-        propri = _vocabulary.value(domain, None, RESTING_STATES, frozenset())
-        assert propri, (
-            f"`{domain}` e' dichiarato accendibile e non porta nessuno stato "
-            "di riposo: un episodio suo non si chiuderebbe mai")
+    genre_rows = [row for row in _vocabulary.rows() if GENRE in row.fields]
+    assert len(genre_rows) >= 20, "la derivazione si e' svuotata"
+    for row in genre_rows:
+        assert _vocabulary.value(row.domain, row.device_class, RESTING_STATES,
+                                 frozenset()), (
+            f"{row.key} porta un genere e nessuno stato di riposo: un episodio "
+            "suo non si chiuderebbe mai")
 
 
 def test_la_regola_del_riposo_e_una_condizione_di_costruzione():
-    """Non basta che una prova la verifichi: chi aggiunge un tipo accendibile
+    """Non basta che una prova la verifichi: chi aggiunge un tipo col genere
     senza il suo riposo non deve far passare nemmeno un `import`. E' la
     differenza fra una regola scritta in un commento -- che si e' lasciata
-    violare tre volte -- e una che la struttura impone.
+    violare tre volte -- e una che la struttura impone. Vale per un dominio e
+    per una coppia, che il riposo puo' ereditarlo dal dominio.
 
-    Mutazione: togliere la chiamata a `_verify_operable_types_bring_their_rest`
-    in fondo a `type_vocabulary.py` -- questa prova costruisce il vocabolario
-    difettosa e chiama la verifica direttamente, quindi resta verde; e' la
-    prova sopra a coprire il modulo vero. Mutazione di QUESTA prova: far
-    ritornare `None` alla funzione invece di sollevare."""
+    Mutazione ESEGUITA il 13/10/2026: far ritornare `None` a
+    `_verify_genre_types_bring_their_rest` invece di sollevare -- rossa."""
     from hiris.app.home_space import type_vocabulary
 
     vocabolario = TypeVocabulary()
-    vocabolario.add("water_heater", operable=Ours(True))
+    vocabolario.add("water_heater", genre=Ours("funzionamento"))
+    vocabolario.add("binary_sensor")
+    vocabolario.add("binary_sensor", "smoke", genre=Ours("sicurezza"))
+    vocabolario.add("lock", resting_states=Ours({"locked"}))
+    vocabolario.add("lock", "x", genre=Ours("sicurezza"))
     originale = type_vocabulary._vocabulary
     try:
         type_vocabulary._vocabulary = vocabolario
         with pytest.raises(ValueError) as errore:
-            type_vocabulary._verify_operable_types_bring_their_rest()
+            type_vocabulary._verify_genre_types_bring_their_rest()
     finally:
         type_vocabulary._vocabulary = originale
     assert "water_heater" in str(errore.value)
+    assert "binary_sensor/smoke" in str(errore.value)
+    assert "lock/x" not in str(errore.value), "il riposo del dominio vale per la coppia"
 
 
 def test_gli_stati_ignoti_non_sono_riposi():
@@ -361,7 +370,7 @@ def test_la_serratura_che_si_muove_sta_funzionando_e_jammed_non_e_ne_l_uno_ne_l_
     """Decisione 3, ed e' quella che **non si e' potuta chiudere fino in
     fondo**. `locking` e `unlocking` sono funzionamento: la serratura si sta
     muovendo. `jammed` no -- il proprietario l'ha giudicato un GUASTO, e un
-    guasto in questo prodotto e' un GENERE (`mind/facts.GENRES`), non uno stato
+    guasto in questo prodotto e' un GENERE (`type_vocabulary.CHRONICLE_GENRES`), non uno stato
     di funzionamento. Il genere si decide per SOGGETTO, e `genre_for` lo stato
     non lo riceve nemmeno: non c'e' nessun posto dove `jammed` possa entrare
     senza affermare qualcosa che il proprietario ha escluso.
@@ -393,12 +402,12 @@ def test_il_tosaerba_si_tratta_come_l_aspirapolvere():
     comuni = {"docked", "returning", "error"}
     assert type_vocabulary.REPO_JUDGMENTS.resting_of("lawn_mower") >= comuni
     assert type_vocabulary.REPO_JUDGMENTS.resting_of("vacuum") >= comuni
-    assert "lawn_mower" in type_vocabulary.REPO_JUDGMENTS.operable_domains()
+    assert type_vocabulary.REPO_JUDGMENTS.genre_of("lawn_mower.x", None) == "funzionamento"
     assert "mowing" in type_vocabulary.REPO_JUDGMENTS.working_of("lawn_mower")
     assert "mowing" not in type_vocabulary.REPO_JUDGMENTS.resting_of("lawn_mower")
 
 
-def test_remote_e_siren_sono_accendibili_con_off_a_riposo():
+def test_remote_e_siren_hanno_off_a_riposo():
     """Decisione 9, e porta con se' la correzione di una ragione **smentita dal
     proprio codice**: la spec §4 escludeva questi due con «li' `on` significa
     'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
@@ -406,13 +415,13 @@ def test_remote_e_siren_sono_accendibili_con_off_a_riposo():
     prodotto quell'`on` lo annunciava gia' come un'accensione mentre
     l'esclusione affermava il contrario.
 
-    Mutazione ESEGUITA: togliere `operable` a `remote` -- il guardiano
-    all'importazione non dice niente (un tipo non accendibile non deve avere
-    riposi), e questa prova e' l'unica che se ne accorge.
+    La decisione li dichiarava anche «accendibili»: quel giudizio e' uscito il
+    13/10/2026 (M-61), e del giudizio resta cio' che decide qualcosa, il
+    riposo. Mutazione: togliere `off` dai riposi di `remote` -- rossa (e il
+    guardiano all'importazione, che chiede il riposo a ogni tipo col genere).
     """
     assert "off" in type_vocabulary.REPO_JUDGMENTS.resting_of("remote")
     assert "off" in type_vocabulary.REPO_JUDGMENTS.resting_of("siren")
-    assert {"remote", "siren"} <= type_vocabulary.REPO_JUDGMENTS.operable_domains()
 
 
 def test_ogni_stato_di_funzionamento_porta_la_sua_ragione_scritta():
@@ -449,7 +458,7 @@ def test_nessuno_stato_vale_insieme_riposo_e_funzionamento():
             "in funzionamento")
 
     vocabolario = type_vocabulary.TypeVocabulary()
-    vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+    vocabolario.add("light", resting_states=Ours({"off"}),
                     working_states=Ours({"off": "una ragione lunga abbastanza"}))
     originale = type_vocabulary._vocabulary
     type_vocabulary._vocabulary = vocabolario
@@ -472,7 +481,7 @@ def test_una_forma_dell_assenza_non_e_uno_stato_di_lavoro():
     `| ABSENT_STATE_FORMS.value` -- il guardiano tace e questa prova arrossisce.
     """
     vocabolario = type_vocabulary.TypeVocabulary()
-    vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+    vocabolario.add("light", resting_states=Ours({"off"}),
                     working_states=Ours({"none": "una ragione lunga abbastanza",
                                          "": "un'altra ragione lunga abbastanza"}))
     originale = type_vocabulary._vocabulary
@@ -758,7 +767,8 @@ def test_la_mappa_dei_giudizi_salta_solo_l_impalcatura():
     mappa, o il seme li perde in silenzio (B-46, 04/10/2026).
 
     Mutazione ESEGUITA: tolta la voce `OPERABLE` da `JUDGMENT_FIELDS` --
-    rossa (`accendibile` manca)."""
+    rossa (`accendibile` manca). (`OPERABLE` e' uscito il 13/10/2026, M-61:
+    la stessa mutazione oggi si fa togliendo `WORKING_STATES`.)"""
     from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES, SCAFFOLDING_FIELD
     from hiris.app.home_space.type_vocabulary import JUDGMENT_FIELDS
     assert set(JUDGMENT_FIELDS.values()) | {SCAFFOLDING_FIELD} == JUDGMENT_FIELD_NAMES

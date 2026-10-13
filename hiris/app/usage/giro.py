@@ -66,8 +66,9 @@ def pesa_carico(*, system: list[str], core: str, conversation: list,
       definizioni: il prefisso su cui ogni forma di caching si appoggia. Il
       nucleo si toglie dall'ultima occorrenza, perche' e' l'ultimo pezzo
       composto: comprenderlo farebbe cambiare l'impronta a ogni turno (il
-      nucleo porta l'ora), cioe' una misura che sembra funzionare e non
-      misura niente -- scoperto dalla prima lettura vera, 24/09/2026.
+      nucleo portava l'ora fino al 13/10/2026, D-51; e resta il contesto del
+      turno), cioe' una misura che sembra funzionare e non misura niente --
+      scoperto dalla prima lettura vera, 24/09/2026.
     """
     core = core or ""
     joined = "".join(text or "" for text in system)

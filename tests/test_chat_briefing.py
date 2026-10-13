@@ -108,6 +108,7 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="ok")
     mock_runner.last_tool_calls = []
+    mock_runner.last_unanswered = False
 
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings(system_prompt="base prompt")

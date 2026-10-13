@@ -271,7 +271,11 @@ def test_NESSUN_ramo_della_chat_costruisce_un_dispatcher_senza_la_frase():
     occorrenze di una stringa.
 
     Mutazione ESEGUITA: togliere `frase=` dal ramo accodato -- rossa.
-    Mutazione ESEGUITA: togliere `frase=` dal ramo sincrono -- rossa."""
+    Mutazione ESEGUITA: togliere `frase=` dal ramo sincrono -- rossa.
+
+    Dal 13/10/2026 (D-17) i due rami costruiscono il dispatcher in un posto
+    solo, `_chain_chat_turn`: la chiamata e' una, e che la usino tutti e due
+    lo dice `tests/test_turno_della_chat.py`."""
     import ast
     import inspect
 
@@ -283,9 +287,9 @@ def test_NESSUN_ramo_della_chat_costruisce_un_dispatcher_senza_la_frase():
                 and isinstance(nodo.func, ast.Name)
                 and nodo.func.id == "create_tool_dispatcher"]
 
-    assert len(chiamate) == 2, (
-        f"i rami della chat che costruiscono un dispatcher sono {len(chiamate)}, "
-        "non due: se ne è nato uno nuovo, deve portare la frase anche lui")
+    assert len(chiamate) == 1, (
+        f"i punti della chat che costruiscono un dispatcher sono {len(chiamate)}, "
+        "non uno: se ne è nato uno nuovo, deve portare la frase anche lui")
     for chiamata in chiamate:
         nomi = {parola.arg for parola in chiamata.keywords}
         assert "frase" in nomi, (

@@ -48,7 +48,7 @@ async def test_OpenAICompatRunner_dice_lo_strumento_scappato():
     """Mutazione eseguita: il ramo dello strumento scappato che non scrive
     `last_tool_leaked` -- rossa."""
     runner = _runner("search▁{\"testo\": \"luce\"}")
-    testo = await runner.chat(user_message="ciao", model="gpt-4o", tools=_TOOLS)
+    testo = await runner.chat(user_message="ciao", model="gpt-4o", tools=_TOOLS, max_tokens=4096)
     assert testo == TOOL_LEAK_USER_MSG
     assert runner.last_tool_leaked is True
 
@@ -56,7 +56,7 @@ async def test_OpenAICompatRunner_dice_lo_strumento_scappato():
 @pytest.mark.asyncio
 async def test_una_risposta_vera_non_e_uno_strumento_scappato():
     runner = _runner("La luce della cucina e' accesa.")
-    await runner.chat(user_message="ciao", model="gpt-4o", tools=_TOOLS)
+    await runner.chat(user_message="ciao", model="gpt-4o", tools=_TOOLS, max_tokens=4096)
     assert runner.last_tool_leaked is False
 
 
@@ -65,16 +65,16 @@ async def test_il_segnale_si_azzera_a_ogni_chiamata():
     runner = OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-prova")
     runner._client.chat.completions.create = AsyncMock(side_effect=[
         _risposta("search▁{}"), _risposta("tutto bene")])
-    await runner.chat(user_message="uno", model="gpt-4o", tools=_TOOLS)
+    await runner.chat(user_message="uno", model="gpt-4o", tools=_TOOLS, max_tokens=4096)
     assert runner.last_tool_leaked is True
-    await runner.chat(user_message="due", model="gpt-4o", tools=_TOOLS)
+    await runner.chat(user_message="due", model="gpt-4o", tools=_TOOLS, max_tokens=4096)
     assert runner.last_tool_leaked is False
 
 
 @pytest.mark.asyncio
 async def test_il_router_dice_lo_strumento_scappato_di_chi_ha_risposto():
     router = LLMRouter(openai=_runner("search▁{}"), model_chain=["openai"])
-    await router.chat(user_message="ciao", model="auto", tools=_TOOLS)
+    await router.chat(user_message="ciao", model="auto", tools=_TOOLS, max_tokens=4096)
     assert router.last_tool_leaked is True
 
 
@@ -84,7 +84,7 @@ async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
     primo.chat = AsyncMock(side_effect=RuntimeError("giu'"))
     router = LLMRouter(claude=primo, model_chain=["claude"])
     ClaudeRunner(api_key="sk-prova").last_tool_leaked = True
-    await router.chat(user_message="ciao", model="auto")
+    await router.chat(user_message="ciao", model="auto", max_tokens=4096)
     assert router.last_tool_leaked is False
 
 

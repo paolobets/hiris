@@ -76,7 +76,6 @@ def _coperto():
                            "climate": {"_": ["heat", "off"]}},
         "valori_di_state_class": ["measurement", "total"],
         "bit_per_dominio": {"light": [4, 8, 32]},
-        "domini_accendibili": ["light", "switch"],
     }
 
 
@@ -84,30 +83,28 @@ def _coperto():
 # LA FONTE DEL RIVENDICATO -- dal 17/09/2026 e' l'istantanea del seme
 # ---------------------------------------------------------------------------
 
-def test_claimed_states_e_claimed_switchable_domains_leggono_il_seme():
-    """Spec 2026-09-16 §3: il censore chiede il riposo, il lavoro e
-    l'accendibile all'istantanea del SOLO seme (`type_vocabulary.REPO_JUDGMENTS`),
-    non piu' alle funzioni di modulo `resting_states_of`/`working_states_of`/
-    `operable_domains` lette a mano -- e' la stessa istantanea che
+def test_claimed_states_legge_il_seme():
+    """Spec 2026-09-16 §3: il censore chiede il riposo e il lavoro
+    all'istantanea del SOLO seme (`type_vocabulary.REPO_JUDGMENTS`),
+    non piu' alle funzioni di modulo `resting_states_of`/`working_states_of`
+    lette a mano -- e' la stessa istantanea che
     `judgment_seed_rows()` costruisce dal letterale, quindi il valore non
     cambia, ma la FONTE si', ed e' quella che questo test guarda.
 
     Mutazione ESEGUITA: sostituita `type_vocabulary.REPO_JUDGMENTS` con
-    un'istantanea priva del riposo di `cover` e priva del dominio
-    accendibile `light` -- se `claimed_states`/`claimed_switchable_domains`
-    leggessero ancora le funzioni di modulo invece dell'istantanea, questa
+    un'istantanea priva del riposo di `cover` -- se `claimed_states`
+    leggesse ancora le funzioni di modulo invece dell'istantanea, questa
     prova resterebbe verde; con la lettura giusta arrossisce, e ripristinata
-    (`type_vocabulary.REPO_JUDGMENTS = originale`) torna verde.
+    (`type_vocabulary.REPO_JUDGMENTS = originale`) torna verde. (Fino al
+    13/10/2026 la stessa prova guardava anche l'accendibile, uscito con M-61.)
     """
     from hiris.app.home_space import type_vocabulary as tv
     from hiris.app.home_space.type_judgments import TypeJudgments
 
     assert "stopped" in censore_tipi.claimed_states("cover", None)
-    assert "light" in censore_tipi.claimed_switchable_domains()
 
     righe = tuple(r for r in tv.judgment_seed_rows()
-                  if not (r[1] == "cover" and r[2] == "riposo")
-                  and not (r[1] == "light" and r[2] == "accendibile"))
+                  if not (r[1] == "cover" and r[2] == "riposo"))
     finto = TypeJudgments.from_rows(righe, genres=tv.CHRONICLE_GENRES,
                                     absent_forms=tv.ABSENT_STATE_FORMS.value)
     originale = tv.REPO_JUDGMENTS
@@ -116,9 +113,6 @@ def test_claimed_states_e_claimed_switchable_domains_leggono_il_seme():
         assert "stopped" not in censore_tipi.claimed_states("cover", None), (
             "il riposo deve venire dall'istantanea del seme, non da una "
             "funzione di modulo letta a mano")
-        assert "light" not in censore_tipi.claimed_switchable_domains(), (
-            "l'accendibile deve venire dall'istantanea del seme, non da "
-            "`type_vocabulary.operable_domains()`")
     finally:
         tv.REPO_JUDGMENTS = originale
 
@@ -158,16 +152,16 @@ def test_davanti_a_un_istantaneo_coperto_per_intero_il_censore_tace():
 @pytest.mark.parametrize("subject,chiave,ignoto", [
     (Subject.DOMAIN, "domini", "domotica_marziana"),
     (Subject.STATE_CLASS, "valori_di_state_class", "misura_marziana"),
-    (Subject.SWITCHABLE, "domini_accendibili", "domotica_marziana"),
-], ids=["domini", "state_class", "accendibili"])
+], ids=["domini", "state_class"])
 def test_ogni_materia_a_elenco_sa_trovare_il_suo_ignoto(subject, chiave, ignoto):
-    """Le tre materie che sono un elenco piatto. Una materia che non sapesse
+    """Le materie che sono un elenco piatto (erano tre fino al 13/10/2026: i
+    domini accendibili sono usciti con M-61). Una materia che non sapesse
     trovare niente sarebbe una sorveglianza che non sorveglia -- e non lo
     direbbe: risponderebbe «tutto a posto».
 
     Mutazione ESEGUITA: in `published_but_unclaimed`, sostituire il ramo della
     materia con `pass` -- la prova di quella materia arrossisce, le altre due
-    restano verdi (che e' il punto di averle separate).
+    resta verde (che e' il punto di averle separate).
     """
     istantaneo = _coperto()
     istantaneo[chiave] = [*istantaneo[chiave], ignoto]
@@ -243,35 +237,6 @@ def test_il_censore_gira_anche_all_incontrario():
     assert "binary_sensor.door" in orfane
 
 
-def test_il_rovescio_vale_anche_per_gli_accendibili():
-    """Ed e' meta' del mandato: la spec §4 dice che la derivazione sbaglia in
-    ENTRAMBI i versi, e `vacuum` -- che noi dichiariamo accendibile e Home
-    Assistant comanda con `start`/`stop` -- e' il caso che lo dimostra. Senza
-    questo verso l'eccezione scritta per `vacuum` non avrebbe nessun soggetto.
-
-    Mutazione ESEGUITA: in `claimed_but_unpublished`, non riempire
-    `found[Subject.SWITCHABLE]` -- la prova arrossisce, e con lei quella sulle
-    eccezioni che non difendono piu' niente.
-    """
-    istantaneo = _coperto()
-    istantaneo["domini"] = [*istantaneo["domini"], "vacuum"]
-    orfani = censore_tipi.claimed_but_unpublished(istantaneo)[Subject.SWITCHABLE]
-    assert "vacuum" in orfani
-
-
-def test_un_dominio_che_questa_casa_non_ha_non_e_un_difetto():
-    """Il rovescio non deve gridare al buco su cio' che semplicemente non c'e':
-    `vacuum` assente da una casa senza aspirapolvere e' un'assenza, non una
-    rivendicazione sbagliata.
-
-    Mutazione ESEGUITA: in `claimed_but_unpublished`, togliere
-    `if domain in domains` -- la prova arrossisce perche' `vacuum` compare su
-    una casa che non lo ha.
-    """
-    orfani = censore_tipi.claimed_but_unpublished(_coperto())[Subject.SWITCHABLE]
-    assert "vacuum" not in orfani
-
-
 # ---------------------------------------------------------------------------
 # L'ISTANTANEO DI QUESTA CASA -- e cio' che il censore ci ha trovato
 # ---------------------------------------------------------------------------
@@ -334,7 +299,8 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
 
     Sono 181 voci (121 classi del dispositivo, 51 stati, 1 valore di
     `state_class`, 1 bit di capacita', 7 domini accendibili -- misurato
-    l'08/09/2026), in cinque materie su sei; dal 04/10/2026 (B-12) quattro,
+    l'08/09/2026), in cinque materie su sei; la materia degli accendibili e'
+    uscita il 13/10/2026 (M-61); dal 04/10/2026 (B-12) quattro,
     perche' anche i valori di `state_class` sono coperti -- i domini erano
     l'unica materia coperta per intero, e lo e' perche' `briefing._DOMAIN_NAMES` era gia' stata
     estesa a mano oltre le 45 piattaforme di Home Assistant.
@@ -350,7 +316,6 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
     # solo che mancava, `measurement_angle`, e' entrato nella regola delle
     # statistiche letta nel sorgente di Home Assistant (B-12).
     assert not tutte[Subject.STATE_CLASS]
-    assert tutte[Subject.SWITCHABLE]
 
 
 def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
@@ -432,8 +397,6 @@ def test_le_domande_chiuse_non_restano_scritte_fra_quelle_aperte():
         (Subject.STATE, state_key("timer", None, "active")),
         (Subject.STATE, state_key("group", None, "ok")),
         (Subject.STATE, state_key("assist_satellite", None, "listening")),
-        (Subject.SWITCHABLE, "remote"),
-        (Subject.SWITCHABLE, "siren"),
     ]
     rimaste = [f"{subject.value}: {name}" for subject, name in chiuse
                if (subject, name) in aperte]
@@ -477,8 +440,9 @@ def test_ogni_eccezione_porta_la_sua_ragione_scritta():
     """«Un'eccezione senza motivo scritto non passa» -- e non e' un buon
     proposito: e' questa riga.
 
-    Mutazione ESEGUITA: mettere `""` come ragione dell'eccezione di `vacuum` --
-    la prova arrossisce nominandola.
+    Mutazione ESEGUITA: mettere `""` come ragione di un'eccezione (era quella
+    di `vacuum`, uscita il 13/10/2026 con gli accendibili, M-61) -- la prova
+    arrossisce nominandola.
     """
     mute = [key for key, reason in EXCEPTIONS.items()
             if not reason or len(reason.strip()) < 40]

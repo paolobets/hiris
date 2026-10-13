@@ -612,11 +612,13 @@ def test_le_righe_non_capite_portano_CHI_e_QUANDO(sapere):
 
 # -- la migrazione 9: le righe che nessuno legge piu' ------------------------
 
-def _archive_at_v8(tmp_path, rows):
-    """Un archivio com'era alla 3.72.2: alla versione 8, con le righe date.
+def _archive_at_v8(tmp_path, rows, version=8):
+    """Un archivio com'era alla 3.72.2: alla versione 8, con le righe date
+    (o alla `version` chiesta).
 
-    Le righe si scrivono con `INSERT` e non con `write()`: `notevole` e
-    `direzione:*` sono campi che il prodotto di oggi non scrive piu'."""
+    Le righe si scrivono con `INSERT` e non con `write()`: `notevole`,
+    `direzione:*` e `accendibile` sono campi che il prodotto di oggi non
+    scrive piu'."""
     path = str(tmp_path / "sapere.db")
     store = sap.KnowledgeStore(path)
     for subject_kind, subject, field, value, provenance in rows:
@@ -625,7 +627,7 @@ def _archive_at_v8(tmp_path, rows):
             " evidence, who, when_ts) VALUES (?,?,?,?,?,?,?,?)",
             (subject_kind, subject, field, value, provenance,
              "una prova" if provenance == "dedotto" else None, "seme del repo", 1.0))
-    store._conn.execute("PRAGMA user_version = 8")
+    store._conn.execute(f"PRAGMA user_version = {int(version)}")
     store._conn.commit()
     store.close()
     return path
@@ -651,7 +653,9 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
     giudizi «da sapere subito» e le loro correzioni.
 
     Mutazioni ESEGUITE, tutte rosse: la migrazione cancella con
-    `field LIKE '%'` (spariscono anche `significato` e `accendibile`);
+    `field LIKE '%'` (spariscono anche `significato` e `riposo`; fino al
+    13/10/2026 la riga di controllo era `accendibile`, uscito con la
+    migrazione 11);
     `_DEAD_FIELD_PREFIX = "d"` (spariscono `da_sapere_subito` e `direzione`);
     un `OR field = 'da_sapere_subito'` in piu' nel `DELETE`. Le ultime due,
     prima dei quasi omonimi, restavano verdi."""
@@ -659,7 +663,7 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
 
     path = _archive_at_v8(tmp_path, [
         ("tipo", "light", "notevole", "si", "nostro"),
-        ("tipo", "light", "accendibile", "si", "nostro"),
+        ("tipo", "light", "riposo", '["off"]', "nostro"),
         ("integrazione", "un_inverter", "direzione:power_importing", "prelievo", "dedotto"),
         ("tipo", "sensor:temperature", "significato", "la temperatura", "importato"),
         ("tipo", "lock", "da_sapere_subito", "jammed", "nostro"),
@@ -670,7 +674,7 @@ def test_la_migrazione_toglie_le_righe_che_nessuno_legge_e_solo_quelle(tmp_path,
     with caplog.at_level(logging.INFO):
         store = sap.KnowledgeStore(path)
     try:
-        assert _fields(store) == [("light", "accendibile"),
+        assert _fields(store) == [("light", "riposo"),
                                   ("lock", "da_sapere_subito"),
                                   ("lock", "direzione"),
                                   ("lock", "notevole_x"),
@@ -708,6 +712,34 @@ def test_la_migrazione_non_gira_due_volte_e_non_parla_se_non_toglie_niente(tmp_p
     try:
         assert _fields(store) == [("light", "notevole"),
                                   ("sensor:temperature", "significato")]
+    finally:
+        store.close()
+
+
+def test_la_migrazione_11_toglie_accendibile_e_solo_lui(tmp_path, caplog):
+    """M-61 (13/10/2026): il giudizio `accendibile` non ha piu' lettori ed e'
+    uscito da `JUDGMENT_FIELD_NAMES`; una riga rimasta nell'archivio
+    fermerebbe l'istantanea dei giudizi all'avvio. Esce ogni riga del campo,
+    anche una corretta a mano, e ognuna si nomina nel registro. Gli altri
+    giudizi dello stesso tipo restano.
+
+    Mutazioni ESEGUITE il 13/10/2026, ripristino verificato con `git status`:
+    il `DELETE` tolto da `_migration_11` -- rossa (le righe restano); il
+    `DELETE` con `field LIKE 'a%'` -- rossa (sparisce anche `attributi`)."""
+    import logging
+
+    path = _archive_at_v8(tmp_path, [
+        ("tipo", "light", "accendibile", "si", "nostro"),
+        ("tipo", "siren", "accendibile", "no", "chiesto"),
+        ("tipo", "light", "riposo", '["off"]', "nostro"),
+        ("tipo", "light", "attributi", '["brightness"]', "nostro"),
+    ], version=10)
+    with caplog.at_level(logging.INFO):
+        store = sap.KnowledgeStore(path)
+    try:
+        assert _fields(store) == [("light", "attributi"), ("light", "riposo")]
+        said = "\n".join(record.getMessage() for record in caplog.records)
+        assert "light/accendibile" in said and "siren/accendibile" in said
     finally:
         store.close()
 

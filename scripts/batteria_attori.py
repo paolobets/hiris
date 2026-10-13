@@ -46,8 +46,9 @@ Dal 05/10/2026 il registro dei turni scrive l'esito `troncato`
 si conta troncato da QUEL campo, col tetto proprio di ogni mestiere -- quale
 fosse il tetto non conta piu'. I turni registrati PRIMA non hanno quell'esito
 (si dicevano «riusciti»): per loro resta la regola di prima, l'uscita
-ESATTAMENTE uguale al tetto di chi non ne dichiara uno
-(`claude_runner.MAX_TOKENS`). E' la regola che ha misurato i 7 su 8
+ESATTAMENTE uguale al tetto di chi non ne dichiarava uno
+(`_OLD_FACTORY_CEILING`, il predefinito di `claude_runner.chat()` uscito il
+13/10/2026). E' la regola che ha misurato i 7 su 8
 dell'analista, e serve a confrontare il dopo con quel prima. Un troncato non
 e' un fallito: le due colonne non si sommano.
 
@@ -117,10 +118,16 @@ if hasattr(sys.stdout, "reconfigure"):
 _ENTITY_SUBJECT = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 #: Gli esiti del turno e i nomi dei mestieri: si CHIEDONO al prodotto, che li
 #: scrive (`steering.misura_turno`, `steering.declare_refused`). La batteria e'
-#: un attrezzo e puo' importarli, come fa gia' con `MAX_TOKENS`. Fino al
-#: 06/10/2026 «riuscito» era una copia scritta qui.
+#: un attrezzo e puo' importarli. Fino al 06/10/2026 «riuscito» era una copia
+#: scritta qui.
 from hiris.app.mind import analyst
 from hiris.app.steering import ANALYST_SPECIES, REFUSED, SPECIE, SUCCEEDED, TRUNCATED
+
+#: Il tetto d'uscita di fabbrica di `claude_runner.chat()`, uscito il
+#: 13/10/2026 (D-13: ogni mestiere dichiara il suo). E' un fatto storico, non
+#: una lettura: serve solo a leggere i turni registrati prima del 05/10/2026,
+#: che non portano l'esito `troncato`.
+_OLD_FACTORY_CEILING = 4096
 
 #: L'etichetta di chi non porta una causa. E' della batteria, non del prodotto:
 #: il prodotto non ha una causa che si chiami cosi'.
@@ -307,7 +314,6 @@ def main() -> None:
     import casa
     import misure
 
-    from hiris.app.claude_runner import MAX_TOKENS
     from hiris.app.mind.analyst_turn import MAX_ANSWER_TOKENS
 
     # Una porta sola verso la casa: anche i turni passano da `casa.hiris_get`.
@@ -323,7 +329,7 @@ def main() -> None:
     since = today - timedelta(days=max(1, int(args.giorni)) - 1)
     result = measure(data=data, watching=watching, reports=reports,
                      live_ids={row["entity_id"] for row in states},
-                     output_ceiling=MAX_TOKENS,
+                     output_ceiling=_OLD_FACTORY_CEILING,
                      ceilings={ANALYST_SPECIES: MAX_ANSWER_TOKENS},
                      analyses=analyses, since_day=since.isoformat())
     print(json.dumps(result, ensure_ascii=False, indent=1))
