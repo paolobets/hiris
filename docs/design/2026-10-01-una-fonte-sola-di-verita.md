@@ -571,7 +571,14 @@ una per una, coi loro casi, quando la tappa le tocca.
 
 ## §8 · I criteri di accettazione dello sprint
 
-1. Il registro dei doppioni è vuoto: ogni voce chiusa cancellando la copia.
+1. Il registro dei doppioni non ha voci aperte: ogni voce chiusa cancellando la copia, o chiusa
+   come **voluta** o **falsa** con la decisione scritta nella riga (il precedente di C-35), oppure
+   **trasferita** a un lavoro dichiarato fuori dallo sprint, con il titolo della voce del BACKLOG
+   che la porta scritto nella riga; `python scripts/registro.py verifica` si ferma se quella voce
+   non c'è o è chiusa. *(Cambiato il 13/10/2026, D1 della Chiusura, decisa da Paolo: prima diceva
+   «è vuoto: ogni voce chiusa cancellando la copia», e le voci dei fogli di stile, della pagina
+   dell'osservatore e del refactor degli agenti si sarebbero potute chiudere solo facendo quei
+   lavori dentro la Chiusura. L'elenco delle trasferite lo approva Paolo, voce per voce.)*
 2. La sonda di parità sulla casa vera dà zero disaccordi su tutte le domande.
 3. Il cancello è attivo nel pre-push e nella CI, senza eccezioni.
 4. La batteria della chat non è peggiorata né in risposte giuste, né in token, né in tempi; i costi

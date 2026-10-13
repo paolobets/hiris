@@ -1,5 +1,61 @@
 # HIRIS — Changelog
 
+## [3.78.0] — L'analista che indaga, gli archivi che seguono la casa, una resa per oggetto: la Tappa 7, la Tappa 8 e la Tappa 9 di «Una fonte sola di verita'», e gli attori, strati 3 e 4 (2026-10-13)
+
+### Perche'
+
+L'analista guardava la casa senza poterla interrogare, e l'attuatore era in pausa dalla 3.72.2 perche' le sue proposte non servivano. Gli archivi ricordavano entita' e dispositivi che la casa non ha piu', con parole diverse da un archivio all'altro. E la stessa entita' usciva in forme diverse dalla chat, dalla pagina della casa e dagli attori. Questo rilascio da' all'analista gli strumenti, prepara il **proponente** che prendera' il posto dell'attuatore (resta fermo finche' l'analista nuovo non e' misurato dal vivo), fa seguire la casa agli archivi e da' a ogni oggetto una resa sola.
+
+### Cosa cambia per chi usa HIRIS
+
+**Gli attori**
+
+- **L'analista indaga.** Riceve un indice della casa invece di trenta colonne, legge la casa con gli strumenti della chat (senza i nomi delle persone, sostituiti da un segnaposto) e ricorda le sue analisi precedenti: «nuova» la decide il codice, e la stessa osservazione con la stessa prova non si ripete. Una risposta rifiutata si scrive, e il giro dopo la corregge.
+- **Le ricette sanno sommare due misure** e calcolare al volo, e la presenza si misura dagli stati.
+- **Il proponente c'e', ma resta fermo.** Prende il posto dell'attuatore: per ogni osservazione costruisce una proposta, ne scrive una da fare a mano, o dice «niente». Ogni proposta porta un livello; serrature e allarme sono sempre `alto`, lo impone il codice, e per un `alto` parte una notifica a ogni amministratore di Home Assistant, ritentata finche' arriva. **In questa versione il suo giro orario non parte**: si accende in un rilascio successivo, dopo la misura dal vivo dell'analista nuovo (piano degli attori, «uno strato per rilascio»).
+- **«Rifalla»** e' un turno del proponente, e funziona anche col giro fermo perche' e' un tuo gesto: stessa porta e stesse regole, su un'osservazione sola. Sul ponte la pagina aspetta l'esito e lo mostra.
+- **«Rendila automatica»** sulle proposte da fare a mano, anche questo un tuo gesto: il proponente compone un'automazione, che arriva fra le costruzioni con anteprima e conferma. Su serrature, allarme, script, scene, automazioni o servizi scritti come modello si rifiuta.
+- **Togli e rimetti dallo scope** dell'osservatore, dalla sua scheda. L'analista puo' chiedere di rimettere solo entita' che la casa ha davvero.
+- **La pagina dell'osservatore mostra gli esiti del proponente** sotto ogni analisi.
+
+**Gli archivi**
+
+- **Gli archivi seguono la casa.** Dopo ogni ricostruzione dell'anagrafe escono dallo scope le entita' che Home Assistant non conosce piu', e dal sapere le ricette dei dispositivi tolti. Non succede se la casa non e' stata letta bene, o se Home Assistant non si e' dichiarato avviato.
+- **Ogni archivio dichiara per quanto tiene**, e una potatura sola alle 03:00 li pota tutti (prima erano otto, con quattro inneschi diversi). La coda del ponte si pota anche a ponte spento.
+- **Le stesse parole per gli stati** di promesse, costruzioni e proposte: `in_attesa`, `disdetta` per il tuo «no», `fallita` per un guasto. La frase leggibile la manda il server, e una disdetta si legge «annullata da te».
+- **Leggere non scrive piu'**: aprire le Costruzioni o i Servizi non cancella ne' cambia niente.
+- **Il dato fermo si affina**: una misura istantanea (temperatura, umidita') perde solo le ore ferme, non il giorno intero. Il resoconto dice quali ore ha escluso.
+- **I resoconti dicono con quali regole sono stati misurati**, e citano l'obiettivo riga per riga.
+- **Un file d'impostazioni rovinato non ferma piu' l'avvio**: vale il predefinito del campo, e il registro lo dice.
+
+**La chat e la casa**
+
+- **Ogni oggetto della casa si descrive in un modo solo**: entita', dispositivo, area, integrazione, automazione, script e ricordo escono con gli stessi campi dalla chat, dalla pagina della casa e dagli attori.
+- **`search` trova anche ricordi e integrazioni** per nome, e apre un oggetto disabilitato quando lo si nomina per id esatto. **Esce lo strumento `fetch`**: i ricordi legati a un oggetto arrivano con la sua scheda. Nella chat restano dodici strumenti.
+- **Le risposte di `search` e `history` hanno un tetto**, uguale alla risposta piu' grande misurata sulla casa (39.134 e 29.376 caratteri). Sopra il tetto si toglie dettaglio e poi voci intere, mai a meta', e la risposta dice quante ne restano.
+- **Gli appuntamenti escono come `dal`/`al`**, con `al` escluso; una durata e' un numero di ore.
+- **L'entita' dice il suo ruolo nella dashboard Energia.**
+- **La pagina della casa** mostra lo stato accanto al nome, i segni «disabilitata», «nascosta in Home Assistant» e «di servizio», l'integrazione e le etichette col nome, e il confronto con Home Assistant. Quando un registro e' caduto dice da quando vale la copia conservata.
+- **Nella pagina Memoria** il nome di un'ancora e' sempre il nome vivo, e quando manca lo dice.
+
+**Modelli, consumi, permessi**
+
+- **La chat distingue un credito o una quota finiti da un errore temporaneo**, e cita la causa detta dal provider invece di inventarne una.
+- **Le pagine Modelli e Consumi usano gli stessi nomi**, presi da una tabella sola dei provider. Il piano in abbonamento si chiama `subscription`, e le sue righe dei consumi migrano da sole.
+- **Ogni rotta ha il suo gesto** (leggere, comandare, amministrare), controllato per ogni soggetto. Il log dell'add-on registra ogni rifiuto a un servizio firmato.
+- **Un servizio firmato e' riconosciuto dalla sua chiave**, non dal nome: due servizi con lo stesso nome hanno due fili. Fili, promesse, costruzioni, ricordi e sapere di prima migrano all'avvio.
+- **Dopo una riconnessione a Home Assistant** i cambi persi nella finestra di scollegamento entrano nel grezzo.
+- **Una costruzione di cui HIRIS non sa se e' stata scritta** si mostra come `incerta` e si puo' rimettere, invece di risultare rifiutata.
+
+### Da sapere
+
+- **Un servizio firmato `utente` non configura piu'**: modelli, impostazioni della chat, obiettivo, azzeramento dei consumi e ricordi rispondono 403. Serve un servizio `amministratore`.
+- **`supervisor_ingress_cidr` e' vuoto di fabbrica**: vuoto vuol dire «decide HIRIS», con la rete del Supervisor. Chi ha gia' scritto un valore lo tiene.
+- **All'avvio HIRIS cancella i file che nessuno legge piu'** in `/data`: `agents.json`, `chatbots.json`, `casa.db` e i contatori `usage*.json` gia' importati, piu' undici file di installazioni precedenti scelti da te l'08/10. Il registro dice nome e dimensione di ognuno. `reference_frame.json` resta. Il backup dell'08/10 e' ancora in Home Assistant.
+- **Escono le 9 proposte da fare a mano del vecchio attuatore** (7 in attesa, 2 rifiutate), con gli esiti che le citavano. Le misure del proponente (spec dell'attuatore §8) partono dal rilascio che lo accendera', non da questo.
+- **Migrazioni degli archivi**: osservazioni, costruzioni (v7), consumi (v6), promesse. Sono idempotenti e dicono nel registro quante righe hanno spostato.
+- L'autoconsumo dell'inverter resta da verificare sui numeri veri, come diceva la 3.77.0.
+
 ## [3.77.0] — Il dato fermo e la dashboard Energia: gli attori, strati 1 e 2 (2026-10-06)
 
 ### Perche'
