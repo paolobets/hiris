@@ -248,6 +248,16 @@ def test_argv_del_ponte_non_offre_nessuno_strumento_della_cli(active_tools):
         f"li' dentro e' uno strumento della CLI offerto al modello di HIRIS.")
 
 
+def test_toolsearch_resta_fuori_dalla_seconda_serratura():
+    """`_LOCAL_TOOLS_DENY` serve se una CLI smettesse di rispettare `--tools`.
+    In quel caso gli strumenti di HIRIS tornano RINVIATI, e la CLI passa da
+    `ToolSearch` per risolverne gli schemi: vietarlo li renderebbe visibili
+    nell'elenco e non chiamabili -- il prompt li afferma e la chiamata non
+    arriva mai. E' il genere di nome che qualcuno «completa» leggendo
+    l'elenco dei tool locali vietati (giro 147, N147-2)."""
+    assert "ToolSearch" not in runner._LOCAL_TOOLS_DENY.split(",")
+
+
 # ---------------------------------------------------------------------------
 # ② LA MCP-CONFIG: una stringa, non un file (dentro c'e' un segreto)
 # ---------------------------------------------------------------------------

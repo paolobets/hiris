@@ -1716,10 +1716,10 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     # **Le due guardie che i fratelli avevano e questo no** (difetto misurato
     # sulla casa vera il 22/09/2026, sei giorni di silenzio).
     #
-    # `status`: un turno ancora `pending` non ha niente da raccogliere, e
-    # provarci produce l'esito finto «il modello non ha risposto» -- che a
-    # valle si legge come un giro gia' fatto. `_collect_recipe_turn` pretende
-    # `decided` da settimane.
+    # `status` (la fa `latest_if_decided`, qui sopra): un turno ancora
+    # `pending` non ha niente da raccogliere, e provarci produce l'esito finto
+    # «il modello non ha risposto» -- che a valle si legge come un giro gia'
+    # fatto.
     #
     # `giorno`: una risposta per un altro giorno non dice niente su oggi.
     # Il giro del proponente lo pretende da sempre.

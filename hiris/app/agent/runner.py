@@ -108,8 +108,9 @@ log = logging.getLogger("hiris.agent")
 # arrivavano RINVIATI: la CLI ci passava per risolverne gli schemi, e vietarlo
 # li avrebbe resi visibili e irraggiungibili. Con `--tools ""` il rinvio si
 # spegne da se' e gli schemi arrivano subito (rapporto FM, v2 contro v4: la
-# stessa richiesta con e senza `ENABLE_TOOL_SEARCH`), quindi la domanda non si
-# pone piu'.
+# stessa richiesta con e senza `ENABLE_TOOL_SEARCH`). Resta fuori lo stesso:
+# questo elenco serve proprio se `--tools` non venisse rispettato, e in quel
+# caso il rinvio torna, e con lui il bisogno di `ToolSearch` (giro 147).
 _LOCAL_TOOLS_DENY = (
     "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,NotebookEdit,NotebookRead,Task"
 )
