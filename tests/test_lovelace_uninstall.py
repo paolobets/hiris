@@ -18,88 +18,46 @@ Cosa difendono i test nuovi -- le tre regole di
   2. e' **idempotente**: al secondo avvio non trova niente e non fa niente;
   3. **non fa cadere l'avvio** e **non tace**: se Home Assistant non risponde
      o rifiuta, la funzione torna dichiarando nel log l'URL da togliere a mano.
+
+Dalla Chiusura (F5, E-01 ed E-06) la disinstallazione passa da `HAClient`
+(`lovelace_resources`, `delete_lovelace_resource`) e non apre piu' una sessione
+WebSocket sua: le prove fingono il FILO con la casa finta comune
+(`scripts/casa_finta.py`), sotto il client vero. E ha una condizione d'uscita
+(M-41): dopo un passaggio pulito scrive il segno in `/data` e non chiede piu'
+niente a Home Assistant.
 """
-import asyncio
-import contextlib
 import os
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+import pathlib
+import sys
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from hiris.app import server
 from hiris.app.action import installation
 
-SLUG = "hiris"
-TOKEN = "test-token"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from casa_finta import SILENT, CasaFinta, Refused, in_turn
+
+SLUG = installation.CARD_FOLDER
 URL_INGRESS_VECCHIO = f"/api/hassio_ingress/{SLUG}/static/hiris-chat-card.js"
 URL_LOCALE_NUDO = f"/local/{SLUG}/hiris-chat-card.js"
 URL_LOCALE_VERSIONATO = f"/local/{SLUG}/hiris-chat-card.js?v=0.4.0"
 
 
-# ---------------------------------------------------------------------------
-# Finti WebSocket (stessa impalcatura del file che questo sostituisce)
-# ---------------------------------------------------------------------------
-
-def _make_ws_mock(messages: list[dict]):
-    """WebSocket finto: `receive_json()` restituisce i messaggi in sequenza."""
-    it = iter(messages)
-
-    async def _receive_json():
-        return next(it)
-
-    ws = AsyncMock()
-    ws.receive_json = _receive_json
-    ws.send_json = AsyncMock()
-    ws.__aenter__ = AsyncMock(return_value=ws)
-    ws.__aexit__ = AsyncMock(return_value=False)
-    return ws
+def _casa(risorse=None, *, elenco=None, cancella=None) -> CasaFinta:
+    """La casa finta con l'elenco delle risorse Lovelace (`risorse`, oppure
+    `elenco`: un `Refused` o `SILENT`) e la risposta alle cancellazioni
+    (`cancella`, di norma `null` come `lovelace/resources/delete`)."""
+    answers = {"lovelace/resources": (lambda extra: risorse) if elenco is None
+               else (lambda extra: elenco),
+               "lovelace/resources/delete": cancella or (lambda extra: None)}
+    return CasaFinta({}, answers=answers)
 
 
-def _make_session_ws(ws_mock):
-    session = AsyncMock()
-    session.ws_connect = MagicMock(return_value=ws_mock)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return session
-
-
-_AUTH_REQUIRED = {"type": "auth_required"}
-_AUTH_OK = {"type": "auth_ok"}
-_AUTH_INVALID = {"type": "auth_invalid"}
-
-
-def _ws_elenco_ok(risorse: list) -> dict:
-    return {"id": 1, "type": "result", "success": True, "result": risorse}
-
-
-def _ws_elenco_ko() -> dict:
-    return {"id": 1, "type": "result", "success": False,
-            "error": {"code": "not_supported", "message": "Not in storage mode"}}
-
-
-def _ws_delete_ok(msg_id: int) -> dict:
-    return {"id": msg_id, "type": "result", "success": True, "result": None}
-
-
-def _ws_delete_ko(msg_id: int) -> dict:
-    return {"id": msg_id, "type": "result", "success": False,
-            "error": {"code": "not_found", "message": "resource not found"}}
-
-
-def _msgs(ws) -> list[dict]:
-    return [c[0][0] for c in ws.send_json.call_args_list]
-
-
-def _cancellazioni(ws) -> list[dict]:
-    return [m for m in _msgs(ws) if m.get("type") == "lovelace/resources/delete"]
-
-
-@contextlib.contextmanager
-def _sessione(ws):
-    with patch("hiris.app.action.installation.aiohttp.ClientSession",
-               return_value=_make_session_ws(ws)):
-        yield
+def _cancellazioni(ha) -> list[str]:
+    return [extra["resource_id"] for t, extra in ha.calls
+            if t == "lovelace/resources/delete"]
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +96,10 @@ async def test_cancella_le_tre_forme_di_url_e_lascia_stare_le_altre():
         {"id": "r4", "url": URL_LOCALE_VERSIONATO, "type": "module"},
         {"id": "r5", "url": "/hacsfiles/button-card/button-card.js", "type": "module"},
     ]
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK, _ws_elenco_ok(risorse),
-        _ws_delete_ok(2), _ws_delete_ok(3), _ws_delete_ok(4),
-    ])
-    with _sessione(ws):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
+    ha = _casa(risorse)
+    assert await installation._deregistra_risorsa_card(ha, SLUG)
 
-    cancellati = [m["resource_id"] for m in _cancellazioni(ws)]
+    cancellati = _cancellazioni(ha)
     assert cancellati == ["r1", "r3", "r4"]
     assert "r2" not in cancellati and "r5" not in cancellati
 
@@ -154,16 +107,10 @@ async def test_cancella_le_tre_forme_di_url_e_lascia_stare_le_altre():
 @pytest.mark.asyncio
 async def test_non_registra_piu_niente():
     """Nessun `lovelace/resources/create`: la card non si reinstalla da sola."""
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK,
-        _ws_elenco_ok([{"id": "r1", "url": URL_LOCALE_VERSIONATO, "type": "module"}]),
-        _ws_delete_ok(2),
-    ])
-    with _sessione(ws):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
+    ha = _casa([{"id": "r1", "url": URL_LOCALE_VERSIONATO, "type": "module"}])
+    await installation._deregistra_risorsa_card(ha, SLUG)
 
-    assert not [m for m in _msgs(ws) if m.get("type") == "lovelace/resources/create"]
+    assert [t for t, _ in ha.calls] == ["lovelace/resources", "lovelace/resources/delete"]
 
 
 # ---------------------------------------------------------------------------
@@ -173,14 +120,9 @@ async def test_non_registra_piu_niente():
 @pytest.mark.asyncio
 async def test_al_secondo_avvio_non_cancella_niente():
     """Elenco senza risorse della card: nessuna delete, nessun errore."""
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK,
-        _ws_elenco_ok([{"id": "r2", "url": "/local/community/x.js", "type": "module"}]),
-    ])
-    with _sessione(ws):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
-    assert _cancellazioni(ws) == []
+    ha = _casa([{"id": "r2", "url": "/local/community/x.js", "type": "module"}])
+    assert await installation._deregistra_risorsa_card(ha, SLUG)
+    assert _cancellazioni(ha) == []
 
 
 def test_file_gia_assenti_non_si_rimuovono_due_volte(tmp_path):
@@ -198,52 +140,34 @@ def test_file_gia_assenti_non_si_rimuovono_due_volte(tmp_path):
 
 @pytest.mark.asyncio
 async def test_home_assistant_irraggiungibile_non_solleva_e_lo_dichiara(caplog):
-    """Rete giu': la funzione torna False e scrive nel log l'URL da togliere."""
-    def _esplode(*a, **k):
-        raise OSError("connection refused")
-
-    with patch("hiris.app.action.installation.aiohttp.ClientSession", side_effect=_esplode), \
-         caplog.at_level("WARNING"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
+    """Rete giu', o autenticazione rifiutata (per `_ws_send` sono lo stesso
+    silenzio): la funzione torna False e scrive nel log l'URL da togliere."""
+    ha = _casa(elenco=SILENT)
+    with caplog.at_level("WARNING"):
+        assert await installation._deregistra_risorsa_card(ha, SLUG) is False
 
     testo = caplog.text
     assert URL_LOCALE_NUDO in testo, "il log deve dire QUALE risorsa e' rimasta"
     assert "Risorse" in testo, "e dove togliersela: il percorso nell'interfaccia HA"
-
-
-@pytest.mark.asyncio
-async def test_auth_rifiutata_non_solleva_e_lo_dichiara(caplog):
-    """Token non valido: nessuna eccezione, e il silenzio non e' ammesso."""
-    ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_INVALID])
-    with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
-    assert "Risorse" in caplog.text
-    assert _cancellazioni(ws) == []
+    assert _cancellazioni(ha) == []
 
 
 @pytest.mark.asyncio
 async def test_lovelace_in_modalita_yaml_lo_dice_senza_fallire(caplog):
     """In modalita' YAML le risorse non si gestiscono: si dice all'utente."""
-    ws = _make_ws_mock([_AUTH_REQUIRED, _AUTH_OK, _ws_elenco_ko()])
-    with _sessione(ws), caplog.at_level("INFO"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
+    ha = _casa(elenco=Refused("not_supported", "Not in storage mode"))
+    with caplog.at_level("INFO"):
+        assert await installation._deregistra_risorsa_card(ha, SLUG)
     assert "lovelace.yaml" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_una_delete_rifiutata_lo_dichiara_con_l_url(caplog):
     """Se HA rifiuta la cancellazione, l'utente sa cosa gli e' rimasto."""
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK,
-        _ws_elenco_ok([{"id": "r1", "url": URL_LOCALE_VERSIONATO, "type": "module"}]),
-        _ws_delete_ko(2),
-    ])
-    with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
+    ha = _casa([{"id": "r1", "url": URL_LOCALE_VERSIONATO, "type": "module"}],
+               cancella=lambda extra: Refused("not_found", "resource not found"))
+    with caplog.at_level("WARNING"):
+        assert await installation._deregistra_risorsa_card(ha, SLUG) is False
     assert URL_LOCALE_VERSIONATO in caplog.text
 
 
@@ -260,16 +184,13 @@ async def test_una_delete_rifiutata_non_abbandona_le_successive(caplog):
         {"id": "r1", "url": URL_LOCALE_NUDO, "type": "module"},
         {"id": "r2", "url": URL_LOCALE_VERSIONATO, "type": "module"},
     ]
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK, _ws_elenco_ok(risorse),
-        _ws_delete_ko(2), _ws_delete_ok(3),
-    ])
-    with _sessione(ws), caplog.at_level("INFO"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        esito = await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG)
+    ha = _casa(risorse, cancella=in_turn(Refused("not_found", "resource not found"),
+                                         None))
+    with caplog.at_level("INFO"):
+        esito = await installation._deregistra_risorsa_card(ha, SLUG)
 
     # La seconda e' stata TENTATA nonostante il fallimento della prima.
-    assert [m["resource_id"] for m in _cancellazioni(ws)] == ["r1", "r2"]
+    assert _cancellazioni(ha) == ["r1", "r2"]
     # L'esito resta negativo: qualcosa e' rimasto.
     assert esito is False
     # E il riepilogo nomina cio' che e' rimasto, non cio' che e' andato via.
@@ -284,13 +205,9 @@ async def test_due_delete_rifiutate_finiscono_entrambe_nel_riepilogo(caplog):
         {"id": "r1", "url": URL_LOCALE_NUDO, "type": "module"},
         {"id": "r2", "url": URL_LOCALE_VERSIONATO, "type": "module"},
     ]
-    ws = _make_ws_mock([
-        _AUTH_REQUIRED, _AUTH_OK, _ws_elenco_ok(risorse),
-        _ws_delete_ko(2), _ws_delete_ko(3),
-    ])
-    with _sessione(ws), caplog.at_level("WARNING"):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
+    ha = _casa(risorse, cancella=lambda extra: Refused("not_found", "resource not found"))
+    with caplog.at_level("WARNING"):
+        assert await installation._deregistra_risorsa_card(ha, SLUG) is False
 
     riepilogo = [r for r in caplog.messages if "rimaste da togliere a mano" in r]
     assert len(riepilogo) == 1, "una riga di riepilogo, non una per risorsa"
@@ -298,60 +215,67 @@ async def test_due_delete_rifiutate_finiscono_entrambe_nel_riepilogo(caplog):
 
 
 # ---------------------------------------------------------------------------
-# fix round 1, Important 1 — "non risponde" non e' "rifiuta"
+# M-41 — una volta: il segno in /data, e i file anche se la risorsa resta
 # ---------------------------------------------------------------------------
+# «Non risponde» non appende piu' l'avvio per costruzione: la disinstallazione
+# gira nel compito dell'installazione, dopo l'avvio (prove in
+# `test_panel_visibility.py`), e il silenzio del client e' quello di
+# `_ws_send`, provato in `test_ha_client_invio.py`.
 
 @pytest.mark.asyncio
-async def test_home_assistant_che_non_risponde_non_appende_l_avvio(caplog):
-    """Connessione che resta PENDENTE (non rifiutata): si molla, entro il tempo.
-
-    Il test gemello sopra fa sollevare `OSError` subito: prova il rifiuto
-    immediato, non l'assenza di risposta. Qui `ws_connect(...).__aenter__()`
-    non torna mai -- e' Home Assistant che sta ancora salendo. Senza il
-    `wait_for` su quella riga valeva il default di aiohttp, cinque minuti
-    dentro `_on_startup` a ogni avvio.
-    """
-    connessione = MagicMock()
-
-    async def _mai_piu(*a, **k):
-        await asyncio.sleep(3600)
-
-    connessione.__aenter__ = _mai_piu
-    connessione.__aexit__ = AsyncMock(return_value=False)
-    sessione = AsyncMock()
-    sessione.ws_connect = MagicMock(return_value=connessione)
-    sessione.__aenter__ = AsyncMock(return_value=sessione)
-    sessione.__aexit__ = AsyncMock(return_value=False)
-
-    inizio = time.monotonic()
-    with (
-        patch("hiris.app.action.installation.aiohttp.ClientSession", return_value=sessione),
-        patch("hiris.app.action.installation._WS_CONNECT_TIMEOUT", 0.05),
-        caplog.at_level("WARNING"),
-    ):
-        from hiris.app.action.installation import _deregistra_risorsa_card
-        assert await _deregistra_risorsa_card("http://supervisor/core", TOKEN, SLUG) is False
-    trascorso = time.monotonic() - inizio
-
-    assert trascorso < 2.0, "l'attesa deve essere limitata, non il default di aiohttp"
-    assert URL_LOCALE_NUDO in caplog.text, "e l'utente deve sapere cosa gli e' rimasto"
-
-
-def test_l_attesa_sulla_connessione_e_dichiarata_e_breve():
-    """Il valore vero, non una promessa nel commento: minuti no, secondi si'."""
-    assert 0 < installation._WS_CONNECT_TIMEOUT <= 30.0
-
-
-@pytest.mark.asyncio
-async def test_i_file_si_tolgono_anche_se_la_deregistrazione_fallisce():
-    """Ordine: prima la risorsa, poi i file -- ma il fallimento non blocca."""
+async def test_i_file_si_tolgono_anche_se_la_deregistrazione_fallisce(tmp_path):
+    """Ordine: prima la risorsa, poi i file -- ma il fallimento non blocca. E
+    il segno non si scrive: al prossimo avvio si riprova."""
     with patch("hiris.app.action.installation._deregistra_risorsa_card",
                AsyncMock(return_value=False)) as dereg, \
-         patch("hiris.app.action.installation._rimuovi_file_card") as rimuovi:
-        from hiris.app.action.installation import disinstalla_card_lovelace
-        await disinstalla_card_lovelace("http://supervisor/core", TOKEN, SLUG)
+         patch("hiris.app.action.installation._rimuovi_file_card",
+               return_value=True) as rimuovi:
+        await installation.disinstalla_card_lovelace(_casa([]), str(tmp_path), SLUG)
     dereg.assert_awaited_once()
     rimuovi.assert_called_once_with(SLUG)
+    assert not (tmp_path / installation.CARD_UNINSTALLED_MARK).exists()
+
+
+@pytest.mark.asyncio
+async def test_un_passaggio_pulito_scrive_il_segno_e_il_prossimo_avvio_non_chiede_niente(
+        tmp_path):
+    """La condizione d'uscita che mancava (M-41): fino alla Chiusura la
+    disinstallazione chiedeva a Home Assistant le risorse a OGNI avvio, per
+    sempre. Dopo un passaggio pulito il segno c'e', e il secondo avvio non
+    apre nessuna connessione.
+
+    Mutazione ESEGUITA (13/10/2026): tolto il ritorno anticipato sul segno
+    -- rossa (il secondo avvio chiede `lovelace/resources`)."""
+    with patch("hiris.app.action.installation.home_assistant_folder", return_value=None):
+        primo = _casa([{"id": "r1", "url": URL_LOCALE_NUDO, "type": "module"}])
+        await installation.disinstalla_card_lovelace(primo, str(tmp_path), SLUG)
+        assert _cancellazioni(primo) == ["r1"]
+        segno = tmp_path / installation.CARD_UNINSTALLED_MARK
+        assert segno.exists()
+        assert "disinstallata" in segno.read_text(encoding="utf-8")
+
+        secondo = _casa([{"id": "r1", "url": URL_LOCALE_NUDO, "type": "module"}])
+        await installation.disinstalla_card_lovelace(secondo, str(tmp_path), SLUG)
+    assert secondo.calls == [] and secondo.connections == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("elenco, cancella, file_puliti", [
+    (SILENT, None, True),
+    (None, lambda extra: Refused("not_found", "x"), True),
+    (None, None, False),
+])
+async def test_un_passaggio_che_lascia_qualcosa_non_scrive_il_segno(
+        tmp_path, elenco, cancella, file_puliti):
+    """Home Assistant zitto, una risorsa rimasta, un file rimasto: il segno non
+    si scrive, e al prossimo avvio si riprova. Mutazione ESEGUITA (13/10/2026):
+    segno scritto sempre -- rossa sui tre casi."""
+    ha = _casa([{"id": "r1", "url": URL_LOCALE_NUDO, "type": "module"}],
+               elenco=elenco, cancella=cancella)
+    with patch("hiris.app.action.installation._rimuovi_file_card",
+               return_value=file_puliti):
+        await installation.disinstalla_card_lovelace(ha, str(tmp_path), SLUG)
+    assert not (tmp_path / installation.CARD_UNINSTALLED_MARK).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +336,7 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
                side_effect=PermissionError("read-only")), \
          caplog.at_level("WARNING"):
         from hiris.app.action.installation import _rimuovi_file_card
-        _rimuovi_file_card(SLUG)
+        assert _rimuovi_file_card(SLUG) is False
     assert "a mano" in caplog.text
 
 
@@ -467,65 +391,34 @@ def test_home_assistant_folder_not_mounted():
 
 
 # ---------------------------------------------------------------------------
-# fix round 1, Minor — il cablaggio: `_on_startup` deve CHIAMARLA
+# Il cablaggio: il compito dell'installazione la chiama, dopo il nucleo
 # ---------------------------------------------------------------------------
-# I test qui sopra esercitano le tre funzioni, ma nessuno verificava che
-# l'avvio le invocasse: un rewire futuro che perdesse quella riga avrebbe
-# spento la disinstallazione **a suite verde**, ed e' esattamente la classe di
-# difetto che questo ramo continua a trovare. Fino al 03/10/2026 il blocco si
-# ritagliava dal testo di `_on_startup` e si eseguiva isolato; adesso l'app si
-# avvia davvero (`tests/_avvio.py::started_with`), con la funzione di modulo
-# sostituita da un doppio che ricorda con cosa l'avvio l'ha chiamata.
-
-async def _uninstall_call():
-    """Gli argomenti con cui l'avvio vero ha chiamato la disinstallazione."""
-    import tempfile
-
-    from tests._avvio import started_with
-
-    disinstalla = AsyncMock()
-    with patch.object(server, "disinstalla_card_lovelace", disinstalla), \
-            tempfile.TemporaryDirectory() as data_dir:
-        async with started_with(data_dir):
-            pass
-    disinstalla.assert_awaited_once()
-    return disinstalla.await_args
-
 
 @pytest.mark.asyncio
-async def test_l_avvio_disinstalla_la_card_con_gli_argomenti_giusti(monkeypatch):
-    """L'avvio vero: chiama, e con cosa. L'indirizzo e' quello che l'avvio
-    legge da `HA_BASE_URL` (il montaggio lo punta a un posto che non
-    risponde).
+async def test_l_installazione_disinstalla_la_card_dopo_la_voce_di_menu(monkeypatch,
+                                                                       tmp_path):
+    """`install` (il compito che `create_app` avvia dopo `_on_startup`) chiama
+    la disinstallazione col client dell'app e la cartella dei dati.
 
-    Mutazione ESEGUITA (03/10/2026): tolta da `_on_startup` la chiamata a
-    `disinstalla_card_lovelace` -- rossa (`Expected mock to have been
-    awaited once. Awaited 0 times.`)."""
-    from tests._avvio import fotografia_porte
-
-    monkeypatch.setenv("HIRIS_SLUG", "hiris-di-casa")
+    Mutazione ESEGUITA (13/10/2026): tolta da `install` la chiamata a
+    `disinstalla_card_lovelace` -- rossa (`Awaited 0 times`)."""
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
+    ha = _casa([])
+    ha.ws_ready.set()
+    app = {"ha_client": ha, "data_dir": str(tmp_path), "non_admin_access": False}
+    ordine = []
 
-    chiamata = await _uninstall_call()
+    async def voce(_app):
+        ordine.append("voce")
 
-    assert chiamata.args == (fotografia_porte.NOWHERE, "token-del-supervisor",
-                             "hiris-di-casa")
+    async def card(client, data_dir):
+        ordine.append(("card", client, data_dir))
 
+    monkeypatch.setattr(installation, "sync_panel_visibility", voce)
+    monkeypatch.setattr(installation, "disinstalla_card_lovelace", card)
+    await installation.install(app)
 
-@pytest.mark.asyncio
-async def test_l_avvio_usa_lo_slug_predefinito_se_HIRIS_SLUG_non_c_e(monkeypatch):
-    """Senza la variabile d'ambiente si disinstalla comunque, da `hiris`.
-
-    Mutazione ESEGUITA (03/10/2026): predefinito di `HIRIS_SLUG` `"hiris"` ->
-    `"hiris-card"` -- rossa."""
-    from tests._avvio import fotografia_porte
-
-    monkeypatch.delenv("HIRIS_SLUG", raising=False)
-    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
-
-    chiamata = await _uninstall_call()
-
-    assert chiamata.args == (fotografia_porte.NOWHERE, "", "hiris")
+    assert ordine == ["voce", ("card", ha, str(tmp_path))]
 
 
 # ---------------------------------------------------------------------------

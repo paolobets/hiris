@@ -199,7 +199,7 @@ options:
   # una scelta di chi amministra la casa, e deve valere prima che HIRIS apra
   # una qualunque delle sue pagine. Spenta per difetto: HIRIS resta ai soli
   # amministratori finche' qualcuno non lo decide. Accesa, la voce di menu si
-  # apre a tutti (`panel_visibility.py`) e il cancello al confine lascia
+  # apre a tutti (`action/installation.py`) e il cancello al confine lascia
   # passare chat, Impegni e memorie di chi non amministra -- nient'altro.
   non_admin_access: false
 

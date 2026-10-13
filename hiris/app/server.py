@@ -16,9 +16,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .action.actuator import ActionActuator
 from .action.construction.revisions import ConstructionStore
 from .action.construction.workshop import Workshop
-from .action.installation import disinstalla_card_lovelace, start_panel_sync
+from .action.installation import start_installation
 from .action.journal import Journal
 from .action.registry import ServiceRegistry
+from .api.admission import parse_access_flag
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import (
     handle_delete_conversation,
@@ -118,7 +119,6 @@ from .mind.seed import (
 from .mind.state_words import prime_state_translations
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
-from .panel_visibility import parse_access_flag
 from .provider_occurrences import OccurrenceRegistry
 from .providers import (
     CLAUDE,
@@ -2692,20 +2692,6 @@ async def _on_startup(app: web.Application) -> None:
     # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
     app["service_registry"] = ServiceRegistry()
 
-    # fetta E5 Task 5: qui l'add-on installava la card Lovelace dentro Home
-    # Assistant (copia in www/, file di ingress, risorsa registrata). La card
-    # e' uscita dal prodotto: adesso quelle tre tracce si **tolgono**, una
-    # volta, riconoscendo solo cio' che l'add-on stesso aveva messo. Vedi il
-    # commento esteso su `disinstalla_card_lovelace`.
-    # NON e' lo slug del Supervisor (`panel_visibility.read_own_slug`): e' il
-    # nome della cartella con cui il vecchio installatore della card la copiava.
-    hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
-    await disinstalla_card_lovelace(
-        ha_base_url,
-        os.environ.get("SUPERVISOR_TOKEN", ""),
-        hiris_slug,
-    )
-
     # Il sapere: cio' che HIRIS ha capito, con la provenienza e le prove
     # (fetta «il sapere e le ricette», 12/09/2026, spec §8).
     #
@@ -3847,14 +3833,14 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
-    # La sincronia della voce di menu (`start_panel_sync`): puo' essere
+    # L'installazione (`start_installation`): puo' essere
     # ancora in attesa del nucleo. Non tiene niente da chiudere, quindi si
     # ferma e si aspetta senza tetto proprio.
-    panel_sync = app.get("panel_sync_task")
-    if panel_sync is not None:
-        panel_sync.cancel()
+    installation = app.get("installation_task")
+    if installation is not None:
+        installation.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await panel_sync
+            await installation
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "home_space_store" in app:
@@ -3959,7 +3945,7 @@ def create_app() -> web.Application:
     # Dopo `_on_startup`, che crea `app["ha_client"]`. Parte in un compito a
     # parte e non si aspetta: l'add-on puo' avviarsi prima del nucleo, e una
     # Home Assistant che non risponde non deve tenere chiuso HIRIS.
-    app.on_startup.append(start_panel_sync)
+    app.on_startup.append(start_installation)
     app.on_cleanup.append(_on_cleanup)
 
     # Spec 2026-09-27 §2: l'opzione dell'add-on e' l'UNICA fonte della scelta,

@@ -47,14 +47,16 @@ _UTENTI = [
      "system_generated": False, "group_ids": ["system-read-only"]}]
 
 
-def _house(utenti=None, **casa) -> CasaFinta:
+def _house(utenti=None, *, answers=None, **casa) -> CasaFinta:
     """Home Assistant per queste prove: il client vero sugli ingressi
     sintetici, con gli utenti di `config/auth/list` (`utenti`, o `_UTENTI`) e
-    una voce nel registro degli errori. `casa` passa `refuse`/`silence`."""
+    una voce nel registro degli errori. `casa` passa `refuse`/`silence`, e
+    `answers` che si aggiungono a quella degli utenti."""
     inputs = synthetic_inputs()
     inputs["system_log"]["voci"] = [{"level": "ERROR", "message": "zigbee giu'"}]
     rows = _UTENTI if utenti is None else utenti
-    return CasaFinta(inputs, answers={"config/auth/list": lambda extra: rows}, **casa)
+    return CasaFinta(inputs, answers={"config/auth/list": lambda extra: rows,
+                                      **(answers or {})}, **casa)
 
 
 def _asked(house: CasaFinta) -> list[str]:
@@ -940,15 +942,16 @@ async def test_una_lettura_dei_ruoli_SENZA_RISPOSTA_si_chiede_una_volta_per_atte
 
 
 @pytest.mark.asyncio
-async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_path,
-                                                            monkeypatch):
+async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_path):
     """1.7: il cancello legge l'opzione e il ruolo, mai l'esito della voce di
     menu. `update_panel` fallisce, l'opzione e' spenta: chi non amministra
     resta fuori."""
-    from hiris.app import panel_visibility
+    from hiris.app.action import installation
 
     rotto = {"code": "unknown_error", "message": "rotto"}
+    slug = {"result": "ok", "data": {"slug": "6354e165_hiris"}}
     app = _compose(tmp_path, access=False,
+                   answers={"supervisor /addons/self/info": lambda extra: slug},
                    refuse={"frontend/update_panel": rotto, "get_panels": rotto})
     chiusa = await aiohttp_client(app)
     ha = app["ha_client"]
@@ -957,13 +960,7 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_
     # si apre.
     ha.ws_ready.set()
 
-    async def slug(_token):
-        return {"slug": "6354e165_hiris"}
-
-    monkeypatch.setattr(panel_visibility, "read_own_slug", slug)
-    # Senza token la sincronia non chiama nessuno (review finale, punto 4).
-    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
-    await panel_visibility.sync_panel_visibility(app)
+    await installation.sync_panel_visibility(app)
 
     assert _asked(ha).count("frontend/update_panel") == 1
     assert await _gate_refused(chiusa, "GET", "/api/config", _persona("u-marta"),
@@ -983,7 +980,7 @@ def test_il_cancello_non_conosce_la_VOCE_DI_MENU():
                   if isinstance(n, ast.ImportFrom)}
         moduli |= {a.name for n in ast.walk(albero) if isinstance(n, ast.Import)
                    for a in n.names}
-        assert not any("panel_visibility" in m for m in moduli), nome
+        assert not any("installation" in m for m in moduli), nome
 
 
 def test_il_cancello_sta_DOPO_il_soggetto_e_PRIMA_del_gestore():

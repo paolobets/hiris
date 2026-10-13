@@ -26,8 +26,9 @@ dentro la finestra d'accoppiamento (`handlers_servizi.ROTTA_APERTA`), l'unica
 superficie che il prodotto non puo' autenticare, che esiste solo nei dieci
 minuti in cui il proprietario l'apre.
 
-Il cancello non conosce la voce di menu (`panel_visibility.py`): la voce e'
-comodita', l'opzione e il ruolo sono il permesso.
+Il cancello non conosce la voce di menu (`action/installation.py`): la voce
+e' comodita', l'opzione e il ruolo sono il permesso. L'opzione la legge
+`parse_access_flag`, qui, una volta sola in `create_app`.
 """
 from __future__ import annotations
 
@@ -49,6 +50,17 @@ from .soffitto import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def parse_access_flag(raw: str | None) -> bool:
+    """L'opzione `non_admin_access`: solo «true» apre. `bashio::config` di un
+    `bool` scrive `true`/`false`; `yes`, `1` e `on` non valgono: su
+    un'opzione che allarga l'accesso ogni forma inattesa resta chiusa.
+
+    Viveva in `panel_visibility.py` accanto alla voce di menu, che e' uscita
+    nella porta dell'installazione (Chiusura, F5): l'opzione e' del cancello,
+    la voce di menu ne e' solo un riflesso."""
+    return (raw or "").strip().lower() == "true"
 
 #: La cartella degli asset: ammessa come RISORSA STATICA, non come nome (vedi
 #: `_resolved`).
