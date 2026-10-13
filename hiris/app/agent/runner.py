@@ -1111,14 +1111,25 @@ def _resolved_tools(occurrence: StreamOccurrence) -> set:
 _ULTIMO_INIT: dict = {}
 
 
-def last_bridge_init() -> dict | None:
-    """L'ultimo `init` osservato, o `None` se nessun turno e' ancora passato.
+# Il vocabolario chiuso di `stato` in `last_bridge_init` (C-30, 13/10/2026):
+# la stessa forma degli altri oggetti diagnostici di `/api/health`, che aprono
+# tutti con `stato` e `perche`.
+INIT_STATES = ("non_visto", "visto")
 
-    `None` significa **non ancora visto**, non «assente»: sono due fatti
-    diversi, e un chiamante che li confondesse leggerebbe un container appena
-    riavviato come un container guasto.
+
+def last_bridge_init() -> dict:
+    """L'ultimo `init` osservato, con il suo `stato`.
+
+    Prima del primo turno lo stato e' `non_visto`, con il perche': **non ancora
+    visto** non e' «assente», e un chiamante che li confondesse leggerebbe un
+    container appena riavviato come un container guasto. La parola lo dice
+    meglio del `None` che c'era fino al 13/10/2026. Dopo, `visto` con i campi
+    dell'`init` e `perche` a `null`.
     """
-    return dict(_ULTIMO_INIT) if _ULTIMO_INIT else None
+    if not _ULTIMO_INIT:
+        return {"stato": "non_visto",
+                "perche": "nessun turno del ponte dall'avvio"}
+    return {"stato": "visto", "perche": None, **_ULTIMO_INIT}
 
 
 def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
