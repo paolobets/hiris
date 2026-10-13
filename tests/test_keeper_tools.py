@@ -1,4 +1,5 @@
 """I tre strumenti delle promesse, e le verifiche che fanno ALLA NASCITA."""
+import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
@@ -359,6 +360,25 @@ async def test_l_istantanea_del_chiedi_resta_alla_profondita_corta(promesse):
 
 
 @pytest.mark.asyncio
+async def test_l_istantanea_passa_dal_filtro_di_riservatezza(promesse):
+    """C-05: la zona di chi si muove non esce dalla promessa se non esce da
+    `search`/`view`/`history`. Prima l'istantanea rendeva l'entita' con
+    `render_entity` e la consegnava senza `privacy.redact_row`: «Lavoro»
+    usciva da `promise` e da `agenda`, e da nessun'altra porta.
+
+    Rossa prima del fix (lo stato era «Lavoro»)."""
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheConUnaPersona())
+    esito = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "verifica dove e' Marta",
+        "quando": _fra(60),
+        "domanda": "e' tornata?", "da_confrontare": ["person.marta"]})
+    misura = esito["promessa"]["istantanea"][0]
+    assert misura["id"] == "person.marta"
+    assert misura["stato"] == "not_home"
+    assert "Lavoro" not in json.dumps(esito, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
 async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_at_birth(promesse):
     """Il cuore della fetta R7: un `chiedi` che nomina un riferimento che lo
     specchio non conosce ("Soggiorno" invece di un entity_id vero, o
@@ -648,3 +668,13 @@ class _CacheFinta(MirrorById):
              "unit": "°C", "domain": "sensor", "device_class": "temperature",
              "state_class": "measurement", "last_changed": None},
         ]
+
+
+class _CacheConUnaPersona(_CacheFinta):
+    """Lo specchio con una persona fuori casa, in una zona che ha un nome."""
+
+    def all_states(self):
+        return super().all_states() + [
+            {"id": "person.marta", "state": "Lavoro", "name": "Marta",
+             "unit": None, "domain": "person", "device_class": None,
+             "state_class": None, "last_changed": None}]

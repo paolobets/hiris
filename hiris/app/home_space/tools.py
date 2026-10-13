@@ -130,6 +130,7 @@ from .privacy import (
     ADMIN_ONLY_HISTORY_KINDS,
     HA_CORE_USER_SERVICES,
     cover_reserved_body,
+    redact_row,
 )
 from .queries import related as _readable_links
 from .queries import view as _view_detail
@@ -2428,8 +2429,11 @@ class ToolDispatcher:
         zone = historian.home_space_zone(self._timezone())
         house = House.read_ids(self._home_space, self._cache, entities)
         now = historian.instant_out(time.time(), zone)
-        return [{**render_entity(house, identifier, "corta", zone=zone,
-                                 judgments=self._judgments), "quando": now}
+        # Il filtro di riservatezza come da `search`/`view`/`history` (C-05):
+        # la zona di chi si muove non esce da una porta sola.
+        return [{**redact_row(render_entity(house, identifier, "corta", zone=zone,
+                                            judgments=self._judgments)),
+                 "quando": now}
                 for identifier in entities]
 
     def _timezone(self) -> str | None:
