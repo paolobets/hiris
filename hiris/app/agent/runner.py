@@ -834,8 +834,8 @@ class StreamOccurrence:
       I blocchi `tool_use` degli eventi `assistant`, NELL'ORDINE in cui la CLI
       li ha emessi -- `[{"tool": nome, "input": argomenti}, ...]`, la STESSA
       forma di `handlers_chat.py` (ramo sincrono): una lista sola, che la
-      chat rende e i raccoglitori degli attori leggono, non due. Lista VUOTA (mai `None`) quando nessuno
-      strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
+      chat rende e i raccoglitori degli attori leggono, non due. Lista VUOTA
+      (mai `None`) quando nessuno strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
       dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
       (`mcp__hiris__remember`), MAI normalizzato: normalizzarlo nasconderebbe il
       caso in cui il modello chiama
