@@ -21,7 +21,15 @@ trova:
   `x.get("dispositivi")`...): le tabelle si chiedono a `reader.TABLES`;
 - le letture di un **campo** dell'anagrafe su cio' che ne e' uscito (`for e in
   ...["entita"]: e.get("area_id")`): i campi si chiedono alle chiavi che
-  `reader._entity`, `_device` e `_area` restituiscono davvero.
+  `reader._entity`, `_device` e `_area` restituiscono davvero;
+- le stesse letture sulle **righe grezze che `House` consegna**
+  (`house.device_entities(...)`, `house.entry(...)`, `house.device(...)`):
+  fino al 13/10/2026 (F7) un attore che scorreva `house.device_entities(d)` e
+  leggeva `e.get("area_id")` -- la regola del collocare ricopiata -- passava,
+  perche' il cancello guardava solo le tabelle lette per nome. Quali metodi
+  consegnano righe grezze si chiede a `House` stessa, eseguendoli sulla casa
+  sintetica e guardando se cio' che restituiscono E' una riga dell'anagrafe
+  (per identita'), non si elenca qui (`raw_row_methods`).
 
 Le funzioni dei giri si chiedono allo schedulatore dell'app avviata (i
 lavori, e i moduli in cui vivono) e al grafo delle chiamate di quei moduli,
@@ -33,6 +41,15 @@ dei giri chieste allo schedulatore: `observer._area_names`,
 `observer.house_lines`, `recipe_turn._device_entities`, `_device_name`,
 `devices_to_ask`, `_named_recipes`, `server.reconsideration_round` (l'anagrafe
 intera per `measure_memory_window`) e `server._report_ingredients`.
+
+Mutazioni ESEGUITE il 13/10/2026 (F7, criterio 6), ripristino verificato con
+`git status`:
+- piantata in `mind/observer.py` una funzione che colloca un'entita' da se'
+  (`for e in house.device_entities(d): e.get("area_id")`) -- rossa
+  (`campo area_id`); senza la derivazione dei metodi era verde;
+- aggiunto a `House` un metodo nuovo che restituisce la voce grezza di un
+  dispositivo, e la stessa funzione piantata che lo usa -- rossa, senza
+  toccare la prova: la derivazione dei metodi e' viva.
 
 Mutazioni ESEGUITE il 04/10/2026, ognuna ripristinata e verificata
 (impronta del file uguale prima e dopo):
@@ -99,8 +116,56 @@ def _base(node: ast.AST) -> ast.AST | None:
     return None
 
 
-def _reads_table(node: ast.AST, tables: frozenset[str]) -> bool:
-    return any(_constant_key(sub) in tables for sub in ast.walk(node))
+def _reads_table(node: ast.AST, tables: frozenset[str],
+                 methods: frozenset[str] = frozenset()) -> bool:
+    """Il nodo legge una tabella dell'anagrafe per nome, o chiede a `House`
+    un metodo che consegna righe grezze."""
+    return any(_constant_key(sub) in tables
+               or (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                   and sub.func.attr in methods)
+               for sub in ast.walk(node))
+
+
+def _sample_arguments(house: House) -> dict[str, str]:
+    """Un identificatore vero della casa sintetica per ogni nome di
+    parametro con cui `House` chiede un oggetto dell'anagrafe."""
+    space = house.home_space
+    return {"entity_id": space["entita"][0]["id"],
+            "device_id": space["dispositivi"][0]["id"],
+            "area_id": space["aree"][0]["id"],
+            "entry_id": space["integrazioni"][0]["entry_id"]}
+
+
+def _is_raw(value, rows: set[int]) -> bool:
+    if isinstance(value, dict):
+        return id(value) in rows
+    if isinstance(value, (list, tuple)):
+        return any(_is_raw(item, rows) for item in value)
+    return False
+
+
+def raw_row_methods(house: House | None = None) -> frozenset[str]:
+    """I metodi pubblici di `House` che restituiscono righe dell'anagrafe
+    COSI' COME SONO (la stessa istanza che sta nelle tabelle), chiesti a
+    `House` eseguendoli: chi ne riceve una e ne legge un campo si rifa' la
+    casa da se'. Un metodo chiamato con parametri che la casa sintetica non
+    sa riempire non si prova, e non si conta."""
+    import inspect
+
+    house = house or _house()
+    rows = {id(row) for table in reader.TABLES
+            for row in house.home_space.get(table) or [] if isinstance(row, dict)}
+    arguments = _sample_arguments(house)
+    found = set()
+    for name, method in inspect.getmembers(House, inspect.isfunction):
+        if name.startswith("_"):
+            continue
+        params = list(inspect.signature(method).parameters)[1:]
+        if not set(params) <= set(arguments):
+            continue
+        if _is_raw(method(house, *(arguments[p] for p in params)), rows):
+            found.add(name)
+    return frozenset(found)
 
 
 def _bound_names(target: ast.AST) -> set[str]:
@@ -108,16 +173,19 @@ def _bound_names(target: ast.AST) -> set[str]:
 
 
 def scan_function(func: ast.AST, tables: frozenset[str],
-                  fields: frozenset[str]) -> list[str]:
+                  fields: frozenset[str],
+                  methods: frozenset[str] = frozenset()) -> list[str]:
     """Le letture dell'anagrafe dentro UNA funzione: «tabella X» per ogni
     tabella letta, «campo Y» per ogni campo letto su un nome che viene da
-    una tabella (un ciclo, una comprensione, un assegnamento)."""
+    una tabella o da un metodo di `House` che consegna righe grezze (un
+    ciclo, una comprensione, un assegnamento)."""
     found: list[str] = []
     tainted: set[str] = set()
     for node in ast.walk(func):
-        if isinstance(node, (ast.For, ast.comprehension)) and _reads_table(node.iter, tables):
+        if (isinstance(node, (ast.For, ast.comprehension))
+                and _reads_table(node.iter, tables, methods)):
             tainted |= _bound_names(node.target)
-        elif isinstance(node, ast.Assign) and _reads_table(node.value, tables):
+        elif isinstance(node, ast.Assign) and _reads_table(node.value, tables, methods):
             for target in node.targets:
                 tainted |= _bound_names(target)
     for node in ast.walk(func):
@@ -190,9 +258,10 @@ def actor_functions(app) -> dict[str, ast.AST]:
 
 def violations(functions: dict[str, ast.AST]) -> dict[str, list[str]]:
     tables, fields = frozenset(reader.TABLES), anagrafe_fields()
+    methods = raw_row_methods()
     out = {}
     for name, func in functions.items():
-        found = scan_function(func, tables, fields)
+        found = scan_function(func, tables, fields, methods)
         if found:
             out[name] = sorted(set(found))
     return out
@@ -228,6 +297,26 @@ async def test_la_derivazione_non_si_e_svuotata(started_app):
         "    return [r.get('area_id') for r in rows]\n")
     found = violations({f.name: f for f in _functions(planted)})
     assert found == {"f": ["campo area_id", "tabella entita"]}
+
+
+def test_le_righe_grezze_di_house_si_chiedono_a_house():
+    """La derivazione dei metodi non si e' svuotata: i tre che oggi
+    consegnano righe grezze ci sono, e quelli che compongono (il nome vivo, il
+    luogo ereditato, le entita' guardate) no. E una funzione piantata che
+    colloca un'entita' leggendo il campo da una riga di `House` si vede."""
+    methods = raw_row_methods()
+    assert {"device_entities", "entry", "device"} <= methods, sorted(methods)
+    assert not {"name", "where", "entities_of"} & methods, sorted(methods)
+    planted = ast.parse(
+        "def f(house, d):\n"
+        "    return [e.get('area_id') for e in house.device_entities(d)]\n"
+        "def g(house, eid):\n"
+        "    row = house.entry(eid)\n"
+        "    return row['dispositivo_id']\n"
+        "def h(house, eid):\n"
+        "    return house.where(eid).get('area_id')\n")
+    found = violations({f.name: f for f in _functions(planted)})
+    assert found == {"f": ["campo area_id"], "g": ["campo dispositivo_id"]}, found
 
 
 # -- cio' che gli attori ricevono, sulla casa sintetica (D1, D2, D3) ---------

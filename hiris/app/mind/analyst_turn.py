@@ -178,7 +178,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
             "ripetute": repeated}
 
 
-def _enrich(line: dict, number: int, known: dict, problems: list,
+def _enrich(line: dict, number: int, known: list[dict], problems: list,
             days: list[str]) -> dict | None:
     """Un'osservazione validata e completata coi numeri della serie."""
     written = [f for f in NUMERIC_FIELDS if f in line]
@@ -354,7 +354,20 @@ Niente numeri: li mette il codice. Un elenco vuoto va benissimo."""
 def build_question(series: dict, previous: list[dict] | None = None, *,
                    refused: list[str] | None = None,
                    presence=None) -> str | None:
-    """La domanda intera, o `None` se non c'e' niente da analizzare.
+    """La domanda intera per la catena, col contratto di risposta in fondo, o
+    `None` se non c'e' niente da analizzare. Il ponte prende la domanda senza
+    contratto (`build_question_body`) e il contratto come `istruzione`: sul
+    ponte viaggiava due volte (D-05, 13/10/2026), come l'osservatore aveva
+    gia' smesso di fare."""
+    body = build_question_body(series, previous, refused=refused, presence=presence)
+    return None if body is None else body + "\n" + ANSWER_CONTRACT
+
+
+def build_question_body(series: dict, previous: list[dict] | None = None, *,
+                        refused: list[str] | None = None,
+                        presence=None) -> str | None:
+    """La domanda senza il contratto di risposta, o `None` se non c'e' niente
+    da analizzare.
 
     `refused` sono i problemi della risposta di prima, se e' stata rifiutata
     (D10, `steering.refused_problems`): il giro che riprova li rimette nella
@@ -416,7 +429,6 @@ def build_question(series: dict, previous: list[dict] | None = None, *,
             lines.append("- " + json.dumps(shown, ensure_ascii=False))
         lines.append("")
     lines.extend(refused_lines(refused))
-    lines.append(ANSWER_CONTRACT)
     question = "\n".join(lines)
     return presence.mask(question) if presence is not None else question
 
@@ -468,7 +480,8 @@ def bridge_turn(series: dict, previous: list[dict] | None = None, *,
     `istruzione` serve perche' altrimenti l'istruzione di chiusura della chat
     gli vieta il JSON che qui si chiede.
     """
-    question = build_question(series, previous, refused=refused, presence=presence)
+    question = build_question_body(series, previous, refused=refused,
+                                   presence=presence)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],

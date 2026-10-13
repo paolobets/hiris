@@ -21,7 +21,7 @@ risposta di `/api/services` la apre `action/registry.py` (`_detail`,
 `field_filter`), le `device_class` le distilla la stessa
 `published_device_classes` che il seme del sapere legge. Qui sopra stanno solo
 le viste che nessuna riga del prodotto chiede -- domini, stati per tipo,
-valori di `state_class`, bit di capacita', domini accendibili -- e che fino al
+valori di `state_class`, bit di capacita' -- e che fino al
 02/10/2026 vivevano dentro il prodotto con questo script come unico chiamante.
 
 **Tre letture, e nessuna e' in piu' rispetto a quelle di ogni giorno**:
@@ -197,13 +197,6 @@ def published_state_classes(resources) -> frozenset[str]:
 # casi su 604 campi), e indovinare il dominio del servizio sarebbe la stessa
 # bugia detta al contrario.
 
-#: I servizi che, presi insieme, dicono «questo dominio si accende e si
-#: spegne». Sono i nomi che Home Assistant registra, non una nostra idea di
-#: interruttore: `turn_on` **e** `turn_off`, oppure `toggle`.
-_SWITCH_SERVICES = ("turn_on", "turn_off")
-_TOGGLE_SERVICE = "toggle"
-
-
 def single_bits(value) -> frozenset[int]:
     """Un valore di `supported_features` -> i bit che lo compongono.
 
@@ -323,34 +316,6 @@ def capability_bits(registry) -> dict:
 # `capability_bits`, senza bisogno di una seconda funzione mai chiamata.
 
 
-def switchable_domains(registry) -> dict:
-    """I domini che Home Assistant dichiara accendibili -- 16, misurati.
-
-    **E' una DERIVAZIONE, non un giudizio**, e non sostituisce il nostro: la
-    spec (§4) lo dice per esteso -- questa lista guadagna `automation`,
-    `script`, `input_boolean`, `camera`, `remote`, `siren` e `homeassistant`,
-    dove `on` significa «abilitata» e non «accesa», e perde `vacuum`, che Home
-    Assistant comanda con `start`/`stop`. Serve a SORVEGLIARE il giudizio, e
-    chi la legge come un elenco di interruttori riapre un difetto gia'
-    pagato: le ragioni stanno nelle eccezioni di `censore_tipi.py`.
-
-    **Sono domini di SERVIZIO**, non di entita': `homeassistant` sta qui e non
-    e' un dominio di entita'. E' un fatto della derivazione, non un difetto --
-    ed e' una delle sette eccezioni che il censore dovra' motivare.
-    """
-    if registry is None:
-        return unreachable("il registro dei servizi non e' collegato a questa istanza")
-    if registry.empty():
-        return unreachable("il registro dei servizi non e' mai stato letto da "
-                           "Home Assistant")
-    domains = set()
-    for domain in registry.domains():
-        names = set(registry.services_for(domain))
-        if _TOGGLE_SERVICE in names or set(_SWITCH_SERVICES) <= names:
-            domains.add(domain)
-    return known(frozenset(domains))
-
-
 class _ReadRegistry:
     """Il minimo che `action/registry.py` chiede per rispondere: quel modulo e'
     l'unico posto in cui la forma di `/api/services` va capita, e questo guscio
@@ -424,7 +389,7 @@ async def read_house(url: str, token: str) -> dict:
 
 
 def distill(resources, services, states, *, ha_version, language) -> dict:
-    """Le sei materie, dalle funzioni del prodotto. Pura: nessuna rete."""
+    """Le cinque materie, dalle funzioni del prodotto. Pura: nessuna rete."""
     registry = _ReadRegistry(services)
     live_domains = {entity["entity_id"].split(".")[0]
                     for entity in states or []
@@ -435,10 +400,9 @@ def distill(resources, services, states, *, ha_version, language) -> dict:
     per_type = published_states(resources)
     state_classes = published_state_classes(resources)
     bits = capability_bits(registry)
-    switchable = switchable_domains(registry)
-    if not bits.get("lette") or not switchable.get("lette"):
+    if not bits.get("lette"):
         raise ReadingFailed("il registro dei servizi non si e' potuto leggere: "
-                            + str(bits.get("motivo") or switchable.get("motivo")))
+                            + str(bits.get("motivo")))
 
     states_written: dict[str, dict[str, list[str]]] = {}
     for (domain, device_class), values in per_type.items():
@@ -458,8 +422,6 @@ def distill(resources, services, states, *, ha_version, language) -> dict:
         censore_tipi.SNAPSHOT_KEYS[censore_tipi.Subject.STATE_CLASS]: sorted(state_classes),
         censore_tipi.SNAPSHOT_KEYS[censore_tipi.Subject.CAPABILITY_BIT]: {
             domain: sorted(values) for domain, values in sorted(bits["valore"].items())},
-        censore_tipi.SNAPSHOT_KEYS[censore_tipi.Subject.SWITCHABLE]:
-            sorted(switchable["valore"]),
     }
 
 

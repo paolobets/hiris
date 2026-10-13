@@ -171,10 +171,11 @@ async def handle_set_judgment(request) -> web.Response:
 
     Corpo: `{"soggetto_genere", "soggetto", "campo", "valore"}`; `valore: null`
     torna al seme. Torna l'esito di `mind/judgments.write_judgment`:
-    `{"riga": {...} | null, "impronta": ..., "provenienza_istantanea": "sapere"}`
-    -- **non** `da`, che in `giudizi` e' l'origine della riga e qui sarebbe la
-    provenienza dell'istantanea: due cose, due parole (giro di correzioni 1,
-    punto 3).
+    `{"riga": {...} | null, "istantanea": {"stato", "perche", "impronta"}}`
+    -- l'istantanea INTERA, lo stesso oggetto di `/api/health` (C-30), e non
+    le sue chiavi sciolte accanto alla riga: `da` in `giudizi` e' l'origine
+    della riga, lo `stato` dell'istantanea e' un'altra cosa (giro di
+    correzioni 1, punto 3).
 
     **Un `valore` MANCANTE e' un 400, non un ritorno al seme**: un campo
     dimenticato da chi chiama cancellerebbe in silenzio una correzione.
@@ -224,9 +225,7 @@ async def handle_set_judgment(request) -> web.Response:
         return error_response(503, str(failed))
     except JudgmentNotInEffect as unused:
         return error_response(
-            409, str(unused), riga=unused.row,
-            impronta=unused.status["impronta"],
-            provenienza_istantanea=unused.status["provenienza_istantanea"])
+            409, str(unused), riga=unused.row, istantanea=unused.status)
     return web.json_response(outcome)
 
 

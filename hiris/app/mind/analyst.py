@@ -30,6 +30,7 @@ from __future__ import annotations
 import time as _time
 
 from ..home_space.house import ENDED_SOURCE_STATES
+from .operations import COVERAGE_LOW, NO_ANSWER, NotComputable
 from .scope import ANALYST, OWNER
 
 #: Quanti giorni di storia servono per parlare di scostamento. **Due punti non
@@ -86,8 +87,13 @@ def with_deviation(series: dict) -> dict:
 def _deviation(values: list) -> dict:
     """Quanto l'ultimo valore si discosta dalla **sua** storia.
 
-    Torna `{ultimo, mediana, scarto, quanti_scarti, base}`, e
-    `non_calcolabile` con la ragione quando il conto non si puo' fare.
+    Torna `{ultimo, mediana, scarto, quanti_scarti, base}`, e il rifiuto
+    quando il conto non si puo' fare: `non_calcolabile` e `causa`, la forma
+    di ogni altro «non lo so» (`NotComputable.as_fields`, B-27, 13/10/2026 --
+    fino a quel giorno qui c'era la sola frase). Le cause sono quelle del
+    vocabolario chiuso: una storia troppo corta e' `copertura_bassa` («non ha
+    abbastanza punti per l'operazione»), una storia che non varia e' una
+    domanda senza risposta (`senza_risposta`, «serie che non varia»).
 
     **Mediana e scarto assoluto mediano, non media e deviazione standard.** Con
     venti punti un solo giorno storto sposta la media e nasconde tutto il
@@ -109,9 +115,9 @@ def _deviation(values: list) -> dict:
                  "quanti_scarti": None, "base": len(history)}
 
     if not isinstance(last, (int, float)) or isinstance(last, bool):
-        out["non_calcolabile"] = (
+        out.update(NotComputable(
             "l'ultimo valore non e' un numero: non si puo' sottrarre da una "
-            "storia")
+            "storia", cause=COVERAGE_LOW).as_fields())
         return out
     # **La mediana si calcola comunque**, anche su una storia troppo corta: e'
     # cio' che si sa, e «la base e' sottile» e' un numero da consegnare al
@@ -122,9 +128,9 @@ def _deviation(values: list) -> dict:
         out["scarto"] = _median([abs(v - middle) for v in history])
 
     if len(history) < MINIMUM_HISTORY:
-        out["non_calcolabile"] = (
+        out.update(NotComputable(
             f"la storia e' di {len(history)} giorni: sotto {MINIMUM_HISTORY} "
-            "non c'e' niente da cui discostarsi")
+            "non c'e' niente da cui discostarsi", cause=COVERAGE_LOW).as_fields())
         return out
 
     middle = out["mediana"]
@@ -138,13 +144,12 @@ def _deviation(values: list) -> dict:
         # che oggi e' ancora uguale e' il secondo. Le frasi lo dicono, e
         # mediana e ultimo sono li' perche' la differenza si legga.
         if last != middle:
-            out["non_calcolabile"] = (
-                "la storia e' identica tutti i giorni e oggi no: non c'e' uno "
-                "scarto da cui misurare, e il cambiamento e' la notizia")
+            reason = ("la storia e' identica tutti i giorni e oggi no: non c'e' "
+                      "uno scarto da cui misurare, e il cambiamento e' la notizia")
         else:
-            out["non_calcolabile"] = (
-                "questa misura non varia mai nella sua storia: non c'e' uno "
-                "scarto da cui misurare, e il fatto stesso e' la notizia")
+            reason = ("questa misura non varia mai nella sua storia: non c'e' "
+                      "uno scarto da cui misurare, e il fatto stesso e' la notizia")
+        out.update(NotComputable(reason, cause=NO_ANSWER).as_fields())
         return out
     out["quanti_scarti"] = round((last - middle) / spread, 2)
     return out
@@ -208,6 +213,7 @@ def index_row(row: dict, days: list[str]) -> dict:
            "giorni_con_valore": sum(v is not None for v in values)}
     if deviation.get("non_calcolabile"):
         out["non_calcolabile"] = deviation["non_calcolabile"]
+        out["causa"] = deviation.get("causa")
     cause = cause_today(row, days)
     if cause is not None:
         out["causa_oggi"] = cause

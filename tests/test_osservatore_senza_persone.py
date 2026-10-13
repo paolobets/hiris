@@ -146,7 +146,33 @@ def test_una_casa_SENZA_persone_ha_la_domanda_di_prima():
                    "aree": []}, Mirror(state={"climate.camera_t": "heat"}))
     lines = observer.house_lines(house)
     assert lines == ["climate.camera_t · Termostato Camera"]
-    assert "segnaposto" not in observer.build_house_question("x", lines)
+    assert observer.masks_presences(house) is False
+    assert "segnaposto" not in observer.build_house_question(
+        "x", lines, masked=observer.masks_presences(house))
+
+
+def test_la_domanda_spiega_il_segnaposto_e_lo_chiede_agli_id_non_alla_riga(
+        archivio, monkeypatch):
+    """D-54 (13/10/2026): se fra le righe c'e' un segnaposto, la domanda lo
+    spiega -- sul ponte e sulla catena. Lo si chiede agli id del lotto
+    (`masks_presences`), non spezzando la riga scritta per il modello: si
+    cambia la resa e si guarda che la frase resti.
+
+    Mutazioni ESEGUITE il 13/10/2026, ripristino verificato con `git status`:
+    `masks_presences` che torna sempre `False` -- rossa (la frase manca sul
+    ponte); il vecchio `masked` che spezza la riga sul separatore, con una
+    resa che non comincia piu' dall'id -- rossa (la frase manca)."""
+    from hiris.app.home_space import render
+    house = _house()
+    assert observer.masks_presences(house) is True
+    assert observer.masks_presences(house, only={"climate.camera_t"}) is False
+    vera = render.entity_line
+    monkeypatch.setattr(observer, "entity_line",
+                        lambda *a, **kw: "riga · " + vera(*a, **kw))
+    turn = observer.bridge_turn(archivio, house)
+    assert observer.PRESENCE_HINT in turn["history"][0]["content"]
+    assert observer.PRESENCE_HINT in observer.build_question(
+        "x", observer.house_lines(house), masked=observer.masks_presences(house))
 
 
 def test_una_persona_che_tace_non_torna_col_suo_id_nella_domanda_che_apre(archivio):

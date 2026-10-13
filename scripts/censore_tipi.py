@@ -15,11 +15,12 @@ mandato -- accorgersene si', da soli; aggiornare il giudizio no, perche' una
 lista che SEMBRA verificata e non lo e' e' peggio di una lista dichiaratamente
 vecchia.
 
-**Sei materie.** Le cinque del piano -- domini, `device_class` per dominio,
-stati per tipo, valori di `state_class`, bit di capacita' per dominio -- piu'
-i **domini accendibili**, che la spec §4 impone di sorvegliare («il derivato
-non sostituisce il giudizio: lo SORVEGLIA») e senza la quale le otto eccezioni
-che quella stessa spec richiede non avrebbero nessun soggetto.
+**Cinque materie**, quelle del piano: domini, `device_class` per dominio,
+stati per tipo, valori di `state_class`, bit di capacita' per dominio. La
+sesta, i **domini accendibili** (la spec §4: «il derivato non sostituisce il
+giudizio: lo SORVEGLIA»), e' uscita il 13/10/2026 insieme al giudizio
+`accendibile` che sorvegliava (M-61): nessun lettore del prodotto decideva
+niente con lui, e una sorveglianza senza giudizio non confronta niente.
 
 **Costa zero chiamate nuove.** Entrambe le fonti sono gia' in memoria: le 801
 chiavi di `frontend/get_translations` stanno in `StateTranslations`, il
@@ -112,7 +113,6 @@ SNAPSHOT_KEYS = MappingProxyType({
     Subject.STATE: "stati_per_tipo",
     Subject.STATE_CLASS: "valori_di_state_class",
     Subject.CAPABILITY_BIT: "bit_per_dominio",
-    Subject.SWITCHABLE: "domini_accendibili",
 })
 
 
@@ -246,13 +246,6 @@ def claimed_capability_bits(domain: str) -> frozenset[int]:
     return frozenset(table or ())
 
 
-def claimed_switchable_domains() -> frozenset[str]:
-    """I domini accendibili che il repo rivendica -- dall'istantanea del solo
-    seme (spec 2026-09-16 §3), non piu' da `type_vocabulary.operable_domains()`
-    letta a mano: stessa fonte di `claimed_states` qui sopra."""
-    return type_vocabulary.REPO_JUDGMENTS.operable_domains()
-
-
 # --------------------------------------------------------------------------
 # IL CONFRONTO
 # --------------------------------------------------------------------------
@@ -303,10 +296,6 @@ def published_but_unclaimed(snapshot) -> dict[Subject, tuple[str, ...]]:
             if bit not in claimed:
                 found[Subject.CAPABILITY_BIT].add(bit_key(domain, bit))
 
-    for domain in _as_set(snapshot.get(SNAPSHOT_KEYS[Subject.SWITCHABLE])):
-        if domain not in claimed_switchable_domains():
-            found[Subject.SWITCHABLE].add(domain)
-
     return {subject: tuple(sorted(names)) for subject, names in found.items()}
 
 
@@ -328,14 +317,6 @@ def claimed_but_unpublished(snapshot) -> dict[Subject, tuple[str, ...]]:
     cancellare un giudizio corretto perche' il dispositivo non e' ancora
     arrivato.
 
-    **E i domini accendibili**, dove il rovescio e' meta' del mandato: la spec
-    §4 dice che la derivazione sbaglia in ENTRAMBI i versi, e `vacuum` -- che
-    HIRIS dichiara accendibile e Home Assistant comanda con `start`/`stop` --
-    e' il caso che lo dimostra. Senza questo verso, l'eccezione scritta per
-    `vacuum` non avrebbe nessun soggetto: sarebbe una riga che difende una
-    scelta che nessuno vede piu' fare, cioe' la forma esatta del difetto
-    `damper`.
-
     Un dominio che questa casa non ha caricato non conta: non e' sbagliato,
     e' assente. Il rovescio guarda **dentro cio' che l'istantaneo porta**.
     """
@@ -348,13 +329,8 @@ def claimed_but_unpublished(snapshot) -> dict[Subject, tuple[str, ...]]:
             continue
         if device_class not in _as_set(published.get(domain)):
             orphans.add(key)
-    domains = _as_set(snapshot.get(SNAPSHOT_KEYS[Subject.DOMAIN]))
-    derived = _as_set(snapshot.get(SNAPSHOT_KEYS[Subject.SWITCHABLE]))
-    ours_only = {domain for domain in claimed_switchable_domains()
-                 if domain in domains and domain not in derived}
     found = {subject: () for subject in SUBJECTS}
     found[Subject.DEVICE_CLASS] = tuple(sorted(orphans))
-    found[Subject.SWITCHABLE] = tuple(sorted(ours_only))
     return found
 
 
@@ -369,48 +345,6 @@ def claimed_but_unpublished(snapshot) -> dict[Subject, tuple[str, ...]]:
 # nessuno fa piu', ed e' l'esatta forma del difetto `damper`.
 
 EXCEPTIONS: dict[tuple[Subject, str], str] = {
-    # -- i domini accendibili: la derivazione SORVEGLIA il giudizio, non lo
-    #    sostituisce (spec §4). Sedici derivati contro dieci nostri, e la
-    #    differenza sta tutta qui sotto.
-    (Subject.SWITCHABLE, "automation"): (
-        "`on` significa «abilitata», non «accesa»: un'automazione attiva e' il "
-        "riposo di quella casa, non un funzionamento in corso. Misurato -- con "
-        "`automation`, `script` e `input_boolean` dentro, 18 entita' di questa "
-        "casa erano riposo travestito da eccezione."),
-    (Subject.SWITCHABLE, "script"): (
-        "Come `automation`: `on` dice che lo script e' abilitato -- e per la "
-        "manciata di secondi in cui gira, che sta girando. Dichiararlo "
-        "accendibile aprirebbe un episodio di funzionamento su ogni script "
-        "abilitato della casa."),
-    (Subject.SWITCHABLE, "input_boolean"): (
-        "Come `automation`: e' un interruttore che l'utente crea per farci "
-        "sopra delle condizioni, non un apparecchio che si accende."),
-    (Subject.SWITCHABLE, "camera"): (
-        "Gli stati che Home Assistant pubblica per `camera` sono `idle`, "
-        "`recording` e `streaming` -- misurato: nessun `on`, nessun `off` da "
-        "cui dedurre un riposo. `camera.turn_on` comanda la registrazione "
-        "dell'integrazione, non un apparecchio di casa."),
-    (Subject.SWITCHABLE, "homeassistant"): (
-        "Non e' un dominio di ENTITA': e' il dominio dei servizi di sistema "
-        "(`homeassistant.turn_on` e' il servizio universale). Misurato -- non "
-        "compare ne' fra i domini che le traduzioni pubblicano ne' fra quelli "
-        "vivi. Non c'e' nessun tipo da dichiarare accendibile."),
-    (Subject.SWITCHABLE, "vacuum"): (
-        "L'eccezione al contrario, ed e' NOSTRA: l'aspirapolvere si accende e "
-        "si spegne eccome, ma Home Assistant lo comanda con "
-        "`start`/`stop`/`return_to_base`, quindi la derivazione non lo vede. "
-        "E' il caso che dimostra che il derivato non puo' sostituire il "
-        "giudizio: sbaglia in ENTRAMBI i versi (spec §4)."),
-    (Subject.SWITCHABLE, "lawn_mower"): (
-        "Identica a `vacuum`, e non e' una coincidenza: il proprietario ha "
-        "deciso l'08/09/2026 che il tosaerba si tratta come l'aspirapolvere -- "
-        "stessa forma, `docked` a riposo. Home Assistant lo comanda allo stesso "
-        "modo (`start_mowing`/`pause`/`dock`, non `turn_on`/`turn_off`), quindi "
-        "la derivazione non lo vede, ed e' la SECONDA voce del verso opposto: "
-        "il derivato sbaglia in entrambi i sensi, e sbaglia per la stessa "
-        "ragione tutte le volte -- un apparecchio che si accende e si spegne "
-        "ma che HA comanda con verbi propri."),
-
     # -- i valori di `state_class`: nessuna eccezione dal 04/10/2026. L'unico
     # che c'era, `measurement_angle`, e' rivendicato da
     # `ha_vocabulary.STATE_CLASSES_WITH_STATISTICS` da quando la regola delle
@@ -555,12 +489,11 @@ EXCEPTIONS.update(_same_reason(
     Subject.STATE,
     (state_key("automation", None, "off"), state_key("script", None, "off"),
      state_key("input_boolean", None, "off"), state_key("schedule", None, "off")),
-    "`off` qui significa «disabilitata», non «spenta»: e' il rovescio esatto "
-    "dell'`on` per cui questi stessi domini sono esclusi dagli accendibili "
-    "(vedi le loro eccezioni qui sopra). Non c'e' nessun apparecchio che si "
-    "ferma, quindi non c'e' nessun episodio da chiudere. `schedule` non era "
-    "nell'elenco degli accendibili -- Home Assistant non gli da' "
-    "`turn_on`/`turn_off` -- ma e' la stessa famiglia e la stessa ragione."))
+    "`off` qui significa «disabilitata», non «spenta»: un'automazione, uno "
+    "script o un interruttore d'appoggio attivi sono il riposo di quella casa, "
+    "non un funzionamento in corso. Non c'e' nessun apparecchio che si "
+    "ferma, quindi non c'e' nessun episodio da chiudere. `schedule` e' la "
+    "stessa famiglia e la stessa ragione."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
@@ -615,8 +548,7 @@ EXCEPTIONS.update(_same_reason(
     Subject.STATE,
     (state_key("camera", None, state)
      for state in ("idle", "recording", "streaming")),
-    "FUORI, deciso dal proprietario l'08/09/2026, e coerente con l'esclusione "
-    "gia' scritta fra gli accendibili: `recording`/`streaming` dicono cosa fa "
+    "FUORI, deciso dal proprietario l'08/09/2026: `recording`/`streaming` dicono cosa fa "
     "l'INTEGRAZIONE con quel flusso, non cosa fa un apparecchio di casa -- e "
     "non c'e' nessun `off` da cui dedurre un riposo."))
 

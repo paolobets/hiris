@@ -14,7 +14,8 @@ import pytest
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.type_judgments import TypeJudgments
-from hiris.app.mind.facts import CHRONICLE_RULE, GENRES, aggregate_day, genre_for
+from hiris.app.home_space.type_vocabulary import CHRONICLE_GENRES
+from hiris.app.mind.facts import CHRONICLE_RULE, aggregate_day, genre_for
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 
@@ -65,7 +66,7 @@ def test_il_genere_discende_dalla_natura():
     assert genre_for("problema:sonos.x", None) == "guasto"
     assert genre_for("sensor.camera_t", "temperature") is None
     assert genre_for("binary_sensor.fumo", "smoke") == "sicurezza"
-    for g in GENRES:
+    for g in CHRONICLE_GENRES:
         assert isinstance(g, str)
 
 
@@ -81,16 +82,17 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     assert genre_for("lock.porta_ingresso", None) == "sicurezza"
     assert genre_for("problema:sonos.x", None) == "guasto"
     assert genre_for("integrazione:abc", None) == "guasto"
-    assert "sicurezza" in GENRES
+    assert "sicurezza" in CHRONICLE_GENRES
     # Quattro generi, non sei (16/09/2026, spec «il giudizio dei tipi» §5,
-    # D2): `GENRES` e' diventato `type_vocabulary.CHRONICLE_GENRES`, i soli
+    # D2): `facts.GENRES` e' diventato `type_vocabulary.CHRONICLE_GENRES` (e il
+    # soprannome e' uscito il 13/10/2026, M-67), i soli
     # generi con una FORMA scritta in questo file. "energia" e "bilancio"
     # sono usciti: nessun ramo di `aggregate_day` trattava il primo (una riga
     # `energia` cadeva oltre tutti i rami senza produrre niente), e nessun
     # codice produceva mai il secondo -- la docstring che lo descriveva era
     # una ragione smentita dal file stesso.
-    assert len(GENRES) == 4
-    assert "bilancio" not in GENRES and "energia" not in GENRES
+    assert len(CHRONICLE_GENRES) == 4
+    assert "bilancio" not in CHRONICLE_GENRES and "energia" not in CHRONICLE_GENRES
 
 
 def test_a_log_subject_is_a_fault():
@@ -1049,6 +1051,34 @@ def test_aggregate_day_scrive_nel_resoconto_l_obiettivo_di_QUEL_giorno(archivio)
 
     scritto = archivio.report(G)
     assert scritto["obiettivo"]["testo"] == "quella di allora"
+
+def test_due_obiettivi_nello_stesso_giorno_vale_quello_della_fine(archivio):
+    """**Due obiettivi nello stesso giorno: il resoconto porta l'ultimo** (spec
+    §11, giro 151 N151-2). Il resoconto dice a quale domanda il giorno ha
+    risposto quando e' FINITO: `aggregate_day` legge `store.objective_at` sul
+    confine di fine giorno che `build_episodes` gli restituisce (A-39).
+
+    La prova sopra non distingue i due confini -- con un obiettivo prima del
+    giorno e uno dopo, inizio e fine danno la stessa risposta. Qui il secondo
+    obiettivo nasce alle 14:00 dello stesso giorno: letto all'inizio del
+    giorno il resoconto direbbe ancora quello di prima.
+
+    Mutazione ESEGUITA: in `aggregate_day` prendere il confine d'inizio al
+    posto di quello di fine (`(to_ts, _)` invece di `(_, to_ts)`) -- rossa
+    qui su `'quella del mattino' == 'quella del pomeriggio'`, mentre la prova
+    sopra resta verde.
+    """
+    da_ts, _ = day_boundaries(G, "Europe/Rome")
+    archivio.set_objective("quella del mattino", when_ts=da_ts - 3600.0)
+    archivio.set_objective("quella del pomeriggio", when_ts=ts(14))
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  recipes={}, series={}, names={})
+
+    scritto = archivio.report(G)
+    assert scritto["obiettivo"]["testo"] == "quella del pomeriggio"
 
 def test_il_nome_del_DISPOSITIVO_arriva_alle_misure(archivio):
     """**Difetto trovato leggendo la prima analisi vera, il 15/09/2026**:
@@ -2099,3 +2129,28 @@ def test_senza_finestre_la_cronaca_non_cambia(archivio):
         _ha(archivio, eid, "unavailable", _RESTING[eid], ts(10, 5) + i / 100)
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome", house=house)
     assert [v["chi"] for v in cronaca(archivio)] == ["integrazione:e_irr"]
+
+
+def test_gli_estremi_del_giorno_si_calcolano_una_volta_per_scrittura(archivio, monkeypatch):
+    """A-39 (Chiusura): `aggregate_day` e `rebuild_chronicle` ricalcolavano
+    gli estremi del giorno che `_episodes` aveva appena calcolato. Ora
+    tornano con gli episodi, e il conto si fa una volta per scrittura.
+    Mutazione ESEGUITA (13/10/2026): la riga `day_boundaries(...)` rimessa in
+    `rebuild_chronicle` -- rossa (due chiamate)."""
+    from hiris.app.mind import facts
+
+    chiamate = []
+    vera = facts.day_boundaries
+
+    def conta(day, timezone):
+        chiamate.append(day)
+        return vera(day, timezone)
+
+    monkeypatch.setattr(facts, "day_boundaries", conta)
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+    facts.aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    assert chiamate == [G]
+    chiamate.clear()
+    assert facts.rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome")
+    assert chiamate == [G]

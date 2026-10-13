@@ -49,7 +49,8 @@ nessuno l'ha fatto, il costruttore dice che non si puo' fare»*.
 Le chiavi della struttura sono inglesi come il resto del codice; i **valori**
 sono dominio -- i nomi delle operazioni (`somma_periodo`, `quota`) sono quelli
 che il proprietario pronuncia, e i nomi dei passi li sceglie chi scrive la
-ricetta. E' la stessa divisione di `GENRES` in `mind/facts.py`.
+ricetta. E' la stessa divisione di `CHRONICLE_GENRES` in
+`home_space/type_vocabulary.py`.
 
 Un ingresso e' una di tre cose, e si riconosce dal primo carattere:
 
@@ -200,10 +201,11 @@ def silent_entities(house, entity_ids) -> dict[str, NotComputable] | None:
 MUTED_SOURCE_STATES = ("spenta_dal_proprietario", "spenta_da_home_assistant", "sparita")
 
 
-def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, dict]:
+def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, NotComputable]:
     """Le ricette che non possono produrre niente perche' TUTTE le entita'
     che nominano tacciono per una causa che non passa da sola
-    (`MUTED_SOURCE_STATES`), `{dispositivo: {non_calcolabile, causa}}`.
+    (`MUTED_SOURCE_STATES`), `{dispositivo: NotComputable}`: il rifiuto con
+    la sua frase e la sua causa, nella forma di ogni altro (B-27).
 
     Fino al 05/10/2026 una ricetta cosi' girava ogni giorno e scriveva un
     rifiuto per passo, sempre lo stesso (G-02, G-03): il resoconto diceva N
@@ -227,11 +229,10 @@ def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, dict]:
                    for _entity_id, source in sources):
             continue
         refusals = [silence(entity_id, source) for entity_id, source in sources]
-        muted[device_id] = {
-            "non_calcolabile": (
-                "la ricetta non gira: nessuna delle sue entita' puo' dare una "
-                "serie -- " + " · ".join(r.reason for r in refusals)),
-            "causa": refusals[0].cause}
+        muted[device_id] = NotComputable(
+            "la ricetta non gira: nessuna delle sue entita' puo' dare una "
+            "serie -- " + " · ".join(r.reason for r in refusals),
+            cause=refusals[0].cause)
     return muted
 
 

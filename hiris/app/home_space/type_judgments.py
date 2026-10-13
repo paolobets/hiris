@@ -42,7 +42,9 @@ def type_subject(domain: str, device_class: str | None = None) -> str:
 GENRE_FIELD = "genere"
 RESTING_FIELD = "riposo"
 WORKING_FIELD = "lavoro"
-OPERABLE_FIELD = "accendibile"
+#: (`accendibile` e' uscito il 13/10/2026, M-61: nessun lettore del prodotto
+#: decideva niente con lui. Le righe gia' scritte le toglie
+#: `mind/knowledge._migration_11`.)
 PARAMETER_LIMITS_FIELD = "limiti_parametri"
 #: «Quando una cosa di questo tipo esce dal suo riposo, il proprietario deve
 #: saperlo subito?» (spec `2026-09-18-da-sapere-subito.md` §2). **Non e' il
@@ -72,7 +74,7 @@ DA_SAPERE_SUBITO_FIELD = "da_sapere_subito"
 #: nasce con l'italiano (regola del glossario).
 SCAFFOLDING_FIELD = "impalcatura"
 JUDGMENT_FIELD_NAMES = frozenset({
-    GENRE_FIELD, RESTING_FIELD, WORKING_FIELD, OPERABLE_FIELD,
+    GENRE_FIELD, RESTING_FIELD, WORKING_FIELD,
     PARAMETER_LIMITS_FIELD, DA_SAPERE_SUBITO_FIELD, SCAFFOLDING_FIELD})
 
 # -- gli altri campi del sapere ---------------------------------------------
@@ -234,7 +236,7 @@ def _parse(field: str, value: str, genres: frozenset[str], absent_forms: frozens
         if value != NO_GENRE and value not in genres:
             raise ValueError(f"genere fuori elenco: {value!r}")
         return value
-    if field in (OPERABLE_FIELD, SCAFFOLDING_FIELD):
+    if field == SCAFFOLDING_FIELD:
         if value not in _YES_NO:
             raise ValueError(f"atteso si/no, trovato {value!r}")
         return _YES_NO[value]
@@ -477,11 +479,6 @@ class TypeJudgments:
         if not riposo:
             return False
         return stato not in riposo
-
-    def operable_domains(self) -> frozenset[str]:
-        return frozenset(subject for (kind, subject, field), value in self._by_key.items()
-                         if kind == "tipo" and field == OPERABLE_FIELD
-                         and "." not in subject and value)
 
     def parameter_limits(self, domain, parameter) -> Mapping[str, str] | None:
         per_domain = self._lookup(PARAMETER_LIMITS_FIELD, domain)

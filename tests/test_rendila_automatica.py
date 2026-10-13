@@ -184,8 +184,10 @@ async def test_un_turno_TRONCATO_non_scrive_niente(casa):
     Mutazione ESEGUITA (06/10/2026): `settle` che scrive la ragione del
     lettore anche senza un «perche'» -- rossa."""
     app, store, ident = casa
-    assert at.settle(app, ident, "t1", "", truncated=True) == "senza_esito"
-    assert _riga(store, ident)["non_automatizzabile"] is None
+    at.settle(app, ident, "t1", "", truncated=True)
+    riga = _riga(store, ident)
+    assert riga["non_automatizzabile"] is None
+    assert riga["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio

@@ -35,7 +35,9 @@ class Subject(Enum):
     STATE = "stati per tipo"
     STATE_CLASS = "valori di state_class"
     CAPABILITY_BIT = "bit di capacita' per dominio"
-    SWITCHABLE = "domini accendibili"
+    # «domini accendibili» e' uscita il 13/10/2026 col giudizio che
+    # sorvegliava (M-61): senza giudizio la derivazione non ha piu' niente da
+    # confrontare.
 
 
 
@@ -87,7 +89,7 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
     # **Cinque domande su sei sono state chiuse dal proprietario l'08/09/2026**
     # -- i sei modi di `water_heater`, lo `stopped` di `cover` e `valve`, il
     # `lawn_mower` trattato come l'aspirapolvice, i quattro domini lasciati
-    # fuori, e `remote`/`siren` dichiarati accendibili. Le risposte non stanno
+    # fuori, e `remote`/`siren` con `off` a riposo. Le risposte non stanno
     # qui: stanno dove valgono, cioe' nel vocabolario dei tipi e fra le
     # eccezioni motivate qui sopra. **Questo elenco e' cio' che resta aperto,
     # non un verbale di cio' che e' stato deciso**: una domanda che ha avuto
@@ -99,7 +101,8 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         "va ne' fra i riposi ne' fra i funzionamenti di `lock`, che sono gli unici "
         "due posti che il vocabolario ha oggi. **La decisione c'e', il posto dove "
         "scriverla no**: «guasto» in questo prodotto e' un GENERE "
-        "(`mind/facts.py::GENRES`), e il genere si decide per SOGGETTO -- "
+        "(`home_space/type_vocabulary.py::CHRONICLE_GENRES`), e il genere si "
+        "decide per SOGGETTO -- "
         "`genre_for(soggetto, classe)` lo stato non lo riceve nemmeno, e un "
         "soggetto ha un genere solo per tutta la giornata (`open_episodes` e' "
         "indicizzato per soggetto: una serratura che si inceppa a episodio di "

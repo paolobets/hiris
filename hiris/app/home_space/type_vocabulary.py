@@ -17,8 +17,8 @@ leggendo.
 **Le domande, una casa.** Le metriche non sono elenchi: sono modi di
 interrogare la stessa riga, e ogni sezione del modulo ne porta una.
 
-- «Si accende e si spegne, e qual e' il suo riposo, e come lavora?» -> i
-  campi `operable`, `resting_states`, `working_states`. Chi legge in
+- «Qual e' il suo riposo, e come lavora?» -> i campi `resting_states`,
+  `working_states`. Chi legge in
   produzione non li chiede a questo modulo: li chiede all'istantanea dei
   giudizi (`home_space/type_judgments.TypeJudgments`), di cui questi campi
   sono il seme.
@@ -45,7 +45,7 @@ seconda casa per un fatto del fornitore. **«Tutto nostro» era gia' falso
 quando questa frase fu scritta**: le tabelle di `capability_names`,
 `capability_attributes` e `state_attributes` sono `importato` da sempre. Cio'
 che e' DAVVERO nostro, qui, sono i giudizi -- genere, riposo, lavoro,
-accendibile, limiti dei parametri -- ed e' SOLO quello il **seme
+limiti dei parametri -- ed e' SOLO quello il **seme
 del sapere** (`judgment_seed_rows()`, in fondo a questo file, spec
 2026-09-16 §2-§3): l'archivio lo legge una volta, e da li' in poi corregge
 l'istantanea viva senza toccare questo letterale. Le due meta' non si
@@ -78,7 +78,7 @@ bit per domini che non avevano nessuna tabella. Poi, l'08/09/2026, **le sei
 decisioni del proprietario** sulle nove domande che aveva lasciato aperte: i sei
 modi di `water_heater` sono funzionamento, lo `stopped` di `cover` e `valve` e'
 riposo, `locking`/`unlocking` di `lock` sono funzionamento, `lawn_mower` si
-tratta come `vacuum`, `remote` e `siren` sono accendibili con `off` a riposo, e
+tratta come `vacuum`, `remote` e `siren` hanno `off` a riposo, e
 quattro domini (`assist_satellite`, `camera`, `timer`, `group`) restano fuori
 con la ragione scritta nel censore.
 
@@ -109,7 +109,6 @@ from .ha_vocabulary import (
 from .type_judgments import (
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
-    OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
     SCAFFOLDING_FIELD,
@@ -400,9 +399,6 @@ class TypeVocabulary:
 # una metrica smetterebbe di funzionare in silenzio.
 # --------------------------------------------------------------------------
 
-#: Se questo tipo «funziona»: si accende e si spegne, si apre e si chiude.
-OPERABLE = "operable"
-
 #: Gli stati che, per questo tipo, valgono «ha finito».
 RESTING_STATES = "resting_states"
 
@@ -576,7 +572,7 @@ _vocabulary.add_all("binary_sensor",
                   genre=Ours("sicurezza"))
 
 # Queste sensor.* non portano piu' nessun campo dall'uscita della gamba: sono
-# misure (`sensor` non e' mai accendibile e non ha un genere), e restano
+# misure (`sensor` non ha un riposo e non ha un genere), e restano
 # dichiarate per lo stesso motivo delle tre coppie di `binary_sensor` sopra.
 _vocabulary.add_all("sensor", ("temperature", "humidity"))
 # `carbon_monoxide` NON e' qui insieme alle altre: e' una concentrazione di un
@@ -614,11 +610,12 @@ _vocabulary.add("sensor", "battery")
 _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 
 
-# -- la metrica dell'accensione: accendibile, e il suo riposo ----------------
+# -- la metrica dell'accensione: il riposo, e il lavoro ----------------------
 #
-# **LA REGOLA (spec §6, corretta il 26 agosto): un tipo accendibile porta i
-# suoi stati di riposo NELLA STESSA MODIFICA.** Non e' piu' una
-# raccomandazione in un commento: `_verify_operable_types_bring_their_rest()`
+# **LA REGOLA (spec §6, corretta il 26 agosto): un tipo che porta un genere
+# porta i suoi stati di riposo NELLA STESSA MODIFICA.** (Fino al 13/10/2026
+# diceva «un tipo accendibile»: M-61, vedi la funzione.) Non e' piu' una
+# raccomandazione in un commento: `_verify_genre_types_bring_their_rest()`
 # in fondo a questo modulo la impone all'importazione, e
 # `tests/test_type_vocabulary.py` la prova. E' la terza volta che lo stesso
 # difetto nasce dal separarle -- l'allarme rovesciato, l'energia che non
@@ -629,7 +626,7 @@ _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 # opposti dello stesso elenco.
 #
 # **Cio' che questa regola NON copriva, ed e' stato chiuso l'08/09/2026**: la
-# regola impone che un tipo accendibile abbia ALMENO un riposo, non che TUTTI i
+# regola impone che un tipo col genere abbia ALMENO un riposo, non che TUTTI i
 # suoi stati canonici siano classificati. `water_heater` era il caso vivo --
 # `eco`, `electric`, `gas`, `heat_pump`, `high_demand`, `performance` non erano
 # ne' riposi ne' ignoti, e un boiler in `eco` avrebbe aperto un episodio che non
@@ -651,7 +648,7 @@ _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 # I sei modi operativi di un termostato acceso. Non sono sei riposi travestiti:
 # `heat_cool` e `auto` sono precisamente il termostato che LAVORA senza che
 # nessuno gli dica come. Il suo unico riposo resta `off`.
-_vocabulary.extend("climate", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.extend("climate", resting_states=Ours({"off"}),
                  working_states=Ours({
                      "heat": "il termostato sta riscaldando o e' impostato per farlo",
                      "cool": "il termostato sta raffrescando o e' impostato per farlo",
@@ -666,24 +663,24 @@ _vocabulary.extend("climate", operable=Ours(True), resting_states=Ours({"off"}),
 # guasto e non una corsa in sospeso. Prima di questa riga il suo unico riposo
 # era `closed`, quindi una tapparella lasciata a meta' teneva aperto per sempre
 # l'episodio cominciato quando si e' mossa.
-_vocabulary.extend("cover", operable=Ours(True),
+_vocabulary.extend("cover",
                  resting_states=Ours({"closed", "stopped"}),
                  working_states=Ours({
                      "open": "una tapparella aperta e' cio' che disperde: e' il fatto da osservare",
                      "opening": "si sta muovendo: la corsa e' in atto, non finita",
                      "closing": "si sta muovendo: la corsa e' in atto, non finita",
                  }))
-_vocabulary.add("switch", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.add("switch", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"))
-_vocabulary.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.add("light", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"))
-_vocabulary.add("fan", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.add("fan", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"))
 # **I sei modi del boiler sono FUNZIONAMENTO** -- decisione del proprietario,
 # 08/09/2026, sulla prima delle nove domande del censore. Sono modi OPERATIVI,
 # non pause: un boiler in `eco` scalda, solo con meno foga. Il suo unico riposo
 # resta `off`, ed e' l'unico stato in cui non sta facendo niente.
-_vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.add("water_heater", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"),
               working_states=Ours({
                   "eco": "modo operativo a consumo ridotto: scalda, con meno foga",
@@ -694,7 +691,7 @@ _vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}
                   "performance": "modo a piena potenza",
               }))
 # `humidifier`: solo `on`/`off`, nessuno stato intermedio.
-_vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}),
+_vocabulary.add("humidifier", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"))
 # `vacuum`: `docked` (in base, eventualmente in carica), `idle` (fermo, non in
 # carica ne' in errore), `returning` (sta rientrando, non sta piu' pulendo),
@@ -706,7 +703,7 @@ _vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}),
 # c'e' niente da decidere. Non cambia niente di osservabile (`off` era gia'
 # nell'unione dei riposi, che e' cio' che `_is_on` legge): cambia che adesso un
 # tipo lo rivendica.
-_vocabulary.add("vacuum", operable=Ours(True),
+_vocabulary.add("vacuum",
               resting_states=Ours({"docked", "returning", "error", "idle", "off"}),
               genre=Ours("funzionamento"),
               working_states=Ours({
@@ -719,7 +716,7 @@ _vocabulary.add("vacuum", operable=Ours(True),
 # transizione. `stopped` invece SI', dall'08/09/2026 e per la stessa decisione
 # del proprietario che l'ha dato a `cover`: fermata a meta' corsa e' uno stato,
 # non una corsa in sospeso.
-_vocabulary.add("valve", operable=Ours(True),
+_vocabulary.add("valve",
               resting_states=Ours({"closed", "stopped"}),
               genre=Ours("funzionamento"),
               working_states=Ours({
@@ -732,28 +729,26 @@ _vocabulary.add("valve", operable=Ours(True),
 # `docked` e' la base, `returning` non e' piu' taglio, `error` e' fermo, e solo
 # `mowing` e' acceso. Nessuna lista di questo prodotto lo aveva mai guardato:
 # l'ha nominato il censore.
-_vocabulary.add("lawn_mower", operable=Ours(True),
+_vocabulary.add("lawn_mower",
               resting_states=Ours({"docked", "returning", "error"}),
               genre=Ours("funzionamento"),
               working_states=Ours({
                   "mowing": "sta tagliando: e' l'unico stato in cui il tosaerba lavora",
                   "paused": "un taglio SOSPESO, non finito -- come la pausa del vacuum",
               }))
-# `remote` e `siren`: **accendibili**, con `off` a riposo -- decisione del
-# proprietario dell'08/09/2026, nona delle nove domande. Home Assistant li
-# dichiara accendibili (`turn_on`+`turn_off`) e pubblica per entrambi `on`/`off`;
-# la spec §4 li metteva fra le sette esclusioni motivate da «li' `on` significa
-# 'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
-# documenta di aver gia' pagato», e **per questi due quella frase era smentita
-# dal codice che citava**: quell'elenco -- oggi la metrica dell'annuncio qui sotto -- li
-# CONTIENE entrambi, cioe' il prodotto quel `on` lo annunciava gia' come
-# un'accensione mentre l'esclusione affermava il contrario. L'esclusione cade.
+# `remote` e `siren`: `off` a riposo -- decisione del proprietario
+# dell'08/09/2026, nona delle nove domande. Home Assistant li comanda con
+# `turn_on`+`turn_off` e pubblica per entrambi `on`/`off`; la spec §4 li
+# metteva fra le sette esclusioni motivate da «li' `on` significa 'abilitata',
+# non 'accesa'», e **per questi due quella frase era smentita dal codice che
+# citava**: la metrica dell'annuncio qui sotto li CONTIENE entrambi, cioe' il
+# prodotto quel `on` lo annunciava gia' come un'accensione. L'esclusione cade.
+# (La decisione li dichiarava anche «accendibili»: quel giudizio e' uscito il
+# 13/10/2026, M-61, perche' nessuno nel prodotto decideva niente con lui.)
 #
-# `siren` ha gia' la sua riga sopra (porta il genere «sicurezza» e il riposo
-# `off`): qui si aggiunge la sola meta' che le mancava.
-_vocabulary.add("remote", operable=Ours(True), resting_states=Ours({"off"}),
+# `siren` ha gia' la sua riga sopra, col genere «sicurezza» e il riposo `off`.
+_vocabulary.add("remote", resting_states=Ours({"off"}),
               genre=Ours("funzionamento"))
-_vocabulary.extend("siren", operable=Ours(True))
 # `media_player`: `idle` (acceso ma non riproduce nulla), `standby` (deprecato
 # verso `off`/`idle` dalla 2026.8, ma ancora prodotto da alcune integrazioni --
 # questa casa ce l'ha). `on` resta acceso, e cosi' `buffering` (sta per
@@ -766,7 +761,7 @@ _vocabulary.extend("siren", operable=Ours(True))
 # SOSPESA, non finita -- il film torna dove si era fermato, la pulizia
 # riprende da dove si era interrotta. Trattarla come un riposo spezzava un
 # episodio solo in due.
-_vocabulary.add("media_player", operable=Ours(True),
+_vocabulary.add("media_player",
               resting_states=Ours({"off", "idle", "standby"}),
               genre=Ours("funzionamento"),
               working_states=Ours({
@@ -778,10 +773,10 @@ _vocabulary.add("media_player", operable=Ours(True),
                   "on": "acceso senza dire altro: non e' spento, ed e' tutto cio' che si sa",
               }))
 
-# -- le due meta' del funzionamento su tipi che NON sono accendibili ---------
+# -- le due meta' del funzionamento su tipi che non si «accendono» -----------
 #
-# `lock` e `alarm_control_panel` non sono dichiarati accendibili -- una
-# serratura non si «accende» -- ma portano il genere «sicurezza», e il genere
+# `lock` e `alarm_control_panel` non si accendono -- una serratura si chiude
+# -- ma portano il genere «sicurezza», e il genere
 # «sicurezza» apre e chiude episodi con la STESSA forma del funzionamento
 # (`mind/facts.py`, ramo `sicurezza`: «il genere e' diverso, la forma no»).
 # Quindi anche loro hanno stati che valgono «sta succedendo», e finche' nessuno
@@ -1688,23 +1683,33 @@ def domains_by_genre(genre: str) -> frozenset[str]:
 # LA REGOLA, imposta alla costruzione
 # --------------------------------------------------------------------------
 
-def _verify_operable_types_bring_their_rest() -> None:
-    """Un tipo accendibile porta i suoi stati di riposo, **nella stessa
-    modifica**.
+def _verify_genre_types_bring_their_rest() -> None:
+    """Un tipo che porta un genere porta i suoi stati di riposo, **nella
+    stessa modifica** -- suoi, o del dominio da cui pende.
 
-    Gira all'importazione del modulo: chi aggiunge un tipo accendibile senza il
-    suo riposo non fa passare nemmeno un `import`, tantomeno una prova. E' la
-    differenza fra una regola scritta in un commento -- che e' cio' che era
-    fino a oggi, e che si e' lasciata violare tre volte -- e una regola che la
-    struttura impone.
+    Gira all'importazione del modulo: chi aggiunge un tipo con un genere senza
+    il suo riposo non fa passare nemmeno un `import`, tantomeno una prova. E'
+    la differenza fra una regola scritta in un commento -- che e' cio' che era
+    fino al 26/08/2026, e che si e' lasciata violare tre volte -- e una regola
+    che la struttura impone.
+
+    **Il genere, e non piu' «accendibile»** (M-61, 13/10/2026). Fino a quel
+    giorno la regola si appoggiava al giudizio `operable`, che nessun lettore
+    del prodotto usava ed e' uscito. La ragione della regola non era
+    l'accensione: e' che il GENERE apre un episodio (`mind/facts.py`) e il
+    riposo lo chiude, quindi un tipo col genere e senza riposo produce
+    oggetti che non si chiudono mai. Chiesta al genere, la regola copre anche
+    `lock`, `alarm_control_panel`, `person`, `device_tracker` e i
+    `binary_sensor` di sicurezza, che l'accendibile lasciava fuori.
     """
     incomplete = sorted(
-        domain for domain in _vocabulary.domains()
-        if _vocabulary.value(domain, None, OPERABLE, False)
-        and not _vocabulary.value(domain, None, RESTING_STATES, frozenset()))
+        "/".join(filter(None, row.key)) for row in _vocabulary.rows()
+        if GENRE in row.fields
+        and not _vocabulary.value(row.domain, row.device_class,
+                                  RESTING_STATES, frozenset()))
     if incomplete:
         raise ValueError(
-            "tipi dichiarati accendibili senza i loro stati di riposo: "
+            "tipi con un genere senza i loro stati di riposo: "
             f"{', '.join(incomplete)}. Un tipo aggiunto a meta' produce "
             "oggetti che non si chiudono mai -- il riposo si dichiara nella "
             "stessa modifica, non in quella dopo")
@@ -1740,7 +1745,7 @@ def _verify_no_state_is_both_rest_and_work() -> None:
             "alla stessa domanda")
 
 
-_verify_operable_types_bring_their_rest()
+_verify_genre_types_bring_their_rest()
 _verify_no_state_is_both_rest_and_work()
 
 
@@ -1761,7 +1766,6 @@ _verify_no_state_is_both_rest_and_work()
 #: `JUDGMENT_FIELD_NAMES`.
 JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
-    OPERABLE: OPERABLE_FIELD,
     PARAMETER_LIMITS: PARAMETER_LIMITS_FIELD,
     DA_SAPERE_SUBITO: DA_SAPERE_SUBITO_FIELD,
 })
@@ -1770,8 +1774,6 @@ JUDGMENT_FIELDS = MappingProxyType({
 def _seed_value(name: str, value) -> str:
     if name == GENRE:
         return value
-    if name == OPERABLE:
-        return "si" if value else "no"
     if name == DA_SAPERE_SUBITO:
         # Tre forme, non due (spec §2): `si`, `no`, oppure l'elenco degli stati
         # che contano -- scritto come il riposo, JSON ordinato, cosi' che due
