@@ -214,7 +214,7 @@ async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
     try:
         async with (
             aiohttp.ClientSession(timeout=timeout) as session,
-            session.get("https://api.openai.com/v1/models", headers=headers) as resp,
+            session.get(f"{OPENAI.api_base}/models", headers=headers) as resp,
         ):
             if resp.status != 200:
                 logger.warning("OpenAI models list returned %s", resp.status)
@@ -256,7 +256,7 @@ async def _fetch_claude_models(api_key: str) -> tuple[list[str], str]:
     timeout = aiohttp.ClientTimeout(total=5)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session, session.get(
-                "https://api.anthropic.com/v1/models?limit=100",
+                f"{CLAUDE.api_base}/models?limit=100",
                 headers=headers) as resp:
             if resp.status != 200:
                 logger.warning("Anthropic models list returned %s", resp.status)
@@ -354,7 +354,7 @@ async def _fetch_openrouter_models(api_key: str,
     try:
         async with (
             aiohttp.ClientSession(timeout=timeout) as session,
-            session.get("https://openrouter.ai/api/v1/models", headers=headers) as resp,
+            session.get(f"{OPENROUTER.api_base}/models", headers=headers) as resp,
         ):
             if resp.status != 200:
                 logger.warning("OpenRouter models list returned %s", resp.status)

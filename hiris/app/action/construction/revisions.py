@@ -38,11 +38,13 @@ from ...states import (
     sql_list,
 )
 from ...storage import (
+    UNREADABLE,
     Retention,
     add_missing_columns,
     archive_name,
     connect,
     init_schema,
+    json_column,
     prune_declared,
     rebuild_table,
     rekey,
@@ -330,8 +332,17 @@ def _migration_7(conn) -> None:
         raise
 
 
-def _load(text):
-    return None if text is None else json.loads(text)
+#: Le colonne JSON di una riga, lette tutte da `_row` con la guardia.
+_JSON_COLUMNS = ("prima_json", "dopo_json", "helper_json", "prova_json")
+
+
+def _load(raw, *, key):
+    """Una colonna JSON di `costruzioni`, con la guardia di tutti gli archivi
+    (`storage.json_column`, C-68): `UNREADABLE` se il corpo e' guasto, e il
+    log lo dice una volta per riga. Fino alla Chiusura qui c'era un
+    `json.loads` nudo, e una riga storta faceva cadere l'intera
+    `GET /api/constructions`, come `proposals()` prima di C-48."""
+    return json_column(raw, archive="costruzioni", table="costruzioni", key=key)
 
 
 # L'estrattore dei servizi vive nell'officina, accanto all'anteprima che
@@ -339,10 +350,17 @@ def _load(text):
 from .workshop import services_named
 
 
-def _row(r) -> dict:
+def _row(r) -> dict | None:
     """Una riga com'e' **adesso**: `scaduta_ora` (calcolata da `read` e
     `list` con `_EXPIRED_SQL`) la legge scaduta anche quando nessuno l'ha
-    ancora segnata. Una lettura non scrive."""
+    ancora segnata. Una lettura non scrive.
+
+    `None` per una riga con un corpo JSON guasto (C-68): chi legge un elenco
+    la salta (`_rows`), chi legge una riga sola la tratta come assente --
+    la stessa regola di `osservazioni.db` (`mind/store._json_column`)."""
+    body = {c: _load(r[c], key=r["id"]) for c in _JSON_COLUMNS}
+    if any(v is UNREADABLE for v in body.values()):
+        return None
     expired = bool(r["scaduta_ora"])
     state = EXPIRED if expired else r["stato"]
     return {
@@ -363,8 +381,8 @@ def _row(r) -> dict:
         # fra le porte, non due campi piatti che ogni lettore ricompone a
         # modo suo. `None` per una riga nata senza filo (vedi `_SCHEMA`).
         "thread": thread_from_columns(r["subject_key"], r["entry_point"]),
-        "prima": _load(r["prima_json"]),
-        "dopo": _load(r["dopo_json"]),
+        "prima": body["prima_json"],
+        "dopo": body["dopo_json"],
         # **Cosa chiamera'**, sui due lati (reperto B-4, 22/09/2026). La
         # pagina ha gia' i corpi interi e potrebbe camminarli in JavaScript:
         # sarebbe lo stesso cammino scritto due volte, in due linguaggi,
@@ -375,9 +393,9 @@ def _row(r) -> dict:
         # CAMBIA: una lista sola non lo direbbe. E un lato assente da una
         # lista vuota, non `None`: una creazione non ha un «prima», e un buco
         # costringerebbe la pagina a un ramo in piu' per dire la stessa cosa.
-        "chiama_prima": services_named(_load(r["prima_json"])),
-        "chiama_dopo": services_named(_load(r["dopo_json"])),
-        "helper": _load(r["helper_json"]) or [],
+        "chiama_prima": services_named(body["prima_json"]),
+        "chiama_dopo": services_named(body["dopo_json"]),
+        "helper": body["helper_json"] or [],
         "anteprima": r["anteprima"],
         "esecuzione_id": r["esecuzione_id"],
         "motivo": REASON_EXPIRED if expired else r["motivo"],
@@ -385,8 +403,13 @@ def _row(r) -> dict:
         # La stessa coppia, con gli stessi nomi, delle proposte da fare a
         # mano (`mind/store.proposals`): le due code, una forma.
         "impronta": r["impronta"],
-        "prova": _load(r["prova_json"]),
+        "prova": body["prova_json"],
     }
+
+
+def _rows(righe) -> list[dict]:
+    """Le righe di un elenco, senza quelle guaste (`_row`, C-68)."""
+    return [row for row in map(_row, righe) if row is not None]
 
 
 class ConstructionStore:
@@ -479,7 +502,7 @@ class ConstructionStore:
         sql += " ORDER BY creata_ts DESC LIMIT ?"
         with self._lock:
             righe = self._conn.execute(sql, params + (int(limit),)).fetchall()
-        return [_row(r) for r in righe]
+        return _rows(righe)
 
     def proposed_in(self, exchange: str | None, *, actor: str) -> frozenset[str]:
         """Gli id delle proposte che `actor` ha fatto nel turno `exchange`.
@@ -532,7 +555,7 @@ class ConstructionStore:
                 f"WHERE origine=? AND impronta IS NULL AND stato IN ({_SOSPESI_SQL}) "
                 f"AND NOT {_EXPIRED_SQL} ORDER BY creata_ts",
                 (cutoff, actor, cutoff)).fetchall()
-        return [_row(r) for r in righe]
+        return _rows(righe)
 
     def decided_proposals(self, *, now: float) -> dict[str, dict]:
         """`{impronta: {"prova", "aperta", "creata_ts", "id", "a_mano"}}` per
@@ -548,9 +571,13 @@ class ConstructionStore:
                 f"SELECT impronta, prova_json, creata_ts, stato IN ({_SOSPESI_SQL}) "
                 f"AND NOT {_EXPIRED_SQL}, id FROM costruzioni WHERE impronta IS NOT NULL "
                 "ORDER BY creata_ts, rowid", (now - self.DEADLINE_S,)).fetchall()
-        return {r[0]: {"prova": _load(r[1]), "aperta": bool(r[3]), "creata_ts": r[2],
-                       "id": r[4], "a_mano": False}
-                for r in rows}
+        decided = {}
+        for r in rows:
+            prova = _load(r[1], key=r[4])
+            if prova is not UNREADABLE:
+                decided[r[0]] = {"prova": prova, "aperta": bool(r[3]),
+                                 "creata_ts": r[2], "id": r[4], "a_mano": False}
+        return decided
 
     def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
         """Le proposte di `actor` a livello `stakes` ancora in attesa e mai
@@ -567,7 +594,7 @@ class ConstructionStore:
                 "AND id NOT IN (SELECT proposta_id FROM avvisi) "
                 "ORDER BY creata_ts",
                 (cutoff, actor, stakes, PENDING, cutoff)).fetchall()
-        return [_row(r) for r in righe]
+        return _rows(righe)
 
     def mark_alerted(self, ident: str) -> None:
         """L'avviso per `ident` e' arrivato: non si ritenta piu'."""

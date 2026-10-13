@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from .behavior import BEHAVIOR_DOMAINS
+from .ha_vocabulary import domain_of
 from .historian import home_space_zone, instant_epoch
 from .privacy import redact_row, redact_state
 from .queries import ROWS_MAX, _not_found_detail, sanitized_memories
@@ -45,11 +46,26 @@ from .type_vocabulary import REPO_JUDGMENTS
 if TYPE_CHECKING:
     from .house import House
 
-KINDS = ("entita", "area", "dispositivo", "automazione", "script",
+#: I generi di `search`. Quelli del comportamento si chiedono a
+#: `BEHAVIOR_DOMAINS` (B-23, F1 della Chiusura, 13/10/2026): fino ad allora
+#: «automazione» e «script» erano scritti a mano qui, nei filtri qui sotto e in
+#: `house_history.choose`, tre copie della stessa tabella.
+KINDS = ("entita", "area", "dispositivo", *BEHAVIOR_DOMAINS.values(),
          "ricordo", "integrazione")
 ORDERS = ("nome", "ultimo_cambio", "valore")
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
 _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
+
+
+def behavior_kinds(domain: str | None) -> tuple[str, ...]:
+    """Il genere del comportamento di un dominio di Home Assistant
+    (`automation` -> `automazione`), o tutti quando il dominio non c'e'.
+
+    **La conversione dominio -> genere, in un posto solo** (B-31, F1 della
+    Chiusura, 13/10/2026): `query_house` e `house_history.choose` la facevano
+    ognuno da se'. Un dominio che non e' di comportamento solleva `KeyError`:
+    chi chiama l'ha gia' controllato contro `BEHAVIOR_DOMAINS`."""
+    return (BEHAVIOR_DOMAINS[domain],) if domain else tuple(BEHAVIOR_DOMAINS.values())
 #: I generi che col `riferimento` rispondono col dettaglio completo di
 #: `queries.view` anche quando nessuna riga lo prende. Senza `riferimento` si
 #: cercano per nome e si elencano, come le entita': un dispositivo come
@@ -72,14 +88,14 @@ _PLACE = ("area", "floor", "platform")
 #: `limite` e `salta` non sono filtri: non stanno qui.
 _FILTERS_BY_KIND = {
     "entita": frozenset(_PARAMETER_OF) - {"running"},
-    "automazione": frozenset({"name", "reference", "state", *_PLACE, "idle_for_s",
-                              "changed_within_s", "running"}),
+    **dict.fromkeys(BEHAVIOR_DOMAINS.values(),
+                    frozenset({"name", "reference", "state", *_PLACE, "idle_for_s",
+                               "changed_within_s", "running"})),
     "area": frozenset({"name", "reference", "floor"}),
     "dispositivo": frozenset({"name", "reference", *_PLACE}),
     "ricordo": frozenset({"name", "reference"}),
     "integrazione": frozenset({"name", "reference"}),
 }
-_FILTERS_BY_KIND["script"] = _FILTERS_BY_KIND["automazione"]
 #: I registri dell'anagrafe in cui sta cio' che un riferimento puo' nominare:
 #: se uno e' caduto, «non esiste» non si puo' dire (`queries._not_found_detail`).
 _REFERENCE_STORES = frozenset({"aree", "entita", "dispositivi", "integrazioni"})
@@ -224,7 +240,7 @@ def _any_name_matches(query: str, name: str, aliases) -> bool:
 
 def _entity_matches(f: HouseFilters, entry, area, floor, mirror: Mirror, now) -> bool:
     eid = entry["id"]
-    domain = eid.split(".", 1)[0]
+    domain = domain_of(eid)
     if f.reference and eid != f.reference:
         return False
     if f.domain and domain != f.domain:
@@ -582,7 +598,8 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
     now = time.time() if now is None else now
     f = filters
     if f.kind is None and f.domain in BEHAVIOR_DOMAINS:
-        f = replace(f, kind=BEHAVIOR_DOMAINS[f.domain], domain=None)
+        (kind,) = behavior_kinds(f.domain)
+        f = replace(f, kind=kind, domain=None)
     # Qui convergono `genere=automazione` e `dominio=automation`: un filtro che
     # su un genere non ha senso si dice, non si ignora -- ignorato, darebbe
     # con sicurezza l'insieme intero (spec §2.4). Una domanda per solo nome o

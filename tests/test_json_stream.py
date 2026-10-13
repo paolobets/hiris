@@ -712,3 +712,41 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     # disciplina, la affianca.
     assert decisione["reply"].startswith(runner.MISSING_TOOLS_NOTICE)
     assert "ok, senza strumenti" in decisione["reply"]
+
+
+def test_rc_diverso_da_zero_con_un_dettaglio_lungo_dichiara_il_taglio():
+    """D-70 (Tappa 8, Task 0): il dettaglio dell'errore si tagliava a 300
+    caratteri in silenzio, e chi leggeva la reply non poteva sapere che la
+    causa continuava oltre. Il taglio e' quello di `truncate_with_marker`:
+    stesso tetto, ma detto."""
+    from hiris.app.proxy._sanitize import CUT
+
+    lungo = "Error: " + "x" * 600
+    reply = _reason(lungo + "\n", rc=1, stderr="")
+    assert reply.startswith("[errore runner rc=1]")
+    assert reply.endswith(CUT), (
+        f"il dettaglio lungo e' stato tagliato senza dirlo: {reply[-60:]!r}")
+    dettaglio = reply.removeprefix("[errore runner rc=1]").strip()
+    assert len(dettaglio) <= 300
+
+
+def test_rc_diverso_da_zero_il_log_porta_l_evento_result_non_l_init(caplog):
+    """I 27 turni falliti dell'osservatore (08-11/10/2026, misura dello Sprint
+    dal log dell'add-on): `claude rc=1` senza causa, perche' la riga di log
+    portava i primi 500 caratteri dello stdout, e li' c'e' l'evento `init`.
+    L'evento `result` con la causa cadeva oltre. Con rc diverso da zero il log
+    porta `subtype`, `is_error`, `error` e l'inizio di `result`."""
+    init = _init(tools=["mcp__hiris__x" + str(i) for i in range(40)])
+    assert len(init) > 500   # l'init da solo riempie i 500 caratteri di prima
+    fine = _result("Prompt is too long", subtype="error_during_execution",
+                   is_error=True, error="la causa vera")
+    with caplog.at_level(logging.WARNING, logger="hiris.agent"):
+        _reason(_flusso(init, fine), rc=1)
+
+    riga = next(m for m in (r.getMessage() for r in caplog.records)
+                if m.startswith("claude rc=1"))
+    assert "error_during_execution" in riga, riga
+    assert "is_error=True" in riga, riga
+    assert "la causa vera" in riga, riga
+    assert "Prompt is too long" in riga, riga
+    assert "claude_code_version" not in riga, riga

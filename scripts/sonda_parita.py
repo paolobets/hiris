@@ -281,11 +281,26 @@ def source(inputs: dict) -> dict:
                                    for port in asked}})
 
 
-def _selected(inputs: dict, **filters) -> set[str]:
-    selection = House(inputs["home_space"], inputs["mirror"]).select(
+def _selection(inputs: dict, **filters):
+    return House(inputs["home_space"], inputs["mirror"]).select(
         house_query.HouseFilters(include_hidden=True, include_service=True, **filters),
         ("entita",), [], now=inputs["clock"])
-    return {entry["id"] for entry, _area, _where in selection.entities}
+
+
+def _selected(inputs: dict, **filters) -> set[str]:
+    return {entry["id"] for entry, _area, _where in _selection(inputs, **filters).entities}
+
+
+def _recognized(inputs: dict, **filters) -> bool:
+    """Se la ricerca ha riconosciuto cio' che le si chiede: righe date, o
+    escluse contate. Le disabilitate non escono mai come righe (D7) e la
+    ricerca le conta in `escluse`: «ci sono, ma sono disabilitate» e' una
+    ricerca che ha trovato. Fino al 13/10/2026 la sonda guardava solo le
+    righe, e un'integrazione con tutte le entita' disabilitate dalla sua voce
+    di configurazione dava quattro disaccordi che non erano della ricerca
+    (M0.4: 69 su 69, `disabled_by: config_entry`; F1 della Chiusura)."""
+    selection = _selection(inputs, **filters)
+    return bool(selection.entities) or any(selection.excluded.values())
 
 
 def references(inputs: dict) -> dict:
@@ -293,7 +308,8 @@ def references(inputs: dict) -> dict:
 
     Per un'area: `search(area=)` deve dare lo stesso insieme del nome esatto.
     Per un'integrazione: `search(integrazione=)` e la scheda devono concordare
-    sul fatto di trovarla.
+    sul fatto di trovarla (`_recognized`: una ricerca che la trova tutta fra
+    le escluse l'ha trovata).
     """
     home_space, mirror = inputs["home_space"], inputs["mirror"]
     cases = []
@@ -311,7 +327,7 @@ def references(inputs: dict) -> dict:
     for platform in platforms:
         for label, text in (("esatto", platform), ("capitalizzato", platform.capitalize()),
                             ("maiuscolo", platform.upper()), ("con spazi", f" {platform} ")):
-            by_search = bool(_selected(inputs, platform=text))
+            by_search = _recognized(inputs, platform=text)
             by_card = bool(queries.view(House(home_space, mirror), [], [], "integrazione",
                                         text).get("esiste"))
             if by_search != by_card:

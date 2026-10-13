@@ -759,7 +759,7 @@ class EntityCache:
             # rilettura che non e' arrivata in fondo, per qualunque motivo,
             # lascia lo specchio vecchio.
             try:
-                raw_states = await ha_client.get_states([])
+                raw_states = await ha_client.get_states()
                 if isinstance(raw_states, dict):  # la busta: lo specchio resta com'era
                     return raw_states
                 fresh = {}

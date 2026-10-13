@@ -109,6 +109,17 @@ CREATE TABLE IF NOT EXISTS fallback (
 -- non e' normalizzazione per gusto: la moltiplicazione della latenza avviene
 -- per giro, e una media per turno la nasconderebbe.
 --
+-- **Chi le legge, e quando escono** (G-09; D8 della Tappa 8, deciso dal
+-- proprietario l'08/10/2026). Le colonne di misura di `turn` e tutte quelle
+-- di `payload` le legge solo la rotta delle misure (`api/handlers_misure.py`),
+-- cioe' gli attrezzi delle batterie (`scripts/misure.py`,
+-- `scripts/batteria_attori.py`): la batteria degli attori e' un criterio di
+-- accettazione dello sprint. `turns()` lo legge anche `steering.py`, ma solo
+-- per `species` e `outcome`/`problems`: il freno dei troncati
+-- (`TRUNCATION_BRAKE`) e i problemi del turno rifiutato. **Restano finche'
+-- c'e' la rotta, ed escono con lei** (M-22): allora `payload` esce intera, e
+-- di `turn` resta cio' che `steering.py` legge.
+--
 -- `tools` porta i NOMI in ordine; `tool_args` (dal 29/09/2026, spec «una porta
 -- sola» §7) i loro ARGOMENTI, ridotti (testi a 200 caratteri, 20 chiavi) e
 -- allineati per posizione. Il 29/09 nessuno ha saputo dire quale `search`
@@ -214,6 +225,17 @@ _MEASURE_DAYS = 30
 #: distingue «l'analista spende cosi'» da «la chat spende cosi'». Per questo
 #: `payload` sta PRIMA di `turn`: la sua cancellazione chiede i turni scaduti,
 #: e dopo non ci sarebbero piu'.
+#:
+#: **`consumo_giorno` e i due registri della misura non sono due copie dello
+#: stesso fatto** (D-60, Chiusura). Il secchiello del giorno e' la somma di
+#: tutto cio' che si e' speso per provider e modello, e resta per sempre; il
+#: turno e i suoi giri sono il dettaglio, e scadono dopo `_MEASURE_DAYS`. Il
+#: costo di un giro si calcola una volta (`_track_usage`) e va in tutti e due:
+#: nel giro com'e', nel secchiello sommato. Il turno ritrova il suo secchiello
+#: dalle chiavi che gia' porta (il giorno di `ts`, `provider`, `model`), senza
+#: un riferimento in piu'. E `turn.list_cost_usd` e' un altro fatto ancora:
+#: quanto il turno del ponte sarebbe costato a consumo, che nessun secchiello
+#: conta perche' nessuno l'ha pagato.
 #:
 #: Fino alla Tappa 8 (D5) i due DELETE giravano a ogni turno (`log_turn`);
 #: adesso nel lavoro notturno (`conservazione.nightly`).
@@ -583,8 +605,17 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
     """Una riga di consumo, scritta da chi ha appena avuto una risposta: **un
     guasto dell'archivio non fa cadere il turno** (Tappa 7, T10; S-11).
 
-    I tre scrittori -- il runner di Claude, quello della catena, il ponte --
-    chiamavano `log_usage` a mano, senza rete: un disco pieno o un archivio
+    **La porta dei consumi e' questa, una sola** (D-14, Chiusura): i tre
+    scrittori -- il runner di Claude, quello della catena, il ponte -- non sono
+    copie, sono le tre strade, e ognuna legge i suoi conteggi dalla forma
+    della sua risposta (l'`usage` dell'API, quello OpenAI, il `modelUsage`
+    della CLI). Cio' che hanno in comune -- la riga, la rete sotto -- vive
+    qui. Allo stesso modo il registro dei turni ha una porta,
+    `UsageStore.log_turn`, e due strade che la attraversano:
+    `steering.misura_turno` per la catena, il gancio del ponte
+    (`server._registra_turno_ponte`) per la CLI.
+
+    I tre scrittori chiamavano `log_usage` a mano, senza rete: un disco pieno o un archivio
     chiuso a meta' sollevava DOPO che il modello aveva risposto, e la
     risposta gia' pagata andava persa (sulla catena, peggio, il router la
     leggeva come un guasto del provider e passava al successivo). La misura

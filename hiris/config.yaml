@@ -90,8 +90,11 @@ ports:
 ports_description:
   "8099/tcp": >-
     HIRIS API (DEBUG) — imposta a 8099 SOLO durante sessioni dev/diagnostica:
-    da quel momento chiunque sulla LAN puo' chiamare /api/* in HTTP, protetto
-    solo da «Avanzate · token delle API interne». Lascia vuoto in produzione.
+    da quel momento la porta e' raggiungibile dalla LAN in HTTP, senza
+    cifratura. Fuori dall'ingress /api/* risponde solo a un servizio accoppiato,
+    che firma ogni richiesta; nei dieci minuti in cui apri l'accoppiamento dalla
+    pagina Servizi di HIRIS, anche alla sua presentazione. Lascia vuoto in
+    produzione.
 
 # ===========================================================================
 # QUESTA PAGINA CUSTODISCE, NON DECIDE (versione B, 3.0.0).
@@ -199,7 +202,7 @@ options:
   # una scelta di chi amministra la casa, e deve valere prima che HIRIS apra
   # una qualunque delle sue pagine. Spenta per difetto: HIRIS resta ai soli
   # amministratori finche' qualcuno non lo decide. Accesa, la voce di menu si
-  # apre a tutti (`panel_visibility.py`) e il cancello al confine lascia
+  # apre a tutti (`action/installation.py`) e il cancello al confine lascia
   # passare chat, Impegni e memorie di chi non amministra -- nient'altro.
   non_admin_access: false
 

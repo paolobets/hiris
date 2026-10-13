@@ -13,8 +13,9 @@ async def handle_health(request: web.Request) -> web.Response:
     # `ponte` porta i due fatti che nessun file del repository puo' dire: quale
     # CLI e' arrivata DAVVERO nel container (il `Dockerfile` dice cosa e' stato
     # chiesto, non cosa gira) e se il ponte parli con l'abbonamento invece che
-    # con una chiave a consumo (`apiKeySource: none` = abbonamento). E' `null`
-    # finche' nessun turno e' passato: «non ancora visto» non e' «assente».
+    # con una chiave a consumo (`apiKeySource: none` = abbonamento). Finche'
+    # nessun turno e' passato `stato` e' `non_visto`: «non ancora visto» non e'
+    # «assente» (C-30).
     from ..agent.runner import last_bridge_init
     # `riparazione` porta l'esito della riaggregazione d'avvio: se e' saltata,
     # PERCHE', e quali resoconti ha scritto lo stesso. E' `null` finche' non e'

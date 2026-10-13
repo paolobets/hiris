@@ -18,6 +18,7 @@ from hiris.app import server, steering
 from hiris.app.home_space import historian
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
 
 _RIFIUTATA = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
@@ -94,10 +95,13 @@ async def test_una_risposta_buona_NON_si_segna_rifiutata(casa):
 
 
 class _Coda:
+    # La domanda dei raccoglitori, quella vera della coda (D-08).
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
     def __init__(self, turno):
         self.turno = turno
 
-    def latest(self, kind):
+    def latest(self, kind, **_filtro):
         return self.turno
 
 

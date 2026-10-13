@@ -136,10 +136,10 @@ def test_the_run_key_is_a_module_function():
     uno script che il registro non conosce."""
     cache = _history_mirror()
     registry = {"script.buonanotte": {"id": "script.buonanotte", "unique_id": "bn_1"}}
-    assert hh.run_key(cache, "automation.rifiuto_carta", registry) == ("automation", "177130")
-    assert hh.run_key(cache, "script.buonanotte", registry) == ("script", "bn_1")
-    assert hh.run_key(cache, "script.risveglio", registry) == ("script", "risveglio")
-    assert hh.run_key(cache, "automation.non_esiste", registry) is None
+    assert hh.run_key(cache, "automation.rifiuto_carta", registry.get) == ("automation", "177130")
+    assert hh.run_key(cache, "script.buonanotte", registry.get) == ("script", "bn_1")
+    assert hh.run_key(cache, "script.risveglio", registry.get) == ("script", "risveglio")
+    assert hh.run_key(cache, "automation.non_esiste", registry.get) is None
 
 
 @pytest.mark.asyncio

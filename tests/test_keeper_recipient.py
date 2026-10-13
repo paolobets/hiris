@@ -373,7 +373,7 @@ async def test_guasto_get_states_il_testo_dell_eccezione_non_finisce_nel_registr
             "connessione persa (token=SEKRET-TOKEN-123)")
 
     ha = _house(answers={"/api/states": _dropped})
-    assert "SEKRET-TOKEN-123" in (await ha.get_states([]))["errore"]
+    assert "SEKRET-TOKEN-123" in (await ha.get_states())["errore"]
 
     with caplog.at_level(logging.WARNING):
         esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha, ServiceRegistry())
@@ -474,7 +474,7 @@ async def test_una_sola_lettura_per_lettore():
             entities=_THREE_TRACKERS)
 
     once = house()
-    await once.get_states([])
+    await once.get_states()
     await once.read_registry("entita")
     await once.read_registry("dispositivi")
     await once.get_services()

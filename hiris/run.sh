@@ -37,7 +37,7 @@ export THEME=$(bashio::config 'theme' 'auto')
 
 # ── 4. Chi usa HIRIS ────────────────────────────────────────────────────────
 # `true`/`false`, come `bashio::config` scrive un `bool`. Il codice apre solo
-# su `true` (`panel_visibility.parse_access_flag`) e lo legge una volta,
+# su `true` (`api/admission.parse_access_flag`) e lo legge una volta,
 # in `create_app`.
 export HIRIS_NON_ADMIN_ACCESS=$(bashio::config 'non_admin_access')
 
