@@ -3,6 +3,8 @@ suoi due gemelli -- il fallimento (`fail_unfinished`) e il successo
 (`keep_concluded`, D-24, Chiusura)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from hiris.app.keeper.outcome import ALREADY_CLOSED, CLOSED, UNKNOWN, keep_concluded
@@ -85,3 +87,12 @@ def test_l_archivio_delle_promesse_non_si_porta_dietro_il_loop_del_modello():
     fatto = subprocess.run([sys.executable, "-c", codice], capture_output=True,
                            text=True, check=True)
     assert fatto.stdout.strip() == "[]"
+
+
+def test_la_frase_del_modello_che_non_risponde_ha_una_casa_sola():
+    """N152-2: `steering` la legge dalla foglia invece di ridefinirla.
+    Mutazione ESEGUITA (13/10/2026): la riga rimessa in `steering` -- rossa."""
+    from hiris.app import answer_reasons, steering
+
+    assert steering.NO_ANSWER_REASON is answer_reasons.NO_ANSWER_REASON
+    assert "NO_ANSWER_REASON = " not in Path(steering.__file__).read_text(encoding="utf-8")
