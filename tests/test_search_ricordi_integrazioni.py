@@ -165,9 +165,14 @@ async def test_senza_archivio_una_ricerca_di_entita_non_parla_dei_ricordi(tmp_pa
     Rossa prima della correzione, col messaggio dei ricordi nella prima
     risposta e senza `nulla_riconosciuto`. La casa sintetica ha un corpo non
     letto, un altro guasto di adesso: qui non ce n'e', come nella prova del
-    revisore."""
+    revisore. I corpi si leggono per le due strade che `behavior.without_body`
+    conta insieme (B-39): i non letti e le voci archiviate col corpo `None`."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        monkeypatch.setattr(app["home_space_store"], "unread_bodies", dict)
+        casa = app["home_space_store"]
+        letti = [{**v, "corpo": {} if v.get("corpo") is None else v["corpo"]}
+                 for v in casa.behavior()]
+        monkeypatch.setattr(casa, "unread_bodies", dict)
+        monkeypatch.setattr(casa, "behavior", lambda: letti)
         store, app["memory_store"] = app["memory_store"], None
         try:
             dispatcher = create_tool_dispatcher(

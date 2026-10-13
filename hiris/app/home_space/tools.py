@@ -105,6 +105,7 @@ from ..proxy.state_translations import read_for_house
 from ..usage.giro import pesa_in_caratteri
 from . import historian
 from .appointments import merge_calendars, readable_calendars
+from .behavior import without_body
 from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
@@ -1798,10 +1799,14 @@ class ToolDispatcher:
         # non lo guarda, e dirlo spegnerebbe `nulla_riconosciuto`.
         if memories and self._memory is None:
             entries.append((_MEMORY_UNREAD, False))
-        unread_bodies = self._home_space.unread_bodies()
-        if unread_bodies:
+        # Le voci senza corpo con la regola del nucleo e di `/api/home-space`
+        # (`behavior.without_body`, B-39, Chiusura, 13/10/2026): fino
+        # ad allora qui si contava il solo `unread_bodies`.
+        unknown = without_body(self._home_space.behavior(),
+                               self._home_space.unread_bodies())
+        if unknown:
             message = (
-                f"di {len(unread_bodies)} fra automazioni e script non si conosce "
+                f"di {len(unknown)} fra automazioni e script non si conosce "
                 "il corpo: cosa fanno non e' cercabile adesso, e potrebbe "
                 "riguardare proprio cio' che stai cercando.")
             entries.append((message, False))

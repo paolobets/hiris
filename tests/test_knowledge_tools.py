@@ -35,7 +35,16 @@ from casa_finta import CasaFinta, UnservedCommand
 # in tests/test_home_space_store.py).
 
 
-def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
+#: Il comportamento della casa finta con ogni corpo letto. In `_COMPORTAMENTO`
+#: `script.buonanotte` ha il corpo `None` senza stare fra i corpi non letti:
+#: in produzione i due insiemi coincidono (`behavior.reread`), e da B-39
+#: (13/10/2026) `cerca` li conta con `behavior.without_body`, cioe' insieme.
+#: Queste prove guardano una casa sana: i corpi li hanno tutti.
+_COMPORTAMENTO_LETTO = [{**voce, "corpo": {} if voce["corpo"] is None else voce["corpo"]}
+                        for voce in _COMPORTAMENTO]
+
+
+def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO_LETTO):
     """Semina l'anagrafe nella forma LETTA, che e' anche quella tenuta.
 
     Prima passava dal `_conn` privato -- "l'unico modo di seminare la forma
@@ -1214,6 +1223,25 @@ async def test_cerca_dichiara_i_corpi_non_letti(archivio_casa, memoria):
     # quindi dire «non esiste niente con quel nome» sarebbe falso. E' la
     # proprieta' che le due prove sul file assente/cartella irraggiungibile
     # difendevano dall'altro lato, e che sopravvive alla loro fonte.
+    assert "nulla_riconosciuto" not in esito
+
+
+@pytest.mark.asyncio
+async def test_cerca_conta_i_corpi_con_la_regola_del_nucleo(archivio_casa, memoria):
+    """B-39 (13/10/2026): una voce archiviata col corpo `None` e' un corpo che
+    non si conosce anche quando non sta fra `unread_bodies` -- la regola e'
+    una, `behavior.without_body`, la stessa del nucleo e di `/api/home-space`.
+    Prima `cerca` contava il solo `unread_bodies`, e su questa casa diceva
+    «nulla riconosciuto».
+
+    Mutazione ESEGUITA: rimettere `unknown = self._home_space.unread_bodies()`
+    -- rossa."""
+    archivio_casa.hold_behavior(
+        [{"id": "script.muto", "tipo": "script", "nome": "Muto", "corpo": None}])
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
+        "search", {"nome": "una automazione che non esiste per niente"})
+    assert any("di 1 fra automazioni e script non si conosce il corpo" in m
+               for m in esito.get("non_ho_potuto_guardare", []))
     assert "nulla_riconosciuto" not in esito
 
 
