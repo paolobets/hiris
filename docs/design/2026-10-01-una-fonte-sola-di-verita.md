@@ -478,6 +478,13 @@ dichiarate nell'elenco `SHARED_READS` di `tests/test_fonte_unica.py` con la ragi
 raffica; lo stato delle integrazioni tenuto vivo; la casa letta una volta all'avvio; il motivo di un
 rifiuto di HA conservato. *Misura:* connessioni al giorno e all'avvio, prima e dopo; sonda a zero.
 
+*D6 del piano della Tappa 2 (03/10/2026, «resta REST, il taglio entra nel client»; scritta qui il
+13/10/2026 dalla fetta F0 della Chiusura, che chiude A-36):* lo storico dettagliato ha due vie e
+restano tutte e due, dichiarate in `READ_OWNERS`. `HAClient.history` (REST `/api/history/period`)
+da' la serie alla chat e a chi non e' un turno, e spezza da se' gli id; `HAClient.recorded_changes`
+(WS `history/history_during_period`) conta i cambi per finestra nella cadenza dell'osservatore.
+Unirle su WS cambia la forma della risposta, e va misurato prima.
+
 *Corretto il 04/10/2026, D5 del piano della Tappa 2:* undici voci del capitolo A non leggono Home
 Assistant ma archivi e strutture di HIRIS, e si spostano: A-13, A-16, A-18, A-25, A-38 e S-07 alla
 Tappa 3; A-26 alla Tappa 4; A-23 alla Tappa 6; A-17, A-22, A-37, A-39 alla Tappa 8. E-06 (piu' client
