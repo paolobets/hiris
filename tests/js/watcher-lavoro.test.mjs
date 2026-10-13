@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { conLettura, esito } from './helpers/tentativo.mjs';
 
 /* La scheda «L'osservatore» (config/watcher-lavoro.js): cosa si guarda, da
    quando, perche' -- e l'obiettivo, che si scrive da qui.
@@ -584,9 +585,11 @@ test("seam _rendiScope: la dichiarazione «identificatore» sta sulle righe senz
 // come racconto. La regola che il prodotto si e' dato -- e che questa pagina
 // violava -- e' che **un guasto non si appiattisce su un'assenza**.
 
-function tentativo(esito, quandoFa, dettaglio) {
-  return { quando_ts: Math.floor(Date.now() / 1000) - quandoFa, esito: esito,
-           dettaglio: dettaglio };
+/* Un tentativo come lo manda la rotta: con la sua lettura (`attempt_out`,
+   G-25), presa dai sorgenti Python e non ricopiata qui. */
+function tentativo(valore, quandoFa, dettaglio) {
+  return conLettura({ quando_ts: Math.floor(Date.now() / 1000) - quandoFa, esito: valore,
+                      dettaglio: dettaglio });
 }
 
 test('seam _rendiScope: senza nessun tentativo lo dice, e non tace', () => {
@@ -603,7 +606,7 @@ test('seam _rendiScope: un turno in attesa NON si confonde con un guasto', () =>
   // faccia: nessuna. Mutazione che la uccide: rendere «accodata» con lo
   // stesso tono del fallimento.
   const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('accodata', 180, 'chiesto al piano: non è mai stata fatta')] }));
+    tentativi: [tentativo(esito('ATTEMPT_QUEUED'), 180, 'chiesto al piano: non è mai stata fatta')] }));
   assert.match(corpo.textContent, /In corso da 3 minuti/);
   assert.equal(corpo.innerHTML.indexOf('--err-ink'), -1,
     'aspettare non è un guasto: nessun rosso');
@@ -618,7 +621,7 @@ test("seam _rendiScope: un giro riuscito dice quanto ha deciso NELLA FRASE, non 
   // Riscritta per legare le due meta' in UNA frase, la stessa mutazione la
   // fa arrossire. E' il difetto n.1 di questo progetto, trovato su se stesso.
   const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 7200, "31 decisioni su 381 entita' guardate")] }));
+    tentativi: [tentativo(esito('ATTEMPT_DONE'), 7200, "31 decisioni su 381 entita' guardate")] }));
   assert.match(corpo.textContent, /L’ultimo tentativo è riuscito, 2 ore fa: 31 decisioni su 381/,
     "a colpo d'occhio si deve leggere quanto ha deciso, senza aprire niente");
 });
@@ -632,11 +635,11 @@ test('seam _rendiScope: una serie di fallimenti si vede, e dice DA QUANTO', () =
   // finisce li', e non c'e' niente da dire con «almeno».
   const { corpo } = rendiScope(paginaScope({
     tentativi: [
-      tentativo('non_riuscito', 120, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 720, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1320, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 2400, 'il modello non ha risposto: RuntimeError'),
-      tentativo('riuscito', 3000, "31 decisioni su 381 entita' guardate"),
+      tentativo(esito('ATTEMPT_FAILED'), 120, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_FAILED'), 720, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_FAILED'), 1320, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_FAILED'), 2400, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_DONE'), 3000, "31 decisioni su 381 entita' guardate"),
     ] }));
   assert.match(corpo.textContent, /Sta fallendo da 40 minuti/);
   assert.match(corpo.textContent, /4 tentativi di fila/);
@@ -650,7 +653,7 @@ test('seam _rendiScope: con l\'elenco pieno di fallimenti si dice «almeno», no
   // per uno letto -- il difetto n.4 di questo progetto.
   // Mutazione che la uccide: togliere il ramo «almeno».
   const tentativi = [];
-  for (let n = 0; n < 10; n++) tentativi.push(tentativo('non_riuscito', 120 + n * 600, 'niente da fare'));
+  for (let n = 0; n < 10; n++) tentativi.push(tentativo(esito('ATTEMPT_FAILED'), 120 + n * 600, 'niente da fare'));
   const { corpo } = rendiScope(paginaScope({ tentativi: tentativi }));
   assert.match(corpo.textContent, /almeno 10 tentativi di fila/);
   assert.match(corpo.textContent, /più indietro di così non si vede/,
@@ -667,9 +670,9 @@ test('seam _rendiScope: quando sta fallendo la storia è già APERTA, altrimenti
   // motivazione falsa, trovata dalla review indipendente dell'11/09/2026.)
   // Mutazione che la uccide: passare sempre `false` a `openByDefault`.
   const rotto = rendiScope(paginaScope({
-    tentativi: [tentativo('non_riuscito', 120, 'x'), tentativo('non_riuscito', 720, 'x')] }));
+    tentativi: [tentativo(esito('ATTEMPT_FAILED'), 120, 'x'), tentativo(esito('ATTEMPT_FAILED'), 720, 'x')] }));
   const sano = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 120, '3 decisioni su 4 entita\' guardate')] }));
+    tentativi: [tentativo(esito('ATTEMPT_DONE'), 120, '3 decisioni su 4 entita\' guardate')] }));
 
   const apertoRotto = Array.from(rotto.corpo.querySelectorAll('button[aria-expanded]'))
     .some((b) => b.getAttribute('aria-expanded') === 'true');
@@ -691,11 +694,11 @@ test('seam _rendiScope: un turno in attesa DOPO una serie di fallimenti non nasc
   // dalla prima voce che non sia «accodata».
   const { corpo } = rendiScope(paginaScope({
     tentativi: [
-      tentativo('accodata', 30, 'chiesto al piano'),
-      tentativo('non_riuscito', 600, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1200, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1800, 'il modello non ha risposto: RuntimeError'),
-      tentativo('riuscito', 2400, '31 decisioni su 381 entita\' guardate'),
+      tentativo(esito('ATTEMPT_QUEUED'), 30, 'chiesto al piano'),
+      tentativo(esito('ATTEMPT_FAILED'), 600, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_FAILED'), 1200, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_FAILED'), 1800, 'il modello non ha risposto: RuntimeError'),
+      tentativo(esito('ATTEMPT_DONE'), 2400, '31 decisioni su 381 entita\' guardate'),
     ] }));
   assert.match(corpo.textContent, /3 tentativi di fila non sono riusciti/);
   assert.ok(corpo.innerHTML.indexOf('--err-ink') !== -1,
@@ -714,7 +717,7 @@ test('seam _rendiScope: un esito che la pagina non conosce non la fa esplodere',
   // parti della sezione: la pagina che deve dire «sta funzionando?» muore.
   const { corpo } = rendiScope(paginaScope({
     tentativi: [tentativo('boh', 120, 'un esito che questa pagina non conosce'),
-                tentativo('non_riuscito', 720, 'x')] }));
+                tentativo(esito('ATTEMPT_FAILED'), 720, 'x')] }));
   assert.ok(titoli(corpo).includes('Quanto scrive al giorno'),
     "la sezione dopo esiste ancora: niente e' esploso");
   assert.match(corpo.textContent, /un esito che questa pagina non conosce/);
@@ -726,7 +729,7 @@ test('seam _rendiScope: un tentativo di un mese fa si dice in giorni, non in 840
   // costruzione sono recenti»: falso.
   // Mutazione che la uccide: togliere la soglia dei giorni da `fmtDuration`.
   const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 35 * 86400, '31 decisioni su 381 entita\' guardate')] }));
+    tentativi: [tentativo(esito('ATTEMPT_DONE'), 35 * 86400, '31 decisioni su 381 entita\' guardate')] }));
   assert.doesNotMatch(corpo.textContent, /\d{3,} ore/);
   assert.match(corpo.textContent, /giorni fa/);
 });

@@ -35,9 +35,10 @@ class _FintoArchivioScope:
     una rotta che chiede sempre lo stesso giorno.
     """
 
-    def __init__(self, *, ultima=None):
+    def __init__(self, *, ultima=None, tentativi=()):
         self.finestre = []
         self._ultima = ultima
+        self._tentativi = list(tentativi)
 
     def scope(self):
         return {
@@ -60,7 +61,7 @@ class _FintoArchivioScope:
         porta perche' l'archivio vero lo porta -- una finta costruita nella
         forma che il codice si aspetta, invece che in quella del fornitore,
         e' il difetto n.3 di questo progetto."""
-        return []
+        return list(self._tentativi)
 
     def readings_count(self, *, from_ts, to_ts):
         self.finestre.append((from_ts, to_ts))
@@ -164,6 +165,40 @@ async def test_la_pagina_dice_quando_si_ricambiera_idea_e_perche_allora():
     corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
 
     assert corpo["riconsiderazione"] == ultima
+
+
+@pytest.mark.asyncio
+async def test_ogni_esito_di_un_tentativo_arriva_con_la_sua_lettura():
+    """G-25 (13/10/2026): la pagina ricopiava gli esiti di `mind/store`
+    (`ATTEMPT_*`) per le parole, i guasti e i colori. Ora la rotta manda
+    `esito_leggibile`, `in_attesa`, `riuscito`, `guasto`; `scaduta` e
+    `non_riuscito` pesano uguale (guasto). L'elenco degli esiti si CHIEDE al
+    modulo, non si ricopia: un esito nuovo in `mind/store` senza la sua
+    lettura fa rosso qui.
+
+    Mutazione ESEGUITA: aggiunto `ATTEMPT_X = "x"` in mind/store.py -- rossa."""
+    from hiris.app.mind import store as mind_store
+
+    esiti = {v for k, v in vars(mind_store).items()
+             if k.startswith("ATTEMPT_") and isinstance(v, str)}
+    assert len(esiti) >= 4, "la lettura degli esiti dal modulo si e' rotta"
+    archivio = _FintoArchivioScope(tentativi=[
+        {"quando_ts": 1.0, "esito": e, "dettaglio": None, "versione": None}
+        for e in sorted(esiti)] + [
+        {"quando_ts": 1.0, "esito": "ignoto", "dettaglio": None, "versione": None}])
+    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+    letti = {t["esito"]: t for t in corpo["tentativi"]}
+    for e in esiti:
+        t = letti[e]
+        assert t["esito_leggibile"] and t["esito_leggibile"] != e, e
+        assert [t["in_attesa"], t["riuscito"], t["guasto"]].count(True) == 1, e
+    assert letti[mind_store.ATTEMPT_EXPIRED]["guasto"]
+    assert letti[mind_store.ATTEMPT_FAILED]["guasto"]
+    assert letti[mind_store.ATTEMPT_QUEUED]["in_attesa"]
+    assert letti[mind_store.ATTEMPT_DONE]["riuscito"]
+    ignoto = letti["ignoto"]
+    assert ignoto["esito_leggibile"] == "ignoto"
+    assert not (ignoto["in_attesa"] or ignoto["riuscito"] or ignoto["guasto"])
 
 
 @pytest.mark.asyncio
@@ -292,7 +327,8 @@ async def test_la_pagina_porta_i_TENTATIVI_non_solo_i_giri_riusciti():
 
     corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
 
-    assert corpo["tentativi"] == tentativi
+    # Ogni tentativo esce intero, con la sua lettura accanto (G-25).
+    assert [{k: t[k] for k in tentativi[0]} for t in corpo["tentativi"]] == tentativi
     assert corpo["riconsiderazione"] is None, (
         "un tentativo fallito non e' una riconsiderazione: se lo fosse, la "
         "cadenza scadrebbe come se la casa fosse stata ripensata davvero")
