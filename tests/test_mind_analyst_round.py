@@ -27,6 +27,8 @@ prima d'ora nessuna toccava i giri dello schedulatore, ed e' anche per questo
 che il difetto ha potuto vivere.
 """
 import json
+import time
+import types
 
 import pytest
 
@@ -89,6 +91,34 @@ async def test_un_giorno_senza_analisi_FA_un_turno_e_scrive_il_fondamento(casa):
     scritta = store.analysis(oggi)
     assert scritta is not None, "il giro non ha scritto l'analisi di oggi"
     assert scritta.get("fondamento"), "l'analisi non dice su cosa e' stata scritta"
+
+
+@pytest.mark.asyncio
+async def test_l_analisi_porta_l_istante_dell_orologio_del_giro(casa, monkeypatch):
+    """G-14 (Chiusura, giro 154 N154-1): il giro prende un istante solo e lo
+    passa all'archivio, che non legge piu' l'orologio da se'. Con l'orologio
+    del MODULO fermo -- e solo quello: l'archivio tiene il suo -- la riga
+    dell'analisi deve portare quell'istante.
+
+    Fermare `time.time` per tutti non distinguerebbe niente: l'archivio
+    leggerebbe lo stesso orologio fermo anche senza ricevere `when_ts`, ed e'
+    per questo che la mutazione restava verde.
+
+    Mutazione ESEGUITA (13/10/2026): togliere `when_ts=now` da
+    `replace_analysis` in `analyst_round.write_analysis` -- rossa qui.
+    """
+    from hiris.app.mind import analyst_round
+
+    app, store, _ = casa
+    fermo = float(int(time.time())) - 600.0
+    monkeypatch.setattr(analyst_round, "time", types.SimpleNamespace(time=lambda: fermo))
+
+    await server.analyst_round(app)
+
+    oggi = historian.today(historian.house_timezone(None)).isoformat()
+    (scritto,) = store._conn.execute(
+        "SELECT scritto_ts FROM analisi WHERE giorno = ?", (oggi,)).fetchone()
+    assert scritto == fermo
 
 
 @pytest.mark.asyncio
