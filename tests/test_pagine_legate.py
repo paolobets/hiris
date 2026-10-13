@@ -176,6 +176,41 @@ def test_constructions_page_keeps_no_construction_words():
     assert not copied, f"constructions-route.js ricopia le parole delle costruzioni: {copied}"
 
 
+# -- C-10: come si legge un costo ---------------------------------------------
+# Quali stati sono numeri, quale e' il pavimento e le parole degli altri li dice
+# la rotta dei consumi (`handlers_usage._cost_reading`, su ogni riga e ogni
+# secchiello); la pagina tiene solo la tipografia. Supera la nota della Tappa 4
+# (C-08: «le parole dei costi restano testo di pagina»), per D2 della Chiusura.
+# Mutazioni ESEGUITE (13/10/2026): aggiunto «stimato» a `STATES` -> rossa la
+# prima; rimessa in usage-route.js la mappa delle parole -> rossa la terza.
+
+def test_cost_reading_partitions_the_usage_states():
+    from hiris.app.api.handlers_usage import _COST_FLOOR, _COST_NUMBERS, _COST_WORDS
+    from hiris.app.usage.vocabulary import STATES
+    assert sorted([*_COST_NUMBERS, *_COST_WORDS]) == sorted(STATES)
+    assert _COST_FLOOR in _COST_WORDS
+
+
+def test_every_usage_row_carries_its_cost_reading():
+    from hiris.app.api.handlers_usage import _counters_out
+    row = {"richieste": 1, "token_in": 1, "token_out": 1, "cache_lettura": 0,
+           "cache_scrittura": 0, "costo_usd": 0.5, "costo_stato": "non_noto",
+           "errori_rate_limit": 0}
+    out = _counters_out(row)
+    assert (out["cost_is_number"], out["cost_is_floor"], out["cost_word"]) == \
+        (False, True, "Prezzo sconosciuto")
+    out = _counters_out({**row, "costo_stato": "reale"})
+    assert (out["cost_is_number"], out["cost_is_floor"], out["cost_word"]) == (True, False, None)
+    assert _counters_out({**row, "costo_stato": "futuro"})["cost_word"] == "futuro"
+
+
+def test_usage_page_keeps_no_cost_words():
+    from hiris.app.api.handlers_usage import _COST_WORDS
+    source = _js("config/usage-route.js")
+    copied = [w for w in _COST_WORDS.values() if w in source]
+    assert not copied, f"usage-route.js ricopia le parole del costo: {copied}"
+
+
 # -- C-11: gli orari dello scheduler ------------------------------------------
 # Passo 1: «alle 00:20», «un giorno ogni 5 minuti» e i 22 giorni erano prosa
 # delle pagine, legati allo schedulatore dell'app avviata (mutazioni eseguite:

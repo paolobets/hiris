@@ -53,6 +53,27 @@ _NO_PROVIDER_MSG = (
 _HISTORY_DAYS = 30
 
 
+#: Lo stato del costo detto alla pagina (C-10). Gli stati sono quelli di
+#: `usage/vocabulary.STATES`, e una prova lo confronta: `misurato` e `reale` sono
+#: NUMERI (il costo si scrive), gli altri tre hanno una parola. Fino al
+#: 13/10/2026 le parole e la scelta per stato vivevano nel JavaScript. Un
+#: `non_noto` che porta comunque un costo e' un pavimento: «questo l'ho
+#: pagato di sicuro, piu' qualcosa che non so».
+_COST_NUMBERS = ("misurato", "reale")
+_COST_WORDS = {"gratuito": "Gratuito", "compreso": "Compreso nell’abbonamento",
+               "non_noto": "Prezzo sconosciuto"}
+_COST_FLOOR = "non_noto"
+
+
+def _cost_reading(state: str, cost_eur) -> dict:
+    """Come si legge il costo di una riga: se e' un numero, se e' un pavimento,
+    e la parola degli stati che un numero non l'hanno. Uno stato che le parole
+    non conoscono si dice col suo nome."""
+    return {"cost_is_number": state in _COST_NUMBERS,
+            "cost_is_floor": state == _COST_FLOOR and bool(cost_eur and cost_eur > 0),
+            "cost_word": None if state in _COST_NUMBERS else _COST_WORDS.get(state, state)}
+
+
 def _euro(usd):
     """`None` resta `None`. Uno zero al suo posto sarebbe la bugia della fetta."""
     return None if usd is None else round(usd * _EUR_RATE, 6)
@@ -131,6 +152,7 @@ def _counters_out(row: dict) -> dict:
         "cost_usd": row["costo_usd"],
         "cost_eur": _euro(row["costo_usd"]),
         "cost_state": row["costo_stato"],
+        **_cost_reading(row["costo_stato"], _euro(row["costo_usd"])),
         # Il doppione che la fetta dei consumi ha chiuso: lo STESSO numero
         # usciva come `rate_limit_errors` in cima alla risposta e
         # `errori_rate_limit` dentro una sezione. Una cosa, un nome.

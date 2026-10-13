@@ -156,6 +156,10 @@ async def handle_set_objective(request) -> web.Response:
                               "scritto": bool(written)})
 
 
+# DOPPIONE DICHIARATO: i nomi dei campi del corpo, non un vocabolario
+# La pagina del sapere li scrive nel corpo della POST perche' sono il contratto
+# della rotta, come ogni chiave di una risposta che una pagina legge: non c'e'
+# un insieme di valori da tenere uguale (C-10, Chiusura F2, 13/10/2026).
 _JUDGMENT_TEXT_KEYS = ("soggetto_genere", "soggetto", "campo")
 
 #: L'autore di un giudizio quando nessuno sa dirne il nome (un ingress senza

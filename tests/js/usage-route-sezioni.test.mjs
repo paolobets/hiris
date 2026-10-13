@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { conLetture } from './helpers/costo.mjs';
 
 /* La pagina Consumi, fetta «i consumi, per modello».
 
@@ -105,7 +106,7 @@ async function monta(usage = RISPOSTA, storia = STORIA) {
     // due test C5 sui grafici qui sotto, che DIPENDONO da una storia vera.
     if (String(u).includes('api/usage/history')) return Promise.resolve(rispondi(storia));
     if (String(u).includes('reset')) return Promise.resolve(rispondi({ last_reset: 'x', deleted: false }));
-    return Promise.resolve(rispondi(usage));
+    return Promise.resolve(rispondi(conLetture(usage)));
   };
   ctx.window.HirisUsageRoute.mount();
   for (let i = 0; i < 8; i++) await tick(0);

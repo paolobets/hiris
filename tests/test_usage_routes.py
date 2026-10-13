@@ -135,6 +135,7 @@ def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     assert set(model) == {
         "model", "requests", "token_in", "token_out", "cache_read",
         "cache_write", "cost_usd", "cost_eur", "cost_state",
+        "cost_is_number", "cost_is_floor", "cost_word",
         "rate_limit_errors", "first_use", "last_use",
     }
     assert model["requests"] == 1
@@ -200,10 +201,13 @@ def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     # alla mappa di tornare uno spread: una colonna aggiunta a
     # `consumo_giorno` che comparisse qui da sola fa rosso. `cost_state` c'e'
     # dal 05/10/2026 (C-08, Tappa 4, Task 5): il secchiello e la riga di
-    # modello escono dallo stesso mappatore.
+    # modello escono dallo stesso mappatore. La lettura del costo
+    # (`cost_is_number`, `cost_is_floor`, `cost_word`) dal 13/10/2026, C-10:
+    # la pagina non ricopia piu' gli stati del costo.
     assert set(secchiello) == {
         "requests", "token_in", "token_out", "cache_read", "cache_write",
         "rate_limit_errors", "cost_usd", "cost_eur", "cost_state",
+        "cost_is_number", "cost_is_floor", "cost_word",
     }
     assert secchiello["requests"] == 1
 
