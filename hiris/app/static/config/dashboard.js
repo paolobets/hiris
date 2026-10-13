@@ -250,9 +250,9 @@ window.HirisDashboard = (function () {
     /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
        SOPRA l'elenco dei file non letti (il `threeStates` subito qui sotto): due
        frasi adiacenti che si smentivano. Questo blocco parla soltanto delle
-       voci che sono state lette -- id duplicati, script vuoti, voci
-       malformate -- e ora lo dice invece di promettere che non c'e' rimasto
-       niente in sospeso in tutta la lettura. */
+       voci che sono state lette -- i problemi che `behavior.reread()` scrive
+       con le sue parole (D-49) -- e ora lo dice invece di promettere che non
+       c'e' rimasto niente in sospeso in tutta la lettura. */
     threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.problemi), withoutAllClear({
       ignoto: 'Non si sa se nelle voci lette ci siano incongruenze: la lettura non è avvenuta.',
       vuoto: 'Nelle voci lette non c’è nessuna incongruenza.',

@@ -215,9 +215,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # fatto diverso da un corpo assente, e non va confuso con esso.
             "senza_corpo": unknown_bodies,
             # Cio' che l'ultima lettura NON ha potuto concludere con
-            # certezza (id duplicati, script vuoti, voci malformate) e i
-            # file che non si sono letti, con la ragione. Li costruisce
-            # `behavior.reread()`.
+            # certezza e i file che non si sono letti, con la ragione. Li
+            # costruisce `behavior.reread()`, con le sue parole: oggi l'unico
+            # problema che scrive e' il `secrets.yaml` non letto (D-49).
             "problemi": store.behavior_problems(),
             "corpi_non_letti": store.unread_bodies(),
             # La replica conservata (G-16): `None` quando e' quella
