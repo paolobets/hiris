@@ -5,9 +5,10 @@
    si e' potuto misurare e perche', le forme, la cronaca.
 
    -- Il giorno --
-   L'aggregazione notturna scrive «ieri» alle 00:20 (`server.py::
-   _aggrega_ieri`): il giorno di oggi, quasi sempre, non ha ancora un
-   resoconto. Il selettore nasce su ieri, calcolato nel fuso del BROWSER e
+   L'aggregazione notturna scrive «ieri» poco dopo la mezzanotte, all'ora
+   che `mind/report.NIGHTLY_HOUR`/`NIGHTLY_MINUTE` fissano e che il 404 di
+   GET /api/mind/report manda in `ora_notturna`: il giorno di oggi, quasi
+   sempre, non ha ancora un resoconto. Il selettore nasce su ieri, calcolato nel fuso del BROWSER e
    non in quello della casa -- i due possono differire di un GIORNO intero
    (non "un'ora", cifra non misurata) vicino alla mezzanotte, se si guarda da
    un fuso diverso; nel caso reale, casa e utente nello stesso fuso, l'errore
