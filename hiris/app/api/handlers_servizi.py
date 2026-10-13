@@ -35,8 +35,11 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from .boundary import error_response, json_object
-from .canali import RUOLI, SERVICE_SPECIES
+from .canali import PUO, RUOLI, SERVICE_SPECIES
 from .servizi import (
+    STATE_AUTHORIZED,
+    STATE_PENDING,
+    STATE_REVOKED,
     apri_finestra,
     chiudi_finestra,
     finestra_aperta,
@@ -55,6 +58,65 @@ _CHIUSA = ("l’accoppiamento è chiuso. Aprilo da HIRIS, nella pagina dei "
 #: Approvare e revocare cercano per chiave, non per id: la frase e' quella di
 #: ogni id che non c'e' (C-07), con cio' con cui si e' cercato.
 _UNKNOWN_KEY = unknown_id_text("nessun servizio", by="quella chiave")
+
+
+#: Come una persona sceglie il ruolo di un servizio, in pagina (C-10): cosa
+#: concede, detto a chi decide, e cosa succede dopo il sì. L'ORDINE e' quello
+#: della scelta, e il primo e' il preselezionato: `utente` e' il caso comune,
+#: `amministratore` sta in fondo perche' e' la decisione seria. Le chiavi sono
+#: `canali.RUOLI`, chieste li' da `roles()`: un ruolo nuovo senza parole esce
+#: col suo nome. Fino al 13/10/2026 queste frasi e l'ordine vivevano nel
+#: JavaScript della pagina, accanto a una copia dei ruoli.
+_ROLE_WORDS = {
+    "utente": ("Comanda la casa: accende, spegne, regola.",
+               "potrà comandare la casa."),
+    "lettore": ("Legge lo stato della casa e basta.",
+                "potrà leggere lo stato della casa."),
+    "amministratore": (("Costruisce automazioni e cambia come si comporta la casa. "
+                        "Solo per una macchina che gestisci tu."),
+                       "potrà comandare la casa e costruire automazioni."),
+}
+#: Che cos'e' un servizio, detto a chi sceglie; il primo e' il preselezionato.
+_SPECIES_WORDS = {
+    "integrazione": "Un programma su un’altra macchina.",
+    "luogo": "Un pannello appeso in un punto della casa: HIRIS saprà da dove gli si parla.",
+}
+
+
+def _in_choice_order(keys, words: dict) -> list:
+    known = [key for key in words if key in keys]
+    return known + [key for key in keys if key not in words]
+
+
+def roles() -> list[dict]:
+    """I ruoli fra cui si sceglie, nell'ordine della scelta. `amministra` e'
+    il gesto riservato di `canali.PUO`: la pagina lo segna con un badge."""
+    out = []
+    for role in _in_choice_order(RUOLI, _ROLE_WORDS):
+        grants, effect = _ROLE_WORDS.get(role, ("", ""))
+        out.append({"ruolo": role, "concede": grants, "effetto": effect,
+                    "amministra": bool(PUO.get(role, {}).get("amministrare"))})
+    return out
+
+
+def species() -> list[dict]:
+    """Le specie fra cui si sceglie, nell'ordine della scelta."""
+    return [{"specie": kind, "cos_e": _SPECIES_WORDS.get(kind, "")}
+            for kind in _in_choice_order(SERVICE_SPECIES, _SPECIES_WORDS)]
+
+
+def listing(archivio, adesso: float) -> dict:
+    """I servizi divisi nelle tre sezioni della pagina, dallo stato che la
+    riga porta (`servizi.STATE_*`): chi aspetta una decisione, chi e'
+    accoppiato, chi e' stato revocato. Una forma sola per la lettura e per le
+    risposte di approva e revoca. Gli stati sono chiusi (li scrive solo
+    l'archivio), quindi ogni riga ha la sua sezione."""
+    where = {STATE_PENDING: "da_decidere", STATE_AUTHORIZED: "accoppiati",
+             STATE_REVOKED: "revocati"}
+    sections: dict[str, list] = {section: [] for section in where.values()}
+    for row in archivio.elenco(now_ts=adesso):
+        sections[where[row["stato"]]].append(row)
+    return sections
 
 
 def _archivio(request):
@@ -98,10 +160,10 @@ async def handle_services(request: web.Request) -> web.Response:
     adesso = time.time()
     finestra = request.app.get("finestra_servizi")
     return web.json_response({
-        "servizi": archivio.elenco(now_ts=adesso),
+        "servizi": listing(archivio, adesso),
         "finestra": {"aperta": finestra_aperta(finestra, adesso=adesso),
                      "resta_s": round(finestra_resta(finestra, adesso=adesso))},
-        "ruoli": list(RUOLI), "specie": list(SERVICE_SPECIES)})
+        "ruoli": roles(), "specie": species()})
 
 
 async def handle_open_window(request: web.Request) -> web.Response:
@@ -142,7 +204,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: approvato un servizio come «%s» (%s)",
                 dati.get("ruolo"), dati.get("specie"))
-    return web.json_response({"servizi": archivio.elenco(now_ts=adesso)})
+    return web.json_response({"servizi": listing(archivio, adesso)})
 
 
 async def handle_service_revoke(request: web.Request) -> web.Response:
@@ -155,4 +217,4 @@ async def handle_service_revoke(request: web.Request) -> web.Response:
     if not archivio.revoca(str(dati.get("chiave") or ""), now_ts=adesso):
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: accesso revocato a un servizio")
-    return web.json_response({"servizi": archivio.elenco(now_ts=adesso)})
+    return web.json_response({"servizi": listing(archivio, adesso)})

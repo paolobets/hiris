@@ -20,8 +20,29 @@ function risposta(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
-const RUOLI = ['amministratore', 'utente', 'lettore'];
-const SPECIE = ['integrazione', 'luogo'];
+/* Come li manda il server (`handlers_servizi.roles`/`species`, C-10): gia'
+   nell'ordine della scelta, con le loro frasi. */
+const RUOLI = [
+  { ruolo: 'utente', concede: 'Comanda la casa: accende, spegne, regola.',
+    effetto: 'potrà comandare la casa.', amministra: false },
+  { ruolo: 'lettore', concede: 'Legge lo stato della casa e basta.',
+    effetto: 'potrà leggere lo stato della casa.', amministra: false },
+  { ruolo: 'amministratore', concede: 'Costruisce automazioni e cambia come si comporta la casa. ' +
+    'Solo per una macchina che gestisci tu.',
+    effetto: 'potrà comandare la casa e costruire automazioni.', amministra: true },
+];
+const SPECIE = [
+  { specie: 'integrazione', cos_e: 'Un programma su un’altra macchina.' },
+  { specie: 'luogo', cos_e: 'Un pannello appeso in un punto della casa: HIRIS saprà da dove gli si parla.' },
+];
+/* Le tre sezioni in cui il server divide i servizi (`handlers_servizi.listing`). */
+const SEZIONE = { in_attesa: 'da_decidere', autorizzato: 'accoppiati', revocato: 'revocati' };
+
+function sezioni(righe) {
+  const out = { da_decidere: [], accoppiati: [], revocati: [] };
+  righe.forEach((r) => out[SEZIONE[r.stato]].push(r));
+  return out;
+}
 
 function servizio(extra) {
   return Object.assign({
@@ -33,10 +54,16 @@ function servizio(extra) {
 
 function stato(servizi, finestra) {
   return {
-    servizi: servizi || [],
+    righe: servizi || [],
     finestra: finestra || { aperta: false, resta_s: 0 },
     ruoli: RUOLI, specie: SPECIE,
   };
+}
+
+/* La risposta del server: le righe divise in sezioni. */
+function vista(corpo) {
+  return { servizi: sezioni(corpo.righe), finestra: corpo.finestra,
+           ruoli: corpo.ruoli, specie: corpo.specie };
 }
 
 /* Il finto server. Ogni prova rompe o cambia solo il pezzo che la riguarda; le
@@ -69,20 +96,20 @@ function monta(opts = {}) {
     if (u.endsWith('/approve')) {
       if (opts.approveStatus) return risposta({ error: 'il ruolo non esiste' }, opts.approveStatus);
       const d = JSON.parse((options || {}).body || '{}');
-      corpo.servizi = corpo.servizi.map((r) => (r.chiave === d.chiave
+      corpo.righe = corpo.righe.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'autorizzato', ruolo: d.ruolo, specie: d.specie,
                                  deciso_ts: 1758500500 })
         : r));
-      return risposta({ servizi: corpo.servizi });
+      return risposta({ servizi: sezioni(corpo.righe) });
     }
     if (u.endsWith('/revoke')) {
       const d = JSON.parse((options || {}).body || '{}');
-      corpo.servizi = corpo.servizi.map((r) => (r.chiave === d.chiave
+      corpo.righe = corpo.righe.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'revocato', deciso_ts: 1758500600 })
         : r));
-      return risposta({ servizi: corpo.servizi });
+      return risposta({ servizi: sezioni(corpo.righe) });
     }
-    return risposta(corpo);
+    return risposta(vista(corpo));
   };
   return Object.assign(ctx, { chiamate, battito, statoServer: () => corpo });
 }

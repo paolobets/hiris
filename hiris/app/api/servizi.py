@@ -60,11 +60,19 @@ CREATE INDEX IF NOT EXISTS idx_servizi_stato ON servizi(stato, visto_ts DESC);
 """
 
 
+#: Gli stati di un servizio, e la loro sola casa (C-10): chi si e' presentato e
+#: aspetta, chi e' stato approvato, chi e' stato revocato. L'SQL qui sotto e la
+#: rotta che li divide in sezioni (`handlers_servizi.listing`) li chiedono qui;
+#: fino al 13/10/2026 erano letterali nell'SQL e una copia nel JavaScript.
+STATE_PENDING = "in_attesa"
+STATE_AUTHORIZED = "autorizzato"
+STATE_REVOKED = "revocato"
+
 #: Una presentazione che nessuno ha guardato entro `ServiziStore.ATTESA_S`.
 #: Una condizione sola per chi la cancella (`CONSERVAZIONE`) e per chi la
 #: salta (`elenco`, `approva`, `revoca`): fra la scadenza e la potatura
 #: notturna la riga sta ancora su disco, e nessuna porta la deve vedere.
-_EXPIRED_SQL = "(stato='in_attesa' AND visto_ts < ?)"
+_EXPIRED_SQL = f"(stato='{STATE_PENDING}' AND visto_ts < ?)"
 
 #: **Per quanto resta una presentazione che nessuno ha guardato**, nella forma
 #: di ogni archivio (`storage.Retention`): un giorno.
@@ -158,9 +166,10 @@ class ServiziStore:
             if esistente is None:
                 self._conn.execute(
                     "INSERT INTO servizi(chiave,nome,indirizzo,stato,visto_ts) "
-                    "VALUES(?,?,?,'in_attesa',?)",
-                    (chiave, str(nome or "senza nome"), str(indirizzo or "?"), now_ts))
-            elif esistente["stato"] != "revocato":
+                    "VALUES(?,?,?,?,?)",
+                    (chiave, str(nome or "senza nome"), str(indirizzo or "?"),
+                     STATE_PENDING, now_ts))
+            elif esistente["stato"] != STATE_REVOKED:
                 self._conn.execute(
                     "UPDATE servizi SET nome=?, indirizzo=?, visto_ts=? WHERE chiave=?",
                     (str(nome or "senza nome"), str(indirizzo or "?"), now_ts, chiave))
@@ -178,9 +187,9 @@ class ServiziStore:
             raise ValueError(f"specie {specie!r}: sono {', '.join(SERVICE_SPECIES)}")
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE servizi SET stato='autorizzato', ruolo=?, specie=?, "
+                "UPDATE servizi SET stato=?, ruolo=?, specie=?, "
                 f"deciso_ts=? WHERE chiave=? AND NOT {_EXPIRED_SQL}",
-                (ruolo, specie, now_ts, chiave, self._expiry(now_ts)))
+                (STATE_AUTHORIZED, ruolo, specie, now_ts, chiave, self._expiry(now_ts)))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -189,9 +198,9 @@ class ServiziStore:
         sarebbe revocare domani."""
         with self._lock:
             cur = self._conn.execute(
-                "UPDATE servizi SET stato='revocato', deciso_ts=? "
+                "UPDATE servizi SET stato=?, deciso_ts=? "
                 f"WHERE chiave=? AND NOT {_EXPIRED_SQL}",
-                (now_ts, chiave, self._expiry(now_ts)))
+                (STATE_REVOKED, now_ts, chiave, self._expiry(now_ts)))
             self._conn.commit()
         return cur.rowcount > 0
 
@@ -204,8 +213,8 @@ class ServiziStore:
         """
         with self._lock:
             r = self._conn.execute(
-                "SELECT * FROM servizi WHERE chiave=? AND stato='autorizzato'",
-                (chiave,)).fetchone()
+                "SELECT * FROM servizi WHERE chiave=? AND stato=?",
+                (chiave, STATE_AUTHORIZED)).fetchone()
         return None if r is None else _row(r)
 
     def elenco(self, *, now_ts: float) -> list[dict]:
@@ -259,7 +268,7 @@ def service_thread_renames(rows: list[dict]) -> tuple[dict[str, str], list[str]]
     sarebbe peggio."""
     owners: dict[str, set[str]] = {}
     for row in rows:
-        if row.get("stato") not in ("autorizzato", "revocato"):
+        if row.get("stato") not in (STATE_AUTHORIZED, STATE_REVOKED):
             continue
         old = f"{row.get('specie') or SPECIE_IGNOTA}:{row.get('nome')}"
         new = f"{row.get('specie') or SPECIE_IGNOTA}:{row.get('impronta')}"

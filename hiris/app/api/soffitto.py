@@ -39,6 +39,7 @@ from typing import NamedTuple
 from ..chat_thread import new_subject
 from ..proxy._sanitize import sanitize_ha_value
 from .canali import PUO, RUOLI, SERVICE_SPECIES, SPECIE_IGNOTA
+from .servizi import STATE_AUTHORIZED
 
 logger = logging.getLogger(__name__)
 
@@ -495,7 +496,7 @@ def approved_services(app) -> list[dict]:
         logger.warning("soffitto: archivio dei servizi non leggibile (%s)",
                        type(exc).__name__)
         return []
-    return [row for row in rows if row.get("stato") == "autorizzato"]
+    return [row for row in rows if row.get("stato") == STATE_AUTHORIZED]
 
 
 def _service_rows(subject: dict, approved: list[dict]) -> list[dict]:

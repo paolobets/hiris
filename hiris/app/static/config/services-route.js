@@ -39,24 +39,11 @@ window.HirisServicesRoute = (function () {
      niente da aspettare e il giro si ferma. */
   var RILETTURA_MS = 5000;
 
-  /* Cosa concede ogni ruolo, detto a chi sta decidendo. Le CHIAVI ammesse
-     arrivano dal server (`ruoli`, `specie`): qui c'e' solo la spiegazione, e
-     un ruolo che il server aggiungesse senza che questa mappa lo conosca si
-     mostra col proprio nome invece di sparire dall'elenco. */
-  var RUOLI = {
-    utente: 'Comanda la casa: accende, spegne, regola.',
-    lettore: 'Legge lo stato della casa e basta.',
-    amministratore: 'Costruisce automazioni e cambia come si comporta la casa. ' +
-      'Solo per una macchina che gestisci tu.'
-  };
-  var SPECIE = {
-    integrazione: 'Un programma su un’altra macchina.',
-    luogo: 'Un pannello appeso in un punto della casa: HIRIS saprà da dove gli si parla.'
-  };
-  /* Il primo di ognuno dei due e' quello preselezionato: `utente` e' il caso
-     comune, e `amministratore` sta in fondo perche' e' la decisione seria. */
-  var ORDINE_RUOLI = ['utente', 'lettore', 'amministratore'];
-  var ORDINE_SPECIE = ['integrazione', 'luogo'];
+  /* I ruoli e le specie fra cui si sceglie arrivano dal server (`ruoli`,
+     `specie`, C-10), gia' nell'ordine della scelta e con le loro frasi: il
+     primo e' il preselezionato. Qui non se ne tiene una copia: un ruolo che il
+     server aggiungesse si mostra col proprio nome invece di sparire. Lo stesso
+     per gli stati: il server manda i servizi gia' divisi nelle tre sezioni. */
 
   var stato = { dati: null, giro: null, aperto: null, messaggio: '',
               revocatiAperti: false };
@@ -74,9 +61,14 @@ window.HirisServicesRoute = (function () {
     return ts ? fmtDateTime(ts * 1000) : '';
   }
 
-  function righe(stati) {
-    var tutte = (stato.dati && stato.dati.servizi) || [];
-    return tutte.filter(function (r) { return stati.indexOf(r.stato) >= 0; });
+  function righe(sezione) {
+    return ((stato.dati && stato.dati.servizi) || {})[sezione] || [];
+  }
+
+  function ruoli() { return (stato.dati && stato.dati.ruoli) || []; }
+
+  function ruolo(nome) {
+    return ruoli().filter(function (r) { return r.ruolo === nome; })[0] || null;
   }
 
   // --- le chiamate che cambiano qualcosa ------------------------------------
@@ -208,7 +200,7 @@ window.HirisServicesRoute = (function () {
     /* Le righe in attesa arrivate PRIMA che la finestra si chiudesse restano
        qui e restano approvabili: la finestra governa chi puo' presentarsi, non
        chi puo' essere approvato. */
-    righe(['in_attesa']).forEach(function (r) { body.appendChild(rigaInAttesa(r)); });
+    righe('da_decidere').forEach(function (r) { body.appendChild(rigaInAttesa(r)); });
     s.card.appendChild(body);
     return s.card;
   }
@@ -267,25 +259,25 @@ window.HirisServicesRoute = (function () {
       'Approva solo se sullo schermo di «' + r.nome + '» c’è ' + r.codice +
       '. Se è diverso, rifiuta: qualcuno si sta presentando al posto suo.'));
 
-    var scelte = { ruolo: ORDINE_RUOLI[0], specie: ORDINE_SPECIE[0] };
+    var specie = (stato.dati && stato.dati.specie) || [];
+    var scelte = { ruolo: ruoli().length ? ruoli()[0].ruolo : '',
+                   specie: specie.length ? specie[0].specie : '' };
     var conferma = el('button', 'btn btn-primary', '');
     conferma.type = 'button';
     var effetto = el('p', 'sc-row-why', '');
 
     function aggiorna() {
       conferma.textContent = 'Accoppia come ' + scelte.ruolo;
-      effetto.textContent = 'Da adesso «' + r.nome + '» ' + (
-        scelte.ruolo === 'lettore' ? 'potrà leggere lo stato della casa.'
-        : scelte.ruolo === 'amministratore'
-          ? 'potrà comandare la casa e costruire automazioni.'
-          : 'potrà comandare la casa.');
+      var scelto = ruolo(scelte.ruolo);
+      effetto.textContent = scelto && scelto.effetto
+        ? 'Da adesso «' + r.nome + '» ' + scelto.effetto : '';
     }
 
     p.appendChild(gruppo('Cosa può fare', 'ruolo-' + r.codice,
-      ordinati(ORDINE_RUOLI, (stato.dati && stato.dati.ruoli) || []), RUOLI,
+      ruoli().map(function (x) { return { valore: x.ruolo, spiegazione: x.concede }; }),
       function (v) { scelte.ruolo = v; aggiorna(); }));
     p.appendChild(gruppo('Cos’è', 'specie-' + r.codice,
-      ordinati(ORDINE_SPECIE, (stato.dati && stato.dati.specie) || []), SPECIE,
+      specie.map(function (x) { return { valore: x.specie, spiegazione: x.cos_e }; }),
       function (v) { scelte.specie = v; aggiorna(); }));
 
     aggiorna();
@@ -310,15 +302,11 @@ window.HirisServicesRoute = (function () {
      risposta); l'ordine in cui si mostrano e' una decisione di questa pagina.
      Cio' che il server manda e questa pagina non conosce si mostra comunque,
      in fondo: una scelta che sparisce e' peggio di una senza spiegazione. */
-  function ordinati(preferito, dalServer) {
-    var fuori = dalServer.filter(function (v) { return preferito.indexOf(v) < 0; });
-    return preferito.filter(function (v) { return dalServer.indexOf(v) >= 0; }).concat(fuori);
-  }
-
-  function gruppo(titolo, nome, valori, spiegazioni, scelto) {
+  function gruppo(titolo, nome, voci, scelto) {
     var g = el('fieldset', 'service-choice');
     g.appendChild(el('legend', null, titolo));
-    valori.forEach(function (v, i) {
+    voci.forEach(function (voce, i) {
+      var v = voce.valore;
       var riga = el('label', 'service-option');
       var radio = el('input');
       radio.type = 'radio';
@@ -328,7 +316,7 @@ window.HirisServicesRoute = (function () {
       radio.addEventListener('change', function () { scelto(v); });
       var testo = el('span');
       testo.appendChild(el('span', 'sc-row-title', v));
-      testo.appendChild(el('span', 'sc-row-why', spiegazioni[v] || ''));
+      testo.appendChild(el('span', 'sc-row-why', voce.spiegazione || ''));
       riga.appendChild(radio);
       riga.appendChild(testo);
       g.appendChild(riga);
@@ -340,7 +328,7 @@ window.HirisServicesRoute = (function () {
 
   function accoppiati() {
     var s = sezione('02', 'Servizi accoppiati');
-    var vivi = righe(['autorizzato']).sort(function (a, b) {
+    var vivi = righe('accoppiati').sort(function (a, b) {
       return String(a.nome).localeCompare(String(b.nome), 'it');
     });
     if (!vivi.length) {
@@ -353,12 +341,13 @@ window.HirisServicesRoute = (function () {
       var riga = el('div', 'sc-row');
       var testa = el('div', 'jr-meta');
       testa.appendChild(el('span', 'sc-row-title', r.nome));
-      /* `amministratore` porta un badge, gli altri due no: cio' che serve a
-         colpo d'occhio e' chi puo' costruire automazioni, non l'elenco dei
-         ruoli. Il badge non e' l'unico segnale -- la riga sotto lo dice a
-         parole (WCAG 1.4.1). */
-      if (r.ruolo === 'amministratore') {
-        testa.appendChild(el('span', 'agent-badge badge-paused', 'amministratore'));
+      /* Il ruolo che amministra (`amministra`, dal server) porta un badge,
+         gli altri no: cio' che serve a colpo d'occhio e' chi puo' costruire
+         automazioni, non l'elenco dei ruoli. Il badge non e' l'unico segnale
+         -- la riga sotto lo dice a parole (WCAG 1.4.1). */
+      var suo = ruolo(r.ruolo);
+      if (suo && suo.amministra) {
+        testa.appendChild(el('span', 'agent-badge badge-paused', r.ruolo));
       }
       riga.appendChild(testa);
       riga.appendChild(el('div', 'sc-row-why',
@@ -383,11 +372,11 @@ window.HirisServicesRoute = (function () {
   }
 
   function ruoloDetto(ruolo) {
-    return RUOLI[ruolo] ? ruolo : (ruolo || 'senza ruolo');
+    return ruolo || 'senza ruolo';
   }
 
   function revocati() {
-    var fuori = righe(['revocato']);
+    var fuori = righe('revocati');
     if (!fuori.length) return null;
     var card = el('section', 'section-card');
     var head = el('div', 'sc-header');

@@ -118,30 +118,37 @@ def test_constructions_page_keeps_no_pending_states():
 
 
 # -- C-10: gli stati dei servizi ----------------------------------------------
-# Gli stati si chiedono all'archivio facendolo lavorare: presentarsi, essere
-# approvati, essere revocati.
-# Mutazione eseguita: `stato='revocato'` -> `stato='revocata'` in
-# `ServiziStore.revoca` -> rossa.
+# Gli stati vivono in `servizi.STATE_*`; la rotta divide i servizi nelle tre
+# sezioni della pagina (`handlers_servizi.listing`), e la pagina non ne tiene
+# una copia. Supera il giro 2 del 05/10 (n.7), per D2 della Chiusura.
+# Mutazioni ESEGUITE (13/10/2026): rimessa in services-route.js la scelta per
+# stato (`righe(['in_attesa'])`) -> rossa la seconda; `STATE_REVOKED` a
+# «revocata» con l'SQL che scrive ancora il letterale -> rossa la prima.
 
-def test_service_states_match_store(tmp_path):
+def test_service_sections_follow_the_store_states(tmp_path):
+    from hiris.app.api.handlers_servizi import listing
     store = servizi.ServiziStore(str(tmp_path / "servizi.db"))
-    # Un ruolo e una specie qualunque fra quelli ammessi, chiesti per stringa:
-    # questa prova non lega ruoli e specie al JavaScript, e nominarli nel
-    # codice la farebbe passare per il loro legame agli occhi di
-    # `scripts/doppioni.py` (`_costanti_gia_legate`).
     role, kind = vars(servizi)["RUOLI"][0], vars(servizi)["SERVICE_SPECIES"][0]
     try:
-        pending = store.presenta(nome="n", chiave="k", indirizzo="i", now_ts=1.0)["stato"]
-        store.approva("k", ruolo=role, specie=kind, now_ts=2.0)
-        authorized = store.autorizzato("k")["stato"]
-        store.revoca("k", now_ts=3.0)
-        revoked = store.elenco(now_ts=4.0)[0]["stato"]
+        for key in ("a", "b", "c"):
+            store.presenta(nome=key, chiave=key, indirizzo="i", now_ts=1.0)
+        store.approva("b", ruolo=role, specie=kind, now_ts=2.0)
+        store.approva("c", ruolo=role, specie=kind, now_ts=2.0)
+        store.revoca("c", now_ts=3.0)
+        sections = listing(store, 4.0)
     finally:
         store.close()
+    assert {name: [r["nome"] for r in rows] for name, rows in sections.items()} == \
+        {"da_decidere": ["a"], "accoppiati": ["b"], "revocati": ["c"]}
+
+
+def test_services_page_keeps_no_states():
     source = _js("config/services-route.js")
-    js = {state for group in re.findall(r"righe\(\[([^\]]*)\]\)", source)
-          for state in re.findall(r"'([^']*)'", group)}
-    assert js == {pending, authorized, revoked}
+    states = {servizi.STATE_PENDING, servizi.STATE_AUTHORIZED, servizi.STATE_REVOKED}
+    assert len(states) == 3
+    copied = sorted(state for state in states
+                    if f"'{state}'" in source or f'"{state}"' in source)
+    assert not copied, f"services-route.js tiene gli stati dei servizi: {copied}"
 
 
 # -- C-11: gli orari dello scheduler ------------------------------------------
