@@ -34,6 +34,9 @@ const IMPOSTAZIONI = {
   retention_days: 30,
   response_modes: ['auto', 'compact', 'minimal'],
   default_system_prompt: 'IL PROMPT PREDEFINITO NEL CODICE.',
+  // Un numero che non e' quello vero (1024): se la pagina lo scrive, l'ha
+  // letto da qui (C-11).
+  thinking_budget_min: 777,
 };
 
 /* Il finto server: risponde all'unica rotta che la pagina usa. Le opzioni
@@ -272,6 +275,16 @@ test('la descrizione di thinking_budget dice DOVE vale, e non promette effetto o
   assert.match(testo, /modalità abbonamento/);
   assert.doesNotMatch(testo, /viene disattivato comunque e il log lo dice/,
     'la vecchia frase era vera su un percorso su tre: era una dichiarazione falsa al presente');
+});
+
+test('il minimo del budget di ragionamento lo dice il server, non la pagina (C-11)', async () => {
+  const { window, document } = montaConServer();
+  window.HirisSettingsRoute.mount();
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.match(testo, /sotto i 777 token/);
+  assert.doesNotMatch(testo, /1024/, 'la pagina ricopia il minimo invece di leggerlo');
 });
 
 // ---------------------------------------------------------------------------

@@ -21,17 +21,8 @@ window.HirisWatcherCosaFare = (function () {
   var retryButton = S.retryButton;
   var fmtCount = S.fmtCount;
   var fmtPercent = S.fmtPercent;
+  var fmtDuration = S.fmtDuration;
   var localOggi = S.localOggi;
-
-  /* I tre inneschi, **a parole**. «1» non vuol dire niente per chi legge: la
-     spec da' a ciascuno un nome, ed e' quello che va in pagina. Vivono qui in
-     un posto solo perche' il numero arriva dal modello e la parola e' nostra:
-     due elenchi divergerebbero al primo ritocco. */
-  var TRIGGER_WORDS = {
-    1: 'è cambiato, e non è spiegato',
-    2: 'è stabile e costa',
-    3: 'non c’è più',
-  };
 
   /* Cosa il proponente ha fatto di questa osservazione (attori, strato 4,
      Task 4.6).
@@ -100,8 +91,10 @@ window.HirisWatcherCosaFare = (function () {
       riga.appendChild(el('div', 'sc-row-why', o.cosa || ''));
 
       var coda = [];
-      var parola = TRIGGER_WORDS[o.innesco];
-      if (parola) coda.push('Perché lo dice: ' + parola + '.');
+      /* L'innesco a parole lo manda la rotta (`innesco_parole`,
+         `mind/analyst.TRIGGER_WORDS`, C-11): «1» non vuol dire niente per
+         chi legge, e la pagina non ne tiene una copia. */
+      if (o.innesco_parole) coda.push('Perché lo dice: ' + o.innesco_parole + '.');
       /* **Cio' che e' spiegato si distingue da cio' che non lo e'**: e' la
          differenza fra una scoperta e una conferma, e la spec la chiede. */
       if (o.spiegato) coda.push('È spiegato: ' + o.spiegato + '.');
@@ -112,12 +105,16 @@ window.HirisWatcherCosaFare = (function () {
     });
   }
 
-  function renderAnalysisError(body, status, reload) {
+  function renderAnalysisError(body, status, reload, corpo) {
     if (status === 404) {
       /* «Non ho guardato» non e' «ho guardato e non c'era niente»: la prima
-         e' questa, la seconda e' un elenco vuoto. */
-      line(body, 'L’analista non ha ancora guardato questo giorno. Gira una volta ' +
-        'all’ora, e un giorno ha una analisi sola.', TONE_CALM);
+         e' questa, la seconda e' un elenco vuoto. Ogni quanto gira lo dice
+         il server (`analista_ogni_s`, C-11): la pagina non lo ricopia. */
+      var ogni = (corpo || {}).analista_ogni_s;
+      var quando = ogni === 3600 ? 'ogni ora' : (ogni ? 'ogni ' + fmtDuration(ogni) : null);
+      line(body, 'L’analista non ha ancora guardato questo giorno.' +
+        (quando ? ' Gira ' + quando + ', e un giorno ha una analisi sola.' :
+          ' Un giorno ha una analisi sola.'), TONE_CALM);
       return;
     }
     line(body, 'Non è stato possibile leggere l’analisi. Riprova più tardi.', TONE_PROBLEM);
@@ -131,7 +128,7 @@ window.HirisWatcherCosaFare = (function () {
     var giorno = day || localOggi();
     return read('api/mind/analysis?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
       clearEl(corpo);
-      if (!occurrence.ok) { renderAnalysisError(corpo, occurrence.status, reload); return; }
+      if (!occurrence.ok) { renderAnalysisError(corpo, occurrence.status, reload, occurrence.corpo); return; }
       renderAnalysis(corpo, occurrence.corpo.analisi || {});
     }, function () {
       clearEl(corpo);

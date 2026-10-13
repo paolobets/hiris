@@ -31,8 +31,8 @@ from ..home_space.house import House
 from ..home_space.log_source import Manifest, integration_of, manifest_of
 from ..home_space.topology import read_mirror
 from . import proposer_turn
-from .analyst import observation_key
-from .report import NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from .analyst import TRIGGER_WORDS, observation_key
+from .report import ANALYST_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
 from .store import attempt_out
 from .watcher import scope_row
 
@@ -216,12 +216,19 @@ class MindView:
         Tappa 4, Task 5), dalla rotta e dallo strumento."""
         return f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
 
+    @staticmethod
+    def analyst_every_s() -> int:
+        """Ogni quanti secondi gira l'analista: chi chiede un giorno non ancora
+        analizzato lo riceve accanto al rifiuto (`analista_ogni_s`, C-11), dalla
+        rotta e dallo strumento."""
+        return ANALYST_EVERY_MINUTES * 60
+
     # -- le analisi -------------------------------------------------------
 
     def analyses(self) -> list[dict]:
         """Le ultime analisi, dalla piu' recente, coi nomi risolti adesso."""
         names = self.device_names()
-        return [{**a, "osservazioni": _named(names, a.get("osservazioni"))}
+        return [{**a, "osservazioni": _worded(_named(names, a.get("osservazioni")))}
                 for a in self.store.analyses(limit=RECENT_DAYS)]
 
     def analysis(self, day: str) -> dict | None:
@@ -240,8 +247,7 @@ class MindView:
         if found is None:
             return None
         names = self.device_names()
-        if names:
-            found = {**found, "osservazioni": _named(names, found.get("osservazioni"))}
+        found = {**found, "osservazioni": _worded(_named(names, found.get("osservazioni")))}
         return _with_outcomes(found)
 
     # -- i nomi -----------------------------------------------------------
@@ -331,6 +337,15 @@ def _named(names: dict, lines) -> list:
             line = {**line, "nome": found} if found else line
         seen.append(line)
     return seen
+
+
+def _worded(lines: list) -> list:
+    """Le osservazioni con **l'innesco anche a parole** (`innesco_parole`,
+    da `analyst.TRIGGER_WORDS`), accanto al numero: chi legge, la pagina o il
+    modello, non deve sapere altrove cosa vuol dire «2» (C-11). `None` per
+    un innesco che il vocabolario non conosce."""
+    return [{**line, "innesco_parole": TRIGGER_WORDS.get(line.get("innesco"))}
+            if isinstance(line, dict) else line for line in lines]
 
 
 def _with_outcomes(analysis: dict) -> dict:

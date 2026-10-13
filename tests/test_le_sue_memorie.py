@@ -150,7 +150,8 @@ async def test_PIN_le_impostazioni_dell_amministratore_sono_TUTTE(casa):
     assert corpo == _payload(SETTINGS)
     assert set(corpo) == {"name", "system_prompt", "response_mode", "thinking_budget",
                           "max_chat_turns", "restrict_to_home", "retention_days",
-                          "response_modes", "default_system_prompt", "max_message_chars"}
+                          "response_modes", "default_system_prompt", "max_message_chars",
+                          "thinking_budget_min"}
 
 
 # --- le sue memorie (spec §4, security-constraints 3.1-3.8) ------------------

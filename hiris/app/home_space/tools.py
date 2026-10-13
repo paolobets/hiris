@@ -2681,7 +2681,9 @@ class ToolDispatcher:
             return {"analisi": self._mind.analyses()}
         found = self._mind.analysis(day)
         if found is None:
-            return {"errore": f"il giorno {day} non e' stato analizzato"}
+            # Come la rotta: ogni quanto l'analista guarda (C-11).
+            return {"errore": f"il giorno {day} non e' stato analizzato",
+                    "analista_ogni_s": self._mind.analyst_every_s()}
         return {"analisi": found}
 
     async def _mind_energy(self, _day) -> dict:

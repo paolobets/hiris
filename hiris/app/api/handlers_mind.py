@@ -293,7 +293,10 @@ async def handle_analysis(request) -> web.Response:
         return web.json_response({"analisi": view.analyses()})
     found = view.analysis(day)
     if found is None:
-        return error_response(404, f"il giorno {day} non e' stato analizzato")
+        # `analista_ogni_s`: ogni quanto l'analista guarda. La pagina lo dice
+        # («non ha ancora guardato»), e lo riceve invece di saperlo (C-11).
+        return error_response(404, f"il giorno {day} non e' stato analizzato",
+                              analista_ogni_s=view.analyst_every_s())
     return web.json_response({"analisi": found})
 
 

@@ -441,6 +441,12 @@ from .backends.pricing import get_price as _price
 # editing this list.
 _THINKING_CAPABLE_PATTERNS = ("sonnet-4-5", "sonnet-4-6", "sonnet-4-7", "opus-4")
 
+#: Il budget di ragionamento piu' piccolo che l'API Anthropic accetta
+#: (`budget_tokens`, documentazione «Extended thinking»). Sotto, il
+#: ragionamento si spegne; la pagina Impostazioni lo dice leggendolo da
+#: `GET /api/settings` (C-11).
+THINKING_BUDGET_MIN = 1024
+
 
 def _build_thinking_param(
     thinking_budget: int, effective_model: str, max_tokens: int
@@ -472,18 +478,19 @@ def _build_thinking_param(
             thinking_budget, effective_model,
         )
         return None
-    if thinking_budget < 1024:
+    if thinking_budget < THINKING_BUDGET_MIN:
         logger.warning(
-            "thinking_budget=%d below Anthropic minimum 1024 — disabling", thinking_budget
+            "thinking_budget=%d below Anthropic minimum %d — disabling",
+            thinking_budget, THINKING_BUDGET_MIN,
         )
         return None
     if thinking_budget >= max_tokens:
         clamped = max_tokens - 1
-        if clamped < 1024:
+        if clamped < THINKING_BUDGET_MIN:
             logger.warning(
-                "thinking_budget=%d >= max_tokens=%d and max_tokens too small for minimum 1024 "
+                "thinking_budget=%d >= max_tokens=%d and max_tokens too small for minimum %d "
                 "— disabling",
-                thinking_budget, max_tokens,
+                thinking_budget, max_tokens, THINKING_BUDGET_MIN,
             )
             return None
         logger.warning(

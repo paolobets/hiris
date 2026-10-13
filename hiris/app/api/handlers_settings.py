@@ -27,11 +27,12 @@ assenti conservano il valore corrente -- un client che manda meno campi non
 azzera gli altri). I tre interi hanno come solo limite `>= 0` perche' i limiti
 veri stanno gia' a valle e dipendono dal modello (o, per `retention_days`,
 non esistono affatto -- vedi sotto):
-`claude_runner._build_thinking_param` disattiva un `thinking_budget` sotto i 1024 o
-su un modello non capace e lo clampa contro `max_tokens`; `max_chat_turns` a 0
-significa "nessun tetto" (`handlers_chat.py`). Duplicare qui una soglia
-numerica che vale solo per un backend sarebbe una dichiarazione falsa al
-presente non appena il modello cambia.
+`claude_runner._build_thinking_param` disattiva un `thinking_budget` sotto
+`THINKING_BUDGET_MIN` o su un modello non capace e lo clampa contro
+`max_tokens`; `max_chat_turns` a 0 significa "nessun tetto"
+(`handlers_chat.py`). Duplicare qui una soglia numerica che vale solo per un
+backend sarebbe una dichiarazione falsa al presente non appena il modello
+cambia.
 
 **`retention_days` (Task 12).** Arrivato da `history_retention_days`,
 l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
@@ -74,6 +75,7 @@ import logging
 from aiohttp import web
 
 from ..chat_settings import DEFAULT_SYSTEM_PROMPT, MESSAGE_CAP, ChatSettings
+from ..claude_runner import THINKING_BUDGET_MIN
 from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
@@ -286,6 +288,9 @@ def _payload(settings: ChatSettings) -> dict:
         # Il tetto di un messaggio, che la pagina della chat mette sul campo
         # (`chat_settings.MESSAGE_CAP`): una costante, non un'impostazione.
         "max_message_chars": MESSAGE_CAP,
+        # Sotto questo budget il ragionamento si spegne (C-11): la pagina lo
+        # dice con questo numero, non con una copia.
+        "thinking_budget_min": THINKING_BUDGET_MIN,
     }
 
 

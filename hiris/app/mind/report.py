@@ -84,6 +84,11 @@ NIGHTLY_MINUTE = 20
 #: e la riceve da `GET /api/mind/knowledge`.
 BACKFILL_EVERY_MINUTES = 5
 
+#: Ogni quanto gira l'analista (`server.py`, lavoro `hiris_mind_analyst`). La
+#: dice la pagina «Cosa fare» quando un giorno non e' ancora analizzato, e la
+#: riceve dal 404 di `GET /api/mind/analysis` (C-11, Chiusura).
+ANALYST_EVERY_MINUTES = 60
+
 #: Le chiavi del corpo di un episodio che entrano nell'indice: **cio' che
 #: dopo non si recupera piu'**, perche' dipende da com'era la casa allora.
 #:

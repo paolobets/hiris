@@ -3425,7 +3425,7 @@ async def _on_startup(app: web.Application) -> None:
 
     scheduler.add_job(
         _anello_analista,
-        trigger="interval", minutes=60,
+        trigger="interval", minutes=report.ANALYST_EVERY_MINUTES,
         id="hiris_mind_analyst", replace_existing=True,
         misfire_grace_time=1800,
     )
