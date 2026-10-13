@@ -79,7 +79,7 @@ can enter the model's context calls one of the two functions below:
   per metterlo in un prompt deve passare da `sanitize_ha_free_text` ... da
   solo") -- this tool is that
   consumer, and the boundary lives here, not in the client. Also sanitizes
-  the calendar's own `name` (`HAClient.calendars()`'s `state.name`, a
+  the calendar's own name (its `friendly_name`, `House.calendars`, a
   `friendly_name` a person picks and a Google Calendar can share) via
   `sanitize_ha_value` -- missed in the first pass of this task, found by an
   independent review that measured it: a 638-character name carrying an

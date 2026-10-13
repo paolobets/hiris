@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 # `action/actuator.py` ne' dall'officina.
 #
 # `calendar` (fetta «i calendari», Task 3) entra anche lui, per la STESSA
-# ragione e non per contagio: legge e basta (due chiamate REST,
-# `HAClient.calendars()`/`calendar_events()`, mai una scrittura), e senza di
+# ragione e non per contagio: legge e basta (l'elenco dallo specchio, gli
+# impegni con `HAClient.calendar_events()`, mai una scrittura), e senza di
 # lui il ponte non potrebbe mai tenere una promessa del tipo «avvisami la
 # sera prima di un impegno». Deliberato, non automatico: questo elenco resta
 # di AMMISSIONE, e uno strumento nuovo non ci entra da solo finche' qualcuno

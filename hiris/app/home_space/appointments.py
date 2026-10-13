@@ -197,16 +197,6 @@ def _start_key(appointment: dict) -> tuple:
     return (start[:10], len(start) > 10, epoch is None, epoch or 0.0, start)
 
 
-def readable_calendars(listing: dict) -> list[dict]:
-    """L'elenco dei calendari di `HAClient.calendars()` -> quelli che si possono
-    provare a leggere: un dizionario con un `entity_id`. Una voce malformata
-    si salta, non solleva."""
-    calendars = listing.get("calendari")
-    calendars = calendars if isinstance(calendars, list) else []
-    return [entry for entry in calendars
-            if isinstance(entry, dict) and entry.get("entity_id")]
-
-
 #: Cio' che manca quando un calendario ha piu' impegni del tetto del client:
 #: i piu' lontani dall'inizio della finestra (`HAClient.calendar_events`
 #: taglia dalla testa ordinata), e con `giorni_indietro` possono essere
@@ -230,8 +220,8 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     LEGGENDO, mai dallo stato.** Un calendario rotto e uno senza impegni
     hanno lo STESSO stato `off` in Home Assistant e tornerebbero lo
     STESSO elenco vuoto -- solo un tentativo di lettura li distingue.
-    Percio' `_calendar` prende l'elenco dei calendari (Task 1,
-    `HAClient.calendars()`) e prova a leggere CIASCUNO (Task 1,
+    Percio' `_calendar` prende l'elenco dei calendari (dallo specchio,
+    `House.calendars`, A-34) e prova a leggere CIASCUNO (Task 1,
     `HAClient.calendar_events()`), e qui si guarda ogni risposta, una per
     una: nessun elenco dichiarato di calendari ammessi, nessuna decisione presa dallo stato. Un
     calendario che fallisce NON sparisce in silenzio: il suo `name`
@@ -260,8 +250,8 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
     `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
     `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
-    libero senza tetto HA) -- e' `state.name` di
-    `HAClient.calendars()`, scelto da una persona e potenzialmente
+    libero senza tetto HA) -- e' il nome vivo dell'entita' (`House.calendars`),
+    scelto da una persona e potenzialmente
     condiviso (un Google Calendar puo' esserlo), quindi un vettore di
     testo iniettato quanto `summary`/`description`/`location`: sanificare
     tre campi su quattro e lasciare il quarto grezzo sarebbe la stessa
@@ -306,7 +296,7 @@ def merge_calendars(calendars: list[dict], answers: list[dict], *,
     unreadable: list[str] = []
     left_out = 0
     for entry, events in zip(calendars, answers, strict=True):
-        name = sanitize_ha_value(entry.get("name") or entry["entity_id"])
+        name = sanitize_ha_value(entry["nome"])
         examined.append(name)
         if "errore" in events:
             unreadable.append(name)

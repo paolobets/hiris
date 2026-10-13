@@ -1447,65 +1447,20 @@ class HAClient:
         return counts
 
     @cost(rest=1)
-    async def calendars(self) -> dict:
-        """L'elenco dei calendari di questa casa, via GET /api/calendars.
-
-        **Trasporto verificato alla fonte, non assunto.** I tre fratelli di
-        questo metodo -- `system_log()`, `traces()`,
-        `trace()` piu' sotto -- leggono via WebSocket; i calendari
-        no. Verificato su `home-assistant/core`,
-        `homeassistant/components/calendar/__init__.py`, classe
-        `CalendarListView` (`url = "/api/calendars"`), sui tag RILASCIATI che
-        delimitano la finestra che `hiris/config.yaml:22` dichiara
-        supportata (`2024.7.0`, il minimo) e la piu' recente vista finora
-        (`2026.9.0`): **REST su entrambi**, corpo identico -- per ogni
-        entita' del dominio `calendar`,
-        `calendar_list.append({"name": state.name, "entity_id":
-        entity.entity_id})`, poi `self.json(sorted(calendar_list, key=...
-        "name"))`. E' la stessa via di `get_states()` qui sopra: stessa
-        sessione, stesse intestazioni.
-
-        (Su 2026.9.0 la vista filtra anche per permesso dell'utente sul
-        token -- `user.permissions.check_entity(..., POLICY_READ)`, assente
-        su 2024.7.0 -- ma HIRIS parla col token del Supervisor, che le ha
-        tutte: la differenza non cambia cosa questo metodo vede in pratica.)
-
-        **La forma e' una LISTA NUDA**, non un dizionario con una chiave --
-        la stessa trappola dei tre fratelli (`system_log/list` e `trace/list`
-        rispondono cosi', `trace/get` no), verificata di nuovo qui e non
-        data per scontata: la lista contiene solo `name` ed `entity_id`,
-        ordinata per nome da Home Assistant stesso.
-
-        Il client legge e non giudica: le righe escono cosi' come HA le
-        manda. `{"errore": ...}` su guasto -- connessione caduta, HTTP non
-        200, o una risposta che non e' la lista attesa -- mai un
-        `{"calendari": []}`: un elenco vuoto significherebbe «questa casa non
-        ha calendari», un'affermazione diversa da «non sono riuscito a
-        chiederlo».
-        """
-        reply = await self._rest_get("/api/calendars")
-        if "errore" in reply:
-            return reply
-        data = reply["corpo"]
-        if not isinstance(data, list):
-            return _failure(SHAPE, "Home Assistant ha risposto in una forma non attesa")
-        return {"calendari": data}
-
-    @cost(rest=1)
     async def calendar_events(self, entity_id: str, start: str, end: str) -> dict:
         """Gli eventi di UN calendario in una finestra, via
         GET /api/calendars/<entity_id>?start=&end=.
 
-        Stesso trasporto di `calendars()` qui sopra, verificato alla stessa
-        fonte e sugli stessi due tag rilasciati (`2024.7.0`, `2026.9.0`):
-        classe `CalendarEventView` (`url = "/api/calendars/{entity_id}"`),
+        **REST, non WebSocket**: verificato su `home-assistant/core`,
+        `homeassistant/components/calendar/__init__.py`, sui tag rilasciati
+        `2024.7.0` e `2026.9.0`: classe `CalendarEventView` (`url = "/api/calendars/{entity_id}"`),
         corpo identico su entrambi --
         `[dataclasses.asdict(event, dict_factory=_api_event_dict_factory)
         for event in calendar_event_list]`.
 
         **La forma e' anche qui una LISTA NUDA**, non un dizionario con una
-        chiave `eventi`: verificata di nuovo, non ereditata per somiglianza
-        da `calendars()`.
+        chiave `eventi`. L'elenco dei calendari da chiedere non viene da Home
+        Assistant ma dallo specchio (`House.calendars`, A-34, 13/10/2026).
 
         **Ogni evento porta OTTO chiavi, sempre, anche quando valgono
         `null`** -- misurato sulla casa il 06/09/2026 su 297 eventi veri, e
