@@ -77,6 +77,27 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+# 13 ottobre 2026 — alzata da 2.1.286 a **2.1.296**, nella Chiusura dello
+# sprint (fetta F5b, decisione D5 del proprietario): entra nel primo rilascio
+# della Chiusura. `npm view` e `scripts/verifica_componenti.py` davano la
+# 2.1.296 come ultima pubblicata il 13/10/2026.
+#
+# Uscite saltate: 2.1.287-2.1.295 (patch). Letto il CHANGELOG ufficiale della
+# CLI (github.com/anthropics/claude-code, CHANGELOG.md) dalla 2.1.287 alla
+# 2.1.296: nessuna voce cambia `-p`, `--output-format stream-json` o l'evento
+# `init` che il ponte legge. Le voci sul `-p` toccano i comandi in background
+# alla fine del turno (ora attesi), l'avvio dei server MCP HTTP/SSE (il primo
+# turno non aspetta piu' `resources/list`) e il SIGTERM con SIGCONT: da
+# guardare nella batteria della chat dopo il rilascio, non da supporre.
+# Misurato il 13/10/2026 sulla 2.1.296, nel contenitore della nuvola, con
+# un'API finta in locale: la domanda letta da stdin quando `-p` non porta
+# argomento, il prompt di sistema di `--system-prompt-file` arrivato intero
+# (un file di 150.019 byte), l'evento `init` con `claude_code_version` e
+# `apiKeySource` -- i tre fatti su cui il ponte si regge.
+#
+# **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
+# (28/09/2026), finche' il passo 4 non legge la 2.1.296 da `GET /api/health`.
+#
 # 1 ottobre 2026 — alzata da 2.1.285 a **2.1.286**, col rilascio della 3.72.1,
 # secondo la regola del proprietario (07/09): il cancello pre-push l'ha
 # segnalata a rilascio della 3.72.0 gia' in corso, la 3.72.0 e' uscita con
@@ -334,7 +355,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.286 \
+    && npm install -g @anthropic-ai/claude-code@2.1.296 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \
