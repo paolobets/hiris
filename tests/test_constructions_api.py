@@ -16,6 +16,7 @@ from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
 from hiris.app.action.write_outcome import refused
 from hiris.app.api.handlers_constructions import (
+    construction_words,
     handle_confirm_construction,
     handle_get_construction,
     handle_get_constructions,
@@ -719,3 +720,15 @@ async def test_l_elenco_dichiara_la_finestra_con_total_e_shown():
                                "dominio": "automation"}]))
     corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
     assert (corpo["total"], corpo["shown"]) == (1, 1)
+
+
+@pytest.mark.parametrize("gesto", ["modifica", "cancella"])
+def test_esisteva_chiede_il_prima_letto(gesto):
+    """N155-3 (giro 155): un gesto che tocca cio' che c'era dice «esisteva»
+    solo con il `prima` letto. Senza, la pagina direbbe «toccava un oggetto
+    che c'era» di una riga che non lo sa. Mutazione del revisore, ora ESEGUITA
+    (13/10/2026): `touches` senza il controllo su `prima` -- rossa."""
+    assert construction_words({"dominio": "automation", "gesto": gesto,
+                               "prima": None})["esisteva"] is False
+    assert construction_words({"dominio": "automation", "gesto": gesto,
+                               "prima": {"alias": "x"}})["esisteva"] is True

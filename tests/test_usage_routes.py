@@ -335,3 +335,14 @@ def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path)
     comuni = set(modello) & set(secchiello)
     assert comuni == set(secchiello)
     assert {k: modello[k] for k in comuni} == secchiello
+
+
+@pytest.mark.parametrize("cost_eur", [None, 0, 0.0])
+def test_il_pavimento_chiede_un_costo_sopra_lo_zero(cost_eur):
+    """N155-3 (giro 155): un costo `non_noto` e' un pavimento («almeno
+    questo») solo se c'e' un numero sopra lo zero. A zero direbbe «pagato di
+    sicuro 0 EUR, piu' qualcosa». Mutazione del revisore, ora ESEGUITA
+    (13/10/2026): `cost_eur is not None` -- rossa su 0."""
+    floor = handlers_usage._COST_FLOOR
+    assert handlers_usage._cost_reading(floor, cost_eur)["cost_is_floor"] is False
+    assert handlers_usage._cost_reading(floor, 0.01)["cost_is_floor"] is True
