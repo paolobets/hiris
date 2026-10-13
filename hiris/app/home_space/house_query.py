@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 #: `house_history.choose`, tre copie della stessa tabella.
 KINDS = ("entita", "area", "dispositivo", *BEHAVIOR_DOMAINS.values(),
          "ricordo", "integrazione")
-ORDERS = ("nome", "ultimo_cambio", "valore")
+ORDERS = ("nome", "ultimo_cambio", "stato")
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
 _BEHAVIOR_KINDS = frozenset(BEHAVIOR_DOMAINS.values())
 
@@ -407,7 +407,7 @@ def _sort_key(order_by: str):
             epoch = instant_epoch(r.get("ultima_esecuzione") or r.get("ultimo_cambio"))
             return float("-inf") if epoch is None else epoch
         return since
-    if order_by == "valore":
+    if order_by == "stato":
         def key(r):
             try:
                 return (0, float(r.get("stato")))

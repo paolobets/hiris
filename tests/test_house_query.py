@@ -805,3 +805,17 @@ def test_nessun_genere_del_comportamento_scritto_a_mano():
                     if isinstance(node, ast.Constant) and node.value in own]
              for name in ("house_query.py", "house_history.py")}
     assert found == {"house_query.py": [], "house_history.py": []}, found
+
+
+def test_si_ordina_per_stato_col_nome_del_campo():
+    """C-03: l'ordine si chiede col nome del campo su cui si ordina, `stato`.
+    `ordina="valore"` ordinava sul campo `stato` con un nome che il
+    vocabolario dichiara tolto (`field_vocabulary.FIELDS["stato"]`).
+    Rossa prima del fix: `stato` non era fra gli ordini."""
+    from hiris.app.home_space.field_vocabulary import FIELDS
+
+    assert "stato" in hq.ORDERS
+    assert not set(hq.ORDERS) & FIELDS["stato"].replaces
+    righe = [{"id": "b", "stato": "21.5"}, {"id": "c", "stato": "off"},
+             {"id": "a", "stato": "3"}]
+    assert [r["id"] for r in sorted(righe, key=hq._sort_key("stato"))] == ["a", "b", "c"]

@@ -659,7 +659,12 @@ def test_le_fasce_di_un_contatore_sommano_il_cambio_di_home_assistant():
                      classi={"sensor.energia": "total_increasing"})
     assert uscita["grana"] == "oraria"
     assert uscita["voci"][0]["consumato"] == 1.1
-    assert uscita["voci"][0]["punti"][0]["inizio"] == "2026-09-29T00:00:00+02:00"
+    # Il punto parla col vocabolario dei campi (C-03): `dal`/`al`, non
+    # `inizio`/`fine`, che `field_vocabulary.FIELDS` dichiara tolti.
+    punto = uscita["voci"][0]["punti"][0]
+    assert punto["dal"] == "2026-09-29T00:00:00+02:00"
+    assert punto["al"] == "2026-09-29T01:00:00+02:00"
+    assert not {"inizio", "fine"} & set(punto)
 
 
 def test_le_fasce_di_un_contatore_non_hanno_media():
@@ -821,7 +826,8 @@ def test_una_serie_lunga_si_campiona_a_cinquanta_punti_col_primo_e_l_ultimo():
     riga = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                    dettaglio={"sensor.temperatura": _lunga()})["voci"][0]
     assert len(riga["punti"]) == 50
-    assert riga["punti"][0]["valore"] == "0" and riga["punti"][-1]["valore"] == "299"
+    assert riga["punti"][0]["stato"] == "0" and riga["punti"][-1]["stato"] == "299"
+    assert "valore" not in riga["punti"][0]  # C-03: `stato` nel vocabolario
     assert "300 punti" in riga["campione"]
     assert riga["massimo"] == 299.0
 
@@ -837,7 +843,7 @@ def test_la_completa_campiona_ma_i_conti_sono_della_serie_intera():
     lunga[1] = _punto(lunga[1]["quando"], "1000")
     riga = _valori(_q(cosa="valori"), ["sensor.temperatura"],
                    dettaglio={"sensor.temperatura": lunga})["voci"][0]
-    assert "1000" not in [p["valore"] for p in riga["punti"]]
+    assert "1000" not in [p["stato"] for p in riga["punti"]]
     assert riga["massimo"] == 1000.0
     assert riga["conti"] == hh.COUNTED
 
@@ -896,7 +902,7 @@ def test_i_valori_di_chi_si_sposta_non_dicono_la_zona(ident):
                        _punto("2026-09-29T08:00:00+00:00", "Lavoro")]}
     uscita = _valori(_q(cosa="valori"), [ident], dettaglio=viaggio)
     assert "Lavoro" not in json.dumps(uscita, ensure_ascii=False)
-    assert uscita["voci"][0]["punti"][1]["valore"] == "not_home"
+    assert uscita["voci"][0]["punti"][1]["stato"] == "not_home"
 
 
 def _dodici_sensori():
@@ -985,9 +991,9 @@ def test_una_automazione_da_le_sue_esecuzioni_nella_finestra():
                          keys={"automation.carta": "automation.1001"}, unread={})
     assert uscita["profondita"] == "completa"
     assert uscita["voci"] == [
-        {"esecuzione": "r3", "inizio": "2026-09-29T17:40:00+02:00",
+        {"esecuzione": "r3", "quando": "2026-09-29T17:40:00+02:00",
          "esito": "finished", "ultimo_passo": "action/0"},
-        {"esecuzione": "r2", "inizio": "2026-09-29T13:40:00+02:00",
+        {"esecuzione": "r2", "quando": "2026-09-29T13:40:00+02:00",
          "esito": "error", "ultimo_passo": "action/0", "guasto": "timeout"}]
     assert uscita["soggetto"] == {"id": "automation.carta", "nome": "carta",
                                   "ultima_esecuzione": "2026-09-29T17:40:00+02:00"}

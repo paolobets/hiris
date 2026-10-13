@@ -756,8 +756,18 @@ def _sample(points: list[dict], count: int) -> list[dict]:
     return picked
 
 
+#: Come si chiamano, verso il modello, le chiavi dei punti che il client legge
+#: (`HAClient`): il vocabolario dei campi (`field_vocabulary.FIELDS`) dichiara
+#: tolti `inizio`/`fine` e `valore` a favore di `dal`/`al` e `stato` (C-03,
+#: 13/10/2026). I nomi del client restano: li legge anche il cervello.
+_POINT_NAMES = {"inizio": "dal", "fine": "al", "valore": "stato"}
+
+
 def _in_zone(point: dict, keys: tuple[str, ...], zone) -> dict:
-    return {**point, **{key: instant_out(point.get(key), zone) for key in keys if key in point}}
+    """Un punto della serie come esce: gli istanti `keys` nell'ora della casa,
+    e le chiavi col nome del vocabolario (`_POINT_NAMES`)."""
+    return {_POINT_NAMES.get(key, key): instant_out(value, zone) if key in keys else value
+            for key, value in point.items()}
 
 
 def _bands_until(bands: list[dict], end_ts: float) -> float | None:
@@ -928,7 +938,8 @@ _RUNS_KEPT = ("Home Assistant conserva solo le ultime esecuzioni di ognuna: `dal
 
 def _run_row(trace: dict, zone) -> dict:
     row = {"esecuzione": trace.get("run_id"),
-           "inizio": instant_out((trace.get("timestamp") or {}).get("start"), zone),
+           # L'istante di un evento, `quando` (C-03): `inizio` e' un nome tolto.
+           "quando": instant_out((trace.get("timestamp") or {}).get("start"), zone),
            "esito": trace.get("script_execution"),
            "ultimo_passo": trace.get("last_step")}
     if trace.get("error"):
