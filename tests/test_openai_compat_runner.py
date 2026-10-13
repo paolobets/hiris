@@ -104,7 +104,7 @@ async def test_ollama_chat_passes_think_false(tmp_path):
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
-    await runner.chat(user_message="hi", model="gemma4:e4b")
+    await runner.chat(user_message="hi", model="gemma4:e4b", max_tokens=4096)
 
     kwargs = runner._client.chat.completions.create.call_args.kwargs
     assert kwargs.get("extra_body") == {"think": False}
@@ -125,7 +125,7 @@ async def test_openai_cloud_chat_omits_extra_body(tmp_path):
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
-    await runner.chat(user_message="hi", model="gpt-4o")
+    await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
 
     kwargs = runner._client.chat.completions.create.call_args.kwargs
     assert "extra_body" not in kwargs
@@ -153,7 +153,8 @@ async def test_chat_accepts_thinking_budget_kwarg_silently(tmp_path):
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
     # Must not raise — the LLMRouter forwards thinking_budget to every runner
-    out = await runner.chat(user_message="hi", model="gpt-4o", thinking_budget=2048)
+    out = await runner.chat(user_message="hi", model="gpt-4o", thinking_budget=2048,
+                            max_tokens=4096)
     assert out == "ok"
 
 
@@ -279,7 +280,7 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     out = await runner.chat(
         user_message="check health",
         model="mistralai/mistral-large",
-        tools=finti_tool_def,
+        tools=finti_tool_def, max_tokens=4096
     )
     assert out == TOOL_LEAK_USER_MSG
     assert "get_ha_health" not in out  # No leak in returned text
@@ -302,7 +303,7 @@ async def test_chat_passes_through_clean_text(tmp_path):
 
     out = await runner.chat(
         user_message="come stiamo",
-        model="mistralai/mistral-large",
+        model="mistralai/mistral-large", max_tokens=4096
     )
     assert out == "Tutto ok — la casa è in buone condizioni."
 
@@ -503,7 +504,8 @@ async def test_chat_returns_clear_message_on_upstream_rate_limit(tmp_path):
     )
     runner._client.chat.completions.create = AsyncMock(side_effect=err)
     with pytest.raises(RunnerBackendError) as exc_info:
-        await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free")
+        await runner.chat(user_message="hi", model="qwen/qwen3-next-80b-a3b-instruct:free",
+                          max_tokens=4096)
     out = exc_info.value.friendly_message
     assert "qwen/qwen3-next-80b-a3b-instruct:free" in out
     assert "Errore temporaneo" not in out
@@ -523,7 +525,7 @@ async def test_chat_circuit_resets_on_success(tmp_path):
     runner._client.chat.completions.create = AsyncMock(side_effect=[conn_err, conn_err])
     for _ in range(2):
         with pytest.raises(RunnerBackendError):
-            await runner.chat(user_message="ciao", model="llama3.1:8b")
+            await runner.chat(user_message="ciao", model="llama3.1:8b", max_tokens=4096)
     assert runner._conn_fail_count == 2
     runner._record_success()
     assert runner._conn_fail_count == 0
@@ -582,7 +584,7 @@ async def test_chat_length_finish_returns_truncation_notice(tmp_path):
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
-    result = await runner.chat(user_message="crea dashboard", model="gpt-4o")
+    result = await runner.chat(user_message="crea dashboard", model="gpt-4o", max_tokens=4096)
     assert _TRUNCATION_NOTICE in result
     assert result.startswith("Ora creo la dashboard!")
 
@@ -632,6 +634,7 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, ca
     with caplog.at_level(logging.WARNING):
         result = await runner.chat(
             user_message="guarda ogni stanza", model="gpt-4o", dispatcher=finto_dispatcher,
+            max_tokens=4096
         )
 
     assert result == _MAX_ITERATIONS_NOTICE
@@ -734,7 +737,7 @@ async def test_chat_short_circuits_when_breaker_open(tmp_path):
     runner._client.chat.completions.create = create
 
     with pytest.raises(RunnerBackendError):
-        await runner.chat(user_message="ciao", model="llama3.1:8b")
+        await runner.chat(user_message="ciao", model="llama3.1:8b", max_tokens=4096)
     create.assert_not_called()
 
 
@@ -755,7 +758,7 @@ async def test_chat_trips_breaker_on_connection_error(tmp_path):
 
     for _ in range(_CIRCUIT_THRESHOLD):
         with pytest.raises(RunnerBackendError):
-            await runner.chat(user_message="ciao", model="llama3.1:8b")
+            await runner.chat(user_message="ciao", model="llama3.1:8b", max_tokens=4096)
 
     assert runner._circuit_is_open()
 
@@ -776,7 +779,7 @@ async def test_chat_healthy_backend_behavior_unchanged(tmp_path):
     response.usage = MagicMock(prompt_tokens=5, completion_tokens=2)
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
-    out = await runner.chat(user_message="hi", model="gpt-4o")
+    out = await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
     assert out == "ok"
 
 
@@ -923,7 +926,7 @@ async def test_il_circuito_aperto_rifiuta_dicendo_che_non_ha_interrogato(monkeyp
         r._record_conn_failure()
 
     with pytest.raises(RunnerBackendError) as info:
-        await r.chat(user_message="ciao")
+        await r.chat(user_message="ciao", max_tokens=4096)
     assert info.value.family == "irraggiungibile"
     assert info.value.code is None
     # La frase per l'utente NON cambia: questa fetta non tocca cio' che si
@@ -950,7 +953,7 @@ async def test_un_404_del_provider_arriva_al_router_come_famiglia_modello(tmp_pa
 
     runner._client.chat.completions.create = AsyncMock(side_effect=_Sparito())
     with pytest.raises(RunnerBackendError) as info:
-        await runner.chat(user_message="hi", model="gpt-4o")
+        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
 
     assert info.value.family == "modello" and info.value.code == 404
     # S-37: un modello che non esiste non passa riprovando.
@@ -976,7 +979,7 @@ async def test_un_402_di_openrouter_arriva_al_router_come_credenziale(tmp_path):
 
     runner._client.chat.completions.create = AsyncMock(side_effect=_Credito())
     with pytest.raises(RunnerBackendError) as info:
-        await runner.chat(user_message="hi", model="gpt-4o")
+        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
 
     assert info.value.family == "credenziale" and info.value.code == 402
     assert "credito esaurito (402)" in info.value.friendly_message
@@ -1002,7 +1005,7 @@ async def test_la_quota_della_chiave_finita_non_e_un_errore_temporaneo(tmp_path)
 
     runner._client.chat.completions.create = AsyncMock(side_effect=_Quota())
     with pytest.raises(RunnerBackendError) as info:
-        await runner.chat(user_message="hi", model="gpt-4o")
+        await runner.chat(user_message="hi", model="gpt-4o", max_tokens=4096)
 
     assert info.value.family == "credenziale" and info.value.code == 403
     assert info.value.friendly_message == (
@@ -1100,7 +1103,7 @@ async def test_le_chiamate_di_strumento_con_finish_reason_stop_si_servono():
 
     out = await runner.chat(user_message="che luci ho?", dispatcher=dispatcher,
                             tools=[{"name": "search", "description": "cerca",
-                                    "input_schema": {"type": "object"}}])
+                                    "input_schema": {"type": "object"}}], max_tokens=4096)
 
     dispatcher.dispatch.assert_awaited_once_with("search", {"testo": "luci"})
     assert out == "tre luci"

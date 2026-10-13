@@ -232,8 +232,8 @@ def _set_aside_unreadable_store(path: str) -> None:
             "lo sovrascrivera'.", path, error)
 
 
-def _read_raw_store(path: str) -> dict:
-    """Legge `models_config.json`, e quando NON si legge lo dice e lo mette da parte.
+def _read_raw_store(path: str) -> dict | None:
+    """Legge `models_config.json`; quando NON si legge lo dice e risponde `None`.
 
     Questa lettura falliva in `{}` senza una riga di log. Da questa versione
     l'archivio e' l'UNICA copia esistente di dodici decisioni dell'utente (le
@@ -251,6 +251,14 @@ def _read_raw_store(path: str) -> dict:
     Unico lettore del file: `load_models_config` e `save_models_config` passano
     di qui, o la regola varrebbe in un posto solo -- e il posto scoperto
     sarebbe proprio quello che riscrive.
+
+    Mettere da parte il file e' una scrittura, e la fa solo chi scrive
+    (S-41, Chiusura, 13/10/2026): `save_models_config`, cioe' la PUT della
+    pagina o la semina dell'avvio. Prima lo faceva questa lettura, quindi
+    anche `GET /api/models` e `GET /api/models/config` rinominavano il file.
+    Il file illeggibile non corre rischi a restare dov'e' finche' nessuno
+    scrive: il rischio e' la riga che lo sovrascrive, ed e' quella che lo
+    mette da parte prima.
     """
     try:
         with open(path, encoding="utf-8") as fh:
@@ -264,20 +272,18 @@ def _read_raw_store(path: str) -> dict:
             "scelto NON sono stati letti. Da questa versione questo file e' "
             "l'unica copia di quelle decisioni.",
             path, type(error).__name__, error)
-        _set_aside_unreadable_store(path)
-        return {}
+        return None
     if not isinstance(raw, dict):
         logger.error(
             "%s contiene %s invece di un oggetto JSON. HIRIS riparte dai "
             "predefiniti: le decisioni che conteneva NON sono state lette.",
             path, type(raw).__name__)
-        _set_aside_unreadable_store(path)
-        return {}
+        return None
     return raw
 
 
 def load_models_config(data_dir: str) -> dict:
-    raw = _read_raw_store(_models_config_path(data_dir))
+    raw = _read_raw_store(_models_config_path(data_dir)) or {}
     raw_chain = raw.get("chain_order", [])
     if not isinstance(raw_chain, list):
         raw_chain = []
@@ -320,9 +326,12 @@ def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dic
     # aggiornate; qualunque altra chiave gia' sul disco (incl. 'brain_model')
     # resta intatta.
     # Stessa lettura di `load_models_config`, e quindi stessa regola quando il
-    # file non si legge: lo dice e lo mette da parte. Qui vale ancora di piu',
-    # perche' e' la riga DOPO che sovrascrive.
+    # file non si legge: lo dice. E qui, prima della riga che sovrascrive, lo
+    # mette da parte: e' l'unico posto che lo fa (S-41).
     disk_data = _read_raw_store(path)
+    if disk_data is None:
+        _set_aside_unreadable_store(path)
+        disk_data = {}
     # Task 6: la fusione parte dal CONTENUTO GIA' SU DISCO, non dai
     # predefiniti -- ed e' la STESSA ragione del fix di claude_runner._save_usage
     # per 'per_agent'. Da quando le chiavi scritte sono sette invece di due, un

@@ -171,6 +171,12 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
     turn (so we don't leave dangling user messages with no answer in context).
 
     Operates in-order, single pass. Empty assistant content also counts as toxic.
+
+    Toglie anche la domanda rimasta senza risposta, quando la segue un'altra
+    domanda (D-15, Chiusura 13/10/2026): ogni strada della chat scrive la
+    domanda PRIMA del turno e la risposta solo se c'e', e l'API di Claude non
+    accetta due turni utente di fila. L'ultima domanda resta: e' quella a cui
+    il turno sta rispondendo.
     """
     out: list[dict] = []
     for msg in messages:
@@ -178,6 +184,8 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
             if out and out[-1].get("role") == "user":
                 out.pop()
             continue
+        if msg.get("role") == "user" and out and out[-1].get("role") == "user":
+            out.pop()
         out.append(msg)
     return out
 
@@ -201,6 +209,16 @@ _DIGEST_TURNS = 3       # user+assistant pairs to include in the session digest
 _DIGEST_MSG_LEN = 120   # max chars per message in the digest
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+def _clock() -> datetime:
+    """L'orologio dell'archivio, uno solo (G-14, valutato in F3a il
+    13/10/2026). Lo leggono le scritture (`ChatStore._now`), la finestra della
+    conversazione attiva (`_fresh_session_params`) e il taglio della
+    conservazione (`_retention_cutoff`): erano tre `datetime.now` separati,
+    e un istante che scrive e uno che confronta presi da orologi diversi non
+    si possono fermare insieme in una prova."""
+    return datetime.now(UTC)
+
+
 #: «Qual e' la conversazione attiva di questo filo», in SQL e in un posto solo
 #: (D-65, Tappa 8): la sessione aperta piu' recente del filo, se ha scritto
 #: entro `SESSION_GAP_HOURS`; `NULL` altrimenti. Si mette dentro la lettura
@@ -217,7 +235,7 @@ _FRESH_SESSION = (
 def _fresh_session_params(thread: ChatThread) -> tuple:
     """I parametri di `_FRESH_SESSION`: il filo, e il primo istante che la
     finestra delle due ore non ricorda piu'."""
-    gap_start = datetime.now(UTC) - timedelta(hours=SESSION_GAP_HOURS)
+    gap_start = _clock() - timedelta(hours=SESSION_GAP_HOURS)
     return (*thread_params(thread), gap_start.strftime(_TS_FMT))
 
 #: Il titolo di una conversazione (spec 2026-09-26 §4) non si salva: e' la
@@ -251,7 +269,7 @@ def _retention_cutoff(days: int, now: float | None = None) -> str:
     potatura (`ChatStore.prune`), che passa il suo `now`."""
     if days <= 0:
         return ""
-    moment = datetime.now(UTC) if now is None else datetime.fromtimestamp(now, UTC)
+    moment = _clock() if now is None else datetime.fromtimestamp(now, UTC)
     return (moment - timedelta(days=days)).strftime(_TS_FMT)
 
 
@@ -394,7 +412,7 @@ class ChatStore:
     # ------------------------------------------------------------------
 
     def _now(self) -> str:
-        return datetime.now(UTC).strftime(_TS_FMT)
+        return _clock().strftime(_TS_FMT)
 
     def _fresh_session_id(self, thread: ChatThread) -> str | None:
         """Return the thread's open session_id only if within the gap window — no side effects."""

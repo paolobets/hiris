@@ -547,6 +547,24 @@ def test_purge_handles_leading_toxic_assistant_with_no_preceding_user():
     ]
 
 
+def test_purge_drops_a_question_left_without_answer():
+    """D-15 (Chiusura, 13/10/2026): la domanda si scrive prima del turno su
+    ogni strada, e la risposta solo se c'e'. Una domanda rimasta senza
+    risposta (il turno e' fallito) si toglie in lettura quando ne arriva
+    un'altra: l'API di Claude non accetta due turni utente di fila. L'ultima
+    resta: e' quella a cui il turno sta rispondendo (il ponte la rilegge
+    dopo averla scritta).
+
+    Rossa sul codice di prima: le due domande restavano di fila."""
+    msgs = [
+        {"role": "user", "content": "accendi la luce"},
+        {"role": "user", "content": "riprovo: accendi la luce"},
+        {"role": "assistant", "content": "Fatto."},
+        {"role": "user", "content": "grazie"},
+    ]
+    assert _purge_toxic_turns(msgs) == msgs[1:]
+
+
 def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
     """End-to-end: existing chat with leaked tool calls + error messages comes
     out clean, simulating what happens for users upgrading from v0.9.7."""
@@ -919,3 +937,22 @@ def test_la_scrittura_chiude_le_altre_aperte_del_filo_con_la_stessa_lettura(tmp_
         "SELECT session_id FROM chat_sessions WHERE summary IS NULL").fetchall()
     assert [r["session_id"] for r in aperte] == ["adottata"]
     store.close()
+
+
+def test_scrivere_e_confrontare_leggono_lo_stesso_orologio(tmp_path, monkeypatch):
+    """G-14 (valutato in F3a, 13/10/2026): la scrittura, la finestra della
+    conversazione attiva e il taglio della conservazione leggono UN orologio,
+    `chat_store._clock`. Fermato quello, un messaggio scritto «allora» e'
+    ancora nella conversazione attiva «allora».
+
+    Mutazione ESEGUITA il 13/10/2026: `_fresh_session_params` torna a
+    `datetime.now(UTC)` -- rossa (la conversazione di due anni fa non e' piu'
+    attiva, la storia esce vuota)."""
+    from hiris.app import chat_store
+
+    allora = datetime(2024, 3, 1, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(chat_store, "_clock", lambda: allora)
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
+
+    assert [m["content"] for m in load_history(str(tmp_path), thread=T, days=7)] == ["ciao"]
+    assert count_user_turns(str(tmp_path), thread=T) == 1

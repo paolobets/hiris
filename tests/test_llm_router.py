@@ -4,7 +4,6 @@ import pytest
 
 from hiris.app.claude_runner import (
     RunnerBackendError,
-    _current_thinking_blocks,
     _current_tool_calls,
 )
 from hiris.app.llm_router import LLMRouter
@@ -61,21 +60,6 @@ def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_run
         assert router.last_tool_calls == [{"tool": "get_home_status", "input": {}}]
     finally:
         _current_tool_calls.reset(token)
-
-
-def test_router_last_thinking_blocks_reflects_current_call(mock_runner):
-    """LLMRouter previously had NO last_thinking_blocks property at all, so
-    handlers_chat.py's `getattr(runner, "last_thinking_blocks", None)`
-    silently returned None whenever chat went through the router — the
-    debug payload's thinking_blocks was always empty. Now it proxies the
-    same shared per-call ContextVar as ClaudeRunner."""
-    router = LLMRouter(claude=mock_runner, model_chain=["claude"])
-    assert router.last_thinking_blocks == []
-    token = _current_thinking_blocks.set(["step 1: ..."])
-    try:
-        assert router.last_thinking_blocks == ["step 1: ..."]
-    finally:
-        _current_thinking_blocks.reset(token)
 
 
 # Tappa 7 T9 (M-07): `test_router_strategy_defaults_to_balanced`,
@@ -549,3 +533,43 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
 
     assert registro.occurrence("claude")["durata_s"] == 8.0
 
+
+
+def _falls_after(*strumenti):
+    """Un backend che chiama `strumenti` e poi cade: il runner vero azzera le
+    chiamate all'ingresso e le accoda per giro, nella ContextVar condivisa."""
+    async def _chat(**_kwargs):
+        _current_tool_calls.set([{"tool": nome, "input": {}} for nome in strumenti])
+        raise RunnerBackendError("Errore temporaneo del servizio AI.")
+    runner = MagicMock()
+    runner.chat = AsyncMock(side_effect=_chat)
+    return runner
+
+
+@pytest.mark.asyncio
+async def test_il_ripiego_si_ferma_dopo_uno_strumento_che_scrive():
+    """D-16 (A, Chiusura): il secondo backend rifaceva il turno da capo con lo
+    stesso dispatcher, e poteva ripetere un `execute` gia' andato a segno.
+    Dopo una scrittura il ripiego si ferma, e la frase dice cosa e' stato
+    fatto; il turno risulta senza risposta.
+
+    Mutazione ESEGUITA il 13/10/2026: il controllo tolto -- rossa, il
+    secondo backend chiamato."""
+    secondo = MagicMock()
+    secondo.chat = AsyncMock(return_value="rifatto")
+    router = LLMRouter(claude=_falls_after("search", "execute"), ollama=secondo,
+                       model_chain=["claude", "ollama"])
+    risposta = await router.chat(user_message="accendi", model="auto")
+    secondo.chat.assert_not_awaited()
+    assert "`execute`" in risposta and "`search`" not in risposta
+    assert router.last_unanswered is True
+
+
+@pytest.mark.asyncio
+async def test_dopo_sole_letture_il_ripiego_resta():
+    """Le letture si possono rifare: il ripiego resta quello di prima."""
+    secondo = MagicMock()
+    secondo.chat = AsyncMock(return_value="risposta")
+    router = LLMRouter(claude=_falls_after("search", "history"), ollama=secondo,
+                       model_chain=["claude", "ollama"])
+    assert await router.chat(user_message="com'e'", model="auto") == "risposta"

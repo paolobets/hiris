@@ -48,6 +48,7 @@ async def client(aiohttp_client, tmp_path):
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="Test response")
     mock_runner.last_tool_calls = []
+    mock_runner.last_unanswered = False
 
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
@@ -235,6 +236,7 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
         mock_runner = AsyncMock()
         mock_runner.chat = AsyncMock(return_value="stessa risposta")
         mock_runner.last_tool_calls = []
+        mock_runner.last_unanswered = False
         app = create_app()
         app["ha_client"] = CasaFinta(synthetic_inputs())
         app["chat_settings"] = ChatSettings(system_prompt="Prompt fisso.")
@@ -409,7 +411,9 @@ async def test_chat_does_not_persist_toxic_response(client):
     await client.post("/api/chat", json={"message": "fail me"})
 
     history = load_history(data_dir, thread=THREAD_SVILUPPO)
-    assert history == []  # nothing persisted
+    # Solo la domanda, scritta prima del turno come su ogni strada (D-15,
+    # 13/10/2026): la risposta tossica non entra.
+    assert history == [{"role": "user", "content": "fail me"}]
 
 
 @pytest.mark.asyncio
@@ -425,7 +429,7 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
     await client.post("/api/chat", json={"message": "leak me"})
 
     history = load_history(data_dir, thread=THREAD_SVILUPPO)
-    assert history == []
+    assert history == [{"role": "user", "content": "leak me"}]  # D-15
 
 
 # test_chat_context_map_injects_area_context and the six test_chat_rag_*
@@ -485,10 +489,9 @@ async def test_chat_debug_tools_called_returns_objects(client):
     # -- `t.get("name")` invece di `t.get("tool")`, che rendeva ogni voce
     # `None` e faceva esplodere il frontend DOPO che la risposta era gia'
     # comparsa -- non puo' piu' esistere: non c'e' piu' nessuna voce da
-    # comporre. Resta pinnato che `debug` non porti quella chiave, con
-    # l'insieme esatto.
-    assert "tools_called" not in data["debug"]
-    assert set(data["debug"]) <= {"thinking_blocks"}
+    # comporre. Dal 13/10/2026 (M-31) non c'e' piu' nemmeno `debug`: il
+    # ragionamento esteso che portava non aveva un lettore.
+    assert set(data) == {"response"}
 
 
 # test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3

@@ -7,7 +7,6 @@ from typing import Any
 
 from .claude_runner import (
     RunnerBackendError,
-    _current_thinking_blocks,
     _current_tool_calls,
     _current_tool_leaked,
     _current_truncated,
@@ -28,6 +27,38 @@ logger = logging.getLogger(__name__)
 #: sarebbe quello del turno precedente, e si leggerebbe come un fatto.
 _current_provider: ContextVar[str] = ContextVar(
     "hiris_provider_corrente", default="")
+
+
+def _written_before_falling() -> str:
+    """La frase che ferma il ripiego, o "" se il ripiego puo' continuare.
+
+    **Dopo una scrittura non si ripiega** (D-16, scelta A della Chiusura,
+    13/10/2026). Il backend successivo rifa' il turno da capo con lo stesso
+    dispatcher: se quello caduto aveva gia' chiamato uno strumento che scrive
+    -- `execute` riuscito, un ricordo salvato, una promessa -- il secondo puo'
+    ripeterlo, cioe' attraversare due volte la porta della casa. Le chiamate
+    del backend caduto le dice la ContextVar per chiamata (`last_tool_calls`,
+    azzerata da ogni runner all'ingresso); chi scrive lo dice la tabella degli
+    strumenti (`home_space.tools.reads_only`, che chiude per difetto: un nome
+    che non conosce e' una scrittura). La frase nomina gli strumenti, mai gli
+    argomenti, e il turno risulta senza risposta.
+    """
+    from .home_space.tools import reads_only
+
+    written = []
+    for call in _current_tool_calls.get() or []:
+        name = call.get("tool") if isinstance(call, dict) else None
+        if name and not reads_only(name) and name not in written:
+            written.append(name)
+    if not written:
+        return ""
+    _current_unanswered.set(True)
+    logger.warning("ripiego fermato: il backend e' caduto dopo aver chiamato %s",
+                   ", ".join(written))
+    return ("Il turno si è fermato a metà: il modello è caduto dopo aver già "
+            f"usato {', '.join(f'`{n}`' for n in written)}, e rifarlo con un "
+            "altro provider potrebbe ripetere quello che è già stato fatto. "
+            "Guarda cosa è successo prima di chiedere di nuovo.")
 
 
 class LLMRouter:
@@ -155,6 +186,9 @@ class LLMRouter:
                         message=getattr(exc, "said", None) or "",
                         durata_s=time.monotonic() - start)
                 last_friendly = exc.friendly_message
+                stop = _written_before_falling()
+                if stop:
+                    return stop
             except Exception as exc:
                 # Il ramo che c'era già: un guasto che NON è un
                 # `RunnerBackendError` (un bug nel runner, un `TypeError` su una
@@ -167,6 +201,9 @@ class LLMRouter:
                     self._registry.fallimento(
                         backend_name, family="altro", code=None,
                         message=str(exc), durata_s=time.monotonic() - start)
+                stop = _written_before_falling()
+                if stop:
+                    return stop
             else:
                 if self._registry is not None:
                     self._registry.successo(backend_name)
@@ -225,10 +262,3 @@ class LLMRouter:
         ContextVar dei runner, come `last_truncated`."""
         return _current_tool_leaked.get()
 
-    @property
-    def last_thinking_blocks(self) -> list:
-        """Extended-thinking blocks from the call that just ran through THIS
-        asyncio Task. See last_tool_calls above — same ContextVar-backed
-        isolation, shared with ClaudeRunner/OpenAICompatRunner."""
-        val = _current_thinking_blocks.get()
-        return val if val is not None else []

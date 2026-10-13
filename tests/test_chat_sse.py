@@ -38,6 +38,7 @@ async def client(aiohttp_client, tmp_path):
     mock_runner = AsyncMock()
     mock_runner.chat = AsyncMock(return_value="risposta di prova")
     mock_runner.last_tool_calls = []
+    mock_runner.last_unanswered = False
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner

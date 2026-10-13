@@ -292,19 +292,34 @@ def test_un_archivio_illeggibile_si_mette_da_parte_invece_di_essere_sovrascritto
     rileggerli."""
     (tmp_path / "models_config.json").write_text(_ARCHIVIO_DELL_UTENTE,
                                                  encoding="utf-8")
-    load_models_config(str(tmp_path))
+    save_models_config(str(tmp_path), {"chain_order": ["claude"]})
 
     guasto = tmp_path / "models_config.json.corrotto"
     assert guasto.exists(), (
-        "il file illeggibile e' rimasto al suo posto, e il prossimo "
-        "salvataggio ci scrive sopra"
+        "il salvataggio ha scritto sopra il file illeggibile invece di "
+        "metterlo da parte"
     )
     assert guasto.read_text(encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
-    assert not (tmp_path / "models_config.json").exists()
 
     # E il salvataggio che segue non tocca la copia messa da parte.
     save_models_config(str(tmp_path), {"chain_order": ["claude"]})
     assert guasto.read_text(encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
+
+
+def test_leggere_un_archivio_illeggibile_non_lo_sposta(tmp_path):
+    """S-41 (Chiusura, 13/10/2026): `GET /api/models` e `GET
+    /api/models/config` leggono, e una lettura non scrive. Il file illeggibile
+    lo mette da parte solo il salvataggio, che e' la riga che lo
+    sovrascriverebbe.
+
+    Mutazione ESEGUITA il 13/10/2026: `_set_aside_unreadable_store` rimessa
+    nella lettura -- rossa qui."""
+    (tmp_path / "models_config.json").write_text(_ARCHIVIO_DELL_UTENTE,
+                                                 encoding="utf-8")
+    load_models_config(str(tmp_path))
+    assert (tmp_path / "models_config.json").read_text(
+        encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
+    assert not (tmp_path / "models_config.json.corrotto").exists()
 
 
 def test_il_corrotto_piu_vecchio_non_si_sovrascrive(tmp_path):
@@ -314,7 +329,7 @@ def test_il_corrotto_piu_vecchio_non_si_sovrascrive(tmp_path):
         _ARCHIVIO_DELL_UTENTE, encoding="utf-8")
     (tmp_path / "models_config.json").write_text("{rotto di nuovo",
                                                  encoding="utf-8")
-    load_models_config(str(tmp_path))
+    save_models_config(str(tmp_path), {"chain_order": ["claude"]})
     assert (tmp_path / "models_config.json.corrotto").read_text(
         encoding="utf-8") == _ARCHIVIO_DELL_UTENTE
 
@@ -338,6 +353,7 @@ def test_un_archivio_che_non_e_un_oggetto_conta_come_illeggibile(tmp_path, caplo
         load_models_config(str(tmp_path))
     assert any("invece di un oggetto JSON" in r.getMessage()
                for r in caplog.records if r.levelname == "ERROR")
+    save_models_config(str(tmp_path), {"chain_order": ["claude"]})
     assert (tmp_path / "models_config.json.corrotto").exists()
 
 

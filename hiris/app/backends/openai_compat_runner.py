@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import time
 from contextlib import suppress
@@ -13,9 +12,7 @@ import httpx as _httpx
 from ..chat_store import LEAKED_TOOL_NAME_RE
 from ..claude_runner import (
     _MAX_ITERATIONS_NOTICE,
-    COMPACT_PROMPT,
-    MINIMAL_PROMPT,
-    RESTRICT_PROMPT,
+    MAX_TOOL_ITERATIONS,
     RunnerBackendError,
     _current_tool_calls,
     _current_tool_leaked,
@@ -110,15 +107,14 @@ def warn_thinking_ignored(backend_noun: str, thinking_budget: int) -> None:
             thinking_budget, backend_noun,
         )
 
-# fetta "i riferimenti" (R3): stesso tetto e stessa ragione di
-# claude_runner.MAX_TOOL_ITERATIONS -- 10 round-trip morivano garantiti
-# contro 8 stanze da guardare una a una, senza margine per il giro finale
-# della risposta. Sale a 50.
-MAX_TOOL_ITERATIONS = int(os.environ.get("MAX_TOOL_ITERATIONS", "50"))
+# Il tetto degli strumenti e' quello di `claude_runner.MAX_TOOL_ITERATIONS`,
+# importato: fino alla Chiusura (F5, F-10, 13/10/2026) qui ce n'era una copia
+# letta da `MAX_TOOL_ITERATIONS` e `OLLAMA_MAX_TOOL_ITERATIONS`, variabili che
+# `run.sh` non esportava -- costanti scritte due volte (D-10).
 # Ollama tende a fare più iterazioni a vuoto; limite ridotto per contenere la
 # latenza. La proporzione resta quella di sempre -- meta' del tetto sincrono
 # (10 -> 5, ora 50 -> 25) -- non un nuovo giudizio su Ollama.
-_OLLAMA_MAX_TOOL_ITERATIONS = int(os.environ.get("OLLAMA_MAX_TOOL_ITERATIONS", "25"))
+_OLLAMA_MAX_TOOL_ITERATIONS = MAX_TOOL_ITERATIONS // 2
 
 
 def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
@@ -320,9 +316,7 @@ class OpenAICompatRunner:
 
     # Per-call, per-asyncio-Task isolated — shares the SAME ContextVar as
     # ClaudeRunner (review A/#3 — see claude_runner.py's module comment for
-    # the full rationale). No last_thinking_blocks here: OpenAI-compatible
-    # backends don't support Anthropic Extended Thinking (thinking_budget is
-    # accepted-and-ignored in chat() below).
+    # the full rationale).
     last_tool_calls = _PerCallList(_current_tool_calls)
     last_truncated = _PerCallFlag(_current_truncated)
     last_tool_leaked = _PerCallFlag(_current_tool_leaked)
@@ -570,7 +564,10 @@ class OpenAICompatRunner:
         context_str: str = "",
         conversation_history: list[dict] | None = None,
         model: str = "auto",
-        max_tokens: int = 4096,
+        *,
+        # Il tetto d'uscita non ha un predefinito (D-13, Chiusura 13/10/2026):
+        # lo dichiara ogni mestiere, e lo passa `steering.chain_turn`.
+        max_tokens: int,
         restrict_to_home: bool = False,
         response_mode: str = "auto",
         thinking_budget: int = 0,
@@ -642,24 +639,18 @@ class OpenAICompatRunner:
         # modificatori nello stesso posto, e la parita' non e' piu' vera solo
         # per due su tre. Pinnato da
         # `tests/test_composition_order.py`.
-        # Il compositore unico, come `ClaudeRunner.chat` (Tappa 6, Task 7).
-        from ..steering import compose_base
+        # Il compositore unico, come `ClaudeRunner.chat` (D-01): le parti
+        # stabili, poi il contesto recintato (D-04).
+        from ..steering import compose_system, fence_context
 
         if tools is not None:
             tools = list(tools)
-        system_parts = [compose_base(t["name"] for t in tools or ())]
-        if system_prompt:
-            system_parts.append(system_prompt)
-        # I modificatori di comportamento -- stabili per configurazione,
-        # DEVONO precedere `context_str` (vedi sopra).
-        if restrict_to_home:
-            system_parts.append(RESTRICT_PROMPT)
-        if response_mode == "compact":
-            system_parts.append(COMPACT_PROMPT)
-        elif response_mode == "minimal":
-            system_parts.append(MINIMAL_PROMPT)
-        if context_str:
-            system_parts.append(context_str)
+        system_parts = compose_system(
+            (t["name"] for t in tools or ()), persona=system_prompt,
+            restrict_to_home=restrict_to_home, response_mode=response_mode)
+        fenced = fence_context(context_str)
+        if fenced:
+            system_parts.append(fenced)
 
         messages: list[dict] = [{"role": "system", "content": "\n\n---\n\n".join(system_parts)}]
         for msg in (conversation_history or []):

@@ -461,6 +461,7 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     app["chat_settings"] = ChatSettings()
     runner = AsyncMock()
     runner.last_tool_calls = []
+    runner.last_unanswered = False
     app["claude_runner"] = runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)

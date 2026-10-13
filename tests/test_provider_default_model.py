@@ -41,13 +41,13 @@ async def _modello_spedito(runner, model: str = "auto") -> str:
         msg.usage = MagicMock(input_tokens=1, output_tokens=1,
                               cache_creation_input_tokens=0, cache_read_input_tokens=0)
         runner._client.messages.create = AsyncMock(return_value=msg)
-        await runner.chat("ciao", model=model)
+        await runner.chat("ciao", model=model, max_tokens=4096)
         return runner._client.messages.create.call_args.kwargs["model"]
     m = MagicMock(content="ok", tool_calls=None)
     risposta = MagicMock(choices=[MagicMock(finish_reason="stop", message=m)])
     risposta.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
     runner._client.chat.completions.create = AsyncMock(return_value=risposta)
-    await runner.chat(user_message="ciao", model=model)
+    await runner.chat(user_message="ciao", model=model, max_tokens=4096)
     return runner._client.chat.completions.create.call_args.kwargs["model"]
 
 

@@ -48,12 +48,15 @@ def test_due_scatti_sugli_stessi_ingressi_sono_identici(shot):
 
 
 def test_lo_scatto_usa_l_orologio_che_gli_si_da(shot):
-    # Stessi ingressi, orologio diverso: il nucleo porta l'ora, e deve cambiare.
-    # E' la prova che `clock` arriva davvero alle porte (e la guardia della
-    # mutazione «tolto `frozen_clock`»: senza, i due scatti leggono l'ora vera
-    # e a pochi secondi di distanza coincidono).
+    # Stessi ingressi, orologio diverso: le porte che portano un istante
+    # cambiano. E' la prova che `clock` arriva davvero alle porte (e la guardia
+    # della mutazione «tolto `frozen_clock`»: senza, i due scatti leggono l'ora
+    # vera e a pochi secondi di distanza coincidono). Il nucleo invece NON
+    # cambia: dal 13/10/2026 l'ora sta nel messaggio del turno (D-51), e il
+    # nucleo resta uguale finche' la casa non cambia.
     later = fotografia_porte.compare(shot, _shot(clock=CLOCK + 3 * 86_400))
-    assert any(line.startswith("nucleo") for line in later), later[:3]
+    assert later
+    assert not any(line.startswith("nucleo") for line in later), later[:3]
 
 
 def test_nessuna_porta_legge_l_orologio_di_sistema(shot, monkeypatch):

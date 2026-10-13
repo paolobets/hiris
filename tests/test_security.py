@@ -51,7 +51,7 @@ async def test_chat_rejects_message_over_4000_chars():
         resp = await client.post("/api/chat", json={"message": "x" * 4001})
         assert resp.status == 413
         data = await resp.json()
-        assert "too long" in data["error"]
+        assert "troppo lungo" in data["error"]
 
 
 @pytest.mark.asyncio
@@ -59,6 +59,7 @@ async def test_chat_accepts_message_at_4000_chars():
     runner = AsyncMock()
     runner.chat = AsyncMock(return_value="ok")
     runner.last_tool_calls = []
+    runner.last_unanswered = False
     app = _make_app_with_runner(runner)
     with (
         patch("hiris.app.api.handlers_chat.load_history", return_value=[]),
@@ -91,6 +92,7 @@ async def test_security_headers_present():
     runner = AsyncMock()
     runner.chat = AsyncMock(return_value="ok")
     runner.last_tool_calls = []
+    runner.last_unanswered = False
     app = _make_app_with_runner(runner)
     with (
         patch("hiris.app.api.handlers_chat.load_history", return_value=[]),

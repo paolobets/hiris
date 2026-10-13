@@ -21,9 +21,6 @@ APP = ROOT / "hiris" / "app"
 #: cosa» della Chiusura): la modifica e' in una patch per il loro padrone, e
 #: la riga esce con lei.
 AMMESSI: dict[str, str] = {
-    "backends/openrouter_runner.py": (
-        "`_OPENROUTER_BASE_URL`: il file e' di F3a, patch in "
-        "chiusura/f5-patch (F-09)"),
     "server.py": (
         "il `base_url` di OpenAI nell'avvio: `server.py` e' fermo fino a F8, "
         "patch in chiusura/f5-patch (F-09)"),

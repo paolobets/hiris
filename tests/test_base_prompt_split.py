@@ -116,7 +116,11 @@ def test_i_tre_compositori_chiamano_il_compositore_unico():
     intera, a ogni turno, e il ponte le due meta' per conto suo: tre
     composizioni, e la catena dava le regole sugli strumenti anche a chi non
     ne ha (Tappa 6, Task 7; R18). Ora chiamano tutti e tre
-    `steering.compose_base`, e nessuno compone le meta' a mano.
+    `steering.compose_base`, e nessuno compone le meta' a mano. Dal
+    13/10/2026 (D-01, Chiusura) passano dal compositore intero,
+    `steering.compose_system`, che chiama `compose_base` e aggiunge persona,
+    avviso sui nomi di prima e modificatori: nessuno dei tre accoda piu' a
+    mano nemmeno quelli.
 
     (Che il blocco arrivi davvero al modello lo verificano
     `tests/test_base_prompt_memory.py` e `tests/test_un_turno.py`, che
@@ -126,6 +130,7 @@ def test_i_tre_compositori_chiamano_il_compositore_unico():
     for sorgente in (inspect.getsource(ClaudeRunner.chat),
                      inspect.getsource(OpenAICompatRunner.chat),
                      inspect.getsource(prompts.build_chat_messages)):
-        assert "compose_base(" in sorgente
-        for meta in ("BASE_IDENTITY", "BASE_TOOL_RULES", "TOOL_RULES"):
+        assert "compose_system(" in sorgente
+        for meta in ("BASE_IDENTITY", "BASE_TOOL_RULES", "TOOL_RULES",
+                     "RESTRICT_PROMPT", "COMPACT_PROMPT", "MINIMAL_PROMPT"):
             assert meta not in sorgente.split('"""')[-1], meta

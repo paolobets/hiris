@@ -41,6 +41,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from conftest import SCADENZA_LONTANA
+from hiris.app import steering
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_settings import ChatSettings
@@ -102,7 +103,7 @@ def test_il_contesto_sta_in_coda_e_dopo_la_guida():
     # il delimitatore di chiusura, e il contenuto sta dentro. La proprieta'
     # sorvegliata non cambia -- il blocco volatile resta l'ultimo, ed e' anche
     # cio' che rende cacheabile il prefisso stabile davanti.
-    assert system.rstrip().endswith(prompts.CHIUSURA_CASA), (
+    assert system.rstrip().endswith(steering.CHIUSURA_CASA), (
         "il contesto e' il blocco volatile: nel ramo sincrono sta in fondo, "
         "dopo tutti i blocchi stabili (claude_runner.py::ClaudeRunner.chat, "
         "dove `context_str` e' l'ultimo append a `system_blocks`). Se qui non "
@@ -151,7 +152,8 @@ def test_base_system_prompt_e_importato_non_ricopiato():
     # MINIMAL_PROMPT -- si cerca il blocco intero (fino alla parentesi
     # chiusa), non piu' una riga singola letterale, cosi' l'assert resta
     # valido qualunque sia l'a-capo scelto.
-    assert "from ..steering import compose_base" in sorgente
+    # Dal 13/10/2026 (D-01) il compositore intero: `compose_system`.
+    assert "from ..steering import compose_system" in sorgente
     assert "Sei HIRIS, assistente AI integrata in Home Assistant" not in sorgente, (
         "il testo di BASE e' stato RICOPIATO in prompts.py invece che importato")
 
@@ -653,10 +655,8 @@ def test_i_modificatori_sono_importati_non_ricopiati():
     `claude_runner.py` e i due punti di `backends/openai_compat_runner.py`)."""
     with open(prompts.__file__, encoding="utf-8") as f:
         sorgente = f.read()
-    assert "from ..claude_runner import" in sorgente
-    assert "RESTRICT_PROMPT" in sorgente
-    assert "COMPACT_PROMPT" in sorgente
-    assert "MINIMAL_PROMPT" in sorgente
+    # Dal 13/10/2026 (D-01) non li importa nemmeno: li compone
+    # `steering.compose_system` per tutte e due le strade.
     assert "Sei HIRIS, assistente per la smart home" not in sorgente, (
         "RESTRICT_PROMPT e' stato RICOPIATO in prompts.py invece che importato")
     assert "Rispondi in modo conciso" not in sorgente, (
@@ -733,7 +733,7 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     runner_mock = AsyncMock()
     runner_mock.chat = AsyncMock(return_value="sync reply")
     runner_mock.last_tool_calls = []
-    runner_mock.last_thinking_blocks = []
+    runner_mock.last_unanswered = False
 
     app = web.Application()
     app["llm_router"] = runner_mock

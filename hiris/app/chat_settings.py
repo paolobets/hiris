@@ -127,7 +127,8 @@ class ChatSettings:
         dava `AttributeError` e un numero non convertibile `ValueError`, e
         l'avvio, che la chiama senza `try`, si fermava. Ora una radice storta
         vale i default, un numero storto il default del suo campo, e il log
-        lo dice nominando il campo."""
+        lo dice nominando il campo. Anche `Infinity`, che `json.load` accetta
+        e `int()` rifiuta con `OverflowError` (chiusa il 13/10/2026)."""
         path = os.path.join(data_dir, _SETTINGS_FILE)
         raw: dict = {}
         if os.path.exists(path):
@@ -151,7 +152,9 @@ class ChatSettings:
         def number(key: str, value, fallback: int) -> int:
             try:
                 return int(value)
-            except (TypeError, ValueError):
+            # `OverflowError`: `Infinity` e' JSON che `json.load` accetta, e
+            # `int(inf)` non e' un `ValueError` (S-19, F0 della Chiusura).
+            except (TypeError, ValueError, OverflowError):
                 logger.error(
                     "Impostazioni chat in %s: %s=%r non e' un numero: uso %r.",
                     path, key, value, fallback,

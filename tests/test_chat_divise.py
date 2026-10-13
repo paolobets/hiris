@@ -77,7 +77,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     runner = AsyncMock()
     runner.chat = AsyncMock(return_value="risposta sincrona")
     runner.last_tool_calls = []
-    runner.last_thinking_blocks = []
+    runner.last_unanswered = False
 
     app = web.Application(middlewares=[_finto_confine])
     app["llm_router"] = runner
@@ -168,7 +168,8 @@ async def test_il_poll_di_un_job_altrui_e_un_404(tmp_path):
                                    headers={"X-Chi": "paolo"})
 
         assert altrui.status == 404
-        assert await altrui.json() == {"error": "not found"}
+        assert await altrui.json() == {
+            "error": "non ho nessuna risposta in attesa con quell’identificatore."}
         assert await altrui.json() == await inesistente.json()
         assert proprio.status == 200
         assert (await proprio.json())["status"] == "pending"

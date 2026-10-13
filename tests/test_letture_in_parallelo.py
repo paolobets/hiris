@@ -94,7 +94,7 @@ async def _turn(make, calls):
     runner, results = make(calls)
     dispatcher = _Dispatcher(len(calls))
     tools = [tool.definition for tool in TOOLS if tool.name in set(calls)]
-    await runner.chat("ciao", tools=tools, dispatcher=dispatcher)
+    await runner.chat("ciao", tools=tools, dispatcher=dispatcher, max_tokens=4096)
     return runner, dispatcher, results()
 
 
