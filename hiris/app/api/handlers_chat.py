@@ -13,7 +13,7 @@ from ..chat_store import (
     load_history,
     unanswered_assistant_lines,
 )
-from ..chat_thread import ChatThread, adopt_if_owner, request_thread
+from ..chat_thread import ChatThread, adopt_if_owner, request_thread, unknown_id_text
 
 # `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
@@ -51,6 +51,9 @@ from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
 
+# Il 404 del poll, lo stesso per l'id che non c'e' e per l'id di un altro
+# filo (C-50): una frase sola, da `chat_thread.unknown_id_text`.
+_REPLY_NOT_FOUND = unknown_id_text("nessuna risposta in attesa")
 # Il testo del poll per un turno che non ha portato una risposta (scaduto,
 # fallito, deciso senza testo): uno solo, perche' a chi aspetta dice la stessa
 # cosa. Viaggia in `error` a stato 200 (A6, 05/10/2026).
@@ -834,7 +837,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     job_id = request.match_info.get("job_id", "")
     reasoning_queue = request.app.get("reasoning_queue")
     if reasoning_queue is None:
-        return error_response(503, "reasoning queue not configured")
+        return error_response(503, "coda dei turni non disponibile")
     job = reasoning_queue.get(job_id)
     # Fetta «le chat divise»: si risponde solo a chi e' dello stesso filo del
     # job. Un job di un altro filo riceve la STESSA risposta di un id che non
@@ -842,7 +845,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     # senza filo (`None`, accodato prima di questa versione): non e' di
     # nessuno, quindi non e' di chi chiede.
     if job is None or job.get("thread") != request_thread(request):
-        return error_response(404, "not found")
+        return error_response(404, _REPLY_NOT_FOUND)
     status = job.get("status")
     decision = job.get("decision") or {}
     reply = decision.get("reply")
@@ -916,7 +919,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     if not message:
         return error_response(400, "Manca il messaggio: il campo `message` è vuoto.")
     if len(message) > 4000:
-        return error_response(413, "message too long (max 4000 chars)")
+        return error_response(413, "Il messaggio è troppo lungo: al massimo 4000 caratteri.")
 
     data_dir = request.app["data_dir"]
     settings = request.app["chat_settings"]

@@ -51,7 +51,7 @@ async def test_chat_rejects_message_over_4000_chars():
         resp = await client.post("/api/chat", json={"message": "x" * 4001})
         assert resp.status == 413
         data = await resp.json()
-        assert "too long" in data["error"]
+        assert "troppo lungo" in data["error"]
 
 
 @pytest.mark.asyncio
