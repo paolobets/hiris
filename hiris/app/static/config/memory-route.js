@@ -57,6 +57,11 @@
 window.HirisMemoryRoute = (function () {
   'use strict';
 
+  /* Un ricordo tolto altrove nel frattempo: la stessa frase per la
+     correzione e per la cancellazione (C-51), che il server rifiuta col
+     medesimo 404. */
+  var MEMORY_GONE = 'Questo ricordo non c’è più: è già stato cancellato altrove.';
+
   var MODALITY_LABELS = {
     preferenza: 'Preferenza', divieto: 'Divieto', fatto: 'Fatto', regola: 'Regola operativa'
   };
@@ -273,7 +278,7 @@ window.HirisMemoryRoute = (function () {
                questa card, che sparisce): il messaggio va sulla riga di
                stato di pagina, che il ricaricamento NON tocca, altrimenti
                l'utente non fa in tempo a leggerlo. */
-            setStatus('Questo ricordo non c’è più: è già stato cancellato altrove.');
+            setStatus(MEMORY_GONE);
             dopoSalvataggio();
             return;
           }
@@ -397,6 +402,13 @@ window.HirisMemoryRoute = (function () {
       cardErr.style.display = 'none';
       api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
         if (res.status === 204) { setStatus('Ricordo cancellato.'); reload(); return; }
+        /* Tolto altrove nel frattempo (C-51): non e' un errore da mostrare
+           sulla scheda, e' una scheda vecchia da ridisegnare. */
+        if (res.status === 404) {
+          setStatus(MEMORY_GONE);
+          reload();
+          return;
+        }
         return res.json().catch(function () { return {}; }).then(function (payload) {
           showCardError(cardErr, (payload && payload.error) || ('Errore HTTP ' + res.status));
         });

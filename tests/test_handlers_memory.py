@@ -416,6 +416,26 @@ async def test_dimenticare_toglie_il_ricordo(aiohttp_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_dimenticare_un_ricordo_che_non_c_e_e_un_404_come_correggerlo(aiohttp_client,
+                                                                          tmp_path):
+    """C-51 (13/10/2026): `DELETE` su un id che non esiste rispondeva 204 --
+    «cancellato» -- mentre `PATCH` sullo stesso id risponde 404. Il ricordo
+    tolto da un'altra scheda e' lo stesso fatto dalle due porte.
+
+    Rossa prima della correzione: 204."""
+    memory = MemoryStore(str(tmp_path / "memoria.db"))
+    app = _app(archivio_memoria=memory, archivio_casa=None)
+    client = await aiohttp_client(app)
+
+    cancella = await client.delete("/api/memories/999")
+    corregge = await client.patch("/api/memories/999", json={"testo": "x"})
+    assert cancella.status == corregge.status == 404
+    assert (await cancella.json())["error"] == (await corregge.json())["error"]
+
+    memory.close()
+
+
+@pytest.mark.asyncio
 async def test_senza_archivio_le_rotte_dichiarano_il_guasto_con_la_chiave_del_confine():
     """Le tre rotte della memoria, senza archivio, rispondono 503 -- e la chiave
     del corpo si chiama `error`, non `errore`.

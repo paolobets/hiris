@@ -408,6 +408,27 @@ test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricar
     'dopo la cancellazione la lista si ricarica dal server');
 });
 
+test('una DELETE su un ricordo sparito (404) lo dice come la correzione, e ricarica', async () => {
+  /* C-51: il server ora risponde 404 anche alla DELETE. Mutazione che la
+     uccide: togliere il ramo 404, e la scheda mostra l'errore del server. */
+  const { window, document } = montaConServer({
+    deleteStatus: 404,
+    deleteBody: { error: 'nessun ricordo con id 7' },
+    getSuccessivo: { available: true, memories: [], total: 0, shown: 0 },
+  });
+  window.HirisMemoryRoute.mount();
+  await tick(20);
+
+  window.confirm = () => true;
+  bottone(document, 'Dimentica').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(20);
+
+  const testo = document.getElementById('route-outlet').textContent;
+  assert.match(testo, /non c.è più: è già stato cancellato altrove/);
+  assert.doesNotMatch(testo, /nessun ricordo con id/);
+  assert.match(testo, /Nessun ricordo salvato/);
+});
+
 test('un errore di rete sulla DELETE si vede, mai un catch vuoto', async () => {
   const { window, document } = montaConServer({ deleteRotto: true });
   window.HirisMemoryRoute.mount();
