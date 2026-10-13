@@ -93,8 +93,8 @@ from aiohttp import web
 
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, keep_concluded
 from ..models_store import bridge_deadline_min
-from ..providers import SUBSCRIPTION
 from ..states import TAKEN
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
@@ -730,10 +730,9 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         # A concludere e' l'orologio, non questa rotta: un secondo punto che
         # decide se notificare e con quali parole sarebbe libero di divergere
         # dal primo, sul gesto piu' visibile che il prodotto compia.
-        sweeper = request.app.get("sweeper")
-        store = (request.app.get("agenda") or None)
-        row = store.read(promise_id) if store is not None else None
-        if sweeper is None or row is None:
+        closed = await keep_concluded(request.app, promise_id,
+                                      dispatcher.conclusione, now=time.time())
+        if closed == UNKNOWN:
             # Silenzio dichiarato: il modello ha concluso e noi non abbiamo di
             # che chiudere. Non si finge che sia andata: lo si dice a lui, che
             # e' l'unico che puo' ancora fare qualcosa (riprovare, o dirlo nel
@@ -743,29 +742,14 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
                 "assenti, la promessa NON e' stata chiusa", promise_id)
             result = {"errore": ("ho ricevuto la conclusione ma non ho "
                                  "potuto chiudere la promessa.")}
-        elif row.get("stato") != TAKEN:
-            # Riletta adesso, non al primo controllo dell'intestazione: fra i
-            # due puo' essere arrivata la scadenza, o un `conclude` gemello.
-            # Una promessa gia' chiusa non si riconsegna (Task 3, fix round 1:
-            # niente seconda riga in chat, niente seconda push) -- e lo si dice
-            # al modello invece di fingere.
-            logger.info("MCP «conclude» per la promessa %s: gia' conclusa (%s)",
-                        promise_id, row.get("stato"))
+        elif closed == ALREADY_CLOSED:
+            # Fra il primo controllo e adesso puo' essere arrivata la
+            # scadenza, o un `conclude` gemello: lo si dice al modello invece
+            # di fingere (Task 3, fix round 1).
+            logger.info("MCP «conclude» per la promessa %s: gia' conclusa",
+                        promise_id)
             result = {"errore": ("questa promessa era gia' conclusa: la tua "
                                  "conclusione non cambia niente.")}
-        else:
-            await sweeper.concludi_chiedi(
-                row, dispatcher.conclusione, now=time.time())
-            # Rilievo R1 della revisione indipendente sul tratto
-            # `v3.22.2..HEAD`: prima di questa riga nessun punto del
-            # prodotto registrava MAI un successo per una promessa mantenuta
-            # dal ponte -- il gemello di questo `.successo(...)` per la chat
-            # sta in `server.py::_submit_chat_reply`, ed e' l'unica altra
-            # strada per cui il piano puo' rispondere. Qui il modello HA
-            # concluso: e' un fatto gia' accertato, non un'ipotesi.
-            registry = request.app.get("occurrence_registry")
-            if registry is not None:
-                registry.successo(SUBSCRIPTION.id)
 
     content: dict = {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
