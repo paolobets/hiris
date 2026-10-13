@@ -833,7 +833,17 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     """GET /api/chat/reply/{job_id} — the UI polls this after a 202 pending
     response from handle_chat. Reads the SAME queue row Task 1's submit
     branch resolves (``ReasoningQueue.submit`` always writes decision_json,
-    independent of whether the chat_store write in that branch succeeded)."""
+    independent of whether the chat_store write in that branch succeeded).
+
+    **Una GET che scrive, dichiarata** (S-41, deciso dal proprietario il
+    13/10/2026: «il poll resta»). A scadenza del piano questa rotta fa un
+    turno intero sulla catena (`_downgrade_to_chain`): reclama il job,
+    consuma, scrive la cronologia, e gli strumenti del turno possono
+    scrivere su Home Assistant col soffitto del job. Non e' un effetto
+    collaterale di una lettura: e' la consegna del messaggio che la persona
+    ha gia' scritto con la `POST /api/chat`, e il soffitto e' quello che la
+    `POST` aveva fissato. Spostarla su una `POST` nuova farebbe ripartire dal
+    browser cio' che il server sa gia' fare da se'."""
     job_id = request.match_info.get("job_id", "")
     reasoning_queue = request.app.get("reasoning_queue")
     if reasoning_queue is None:
