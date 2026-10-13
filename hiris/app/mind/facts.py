@@ -955,8 +955,12 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                   recipes=None, series=None, names=None,
                   silent=None, muted=None,
                   judgments: TypeJudgments = REPO_JUDGMENTS,
-                  house: House | None = None) -> int:
+                  house: House | None = None,
+                  when_ts: float | None = None) -> int:
     """Scrive il resoconto di un giorno. Torna quante voci di cronaca porta.
+
+    `when_ts` e' l'istante della scrittura, dall'orologio di chi chiama
+    (G-14, Chiusura): passa a `store.replace_report`.
 
     **Il resoconto e' la cronaca piu' le misure** (spec §9): la cronaca sono gli
     episodi di `build_episodes`, che legge il grezzo dell'archivio con
@@ -1009,7 +1013,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         recipes=recipes or {}, names=names or {},
         silent=silent, muted=muted,
         objective=store.objective_at(to_ts),
-        judgment=chronicle_mark(judgments)))
+        judgment=chronicle_mark(judgments)), when_ts=when_ts)
     # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti
     # oggetti aveva salvato: e' lo stesso numero detto nella lingua che resta.
     return len(episodes)
@@ -1042,9 +1046,11 @@ def chronicle_mark(judgments: TypeJudgments) -> dict:
 
 def rebuild_chronicle(*, store, day: str, timezone: str | None,
                       judgments: TypeJudgments = REPO_JUDGMENTS,
-                      house: House | None = None) -> bool:
+                      house: House | None = None,
+                      when_ts: float | None = None) -> bool:
     """Rifa' **solo** la cronaca di un giorno col giudizio di adesso. Torna
     `True` se ha riscritto, `False` se quel giorno non ha un resoconto.
+    `when_ts` come `aggregate_day` (G-14).
 
     Misure, forme e obiettivo restano quelli scritti: **nessuna lettura di Home
     Assistant, nessuna ricetta riletta** -- le statistiche di un giorno vecchio
@@ -1116,7 +1122,7 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
                       if _chronicle_position(v) > key), len(chronicle))
         chronicle.insert(index, entry)
     store.replace_report(day, {**report, "cronaca": chronicle,
-                               "giudizio": rebuilt["giudizio"]})
+                               "giudizio": rebuilt["giudizio"]}, when_ts=when_ts)
     return True
 
 
