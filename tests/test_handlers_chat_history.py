@@ -109,6 +109,28 @@ async def test_get_chat_history_empty_when_no_messages(tmp_path):
     assert data["messages"] == []
 
 
+@pytest.mark.asyncio
+async def test_i_turni_li_conta_il_server_sull_intera_conversazione(tmp_path):
+    """C-15 (Chiusura, 13/10/2026): la storia mostrata si ferma a 30 coppie,
+    il tetto dei turni conta tutta la conversazione. La pagina contava la
+    prima e confrontava con il secondo; la rotta porta adesso `turni`, letto
+    da `count_user_turns` come il tetto.
+
+    Rossa sul codice di prima (KeyError su `turni`); mutazione ESEGUITA il
+    13/10/2026: `turni` contato sui `messages` restituiti -- rossa su 30."""
+    from hiris.app.chat_store import append_messages
+    for i in range(31):
+        append_messages([{"role": "user", "content": f"domanda {i}"},
+                         {"role": "assistant", "content": f"risposta {i}"}],
+                        str(tmp_path), thread=T)
+
+    request = make_mocked_request("GET", "/api/chat/history",
+                                  app=_make_app(str(tmp_path)), match_info={})
+    data = json.loads((await handle_get_chat_history(request)).body)
+    assert len(data["messages"]) == 60
+    assert data["turni"] == 31
+
+
 # I due test di `handle_clear_chat_history` sono usciti con la rotta
 # `DELETE /api/chat/history` (fetta «il seguito delle chat divise», Task 6):
 # si cancella una conversazione per volta, provato in tests/test_conversazioni.py.

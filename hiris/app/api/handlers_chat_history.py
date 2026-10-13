@@ -1,6 +1,7 @@
 from aiohttp import web
 
 from ..chat_store import (
+    count_user_turns,
     delete_conversation,
     list_conversations,
     load_history,
@@ -65,7 +66,14 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # modello (`handlers_chat.py`) non passa questo argomento: resta
     # `{role, content}`, il formato che l'API del modello si aspetta.
     messages = load_history(data_dir, thread=thread, days=giorni, include_timestamp=True)
-    return web.json_response({"messages": messages})
+    # C-15 (Chiusura, 13/10/2026): i turni li conta il server, con la STESSA
+    # funzione con cui `handle_chat` applica il tetto (`max_turns_reached`).
+    # La pagina li contava sui `messages` qui sopra, che sono tagliati a 30
+    # coppie, ai giorni di conservazione e senza i turni velenosi: oltre il
+    # trentesimo turno il contatore diceva meno del vero, e il tetto arrivava
+    # prima di quanto mostrava.
+    return web.json_response({"messages": messages,
+                              "turni": count_user_turns(data_dir, thread=thread)})
 
 
 async def handle_list_conversations(request: web.Request) -> web.Response:
