@@ -33,6 +33,7 @@ from ..home_space.topology import read_mirror
 from . import proposer_turn
 from .analyst import observation_key
 from .report import NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
+from .store import attempt_out
 from .watcher import scope_row
 
 #: Quanti giorni di righe grezze si mostrano (`volume`). **Non e' la durata del grezzo**
@@ -112,7 +113,8 @@ class MindView:
             "fuori": self._left_out(),
             "obiettivo": store.objective() if store is not None else None,
             "riconsiderazione": store.last_reconsideration() if store is not None else None,
-            "tentativi": store.recent_attempts() if store is not None else None,
+            "tentativi": ([attempt_out(t) for t in store.recent_attempts()]
+                          if store is not None else None),
             "volume": self._volume(),
         }
 

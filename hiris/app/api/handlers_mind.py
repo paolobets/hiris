@@ -44,13 +44,7 @@ from ..mind.judgments import (
 )
 from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
-from ..mind.store import (
-    ATTEMPT_DONE,
-    ATTEMPT_EXPIRED,
-    ATTEMPT_FAILED,
-    ATTEMPT_QUEUED,
-    READING_RETENTION_S,
-)
+from ..mind.store import READING_RETENTION_S
 from ..mind.view import MindView
 from .boundary import error_response, json_object
 from .soffitto import subject_name
@@ -80,31 +74,7 @@ async def handle_watching(request: web.Request) -> web.Response:
     scope = mind_view(request.app).scope()
     if scope is None:
         return error_response(503, "osservatore non disponibile")
-    if scope.get("tentativi") is not None:
-        scope = {**scope, "tentativi": [attempt_out(t) for t in scope["tentativi"]]}
     return web.json_response(scope)
-
-
-#: L'esito di un tentativo in parole, e cosa vuol dire per «sta
-#: funzionando?» (G-25, 13/10/2026). Gli esiti vivono in `mind/store`
-#: (`ATTEMPT_*`): la pagina ne teneva una copia per le parole, una per i
-#: guasti e una per i colori. `scaduta` e `non_riuscito` sono cause diverse
-#: e si dicono diverse, ma pesano uguale nella serie dei guasti.
-_ATTEMPT_WORDS = {
-    ATTEMPT_QUEUED: ("In attesa", "attesa"),
-    ATTEMPT_DONE: ("Riuscito", "riuscito"),
-    ATTEMPT_FAILED: ("Non riuscito", "guasto"),
-    ATTEMPT_EXPIRED: ("Scaduta", "guasto"),
-}
-
-
-def attempt_out(attempt: dict) -> dict:
-    """Un tentativo con la sua lettura: `esito_leggibile`, `in_attesa`,
-    `riuscito`, `guasto`. Un esito che non si conosce esce col suo nome
-    grezzo e nessuno dei tre segni: la pagina lo dice senza esplodere."""
-    word, kind = _ATTEMPT_WORDS.get(attempt.get("esito"), (attempt.get("esito"), None))
-    return {**attempt, "esito_leggibile": word, "in_attesa": kind == "attesa",
-            "riuscito": kind == "riuscito", "guasto": kind == "guasto"}
 
 
 async def handle_report(request: web.Request) -> web.Response:

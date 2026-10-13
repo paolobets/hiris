@@ -1132,6 +1132,31 @@ ATTEMPT_DONE = "riuscito"
 ATTEMPT_FAILED = "non_riuscito"
 ATTEMPT_EXPIRED = "scaduta"
 
+#: L'esito di un tentativo in parole, e cosa vuol dire per «sta
+#: funzionando?» (G-25, 13/10/2026). Gli esiti sono qui sopra
+#: (`ATTEMPT_*`): la pagina ne teneva una copia per le parole, una per i
+#: guasti e una per i colori. `scaduta` e `non_riuscito` sono cause diverse
+#: e si dicono diverse, ma pesano uguale nella serie dei guasti.
+_ATTEMPT_WORDS = {
+    ATTEMPT_QUEUED: ("In attesa", "attesa"),
+    ATTEMPT_DONE: ("Riuscito", "riuscito"),
+    ATTEMPT_FAILED: ("Non riuscito", "guasto"),
+    ATTEMPT_EXPIRED: ("Scaduta", "guasto"),
+}
+
+
+def attempt_out(attempt: dict) -> dict:
+    """Un tentativo con la sua lettura: `esito_leggibile`, `in_attesa`,
+    `riuscito`, `guasto`. Un esito che non si conosce esce col suo nome
+    grezzo e nessuno dei tre segni: la pagina lo dice senza esplodere.
+
+    Vive accanto agli esiti, e la applica `MindView.scope`: la rotta e lo
+    strumento `mind` ricevono i tentativi gia' letti (N155-1, giro 155: fino
+    al 13/10/2026 la applicava solo la rotta)."""
+    word, kind = _ATTEMPT_WORDS.get(attempt.get("esito"), (attempt.get("esito"), None))
+    return {**attempt, "esito_leggibile": word, "in_attesa": kind == "attesa",
+            "riuscito": kind == "riuscito", "guasto": kind == "guasto"}
+
 
 #: Le chiavi dentro un'analisi o un filo del «Rifalla» che `reseal` non
 #: sigilla: non sono frasi, sono legami (l'impronta dell'antiripetizione, l'id
