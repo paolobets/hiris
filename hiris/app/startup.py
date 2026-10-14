@@ -165,9 +165,6 @@ async def _open_websocket(ha_client) -> bool:
 
 
 async def _on_startup(app: web.Application) -> None:
-    # Serve ai lavori dello schedulatore, piu' sotto.
-    import time as _time
-
     from .claude_runner import ClaudeRunner
     from .llm_router import LLMRouter
 
@@ -1031,7 +1028,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe e del comportamento qui sopra: si dichiara e si prosegue,
     # e le promesse `in_corso` restano tali fino al prossimo riavvio.
     try:
-        app["agenda"].risana(now=_time.time())
+        app["agenda"].risana(now=time.time())
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
@@ -1040,7 +1037,7 @@ async def _on_startup(app: web.Application) -> None:
     # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
     # nessuna `apply`, e resterebbe un fantasma fino alla potatura.
     try:
-        app["constructions"].risana(now=_time.time())
+        app["constructions"].risana(now=time.time())
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
@@ -1064,7 +1061,7 @@ async def _on_startup(app: web.Application) -> None:
     )
 
     async def _battito() -> None:
-        await app["sweeper"].batti(_time.time())
+        await app["sweeper"].batti(time.time())
 
     # Quindici secondi, battito FISSO: la verita' e' la tabella, non un timer
     # per promessa. Un battito fisso non si perde se l'ora di sistema salta
