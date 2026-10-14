@@ -74,6 +74,22 @@ async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_a
     assert watched.await_args.args[0] is started_app
 
 
+async def test_il_giro_delle_condizioni_tiene_anche_gli_id_delle_statistiche(started_app):
+    """Lo stesso lavoro, dopo le condizioni, rinfresca gli id delle statistiche
+    che l'osservatore tiene (`hold_watcher_statistic_ids`). Nessuna prova lo
+    guardava: la chiamata tolta dal lavoro lasciava la suite verde (misurato
+    il 14/10/2026, F8 passo 1b).
+
+    Mutazione ESEGUITA: tolta la chiamata da `startup.conditions_job` --
+    rossa."""
+    job = _job(started_app, "hiris_mind_conditions")
+    with mock.patch.object(startup, "watch_system_conditions", mock.AsyncMock()), \
+            mock.patch.object(startup, "hold_watcher_statistic_ids",
+                              mock.AsyncMock()) as held:
+        await job.func()
+    held.assert_awaited_once_with(started_app, started_app["ha_client"])
+
+
 async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_app):
     """Senza questo lavoro le automazioni segnate resterebbero segnate per
     sempre senza che nessuno rileggesse le loro tracce."""
