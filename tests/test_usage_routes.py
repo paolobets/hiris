@@ -155,7 +155,7 @@ def test_il_fuso_si_dichiara(app):
 def test_l_ancora_esce_nell_ora_della_casa(app):
     """C-17: la pagina mostra le cifre dell'istante, non lo converte. L'ancora
     deve arrivare con l'offset della casa, e con l'orologio accanto."""
-    app["usage"].sposta_anchor(T21)
+    app[USAGE_KEY].sposta_anchor(T21)
     corpo = _corpo(_chiama(handle_usage, app))
     assert corpo["last_reset"] == "2026-08-21T17:00:00+02:00"
     assert corpo["orologio"]["adesso"].endswith(("+01:00", "+02:00"))

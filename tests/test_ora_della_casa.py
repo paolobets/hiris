@@ -16,6 +16,10 @@ from aiohttp import web
 from hiris.app.api import servizi
 from hiris.app.api.handlers_home_space import handle_get_home_space
 from hiris.app.api.handlers_servizi import listing
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.home_space.rounds import TREE_COMPARISON_KEY
+from hiris.app.live_value import LiveValue
+from hiris.app.startup import live_values
 from tests._anagrafe_finta import AnagrafeFinta
 
 ROMA = "Europe/Rome"
@@ -33,9 +37,10 @@ async def test_home_space_sends_its_instants_in_the_house_hour(aiohttp_client):
     store = _casa()
     store.hold_behavior([])
     app = web.Application()
-    app["home_space_store"] = store
-    app["tree_comparison"] = {"aree_totali": 1, "guardate": [],
-                              "letto_il": "2026-10-13T22:30:00+00:00"}
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = store
+    app[TREE_COMPARISON_KEY] = LiveValue({"aree_totali": 1, "guardate": [],
+                                          "letto_il": "2026-10-13T22:30:00+00:00"})
     app.router.add_get("/api/home-space", handle_get_home_space)
     corpo = await (await (await aiohttp_client(app)).get("/api/home-space")).json()
 
@@ -45,14 +50,15 @@ async def test_home_space_sends_its_instants_in_the_house_hour(aiohttp_client):
     assert ROME_ISO.match(corpo["comportamento"]["letto_il"])
     # Le 22:30 UTC del 13 sono le 00:30 del 14 a Roma: il giorno cambia.
     assert corpo["confronto"]["letto_il"] == "2026-10-14T00:30:00+02:00"
-    assert app["tree_comparison"]["letto_il"] == "2026-10-13T22:30:00+00:00", \
+    assert app[TREE_COMPARISON_KEY].value["letto_il"] == "2026-10-13T22:30:00+00:00", \
         "la copia in memoria non si tocca"
 
 
 @pytest.mark.asyncio
 async def test_home_space_without_a_store_still_has_a_clock(aiohttp_client):
     app = web.Application()
-    app["home_space_store"] = None
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     corpo = await (await (await aiohttp_client(app)).get("/api/home-space")).json()
     assert corpo["orologio"]["fuso"] == "UTC"
@@ -63,7 +69,7 @@ def test_services_send_their_instants_in_the_house_hour(tmp_path):
     try:
         # 13/10/2026 22:30 UTC: le 00:30 del 14 a Roma.
         store.presenta(nome="pannello", chiave="k", indirizzo="i", now_ts=1791930600.0)
-        rows = listing(store, 1791930700.0, {"home_space_store": _casa()})
+        rows = listing(store, 1791930700.0, {HOME_SPACE_KEY: _casa()})
     finally:
         store.close()
     assert rows["da_decidere"][0]["visto_ts"] == "2026-10-14T00:30:00+02:00"
@@ -94,11 +100,11 @@ async def test_the_report_asked_by_name_answers_which_day_it_is(tmp_path):
 
     from hiris.app.api.handlers_mind import handle_analysis, handle_report
     from hiris.app.home_space import historian
-    from hiris.app.mind.store import ObservationsStore
+    from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 
     store = ObservationsStore(str(tmp_path / "oss.db"))
     try:
-        app = {"observations": store, "home_space_store": _casa()}
+        app = {**live_values(), OBSERVATIONS_KEY: store, HOME_SPACE_KEY: _casa()}
         yesterday = historian.resolve_day("ieri", ROMA)
         missing = await handle_report(_Request(app, {"day": "ieri"}))
         assert missing.status == 404
@@ -152,16 +158,17 @@ async def test_the_chat_sends_its_instants_in_the_house_hour(tmp_path):
         handle_get_chat_history,
         handle_list_conversations,
     )
-    from hiris.app.chat_settings import ChatSettings
+    from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
     from hiris.app.chat_store import _get_store, append_messages, close_all_stores
     from hiris.app.chat_thread import thread_for
+    from hiris.app.storage import DATA_DIR_KEY
 
     close_all_stores()
     try:
         append_messages([{"role": "user", "content": "ciao"}], str(tmp_path),
                         thread=thread_for(None, None))
-        valori = {"data_dir": str(tmp_path), "chat_settings": ChatSettings(),
-                  "home_space_store": _casa()}
+        valori = {DATA_DIR_KEY: str(tmp_path), CHAT_SETTINGS_KEY: LiveValue(ChatSettings()),
+                  HOME_SPACE_KEY: _casa()}
         app = MagicMock()
         app.__getitem__ = MagicMock(side_effect=lambda k: valori.get(k))
         app.get = MagicMock(side_effect=lambda k, d=None: valori.get(k, d))

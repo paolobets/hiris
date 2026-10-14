@@ -13,6 +13,7 @@ from hiris.app.action.construction.workshop import WORKSHOP_KEY
 from hiris.app.action.journal import JOURNAL_KEY
 from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
 from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.mind.store import OBSERVATIONS_KEY
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 
@@ -760,7 +761,7 @@ async def test_la_data_di_nascita_esce_nell_ora_della_casa_dalle_due_porte():
     righe = [{"id": "a", "stato": "in_attesa", "creata_ts": 1791930600.0},
              {"id": "b", "stato": "in_attesa", "creata_ts": 1791930000.0}]
     app = _app(FintoArchivio(righe))
-    app["home_space_store"] = AnagrafeFinta(cornice={"fuso": "Europe/Rome"})
+    app[HOME_SPACE_KEY] = AnagrafeFinta(cornice={"fuso": "Europe/Rome"})
     lista = _corpo(await handle_get_constructions(FintaRichiesta(app)))["constructions"]
     assert [(c["id"], c["creata_ts"]) for c in lista] == [
         ("a", "2026-10-14T00:30:00+02:00"), ("b", "2026-10-14T00:20:00+02:00")]
