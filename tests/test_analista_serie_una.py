@@ -10,6 +10,13 @@ le due strade vedono la stessa serie e la stessa memoria.
 Mutazione ESEGUITA (14/10/2026): la raccolta rimessa a comporre la serie da
 se', senza `analyst.with_deviation` -- rossa (la serie della raccolta non ha
 lo scarto). Ripristino verificato con `git status`.
+
+La memoria entra nel confronto dal 14/10/2026 (N161-3, revisore giro 161):
+l'archivio della prova ha un'analisi passata, e la memoria deve essere piena
+prima del confronto. Mutazione ESEGUITA: la raccolta compone la memoria di un
+altro giorno (`analyst_inputs(store, "2026-09-16", ...)`) -- rossa (la
+memoria della raccolta non ha l'osservazione di quel giorno). Ripristino
+verificato con `git status`.
 """
 from __future__ import annotations
 
@@ -23,6 +30,7 @@ from hiris.app.mind import analyst_turn
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
+from tests.test_mind_analyst_memory import _osservazione
 
 
 def _report(day: str, value: float) -> dict:
@@ -49,6 +57,9 @@ def app(tmp_path):
     usage = UsageStore(str(tmp_path / "consumi.db"))
     for day, value in (("2026-09-15", 1.0), ("2026-09-16", 4.0), ("2026-09-17", 2.0)):
         store.replace_report(day, _report(day, value))
+    # Un'analisi di un giorno passato: e' la memoria dell'analista (N161-3).
+    # Senza, la memoria e' `[]` sulle due strade e il confronto non la vede.
+    store.replace_analysis("2026-09-16", {"osservazioni": [_osservazione()]})
     try:
         yield {"observations": store, "usage": usage, "bridge_active": False}
     finally:
@@ -84,4 +95,5 @@ async def test_accodamento_e_raccolta_vedono_la_stessa_serie(app, monkeypatch):
     server._collect_analyst_turn(app, app["observations"], today)
 
     assert seen["accodamento"][0]["serie"], "la derivazione non ha composto nessuna serie"
+    assert seen["accodamento"][1], "la derivazione non ha composto nessuna memoria"
     assert seen["raccolta"] == seen["accodamento"]
