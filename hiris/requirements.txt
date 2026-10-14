@@ -17,7 +17,7 @@
 # non si fa. Misurato il 21/09 su PyPI: esistono wheel musllinux_1_2 per
 # aarch64 e x86_64, cioe' entrambe le architetture che questo add-on dichiara
 # -- nessuna compilazione in fase di costruzione dell'immagine.
-cryptography>=46.0.0,<51.0.0
+cryptography>=50.0.2,<51.0.0
 
 aiohttp>=3.14.3,<4.0.0
 anthropic>=1.0.0,<2.0.0
