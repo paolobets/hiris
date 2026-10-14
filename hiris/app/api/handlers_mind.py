@@ -34,6 +34,7 @@ from ..chat_thread import subject_key_for
 from ..home_space import historian
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
+from ..home_space.reader import house_timezone_of
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, DECLINED_FIELD, MEANING_FIELD
 from ..mind import analyst, recipe_turn
 from ..mind.judgments import (
@@ -48,7 +49,7 @@ from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
 from ..mind.store import OBSERVATIONS_KEY, READING_RETENTION_S
 from ..mind.view import mind_view
-from .boundary import error_response, house_clock_of, house_timezone_of, json_object
+from .boundary import error_response, house_clock_of, json_object
 from .soffitto import subject_name
 
 

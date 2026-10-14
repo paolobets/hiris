@@ -39,7 +39,6 @@ from aiohttp import web
 
 from ..action.journal import JOURNAL_KEY
 from ..chat_thread import (
-    adopt_if_owner,
     request_thread,
     subject_key_for,
     unknown_id_text,
@@ -73,11 +72,11 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     if store is None:
         return error_response(503, "archivio non disponibile")
     thread = request_thread(request)
-    # Le promesse di prima vanno al proprietario alla sua prima lettura, con
-    # la stessa regola e nello stesso gesto della cronologia. Solo qui, fra
-    # le rotte degli Impegni: una DELETE o un «letto» su un'orfana non
-    # adottano prima di agire -- rispondono come per un id che non esiste.
-    await adopt_if_owner(request.app, request, thread)
+    # Una lettura non adotta (S-41, Chiusura, 14/10/2026): le promesse di
+    # prima vanno al proprietario con `POST /api/chat/adopt`, che la pagina
+    # della chat chiama all'apertura, o al loro risveglio
+    # (`keeper/sweeper.py::_adopt_orphan`). Nemmeno una DELETE o un «letto» su
+    # un'orfana adottano: rispondono come per un id che non esiste.
     show_all = request.query.get("all") in ("1", "true", "si")
     rows, left_out = store.page(thread=thread, solo_in_sospeso=not show_all, limit=200)
     # La finestra si dichiara (C-14, 13/10/2026): `total` e `shown`, come la

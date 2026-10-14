@@ -196,17 +196,22 @@ def without_thread(row: dict) -> dict:
 async def adopt_if_owner(app, request, thread: ChatThread) -> None:
     """Cio' che c'era prima delle chat divise va al proprietario (spec §3).
 
-    Alla prima richiesta di una persona che Home Assistant dice proprietaria,
-    dall'ingresso `pannello`, le sessioni orfane diventano sue -- e, dalla
+    Alla prima scrittura di una persona che Home Assistant dice proprietaria,
+    dall'ingresso `pannello` -- l'adozione che la chat chiede all'apertura
+    (`POST /api/chat/adopt`), o il suo primo turno (`POST /api/chat`) -- le
+    sessioni orfane diventano sue -- e, dalla
     fetta «il seguito delle chat divise» (spec 2026-09-26 §2), anche le
     promesse orfane: nello stesso momento e con la stessa regola, perche' due
     regole per lo stesso passaggio di proprieta' sarebbero due proprietari
     possibili. Non all'avvio: li' Home Assistant puo' non rispondere ancora, e
     un proprietario sbagliato non si ripara. Le promesse hanno una seconda
     porta, il loro risveglio (`keeper/sweeper.py::_adopt_orphan`): una
-    promessa che matura prima di questa lettura va al proprietario che Home
+    promessa che matura prima di questa adozione va al proprietario che Home
     Assistant dice unico, con la stessa funzione dell'archivio; la
-    cronologia resta a questa lettura. Import locali: `chat_store` e le
+    cronologia resta a queste due porte. **Mai dentro una `GET`** (S-41,
+    Chiusura, 14/10/2026): fino a quel giorno la chiamavano anche la
+    cronologia, l'elenco delle conversazioni e gli Impegni, e una lettura
+    cambiava il proprietario di cio' che leggeva. Import locali: `chat_store` e le
     rotte di `api/` importano da qui, e questo modulo deve restare una foglia.
     """
     from . import chat_store

@@ -36,7 +36,7 @@ from ..chat_thread import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.historian import local_date
 from ..home_space.house import House
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.store import AGENDA_KEY
 from ..memory.store import MEMORY_STORE_KEY
@@ -66,7 +66,7 @@ from ..steering import (
 )
 from ..storage import DATA_DIR_KEY
 from ..usage.store import USAGE_KEY
-from .boundary import error_body, error_response, house_clock_of, house_timezone_of, json_object
+from .boundary import error_body, error_response, house_clock_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
@@ -946,6 +946,23 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     if decision.get("nota"):
         payload["nota"] = decision["nota"]
     return web.json_response(payload)
+
+
+async def handle_adopt_orphans(request: web.Request) -> web.Response:
+    """Cio' che c'era prima delle chat divise passa al proprietario: le
+    sessioni e le promesse senza filo (`chat_thread.adopt_if_owner`, che
+    decide chi e quando).
+
+    **Una scrittura, quindi una `POST`** (S-41, Chiusura, 14/10/2026): fino a
+    quel giorno l'adozione girava dentro tre `GET` -- la cronologia, l'elenco
+    delle conversazioni e gli Impegni --, e una lettura cambiava il
+    proprietario di cio' che leggeva. La pagina della chat la chiama una volta
+    all'apertura, prima di leggere la cronologia e l'elenco
+    (`chat/agents.js::adoptOrphans`). Per chi non e' il proprietario non fa
+    niente, e lo stesso vale quando non resta niente da adottare. `POST
+    /api/chat` adotta ancora prima del turno: e' gia' una scrittura."""
+    await adopt_if_owner(request.app, request, request_thread(request))
+    return web.Response(status=204)
 
 
 async def handle_chat(request: web.Request) -> web.Response:

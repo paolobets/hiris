@@ -93,6 +93,9 @@ async function bootChat(t, { canConfigure, remembered, pending }) {
     'api/health': risposta({ status: 'ok', version: '0.0.0' }),
     'api/chat/conversations': risposta({ conversations: [] }),
     'api/chat/history': risposta({ messages: [] }),
+    /* L'adozione dell'apertura (S-41): il boot la chiede prima della
+       cronologia; queste prove non la guardano. */
+    'POST api/chat/adopt': risposta(null, 204),
     /* Il tema e le impostazioni della chat: il boot li chiede, queste prove
        non li guardano. */
     'api/config': maiRisposta,

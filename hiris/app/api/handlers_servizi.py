@@ -35,7 +35,8 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from ..home_space.historian import home_space_zone, house_clock, instant_out
-from .boundary import error_response, house_timezone_of, json_object
+from ..home_space.reader import house_timezone_of
+from .boundary import error_response, json_object
 from .canali import PUO, RUOLI, SERVICE_SPECIES
 from .servizi import (
     SERVICE_WINDOW_KEY,

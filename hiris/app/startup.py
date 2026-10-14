@@ -41,7 +41,7 @@ from .home_space import historian
 from .home_space.behavior import reread_dashboards
 from .home_space.historian import house_timezone
 from .home_space.house_history import STATISTIC_IDS_HELD_KEY, STATISTIC_IDS_LOCK_KEY
-from .home_space.reader import HOME_SPACE_KEY, HomeSpace
+from .home_space.reader import HOME_SPACE_KEY, HomeSpace, house_timezone_of
 from .home_space.redaction import home_assistant_folder
 from .home_space.registry_follower import schedule_registry_rebuild
 from .home_space.rounds import (
@@ -276,7 +276,7 @@ async def nightly_aggregation_job(app, ha_client) -> None:
         # FUORI da qui il warning contestualizzato non partirebbe --
         # l'eccezione finirebbe nel registro di apscheduler senza il
         # prefisso «cervello:», e la notte salterebbe in silenzio.
-        timezone = house_timezone(app.get(HOME_SPACE_KEY))
+        timezone = house_timezone_of(app)
         ieri = historian.resolve_day("ieri", timezone)
         # **IL RESOCONTO** (spec §9), per la strada unica: la notte
         # rifa' ieri anche se c'e' gia'.
@@ -627,7 +627,7 @@ async def _on_startup(app: web.Application) -> None:
 
     app[WORKSHOP_KEY] = Workshop(
         ha_client, app[CONSTRUCTIONS_KEY], app[JOURNAL_KEY],
-        read_timezone=lambda: house_timezone(app.get(HOME_SPACE_KEY)))
+        read_timezone=lambda: house_timezone_of(app))
 
     # L'archivio dei modelli si legge prima di costruire `LLMRouter`, piu' sotto:
     # la catena si compone da `chain_order`.

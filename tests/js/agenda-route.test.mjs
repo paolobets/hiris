@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
-import { conLetturaPromessa, etichetta } from './helpers/stati.mjs';
+import { conLetturaPromessa, etichetta, paroleDellaRotta } from './helpers/stati.mjs';
 import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
@@ -27,16 +27,7 @@ import { fintoFetch, risposta } from './helpers/fetch.mjs';
    (`handlers_agenda.PAGE_STATES`, N159-2): i nomi dalla rotta, le parole
    da `states.py`, come fa il server. */
 const ROTTA = readFileSync(new URL('../../hiris/app/api/handlers_agenda.py', import.meta.url), 'utf8');
-const VOCABOLARIO = readFileSync(new URL('../../hiris/app/states.py', import.meta.url), 'utf8');
-const bloccoStati = ROTTA.match(/^PAGE_STATES = \{([^}]*)\}/m);
-assert.ok(bloccoStati, 'handlers_agenda.py: PAGE_STATES non si legge');
-const STATI = {};
-for (const m of bloccoStati[1].matchAll(/"(\w+)": ([A-Z_]+)/g)) {
-  const parola = VOCABOLARIO.match(new RegExp('^' + m[2] + ' = "([^"]*)"$', 'm'));
-  assert.ok(parola, 'states.py: ' + m[2] + ' non si legge');
-  STATI[m[1]] = parola[1];
-}
-assert.ok(Object.keys(STATI).length >= 3, 'PAGE_STATES: troppo pochi stati letti');
+const STATI = paroleDellaRotta(ROTTA, 'PAGE_STATES');
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';

@@ -108,6 +108,10 @@ ESENTI = {
         "correggere un ricordo non tocca Home Assistant, ma cambia ciò che "
         "HIRIS sa per tutti quelli che ci vivono (decisione 4 del 27/09/2026): "
         f"{_CONFINE}",
+    "POST /api/chat/adopt":
+        "porta al proprietario le sessioni e le promesse senza filo di prima "
+        "delle chat divise (S-41): non tocca Home Assistant, e per chi non è "
+        "il proprietario non fa niente (`chat_thread.adopt_if_owner`)",
     "POST /api/chat/conversations":
         "chiude la conversazione aperta di chi chiede, nel suo filo: la "
         "conversazione è di HIRIS e di chi la fa, non tocca la casa",

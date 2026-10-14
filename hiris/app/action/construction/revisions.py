@@ -369,7 +369,7 @@ def _load(raw, *, key):
 
 # L'estrattore dei servizi vive nell'officina, accanto all'anteprima che
 # gia' lo usa: due cammini sullo stesso corpo divergerebbero.
-from .workshop import services_named
+from .workshop import DECIDABLE, services_named
 
 
 def _row(r) -> dict | None:
@@ -797,7 +797,7 @@ class ConstructionStore:
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato=? "
                 f"WHERE id=? AND stato=? AND NOT {_EXPIRED_SQL}",
-                (CANCELLED, ident, PENDING, now - self.DEADLINE_S))
+                (CANCELLED, ident, DECIDABLE, now - self.DEADLINE_S))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}

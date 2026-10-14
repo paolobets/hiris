@@ -4,17 +4,16 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conFrase, etichetta } from './helpers/stati.mjs';
-import { conParole } from './helpers/costruzioni.mjs';
+import { elencoCome } from './helpers/costruzioni.mjs';
 import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Una risposta della rotta come la manda il server: ogni riga con la frase
-   del suo stato (`stato_leggibile`, C-10 della Tappa 8) e le parole del suo
-   dominio e del suo gesto (C-10 della Chiusura), chieste ai sorgenti e non
-   ricopiate qui. */
+   del suo stato (`stato_leggibile`, C-10 della Tappa 8), le parole del suo
+   dominio e del suo gesto e cosa se ne puo' fare (C-10 della Chiusura), e
+   l'elenco con le parole degli stati che la pagina riconosce: tutto chiesto
+   ai sorgenti e non ricopiato qui. */
 function conFrasi(risposta) {
-  return risposta && Array.isArray(risposta.constructions)
-    ? { ...risposta, constructions: risposta.constructions.map((r) => conParole(conFrase(r))) }
-    : risposta;
+  return elencoCome(risposta, conFrase);
 }
 
 /* La pagina carica common.js per primo (le utilita' scritte una volta):
@@ -123,6 +122,22 @@ test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   assert.equal(dom.window.document.querySelectorAll('[data-azione="confirm"]').length, 1);
   assert.equal(dom.window.document.querySelectorAll('[data-azione="reject"]').length, 1);
+});
+
+test('una costruzione in corso sta fra le attese ma non si decide: niente Approva ne\' Rifiuta', async () => {
+  /* C-10 (Chiusura, 14/10/2026): i bottoni li decide `decidibile`, la regola
+     dell'officina (`workshop.DECIDABLE`), non "sta fra le sospese": `in_corso`
+     e' rivendicata, e la guarigione e' lato server (guida §6).
+     Mutazione ESEGUITA: `c.sospesa` al posto di `c.decidibile` -- rossa. */
+  const { dom } = montaCon({ constructions: [
+    { id: 'p1', stato: 'in_corso', sospesa: true, gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const aperte = dom.window.document.getElementById('constructions-open-body');
+  assert.match(aperte.textContent, /Automazione/);
+  assert.equal(dom.window.document.querySelectorAll('[data-azione="confirm"]').length, 0);
+  assert.equal(dom.window.document.querySelectorAll('[data-azione="reject"]').length, 0);
 });
 
 test('il no di chi costruisce non si mostra come un fallimento', async () => {
@@ -346,10 +361,10 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   global.document = dom.window.document;
   fintoFetch(global, {
     'POST api/constructions/p1/confirm': maiRisposta,
-    'GET api/constructions': { constructions: [
+    'GET api/constructions': conFrasi({ constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
         chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
-    ] },
+    ] }),
   });
   new dom.window.Function(SORGENTE)();
 
@@ -620,9 +635,9 @@ test('un’azione negata dal cancello mostra il motivo del server, non «Errore 
   global.document = dom.window.document;
   fintoFetch(global, {
     'POST api/constructions/p1/reject': risposta({ error: 'non sei amministratore' }, 403),
-    'GET api/constructions': { constructions: [
+    'GET api/constructions': conFrasi({ constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' }] },
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' }] }),
   });
   new dom.window.Function(SORGENTE)();
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));

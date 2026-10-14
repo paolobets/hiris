@@ -24,7 +24,7 @@ from aiohttp import web
 from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..keeper.delivery import notify_admins
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
@@ -99,7 +99,7 @@ async def proposer_round(app) -> dict | None:
         # battito, anche nei giorni senza analisi (D14, «Ritenta»).
         await _alert_high_safely(app)
         today = historian.today(
-            historian.house_timezone(app.get(HOME_SPACE_KEY))).isoformat()
+            house_timezone_of(app)).isoformat()
         if store.analysis(today) is None:
             return None
         # **La risposta del ponte si raccoglie PRIMA di chiedere di nuovo**:

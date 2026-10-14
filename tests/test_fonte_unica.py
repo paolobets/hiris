@@ -851,3 +851,74 @@ def test_d36_il_cancello_vede_la_chiamata_l_alias_e_l_attributo():
                   "def fuori():\n    async def notte():\n        await _report_ingredients()\n"):
         found = report_step_sites(_fake_product(stray))
         assert any(site.endswith("::notte") for site in set().union(*found.values())), stray
+
+
+#: N170-1 (14/10/2026): **il fuso della casa si legge dall'app in un posto
+#: solo**, `reader.house_timezone_of`, accanto a `HOME_SPACE_KEY`. Fino a quel
+#: giorno `house_timezone(app.get(HOME_SPACE_KEY))` era scritta in linea in
+#: sette punti fuori da `api/` (giro 167). La coppia -- il lettore del fuso,
+#: la chiave dell'anagrafe -- e' l'enunciato del cancello, non la copia di un
+#: elenco: e' cio' che fa «il fuso della casa, dall'app».
+TIMEZONE_READER = "house_timezone"
+TIMEZONE_KEY = "HOME_SPACE_KEY"
+TIMEZONE_HOME = "home_space/reader.py::house_timezone_of"
+
+
+def timezone_read_sites(trees: dict[str, ast.AST]) -> set[str]:
+    """Le funzioni (`file::funzione`, la piu' interna) che chiamano il lettore
+    del fuso -- per nome, alias d'importazione o attributo -- con la chiave
+    dell'anagrafe dentro gli argomenti."""
+    sites: set[str] = set()
+
+    def visit(node: ast.AST, relative: str, aliases: dict[str, str], where: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            where = node.name
+        if isinstance(node, ast.Call):
+            called = (aliases.get(node.func.id, node.func.id) if isinstance(node.func, ast.Name)
+                      else node.func.attr if isinstance(node.func, ast.Attribute) else None)
+            if called == TIMEZONE_READER and any(
+                    isinstance(inner, ast.Name) and inner.id == TIMEZONE_KEY
+                    for argument in (*node.args, *(k.value for k in node.keywords))
+                    for inner in ast.walk(argument)):
+                sites.add(f"{relative}::{where}")
+        for child in ast.iter_child_nodes(node):
+            visit(child, relative, aliases, where)
+
+    for relative, tree in trees.items():
+        aliases = {alias.asname: alias.name for node in ast.walk(tree)
+                   if isinstance(node, ast.ImportFrom) for alias in node.names
+                   if alias.asname and alias.name == TIMEZONE_READER}
+        visit(tree, relative, aliases, "<modulo>")
+    return sites
+
+
+def test_n170_1_il_fuso_della_casa_si_legge_dall_app_in_un_posto_solo():
+    """Fuori da `reader.house_timezone_of` nessuno legge il fuso dall'app.
+
+    Mutazione ESEGUITA (14/10/2026): in `mind/day_report.py` la lettura in
+    linea `house_timezone(app.get(HOME_SPACE_KEY))` rimessa al posto di
+    `house_timezone_of(app)` -- rossa, con `mind/day_report.py::...` nel
+    messaggio; ripristino verificato con `git status`."""
+    sites = timezone_read_sites(_sources())
+    # Un cancello che non trova piu' la lettura sembra vivo e non guarda niente.
+    assert TIMEZONE_HOME in sites, f"la lettura del fuso non si trova piu': {sites}"
+    strays = sorted(sites - {TIMEZONE_HOME})
+    assert not strays, (
+        f"il fuso della casa letto dall'app fuori da `{TIMEZONE_HOME}` (N170-1): {strays}")
+
+
+def test_n170_1_il_cancello_vede_la_chiamata_l_alias_e_l_attributo():
+    """Su un prodotto finto: la lettura unica e' muta, una seconda e' rossa."""
+    good = ("def house_timezone_of(app):\n"
+            "    return house_timezone(app.get(HOME_SPACE_KEY))\n"
+            "def altro(store):\n    return house_timezone(store)\n")
+    assert timezone_read_sites(_fake_product(good)) == {"mind/prova.py::house_timezone_of"}
+    for stray in ("def giro(app):\n    house_timezone(app.get(HOME_SPACE_KEY))\n",
+                  ("from .historian import house_timezone as fuso\n"
+                   "def giro(app):\n    fuso(app[HOME_SPACE_KEY])\n"),
+                  ("def giro(app):\n"
+                   "    historian.house_timezone(home_space=app.get(HOME_SPACE_KEY))\n"),
+                  ("def fuori():\n    async def giro(app):\n"
+                   "        return house_timezone(app.get(HOME_SPACE_KEY))\n")):
+        found = timezone_read_sites(_fake_product(stray))
+        assert any(site.endswith("::giro") for site in found), stray

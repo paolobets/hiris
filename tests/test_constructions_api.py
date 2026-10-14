@@ -203,12 +203,14 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     # L'INVOLUCRO, per nome: e' il contratto che la pagina legge
     # (`static/config/constructions-route.js::dati.constructions`), e nessun
     # altro test di questa rotta lo nomina. `total`/`shown` dichiarano la
-    # finestra dal 13/10/2026 (C-14).
-    assert set(tutte) == {"constructions", "total", "shown"}
+    # finestra dal 13/10/2026 (C-14); `stati` e `stati_rifacimento` le parole
+    # che la pagina riconosce dal 14/10/2026 (C-10, Chiusura).
+    involucro = {"constructions", "total", "shown", "stati", "stati_rifacimento"}
+    assert set(tutte) == involucro
     assert [c["id"] for c in tutte["constructions"]] == ["a", "b"]
     aperte = _corpo(await handle_get_constructions(
         FintaRichiesta(app, query={"pending_only": "1"})))
-    assert set(aperte) == {"constructions", "total", "shown"}
+    assert set(aperte) == involucro
     assert [c["id"] for c in aperte["constructions"]] == ["a"]
 
 
@@ -698,8 +700,8 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
     parole lo dicano (`tests/js/constructions-route.test.mjs`). Anche la
     singola lo porta: la stessa costruzione ha la stessa forma dalle due porte.
 
-    Mutazioni eseguite: `_construction_suspended` che guarda il solo
-    `in_attesa` -> rossa su `in_corso`; le proposte a mano sempre `False` ->
+    Mutazioni eseguite: la regola di `sospesa` (oggi in `construction_rules`)
+    che guarda il solo `in_attesa` -> rossa su `in_corso`; le proposte a mano sempre `False` ->
     rossa su quella in attesa."""
     import json
 
@@ -725,6 +727,44 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
         assert singola["construction"]["sospesa"] is True
     finally:
         osservazioni.close()
+
+
+@pytest.mark.asyncio
+async def test_ogni_riga_dice_cosa_se_ne_puo_fare_con_le_regole_dell_officina():
+    """C-10 (Chiusura, 14/10/2026): la pagina Proposte confrontava `stato` con
+    `'in_attesa'` (Approva e Rifiuta) e con `'applicata'`/`'incerta'`
+    (Rimetti com'era), parole scritte in JS. Ora la riga porta `decidibile`
+    (`workshop.DECIDABLE`, la regola di `apply` e di `mark_cancelled`) e
+    `ripristinabile` (`workshop.RESTORABLE`, la regola di `restore`), dalle
+    due porte; e l'elenco manda le parole che la pagina riconosce per resa,
+    per nome della costante (`stati`, `stati_rifacimento`), come gli Impegni.
+
+    Mutazioni ESEGUITE (14/10/2026): `ripristinabile` su `== "applicata"` --
+    rossa su `incerta`; `stati` tolto dalla risposta -- rossa qui
+    (`KeyError`). Nella pagina: `stati` ignorato -- 3 prove JS rosse;
+    `stati_rifacimento` ignorato -- 4; `ripristinabile` su `'applicata'` --
+    1; `decidibile` su `sospesa` -- 1 (`tests/js/constructions-route.test.mjs`)."""
+    import json
+
+    from hiris.app import states
+    from hiris.app.mind import proposal_redo
+
+    righe = [{"id": stato, "stato": stato, "creata_ts": 1}
+             for stato in states.CONSTRUCTION_STATES]
+    app = _app(FintoArchivio(righe))
+    corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
+    regole = {c["id"]: (c["decidibile"], c["ripristinabile"]) for c in corpo["constructions"]}
+    assert {k for k, (decide, _) in regole.items() if decide} == {states.PENDING}
+    assert {k for k, (_, rimette) in regole.items() if rimette} == {
+        states.APPLIED, states.UNCERTAIN}
+    singola = json.loads((await handle_get_construction(
+        FintaRichiesta(app, ident=states.UNCERTAIN))).body)["construction"]
+    assert (singola["decidibile"], singola["ripristinabile"]) == (False, True)
+    assert corpo["stati"] == {nome: getattr(states, nome) for nome in corpo["stati"]}
+    assert set(corpo["stati"]) == {"UNCERTAIN", "CANCELLED", "FAILED", "SUPERSEDED"}
+    assert corpo["stati_rifacimento"] == {
+        nome: getattr(proposal_redo, nome) for nome in corpo["stati_rifacimento"]}
+    assert set(corpo["stati_rifacimento"]) == {"RUNNING", "EXPIRED", "FAILED", "UNREADABLE"}
 
 
 @pytest.mark.asyncio

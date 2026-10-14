@@ -29,6 +29,38 @@ export function tupla(nome, sorgente = SORGENTE) {
   });
 }
 
+/* Le parole che una rotta manda per nome di costante (`PAGE_STATES` delle
+   pagine Impegni e Proposte: `{"KEPT": KEPT, ...}`; anche `{"RUNNING":
+   proposal_redo.RUNNING, ...}`), lette dal sorgente della rotta e risolte
+   nelle costanti di `states.py`, o di un altro sorgente Python quando il
+   valore nomina un modulo (`modulo.NOME`, `altri[modulo]`). La forma e'
+   quella di `handlers_agenda` e `handlers_constructions`: una riga di
+   ammissione per ogni stato che la pagina riconosce. */
+export function paroleDellaRotta(rotta, nome, altri = {}) {
+  const m = rotta.match(new RegExp('^' + nome + ' = \\{([^}]*)\\}', 'm'));
+  assert.ok(m, 'rotta: ' + nome + ' non si legge');
+  const fuori = {};
+  for (const voce of m[1].matchAll(/"(\w+)": (?:(\w+)\.)?([A-Z_]+)/g)) {
+    const modulo = voce[2];
+    const sorgente = modulo === undefined ? SORGENTE : altri[modulo];
+    assert.ok(sorgente, nome + ': il modulo «' + modulo + '» non e\' fra quelli dati');
+    const parola = sorgente.match(new RegExp('^' + voce[3] + ' = "([^"]*)"$', 'm'));
+    assert.ok(parola, nome + ': ' + voce[3] + ' non si legge');
+    fuori[voce[1]] = parola[1];
+  }
+  assert.ok(Object.keys(fuori).length >= 3, nome + ': troppo pochi stati letti');
+  return fuori;
+}
+
+/* La parola di una costante che ne nomina un'altra di `states.py`
+   (`CANCELLABLE = PENDING` di promise.py, `DECIDABLE = PENDING` di
+   workshop.py). */
+export function parolaDi(nome, sorgente) {
+  const m = sorgente.match(new RegExp('^' + nome + ' = ([A-Z_]+)$', 'm'));
+  assert.ok(m && m[1] in PAROLE, nome + ' non si legge');
+  return PAROLE[m[1]];
+}
+
 /* `READABLE`: stato -> frase. */
 const blocco = SORGENTE.match(/^READABLE = \{([\s\S]*?)^\}/m);
 assert.ok(blocco, 'READABLE non trovata in states.py');
@@ -61,9 +93,7 @@ const ESITI = tupla('STATES_ESITO', PROMESSA);
 /* `disdicibile` (C-10, 14/10/2026): la regola di `AgendaStore.cancel`, cioe'
    lo stato `CANCELLABLE` di promise.py, che nomina una costante di
    states.py (`CANCELLABLE = PENDING`). */
-const disdicibile = PROMESSA.match(/^CANCELLABLE = ([A-Z_]+)$/m);
-assert.ok(disdicibile && disdicibile[1] in PAROLE, 'promise.py: CANCELLABLE non si legge');
-const DISDICIBILE = PAROLE[disdicibile[1]];
+const DISDICIBILE = parolaDi('CANCELLABLE', PROMESSA);
 
 export function conLetturaPromessa(riga) {
   const r = conFrase(riga);

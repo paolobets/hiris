@@ -37,21 +37,45 @@ import time
 from aiohttp import web
 
 from ..action.construction.revisions import CONSTRUCTIONS_KEY
-from ..action.construction.workshop import ARTICOLO_DETERMINATIVO, WORKSHOP_KEY
+from ..action.construction.workshop import (
+    ARTICOLO_DETERMINATIVO,
+    DECIDABLE,
+    RESTORABLE,
+    WORKSHOP_KEY,
+)
 from ..action.journal import JOURNAL_KEY
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..home_space.historian import home_space_zone, instant_out
-from ..mind import automate_turn
+from ..home_space.reader import house_timezone_of
+from ..mind import automate_turn, proposal_redo
 from ..mind.store import OBSERVATIONS_KEY
-from ..states import PENDING, SUSPENDED
-from .boundary import error_response, house_timezone_of, occurrence_out
+from ..states import CANCELLED, FAILED, PENDING, SUPERSEDED, SUSPENDED, UNCERTAIN
+from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
 # incoerenza da mantenere sincronizzata a mano per sempre.
 _NOT_FOUND = unknown_id_text("nessuna costruzione")
+
+#: Gli stati che la pagina Proposte riconosce uno per uno, col nome della loro
+#: costante in `states.py` (C-10, Chiusura, 14/10/2026): la pagina confronta
+#: `stato` con queste parole invece di scriverle in JS, come la pagina Impegni
+#: con `handlers_agenda.PAGE_STATES`. Servono alla resa (il colore del motivo,
+#: il dubbio di un'`incerta`, l'esito di un «Rifalla»), non a decidere cosa si
+#: puo' fare: quello lo dicono `decidibile` e `ripristinabile`, le regole
+#: dell'officina. Una lista di ammissione: uno stato nuovo che la pagina deve
+#: riconoscere entra qui, e la pagina lo legge per nome.
+PAGE_STATES = {"UNCERTAIN": UNCERTAIN, "CANCELLED": CANCELLED, "FAILED": FAILED,
+               "SUPERSEDED": SUPERSEDED}
+
+#: Gli stati di un «Rifalla» non ancora scritto nel filo
+#: (`proposal_redo.state`), per nome della costante: la stessa forma, per lo
+#: stesso motivo. Non sono stati di una coda (`states.py` li dichiara fuori),
+#: e viaggiano in una chiave loro.
+REDO_STATES = {"RUNNING": proposal_redo.RUNNING, "EXPIRED": proposal_redo.EXPIRED,
+               "FAILED": proposal_redo.FAILED, "UNREADABLE": proposal_redo.UNREADABLE}
 
 
 def _store(request):
@@ -77,7 +101,8 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
         if observations is not None else 0)
     return web.json_response({"constructions": [_born_in_house_hour(request.app, row)
                                                 for row in rows],
-                              "total": total, "shown": len(rows)})
+                              "total": total, "shown": len(rows),
+                              "stati": PAGE_STATES, "stati_rifacimento": REDO_STATES})
 
 
 def _born_in_house_hour(app, row: dict) -> dict:
@@ -152,12 +177,22 @@ def construction_words(row: dict) -> dict:
             "esisteva": touches and row.get("prima") is not None}
 
 
-def _construction_suspended(row: dict) -> bool:
-    """Se una costruzione aspetta ancora: `states.SUSPENDED`, anche `in_corso`
-    (rivendicata e non ancora decisa). E' il campo `sospesa` delle righe
-    delle due GET (C-12, Tappa 4, Task 5): la pagina lo legge, e non sa piu'
-    quali stati lo dicano."""
-    return row["stato"] in SUSPENDED
+def construction_rules(row: dict) -> dict:
+    """Cosa la pagina puo' fare di una costruzione, chiesto alle regole di chi
+    la tratta, per le righe delle due GET.
+
+    - `sospesa`: aspetta ancora, `states.SUSPENDED`, anche `in_corso`
+      (rivendicata e non ancora decisa; C-12, Tappa 4, Task 5);
+    - `decidibile`: si approva o si rifiuta (`workshop.DECIDABLE`). `in_corso`
+      e' sospesa ma non si decide: la guarigione e' gia' lato server;
+    - `ripristinabile`: si rimette com'era (`workshop.RESTORABLE`).
+
+    La pagina li legge e non sa quali stati li dicano (C-10, Chiusura,
+    14/10/2026: fino a quel giorno confrontava `stato` con parole scritte in
+    JS)."""
+    return {"sospesa": row["stato"] in SUSPENDED,
+            "decidibile": row["stato"] == DECIDABLE,
+            "ripristinabile": row["stato"] in RESTORABLE}
 
 
 async def _both_queues(app, store, pending_only: bool) -> list[dict]:
@@ -169,7 +204,7 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     """
     approved = approved_services(app)
     # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
-    # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
+    # (C-12): le costruzioni con `construction_rules`, le proposte a mano
     # finche' sono `states.PENDING`.
     observations = app.get(OBSERVATIONS_KEY)
     by_hand = (observations.proposals(pending_only=pending_only)
@@ -184,12 +219,10 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
                if observations is not None else {})
     rows = [{**await _out(app, row, approved), **construction_words(row),
              "chi_applica": _APPLIES_HIRIS,
-             "sospesa": _construction_suspended(row),
+             **construction_rules(row),
              "nata_da": origins.get(row["id"])}
             for row in built]
     if observations is not None:
-        from ..mind import proposal_redo
-
         # Se il comando «Rendila automatica» c'e', e se un turno la sta
         # preparando: la regola e' quella della rotta (`automate_turn.refusal`),
         # e la pagina riceve la risposta invece di ricalcolarla (C-12).
@@ -221,7 +254,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
         {"construction": _born_in_house_hour(request.app, {
             **await _out(request.app, row, approved_services(request.app)),
             **construction_words(row),
-            "sospesa": _construction_suspended(row)})})
+            **construction_rules(row)})})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:

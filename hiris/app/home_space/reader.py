@@ -33,6 +33,7 @@ from aiohttp import web
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..storage import write_json_atomic
 from .behavior import automation_active
+from .historian import house_timezone
 from .topology import clean_text
 
 #: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
@@ -655,3 +656,16 @@ class HomeSpace:
 
 HOME_SPACE_KEY = web.AppKey("home_space_store", HomeSpace)
 
+
+def house_timezone_of(app) -> str | None:
+    """Il nome del fuso della casa letto dall'anagrafe dell'applicazione, con
+    `historian.house_timezone`: `None` se l'anagrafe non c'e' ancora o non lo
+    sa.
+
+    **Una lettura sola per tutta l'app** (N170-1, 14/10/2026). Vive accanto a
+    `HOME_SPACE_KEY` perche' chi possiede la chiave dichiara anche come la si
+    legge: prima stava in `api/boundary` (N169-2), e i giri di `mind/`, che
+    una rotta non la possono importare (N161-1), la riscrivevano in linea in
+    sette punti. Lo sorveglia `tests/test_fonte_unica.py`.
+    """
+    return house_timezone(app.get(HOME_SPACE_KEY))

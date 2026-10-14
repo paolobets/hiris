@@ -5,7 +5,7 @@ from aiohttp import web
 
 from .action.installation import start_installation
 from .api.admission import ACCESS_FLAG_KEY, parse_access_flag
-from .api.handlers_chat import handle_chat, handle_chat_reply_poll
+from .api.handlers_chat import handle_adopt_orphans, handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import (
     handle_delete_conversation,
     handle_get_chat_history,
@@ -103,6 +103,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/usage/reset", handle_reset_usage)
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
+    # S-41: l'adozione di cio' che c'era prima delle chat divise, fuori
+    # dalle GET.
+    app.router.add_post("/api/chat/adopt", handle_adopt_orphans)
     # Una cronologia sola, senza identificatore nel percorso: la legge
     # `static/chat/agents.js` per ripristinare la conversazione.
     app.router.add_get("/api/chat/history", handle_get_chat_history)

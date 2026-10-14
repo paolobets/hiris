@@ -93,6 +93,20 @@
     usageTimer = null;
   }
 
+  /* Cio' che c'era prima delle chat divise passa al proprietario con
+     `POST api/chat/adopt` (S-41, Chiusura, 14/10/2026): una volta, qui
+     all'apertura, prima della cronologia e dell'elenco delle conversazioni,
+     che lo aspettano. Fino a quel giorno adottavano le GET stesse. Il server
+     decide se chi chiede e' il proprietario; un'adozione non riuscita non
+     ferma le letture, e si dice in console. */
+  function adoptOrphans() {
+    return api('api/chat/adopt', { method: 'POST' }).then(function (r) {
+      if (!r.ok) console.error('adoptOrphans failed', r.status);
+    }).catch(function (e) {
+      console.error('adoptOrphans failed', e);
+    });
+  }
+
   function boot() {
     window.HirisChatTheme.init();
 
@@ -102,7 +116,8 @@
     window.HirisChatAgents.loadSettings();
     /* Ricarica la history della conversazione: senza questo, tornando alla chat
        da config (reload pieno) si vedeva una chat vuota pur essendo salvata. */
-    window.HirisChatAgents.restore();
+    var adopted = adoptOrphans();
+    adopted.then(window.HirisChatAgents.restore);
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.loadSettings, 30000);
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
@@ -114,7 +129,7 @@
        gesto di chi guarda; cio' che cambia da solo (l'esito di una promessa
        scritto nel filo, la chiusura dopo due ore di silenzio) compare alla
        lettura successiva. */
-    window.HirisChatConversations.init();
+    window.HirisChatConversations.init(adopted);
     window.HirisChatKeyboard.init();
     window.HirisChatSend.wireComposer();
     wireHeaderAndSidebarButtons();

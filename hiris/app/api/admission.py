@@ -145,6 +145,11 @@ ADMISSION: tuple[Route, ...] = (
     Route("GET", "/api/chat/reply/{job_id}", "leggere",
           ("la risposta di un turno servito dal ponte (`chat/send.js`), letta "
            "nel filo di chi l'ha chiesta")),
+    Route("POST", "/api/chat/adopt", "leggere",
+          ("all'apertura della chat (`chat/agents.js::adoptOrphans`): adotta "
+           "solo per il proprietario (`chat_thread.adopt_if_owner`), per "
+           "chiunque altro non fa niente; una scrittura nel suo filo, fuori "
+           "dalle GET (S-41)")),
     Route("GET", "/api/chat/history", "leggere",
           ("la cronologia del SUO filo, riletta all'avvio "
            "(`chat/agents.js::restore`)")),

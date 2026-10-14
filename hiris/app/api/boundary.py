@@ -29,8 +29,8 @@ import json
 
 from aiohttp import web
 
-from ..home_space.historian import house_clock, house_timezone
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.historian import house_clock
+from ..home_space.reader import house_timezone_of
 
 
 def occurrence_out(occurrence: dict) -> dict:
@@ -51,18 +51,10 @@ def occurrence_out(occurrence: dict) -> dict:
             for k, v in occurrence.items()}
 
 
-def house_timezone_of(app) -> str | None:
-    """Il nome del fuso della casa per le rotte, letto dall'anagrafe
-    dell'applicazione con `historian.house_timezone`: `None` se l'anagrafe non
-    c'e' ancora o non lo sa. Una lettura sola per tutte le rotte di `api/`
-    (N169-2): prima ognuna chiedeva l'anagrafe all'app per conto suo."""
-    return house_timezone(app.get(HOME_SPACE_KEY))
-
-
 def house_clock_of(app) -> dict:
     """L'orologio della casa che una risposta porta a chi mostra un istante a
     una persona (C-17, `historian.house_clock`), col fuso di
-    `house_timezone_of`."""
+    `reader.house_timezone_of`, la lettura sola per tutta l'app (N170-1)."""
     return house_clock(house_timezone_of(app))
 
 

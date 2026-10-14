@@ -94,7 +94,10 @@ def test_ieri_da_mezzanotte_a_mezzanotte_anche_col_cambio_d_ora():
 
     Mutazione ESEGUITA: `a="ieri"` come `da` + 86.400 secondi -- rossa;
     `hours` come `(end - start).total_seconds()` (due `datetime` dello stesso
-    `ZoneInfo` si sottraggono in ora del muro: 24 invece di 25) -- rossa."""
+    `ZoneInfo` si sottraggono in ora del muro: 24 invece di 25) -- rossa.
+    N170-2 (14/10/2026): `historian.NAMED_DAYS["ieri"] = 0` -- rossa qui, con
+    `da` alla mezzanotte di oggi: la storia chiede il giorno a `resolve_day`,
+    la stessa risposta delle pagine. Ripristino verificato con `git status`."""
     lunedi = datetime(2026, 10, 26, 10, 0, tzinfo=ZoneInfo(ROMA)).timestamp()
     query = hh.parse_query({"da": "ieri", "a": "ieri"}, now=lunedi, timezone=ROMA)
     assert query.start.isoformat() == "2026-10-25T00:00:00+02:00"

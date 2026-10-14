@@ -14,10 +14,10 @@ from datetime import UTC, datetime, timedelta
 
 from aiohttp import web
 
-from ..home_space.historian import day_boundaries, home_space_zone, house_timezone, local_date
+from ..home_space.historian import day_boundaries, home_space_zone, local_date
 from ..home_space.house import House
 from ..home_space.house_history import read_bands, statistic_ids_for_round
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import recipe_turn
@@ -158,7 +158,7 @@ async def backfill_one_report(app, ha_client, *,
     first_ts = archivio.oldest_reading_ts()
     if first_ts is None:
         return None
-    timezone = house_timezone(app.get(HOME_SPACE_KEY))
+    timezone = house_timezone_of(app)
     adesso = now(UTC)
     today = local_date(adesso.timestamp(), timezone)
     first_day = local_date(first_ts, timezone)
@@ -298,7 +298,7 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
 
     `now` e' iniettabile per i test: nella vita vera nessuno lo passa.
     """
-    timezone = house_timezone(app.get(HOME_SPACE_KEY))
+    timezone = house_timezone_of(app)
     today = local_date(now(UTC).timestamp(), timezone)
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
     written = await _write_missing_reports(app, ha_client, days, timezone,

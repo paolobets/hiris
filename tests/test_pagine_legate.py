@@ -115,6 +115,32 @@ def test_constructions_page_keeps_no_pending_states():
     assert not copies, f"constructions-route.js elenca stati sospesi: {copies}"
 
 
+# -- C-10: le pagine delle code non scrivono parole di stato -----------------
+# Le pagine Impegni e Proposte confrontano `stato` con le parole che la rotta
+# manda (`stati`, e `stati_rifacimento` per un «Rifalla»), e sanno cosa fare
+# di una riga dai campi che la riga porta (`disdicibile`, `decidibile`,
+# `ripristinabile`). Le parole si chiedono al vocabolario (`states.py`, le tre
+# code) e alla rotta (`handlers_constructions.REDO_STATES`), non si ricopiano.
+# Mutazioni ESEGUITE (14/10/2026): rimesso in constructions-route.js
+# `c.stato === 'incerta'` -> rossa, col nome del file e la parola;
+# `rifacimento.stato === 'in_corso'` -> rossa.
+
+def _queue_state_words() -> set[str]:
+    from hiris.app import states
+    from hiris.app.api.handlers_constructions import REDO_STATES
+    return {*states.PROMISE_STATES, *states.CONSTRUCTION_STATES,
+            *states.PROPOSAL_STATES, *REDO_STATES.values()}
+
+
+def test_queue_pages_write_no_state_word():
+    words = _queue_state_words()
+    # Una derivazione che si svuota fa un cancello che non guarda niente.
+    assert len(words) >= 15, f"le parole di stato non si leggono piu': {sorted(words)}"
+    for page in ("config/constructions-route.js", "config/agenda-route.js"):
+        written = sorted(set(_string_literals(_js(page))) & words)
+        assert not written, f"{page} scrive parole di stato: {written}"
+
+
 # -- C-10: gli stati dei servizi ----------------------------------------------
 # Gli stati vivono in `servizi.STATE_*`; la rotta divide i servizi nelle tre
 # sezioni della pagina (`handlers_servizi.listing`), e la pagina non ne tiene

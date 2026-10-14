@@ -229,7 +229,10 @@
   /* Il cassetto su telefono lo chiude chat/sidebar.js, che ascolta i tocchi
      su ogni `.sb-nav-item` della barra: le voci lo sono, e cosi' «Nuova
      conversazione». Qui c'e' solo cosa fa la voce. */
-  function init() {
+  /* `before`: cio' che la prima lettura dell'elenco aspetta -- l'adozione
+     dell'apertura (S-41, `chat/main.js::adoptOrphans`); i bottoni si
+     collegano subito. */
+  function init(before) {
     var newBtn = document.getElementById('new-conv-btn');
     if (newBtn) newBtn.addEventListener('click', function() { startNew(); });
     var list = document.getElementById('conv-list');
@@ -242,7 +245,7 @@
       if (id === String(active)) { track(Promise.resolve()); focusInput(); return; }
       resume(id);
     });
-    return refresh();
+    return Promise.resolve(before).then(refresh);
   }
 
   window.HirisChatConversations = {

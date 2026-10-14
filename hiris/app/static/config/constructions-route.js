@@ -152,6 +152,18 @@ window.HirisConstructions = (function () {
      rosso a cio' che toglie, l'ambra a cio' che cambia, il neutro al resto. */
   var GESTURE_BADGE = { cancella: 'badge-err', modifica: 'badge-warn' };
 
+  /* Le parole degli stati che la pagina riconosce uno per uno, per nome
+     della costante (`UNCERTAIN`, `CANCELLED`, `FAILED`, `SUPERSEDED` di
+     `states.py`; `RUNNING`, `EXPIRED`, `FAILED`, `UNREADABLE` di
+     `mind/proposal_redo.py` per un «Rifalla»): le manda `GET api/constructions`
+     come `stati` e `stati_rifacimento` (`handlers_constructions.PAGE_STATES`,
+     `REDO_STATES`; C-10, Chiusura, 14/10/2026), e `load()` le rilegge a ogni
+     giro. Cosa si puo' fare di una riga non passa di qui: lo dicono
+     `decidibile` e `ripristinabile`, le regole dell'officina. Fino ad allora
+     queste parole erano scritte qui. */
+  var pageStates = {};
+  var redoStates = {};
+
   var CHIAVI_CONFRONTO = [
     { chiave: 'triggers', etichetta: 'trigger' },
     { chiave: 'conditions', etichetta: 'condizioni' },
@@ -339,7 +351,7 @@ window.HirisConstructions = (function () {
 
   /* guida §7: il testo del confirm() composto solo da campi reali. */
   function restoreMessage(c) {
-    if (c.stato === 'incerta') {
+    if (c.stato === pageStates.UNCERTAIN) {
       return 'Non so se la modifica del ' + fmtDay(c.creata_ts, true) + ' a «' +
         objectName(c) + '» sia arrivata. Controllo in Home Assistant: se è ' +
         'arrivata, rimetto ' + objectArticle(c) + ' com’era prima (le modifiche ' +
@@ -617,7 +629,7 @@ window.HirisConstructions = (function () {
      ancora aperta (catena). `scadenza` e' un istante in ms, 0 se non c'e'. */
   function redoWaiting(c) {
     var r = c.rifacimento;
-    if (r && r.stato === 'in_corso') {
+    if (r && r.stato === redoStates.RUNNING) {
       return { avvio: (r.avvio_ts || 0) * 1000, scadenza: (r.scadenza_ts || 0) * 1000,
                richiesta: r.richiesta || '', ponte: true };
     }
@@ -702,14 +714,14 @@ window.HirisConstructions = (function () {
     if (redoWaiting(c)) return null;
     var r = c.rifacimento;
     var rifalla = '[data-rifalla="' + c.id + '"]';
-    if (r && r.stato === 'scaduto') {
+    if (r && r.stato === redoStates.EXPIRED) {
       return { testo: 'Ho smesso di aspettare. La proposta di prima resta com’era.',
                fuoco: rifalla, tieni: true };
     }
-    if (r && (r.stato === 'fallito' || r.stato === 'illeggibile')) {
+    if (r && (r.stato === redoStates.FAILED || r.stato === redoStates.UNREADABLE)) {
       return { testo: 'Non è stato possibile rifarla: riprova.', fuoco: rifalla, tieni: true };
     }
-    if (c.stato === 'superata') {
+    if (c.stato === pageStates.SUPERSEDED) {
       var giro = (c.giri || [])[(c.giri || []).length - 1] || {};
       var nata = all.filter(function (x) { return x.id === giro.proposta_id; })[0];
       return {
@@ -752,11 +764,11 @@ window.HirisConstructions = (function () {
        revisione 68, G68-2). Tutte e due arrivano minuti dopo, e senza
        rileggere la riga resterebbe ferma finche' qualcuno non ricarica. */
     var inCorso = all.some(function (c) {
-      return (c.rifacimento && c.rifacimento.stato === 'in_corso') ||
+      return (c.rifacimento && c.rifacimento.stato === redoStates.RUNNING) ||
         c.in_preparazione === true;
     });
     all.forEach(function (c) {
-      if (c.rifacimento && c.rifacimento.stato === 'in_corso') redo.attesi[c.id] = true;
+      if (c.rifacimento && c.rifacimento.stato === redoStates.RUNNING) redo.attesi[c.id] = true;
     });
     if (inCorso && stillHere() && redo.giro == null) {
       redo.giro = setInterval(function () {
@@ -910,16 +922,16 @@ window.HirisConstructions = (function () {
     /* `incerta`: il ripiego quando il server non manda un motivo dice solo
        il dubbio, non una causa che la pagina non conosce; sotto, una riga
        fissa su cosa fa il bottone (ux-ui-specialist, 07/10/2026). */
-    var motivo = c.stato === 'incerta'
+    var motivo = c.stato === pageStates.UNCERTAIN
       ? (c.motivo || 'Non so se questa modifica sia arrivata in Home Assistant.')
       : c.motivo;
-    if (motivo && c.stato !== 'disdetta') {
+    if (motivo && c.stato !== pageStates.CANCELLED) {
       var reason = el('p', null, motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:0;color:' +
-        (c.stato === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)');
+        (c.stato === pageStates.FAILED ? 'var(--err-ink)' : 'var(--warn-ink)');
       box.appendChild(reason);
     }
-    if (c.stato === 'incerta') {
+    if (c.stato === pageStates.UNCERTAIN) {
       var verifica = el('p', null, 'Puoi controllare lo stato reale: «Verifica e ' +
         'rimetti» guarda prima la casa e scrive solo se serve.');
       verifica.style.cssText = 'font-size:var(--fs-13);margin:0;color:var(--text-2)';
@@ -928,10 +940,11 @@ window.HirisConstructions = (function () {
 
     var actions = el('div');
     actions.style.cssText = 'display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-1)';
-    /* Condizione ESATTA `stato === 'in_attesa'`, non "sta nella sezione in
-       attesa": `in_corso` ci sta ma non e' azionabile (guida §6, nessuna UI
-       di recupero, la guarigione e' gia' lato server). */
-    if (c.stato === 'in_attesa') {
+    /* `decidibile`, non "sta nella sezione in attesa": `in_corso` ci sta ma
+       non e' azionabile (guida §6, nessuna UI di recupero, la guarigione e'
+       gia' lato server). La regola e' dell'officina (`workshop.DECIDABLE`),
+       e arriva con la riga (C-10, Chiusura). */
+    if (c.decidibile === true) {
       var pendingGroup = [];
       var bConfirm = actionButton('confirm', 'Approva', 'btn btn-primary', c, statusEl, reload, pendingGroup);
       var bReject = actionButton('reject', 'Rifiuta', 'btn', c, statusEl, reload, pendingGroup);
@@ -939,9 +952,10 @@ window.HirisConstructions = (function () {
       actions.appendChild(bConfirm);
       actions.appendChild(bReject);
     }
-    if (c.stato === 'applicata' || c.stato === 'incerta') {
+    /* `ripristinabile`: la regola di `restore` (`workshop.RESTORABLE`). */
+    if (c.ripristinabile === true) {
       actions.appendChild(actionButton('restore',
-        c.stato === 'incerta' ? 'Verifica e rimetti com’era' : 'Rimetti com’era',
+        c.stato === pageStates.UNCERTAIN ? 'Verifica e rimetti com’era' : 'Rimetti com’era',
         'btn btn-ghost btn-ghost-danger', c, statusEl, reload));
     }
     if (actions.childNodes.length) box.appendChild(actions);
@@ -1087,6 +1101,8 @@ window.HirisConstructions = (function () {
         return;
       }
       var all = (data && data.constructions) || [];
+      pageStates = (data && data.stati) || {};
+      redoStates = (data && data.stati_rifacimento) || {};
       var firma = JSON.stringify(all);
       if (quieta && firma === redo.ultima) return;
       redo.ultima = firma;
