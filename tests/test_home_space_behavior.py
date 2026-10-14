@@ -68,8 +68,7 @@ def _configs_asked(house):
 @pytest.fixture
 def casa(tmp_path):
     a = HomeSpace(str(tmp_path))
-    yield a
-    a.close()
+    return a
 
 
 @pytest.fixture

@@ -80,8 +80,7 @@ async def _specchio(stati=()):
 @pytest.fixture
 def archivio(tmp_path):
     a = HomeSpace(str(tmp_path))
-    yield a
-    a.close()
+    return a
 
 
 @pytest.mark.asyncio

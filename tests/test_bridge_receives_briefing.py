@@ -34,7 +34,7 @@ Cosa difende ciascun gruppo di test:
 import logging
 import os
 import pathlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from aiohttp import web
@@ -55,6 +55,7 @@ from hiris.app.claude_runner import (
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.steering import SPECIES, compose_base
+from tests._runner_finto import RunnerFinto
 
 #: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
 #: strumenti, dal compositore unico (Tappa 6, Task 7).
@@ -730,10 +731,7 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
         name="test-ponte", system_prompt="Sei HIRIS.",
         restrict_to_home=restrict_to_home, response_mode=response_mode,
     )
-    runner_mock = AsyncMock()
-    runner_mock.chat = AsyncMock(return_value="sync reply")
-    runner_mock.last_tool_calls = []
-    runner_mock.last_unanswered = False
+    runner_mock = RunnerFinto("sync reply")
 
     app = web.Application()
     app["llm_router"] = runner_mock

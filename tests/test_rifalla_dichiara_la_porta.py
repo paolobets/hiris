@@ -24,17 +24,16 @@ from casa_finta import CasaFinta
 from hiris.app.api.handlers_proposals import handle_proposal_redo
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._runner_finto import RunnerFinto
 
 
-class _Modello:
+def _modello() -> RunnerFinto:
     """Il proponente che rifa' la proposta: la forma dei suoi esiti
     (`proposer_turn.ANSWER_CONTRACT`)."""
-
-    async def chat(self, **kwargs):
-        return json.dumps({"esiti": [{
-            "osservazione": 0, "esito": "a_mano",
-            "testo": "Sposta la lavatrice dopo le 14",
-            "perche": "cosi' cade nelle ore di sole"}]})
+    return RunnerFinto(json.dumps({"esiti": [{
+        "osservazione": 0, "esito": "a_mano",
+        "testo": "Sposta la lavatrice dopo le 14",
+        "perche": "cosi' cade nelle ore di sole"}]}))
 
 
 class _Registro:
@@ -115,7 +114,7 @@ def casa(tmp_path):
         prova={"base": 19}, stakes=None, now_ts=100.0)
     app = {
         "observations": store,
-        "llm_router": _Modello(),
+        "llm_router": _modello(),
         "occurrence_registry": _Registro("claude"),
         "model_chain": ["claude"],
         "reasoning_queue": _Coda(),

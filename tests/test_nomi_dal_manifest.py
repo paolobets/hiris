@@ -187,7 +187,6 @@ async def test_la_pagina_non_conta_il_manifest(aiohttp_client, tmp_path):
     body = await (await (await aiohttp_client(app)).get("/api/home-space")).json()
     assert "manifesti" not in body["conteggi"] and "aree" in body["conteggi"]
     assert manifest_of(store.read()).names == {"zha": "Zigbee Home Automation"}
-    store.close()
 
 
 def test_un_manifest_caduto_tiene_i_nomi_e_non_si_dichiara(tmp_path):
@@ -201,4 +200,3 @@ def test_un_manifest_caduto_tiene_i_nomi_e_non_si_dichiara(tmp_path):
     store.hold_registries({**copy.deepcopy(_REGISTRI), "manifesti": []}, ["manifesti"])
     assert store.unavailable() == []
     assert manifest_of(store.read()).names == {"zha": "Zigbee Home Automation"}
-    store.close()

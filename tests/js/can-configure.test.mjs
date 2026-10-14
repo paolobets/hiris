@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadScripts, tick, staticSnapshotDir, installaFogli, displayRisolto } from './helpers/dom.mjs';
+import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Le pagine per chi non amministra (spec 2026-09-27 §4, Task 4).
  *
@@ -29,10 +30,6 @@ function shellScripts(shell) {
   return [...read(shell).matchAll(/<script src="static\/([^"]+\.js)"><\/script>/g)].map((m) => m[1]);
 }
 
-function json(status, body) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
-}
-
 /* Un testo qualunque: la prova e' che la pagina scriva QUELLO che il server
    manda, non una frase sua. */
 const SERVER_REFUSAL = 'testo del rifiuto, dal server';
@@ -43,23 +40,10 @@ function pendingBody(canConfigure, extra = {}) {
   return { ...body, ...extra };
 }
 
-/* Il fetch finto: `answers` mappa un frammento d'indirizzo a una risposta
-   (o a una funzione che la produce). Registra OGNI indirizzo chiesto: le
-   prove leggono da qui il fatto «questa richiesta non e' partita». */
-function fakeFetch(window, answers) {
-  const calls = [];
-  window.fetch = (url, opts) => {
-    const u = String(url);
-    calls.push({ url: u, method: (opts && opts.method) || 'GET' });
-    const hit = Object.keys(answers).find((frag) => u.includes(frag));
-    const answer = hit ? answers[hit] : json(200, {});
-    return Promise.resolve(typeof answer === 'function' ? answer(u, opts) : answer);
-  };
-  return calls;
-}
-
+/* Il finto fetch condiviso (`helpers/fetch.mjs`) registra OGNI indirizzo
+   chiesto: le prove leggono dal suo elenco il fatto «questa richiesta non e'
+   partita». */
 const asked = (calls, frag) => calls.some((c) => c.url.includes(frag));
-const never = () => new Promise(() => {});
 
 async function settle(n = 6) {
   for (let i = 0; i < n; i++) await tick(0);
@@ -103,12 +87,16 @@ async function bootChat(t, { canConfigure, remembered, pending }) {
     addEventListener() {}, removeEventListener() {},
   });
   if (remembered !== undefined) ctx.window.localStorage.setItem('hiris.can_configure', remembered);
-  const calls = fakeFetch(ctx.window, {
-    'api/pending': pending || json(200, pendingBody(canConfigure)),
-    'api/usage': json(200, { total_requests: 3, input_tokens: 10, output_tokens: 5, cost_eur: 0.01, sections: [] }),
-    'api/health': json(200, { status: 'ok', version: '0.0.0' }),
-    'api/chat/conversations': json(200, { conversations: [] }),
-    'api/chat/history': json(200, { messages: [] }),
+  const calls = fintoFetch(ctx.window, {
+    'api/pending': pending || risposta(pendingBody(canConfigure)),
+    'api/usage': risposta({ total_requests: 3, input_tokens: 10, output_tokens: 5, cost_eur: 0.01, sections: [] }),
+    'api/health': risposta({ status: 'ok', version: '0.0.0' }),
+    'api/chat/conversations': risposta({ conversations: [] }),
+    'api/chat/history': risposta({ messages: [] }),
+    /* Il tema e le impostazioni della chat: il boot li chiede, queste prove
+       non li guardano. */
+    'api/config': maiRisposta,
+    'api/chat-settings': maiRisposta,
   });
   const intervals = new Map();
   let next = 1;
@@ -161,13 +149,23 @@ async function bootConfig(t, { canConfigure, hash = '', remembered, answers = {}
   installaFogli(ctx.document, 'config.html');
   if (remembered !== undefined) ctx.window.localStorage.setItem('hiris.can_configure', remembered);
   if (hash) ctx.window.history.replaceState(null, '', hash);
-  const calls = fakeFetch(ctx.window, {
-    'api/pending': pending || json(200, pendingBody(canConfigure)),
-    'api/health': json(404, {}),
-    'api/memories': json(200, {
+  const calls = fintoFetch(ctx.window, {
+    'api/pending': pending || risposta(pendingBody(canConfigure)),
+    'api/health': risposta({}, 404),
+    'api/memories': risposta({
       available: true, total: 1, shown: 1,
       memories: [{ id: 'm1', testo: 'Mi piace il caffè', detto_il: '2026-09-27T10:00:00+02:00' }],
     }),
+    /* Il tema del guscio, e le letture delle pagine su cui si atterra (la
+       home: `api/home-space`, `api/briefing`; gli Impegni: `api/agenda`;
+       Modelli: `api/models/config`). Le prove guardano SE partono, non cosa
+       rispondono: restano senza risposta, e chi ne vuole una la mette in
+       `answers`. */
+    'api/config': maiRisposta,
+    'api/home-space': maiRisposta,
+    'api/briefing': maiRisposta,
+    'api/agenda': maiRisposta,
+    'api/models/config': maiRisposta,
     ...answers,
   });
   t.after(() => ctx.dom.window.close());
@@ -280,7 +278,7 @@ test('chat: un «configura» ricordato e poi smentito dal server ferma il giro d
 });
 
 test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano spenti', async (t) => {
-  const { document, calls } = await bootChat(t, { pending: never });
+  const { document, calls } = await bootChat(t, { pending: maiRisposta });
 
   assert.equal(shown(usageWidget(document)), false);
   assert.equal(shown(configureLink(document)), false);
@@ -288,7 +286,7 @@ test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano
 });
 
 test('chat: un «configura» ricordato mostra i consumi SUBITO, prima della risposta', async (t) => {
-  const { document, calls } = await bootChat(t, { remembered: '1', pending: never });
+  const { document, calls } = await bootChat(t, { remembered: '1', pending: maiRisposta });
 
   assert.ok(shown(usageWidget(document)));
   assert.ok(shown(configureLink(document)));
@@ -330,7 +328,7 @@ function refusal(doc) {
 for (const [hash, title] of BY_ADDRESS) {
   test(`/config: ${hash} per indirizzo dice il rifiuto del server, come testo`, async (t) => {
     const { document, calls } = await bootConfig(t, {
-      hash, pending: json(200, pendingBody(false, { configure_refusal: HOSTILE })),
+      hash, pending: risposta(pendingBody(false, { configure_refusal: HOSTILE })),
     });
 
     const seen = refusal(document);
@@ -350,7 +348,7 @@ for (const [hash, title] of BY_ADDRESS) {
 
 test('/config: col «no» ricordato la pagina rifiutata non e\' mai vuota, e il testo arriva con la risposta', async (t) => {
   let answer;
-  const late = () => new Promise((resolve) => { answer = () => resolve(json(200, pendingBody(false))); });
+  const late = () => new Promise((resolve) => { answer = () => resolve(risposta(pendingBody(false))); });
   const { document } = await bootConfig(t, { remembered: '0', hash: '#/models', pending: late });
 
   let seen = refusal(document);
@@ -365,14 +363,14 @@ test('/config: col «no» ricordato la pagina rifiutata non e\' mai vuota, e il 
 });
 
 test('/config: con api/pending in errore e senza ricordo si atterra sugli Impegni, senza dati di configurazione', async (t) => {
-  const { window, calls } = await bootConfig(t, { pending: json(503, { error: 'archivio non disponibile' }) });
+  const { window, calls } = await bootConfig(t, { pending: risposta({ error: 'archivio non disponibile' }, 503) });
 
   assert.equal(window.location.hash, '#/agenda');
   assertNoAdminData(calls);
 });
 
 test('/config: con api/pending appesa il guscio parte lo stesso, allo scadere dell\'attesa', async (t) => {
-  const { window, document, calls } = await bootConfig(t, { pending: never });
+  const { window, document, calls } = await bootConfig(t, { pending: maiRisposta });
   assert.equal(document.getElementById('chrome-here').textContent, '…', 'precondizione: si sta aspettando');
 
   await tick(3200);
@@ -385,7 +383,7 @@ test('/config: con api/pending appesa il guscio parte lo stesso, allo scadere de
 
 test('/config: la prima api/pending appesa, una successiva risponde -- il guscio parte da quella', async (t) => {
   let turn = 0;
-  const pending = () => { turn += 1; return turn === 1 ? never() : json(200, pendingBody(true)); };
+  const pending = () => { turn += 1; return turn === 1 ? maiRisposta() : risposta(pendingBody(true)); };
   const { window, document } = await bootConfig(t, { pending });
 
   window.dispatchEvent(new window.Event('focus'));
@@ -405,7 +403,7 @@ test('/config: un «configura» ricordato e smentito dal server riporta sugli Im
 test('/config: un «non configura» ricordato e smentito dal server apre la pagina chiesta', async (t) => {
   const { document } = await bootConfig(t, {
     canConfigure: true, remembered: '0', hash: '#/models',
-    answers: { 'api/models/config': json(200, {}) },
+    answers: { 'api/models/config': risposta({}) },
   });
 
   assert.equal(document.getElementById('chrome-here').textContent, 'Modelli');
@@ -452,7 +450,7 @@ test('Memoria: i pulsanti disegnati con un ricordo vecchio escono alla risposta 
      ritardo a tempo arrivava prima (misurato con 30 ms: l'avvio del guscio
      in jsdom se li mangia da solo). */
   let answer;
-  const late = () => new Promise((resolve) => { answer = () => resolve(json(200, pendingBody(false))); });
+  const late = () => new Promise((resolve) => { answer = () => resolve(risposta(pendingBody(false))); });
   const { document } = await bootConfig(t, { remembered: '1', hash: '#/memory', pending: late });
   assert.ok(shown(button(document, 'Correggi')), 'precondizione: col ricordo i pulsanti nascono accesi');
   answer();
@@ -473,7 +471,7 @@ test('pallino: `mark` marca un nodo nato dopo e lo tiene allineato alle risposte
   let turn = 0;
   /* Si parte dal «no»: un nodo appena creato e' visibile, quindi e' il
      «no» che prova che `mark` lo dipinge (mutazione J11). */
-  const pending = () => { turn += 1; return json(200, pendingBody(turn !== 1)); };
+  const pending = () => { turn += 1; return risposta(pendingBody(turn !== 1)); };
   const { window, document } = await bootConfig(t, { pending });
   const node = document.createElement('div');
   document.body.appendChild(node);

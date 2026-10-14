@@ -21,6 +21,7 @@ from hiris.app.mind import analyst_turn as at
 from hiris.app.mind import compute
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._runner_finto import RunnerFinto
 
 
 class _Sotto:
@@ -92,19 +93,12 @@ async def test_compute_senza_casa_dice_perche_non_si_calcola():
 
 # ── la catena ────────────────────────────────────────────────────────────
 
-class _ModelloCheLegge:
+def _modello_lettore() -> RunnerFinto:
     """Il modello dal lato del giro: riceve strumenti e guardiano, e ne
-    registra l'uso come fa il runner (`last_tool_calls`)."""
-
-    def __init__(self):
-        self.ricevuti: dict = {}
-        self.last_tool_calls: list = []
-
-    async def chat(self, **kwargs):
-        self.ricevuti = kwargs
-        self.last_tool_calls = [{"tool": "history",
-                                 "input": {"riferimento": "sensor.prelievo"}}]
-        return json.dumps({"osservazioni": []})
+    lascia l'uso scritto come fa il runner (`last_tool_calls`)."""
+    return RunnerFinto(json.dumps({"osservazioni": []}), dopo={
+        "last_tool_calls": [{"tool": "history",
+                             "input": {"riferimento": "sensor.prelievo"}}]})
 
 
 def _resoconto(giorno):
@@ -120,7 +114,7 @@ def casa(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
-    modello = _ModelloCheLegge()
+    modello = _modello_lettore()
     app = {"observations": store, "llm_router": modello, "bridge_active": False}
     try:
         yield app, store, modello
@@ -142,9 +136,9 @@ async def test_sulla_catena_l_analista_riceve_il_catalogo_e_il_guardiano(casa):
     strumenti -- rossa."""
     app, _store, modello = casa
     await server.analyst_round(app)
-    nomi = [d["name"] for d in modello.ricevuti["tools"]]
+    nomi = [d["name"] for d in modello.ultima["tools"]]
     assert nomi == list(steering.SPECIES[steering.ANALYST_SPECIES].tools_for_turn())
-    assert isinstance(modello.ricevuti["dispatcher"], at.AnalystDispatcher)
+    assert isinstance(modello.ultima["dispatcher"], at.AnalystDispatcher)
 
 
 @pytest.mark.asyncio

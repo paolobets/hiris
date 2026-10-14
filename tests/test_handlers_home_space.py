@@ -21,23 +21,11 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import EntityCache
 from tests._casa_sintetica import synthetic_inputs
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 from casa_finta import CasaFinta
-
-
-class _CacheFinta:
-    """Sostituto minimo di `EntityCache` per i test: stessa forma di
-    `all_states()` (lista di dict con chiave "id", non "entity_id") e
-    stessa bandiera `loaded` che governa `inventory_is_readable()`."""
-
-    def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
-        self._stati = stati
-        self.loaded = pronta
-
-    def all_states(self) -> list[dict]:
-        return self._stati
 
 
 @pytest.mark.asyncio
@@ -62,7 +50,6 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
     assert corpo["conteggi"]["aree"] == 1
     assert corpo["anagrafe_letta_il"] is not None
     assert corpo["non_disponibili"] == []
-    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -131,7 +118,6 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     assert comportamento["problemi"] == ["automations.yaml: id 42 usato da 2 voci"]
     assert comportamento["corpi_non_letti"] == {
         "automation.a_mano": "configurazione non letta da Home Assistant"}
-    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -160,7 +146,6 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     # (Tappa 9, F5, D3).
     assert plance == [{"percorso": None, "titolo": "Principale"},
                       {"percorso": "cucina", "titolo": "Cucina"}]
-    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -181,7 +166,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     app = web.Application()
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria
-    app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
+    app["entity_cache"] = SpecchioFinto([raw_state("light.cucina", "on")])
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
@@ -198,7 +183,6 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     assert riepilogo["chars"] == len(testo)
     assert riepilogo["truncated"] is False
     assert riepilogo["excluded_memories"] == 0
-    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -252,7 +236,6 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
     assert any("aree" in a and "non hanno risposto" in a for a in corpo["summary"]["notices"])
-    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -295,7 +278,6 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     # Il PIU' VECCHIO (il primo scritto) e' anche il primo a saltare per la
     # regola "il piu' vecchio prima" -- ma la sua assenza deve essere
     # CONTATA in ricordi_esclusi, mai un'invisibilita' gratuita come prima.
-    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -335,7 +317,6 @@ async def test_api_nucleo_riceve_i_problemi_e_i_corpi_non_letti_del_comportament
     avvisi = corpo["summary"]["notices"]
     assert any("problema" in a and "comportamento" in a for a in avvisi)
     assert any("non conosco il corpo" in a for a in avvisi)
-    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -369,7 +350,6 @@ async def test_pagina_e_nucleo_contano_gli_stessi_corpi_mancanti(aiohttp_client,
     avviso = next(a for a in nucleo["summary"]["notices"] if "non conosco il corpo" in a)
     assert pagina["comportamento"]["senza_corpo"] == 1
     assert avviso.startswith("di 1 fra"), avviso
-    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -397,7 +377,6 @@ async def test_le_etichette_escono_col_nome_sull_entita_non_in_una_mappa(aiohttp
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/home-space")).json()
-    casa.close()
     assert "etichette" not in corpo and "categorie" not in corpo
     area = corpo["piani"][0]["aree"][0]
     assert "etichette" not in area and "alias" not in area
@@ -436,7 +415,6 @@ async def test_l_albero_non_porta_gli_attributi_dello_stato(tmp_path):
     app["entity_cache"] = specchio
     risposta = await handle_get_home_space(
         make_mocked_request("GET", "/api/home-space", app=app))
-    casa.close()
     corpo = json.loads(risposta.text)
     persona = corpo["piani"][0]["aree"][0]["entita"][0]
     assert persona["id"] == "person.inquilino"
@@ -491,7 +469,7 @@ def _app_with_behavior(tmp_path, soggetto):
     app = web.Application(middlewares=[confine])
     app["home_space_store"] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
-    return app, archivio
+    return app
 
 
 def _servizio(ruolo):
@@ -508,10 +486,9 @@ async def test_il_corpo_delle_automazioni_non_esce_da_questa_porta(aiohttp_clien
     leggeva, e il corpo la chat lo chiede a `search`, con la stessa regola
     (`privacy.cover_reserved_body`). Un ruolo per caso: un corpo rimesso
     nella risposta per chi amministra (come la 3.73.1) arrossisce il suo."""
-    app, archivio = _app_with_behavior(tmp_path, _servizio(ruolo))
+    app = _app_with_behavior(tmp_path, _servizio(ruolo))
     client = await aiohttp_client(app)
     risposta = await (await client.get("/api/home-space")).json()
-    archivio.close()
     assert "voci" not in risposta["comportamento"]
     assert "triggers" not in str(risposta) and "sequence" not in str(risposta)
 
@@ -525,11 +502,10 @@ async def test_senza_corpo_conta_cio_che_HIRIS_non_sa_non_cio_che_copre(aiohttp_
     come numero di tutte le voci -- rossa (3 invece di 1). Quella di prima
     («contato dopo la copertura») non si puo' piu' costruire: dalla F5 la
     rotta non copre piu' niente, perche' le voci non escono."""
-    app, archivio = _app_with_behavior(tmp_path, _servizio("lettore"))
+    app = _app_with_behavior(tmp_path, _servizio("lettore"))
     client = await aiohttp_client(app)
     risposta = await (await client.get("/api/home-space")).json()
     assert risposta["comportamento"]["senza_corpo"] == 1
-    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -554,7 +530,6 @@ async def test_la_replica_conservata_esce_dalle_due_porte_nella_stessa_forma(
 
     casa = await (await client.get("/api/home-space")).json()
     nucleo = await (await client.get("/api/briefing")).json()
-    archivio.close()
 
     assert casa["comportamento"]["conservato"] == {
         "motivo": "Home Assistant non le ha ancora caricate",
@@ -586,10 +561,10 @@ async def test_api_casa_una_classe_che_non_c_e_non_si_scrive_null(aiohttp_client
     })
     app = web.Application()
     app["home_space_store"] = archivio
-    app["entity_cache"] = _CacheFinta([
-        {"id": "light.cucina", "state": "on", "name": "Faretti"},
-        {"id": "sensor.frigo", "state": "4", "name": "Frigo", "unit": "°C",
-         "device_class": "temperature"}])
+    app["entity_cache"] = SpecchioFinto([
+        raw_state("light.cucina", "on", "Faretti"),
+        raw_state("sensor.frigo", "4", "Frigo", unit_of_measurement="°C",
+                  device_class="temperature")])
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -599,4 +574,3 @@ async def test_api_casa_una_classe_che_non_c_e_non_si_scrive_null(aiohttp_client
     assert "unita" not in per_id["light.cucina"], per_id["light.cucina"]
     assert per_id["sensor.frigo"]["classe"] == "temperature"
     assert per_id["sensor.frigo"]["unita"] == "°C"
-    archivio.close()

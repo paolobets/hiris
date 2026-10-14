@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Fetta «fix pre-UAT», voce C-1.
 
@@ -90,14 +91,11 @@ const NON_MISURATA = {
   message: "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.",
 };
 
-function jsonResponse(body) {
-  return { ok: true, status: 200, json: async () => body };
-}
-
-/* Carica i moduli, stubba fetch, poi esegue `chat/main.js` (che al load fa
-   boot()) osservando setInterval/clearInterval. Restituisce cosa è stato
-   programmato e cosa è stato fermato. */
-async function avviaChat(rispostaUsage) {
+/* Carica i moduli, installa il finto fetch, poi esegue `chat/main.js` (che al
+   load fa boot()) osservando setInterval/clearInterval. Restituisce cosa è
+   stato programmato e cosa è stato fermato. `usage` e' cio' che risponde
+   `api/usage`: un corpo, una `risposta(...)` o una funzione. */
+async function avviaChat(usage) {
   const ctx = loadScripts(MODULI, { html: fixtureHtml() });
   /* jsdom non implementa matchMedia; chat/theme.js e chat/sidebar.js lo usano
      come farebbe qualunque pagina reale. Stub minimo, sempre "non combacia". */
@@ -105,18 +103,19 @@ async function avviaChat(rispostaUsage) {
     matches: false, media: '', addListener() {}, removeListener() {},
     addEventListener() {}, removeEventListener() {},
   });
-  ctx.window.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('api/usage')) return rispostaUsage();
-    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '2.0.0' });
+  fintoFetch(ctx.window, {
+    'api/usage': usage,
+    'api/health': { status: 'ok', version: '2.0.0' },
     /* Il riquadro e il suo giro sono di chi configura (spec 2026-09-27 §4):
        partono al `can_configure: true` del server. Qui guarda un
        amministratore, cioe' chi aveva il riquadro anche prima. */
-    if (u.includes('api/pending')) {
-      return jsonResponse({ agenda_unread: 0, constructions_pending: 0, can_build: true, can_configure: true });
-    }
-    return jsonResponse({});
-  };
+    'api/pending': { agenda_unread: 0, constructions_pending: 0, can_build: true, can_configure: true },
+    /* Il resto del boot della chat: queste prove non lo guardano. */
+    'api/config': maiRisposta,
+    'api/chat-settings': maiRisposta,
+    'api/chat/history': maiRisposta,
+    'api/chat/conversations': maiRisposta,
+  });
 
   const veroSet = globalThis.setInterval;
   const veroClear = globalThis.clearInterval;
@@ -140,7 +139,7 @@ async function avviaChat(rispostaUsage) {
 }
 
 test('C-1: dichiarata la non-misurabilità, il riquadro Utilizzo SMETTE di richiamare api/usage ogni 30 secondi', async () => {
-  const { programmati, fermati } = await avviaChat(() => jsonResponse(NON_MISURATA));
+  const { programmati, fermati } = await avviaChat(NON_MISURATA);
 
   const consumi = programmati.filter((p) => p.ms === 30000);
   assert.ok(consumi.length >= 1, 'il boot programma comunque i suoi intervalli da 30s');
@@ -153,13 +152,13 @@ test('C-1: un guasto passeggero NON spegne il timer — la differenza fra «non 
   assert.equal(caduta.fermati.length, 0,
     'la rete può tornare: fermare il timer qui renderebbe il riquadro morto fino al reload');
 
-  const cinquecento = await avviaChat(() => ({ ok: false, status: 503, json: async () => ({}) }));
+  const cinquecento = await avviaChat(risposta({}, 503));
   assert.equal(cinquecento.fermati.length, 0,
     'un 503 è un guasto, non una dichiarazione: si riprova');
 });
 
 test('C-1: la frase del server compare sullo schermo, e le righe dei numeri escono di scena', async () => {
-  const { document } = await avviaChat(() => jsonResponse(NON_MISURATA));
+  const { document } = await avviaChat(NON_MISURATA);
 
   assert.equal(document.getElementById('usage-last-reset').textContent, NON_MISURATA.message,
     'la frase è quella del server, non una parafrasi del frontend');
@@ -172,10 +171,10 @@ test('C-1: la frase del server compare sullo schermo, e le righe dei numeri esco
 });
 
 test('C-1: con i consumi misurati non cambia niente — i numeri si vedono e le righe restano', async () => {
-  const { document, fermati } = await avviaChat(() => jsonResponse({
+  const { document, fermati } = await avviaChat({
     measured: true, total_requests: 42, input_tokens: 1200, output_tokens: 800,
     cost_eur: 0.1234, last_reset: '2026-07-01T00:00:00Z',
-  }));
+  });
 
   assert.equal(fermati.length, 0, 'qui il timer serve: i numeri cambiano');
   assert.equal(document.getElementById('u-requests').textContent, '42');

@@ -4,11 +4,13 @@ Security regression tests — run on every PR.
 These tests validate that the security fixes applied post-audit hold and
 do not regress. They are deliberately narrow (fast, no real network calls).
 """
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
+
+from tests._runner_finto import RunnerFinto
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,8 +46,7 @@ def _make_app_with_runner(runner):
 
 @pytest.mark.asyncio
 async def test_chat_rejects_message_over_4000_chars():
-    runner = AsyncMock()
-    runner.chat = AsyncMock(return_value="ok")
+    runner = RunnerFinto("ok")
     app = _make_app_with_runner(runner)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "x" * 4001})
@@ -56,10 +57,7 @@ async def test_chat_rejects_message_over_4000_chars():
 
 @pytest.mark.asyncio
 async def test_chat_accepts_message_at_4000_chars():
-    runner = AsyncMock()
-    runner.chat = AsyncMock(return_value="ok")
-    runner.last_tool_calls = []
-    runner.last_unanswered = False
+    runner = RunnerFinto("ok")
     app = _make_app_with_runner(runner)
     with (
         patch("hiris.app.api.handlers_chat.load_history", return_value=[]),
@@ -89,10 +87,7 @@ async def test_chat_accepts_message_at_4000_chars():
 
 @pytest.mark.asyncio
 async def test_security_headers_present():
-    runner = AsyncMock()
-    runner.chat = AsyncMock(return_value="ok")
-    runner.last_tool_calls = []
-    runner.last_unanswered = False
+    runner = RunnerFinto("ok")
     app = _make_app_with_runner(runner)
     with (
         patch("hiris.app.api.handlers_chat.load_history", return_value=[]),

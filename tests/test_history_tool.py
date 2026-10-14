@@ -26,12 +26,11 @@ from hiris.app.keeper.exchange import SOLA_LETTURA, promise_tools
 from hiris.app.proxy.entity_cache import (
     INVENTORY_NOT_READY_ERROR,
     NO_INVENTORY_ERROR,
-    VALUES,
 )
 from hiris.app.proxy.ha_client import MAX_HISTORY_POINTS
 from tests._contracts import assert_stessa_firma
 from tests._house_translations import house_translations
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_briefing import _CASA
 from tests.test_knowledge_tools import _semina_casa
 
@@ -74,35 +73,48 @@ _COMPORTAMENTO = [
        "origine": "file"} for n in _RIFIUTI]]
 
 
-def _riga(eid, stato, **altro):
-    return {"id": eid, "state": stato, "name": "", "unit": None, "domain": eid.split(".")[0],
-            "last_changed": "2026-09-29T07:11:00+00:00", **altro}
+class _SpecchioContato(SpecchioFinto):
+    """Lo specchio VERO (`_to_minimal`: `unit`, `state_class`, e
+    `automation_id` per le automazioni), che CONTA le letture: sovrascrive
+    le tre domande dello specchio solo per contarle."""
 
-
-class _Specchio(MirrorById):
-    """Lo specchio nella forma di `entity_cache._to_minimal`: `unit`,
-    `state_class`, e `automation_id` per le automazioni."""
-
-    def __init__(self, righe, loaded=True):
-        self._righe = list(righe)
-        self.loaded = loaded
+    def __init__(self, righe, **altro):
+        super().__init__(righe, **altro)
         self.letture = 0
 
     def all_states(self):
         self.letture += 1
-        return list(self._righe)
+        return super().all_states()
+
+    def get(self, entity_id):
+        self.letture += 1
+        return super().get(entity_id)
+
+    def states_for(self, entity_ids=None):
+        self.letture += 1
+        return super().states_for(entity_ids)
+
+
+def _righe_grezze() -> list[dict]:
+    """Gli stati grezzi di Home Assistant da cui lo specchio della storia si
+    riempie: l'id di configurazione di un'automazione e' il suo attributo
+    `id`, che `_to_minimal` promuove ad `automation_id`."""
+    return [
+        raw_state("light.cucina_1", "on"), raw_state("light.cucina_2", "off"),
+        raw_state("sensor.cucina_t", "19.5", unit_of_measurement="°C",
+                  state_class="measurement"),
+        raw_state("binary_sensor.porta", "on"),
+        raw_state("sensor.energia_oggi", "4.5", unit_of_measurement="kWh",
+                  state_class="total_increasing"),
+        raw_state("sensor.vento_direzione", "180", unit_of_measurement="°",
+                  state_class="measurement_angle"),
+        raw_state("script.buonanotte", "off"), raw_state("script.risveglio", "off"),
+        *[raw_state(f"automation.rifiuto_{n}", "on", id=f"17713{i}")
+          for i, n in enumerate(_RIFIUTI)]]
 
 
 def _history_mirror(**altro):
-    return _Specchio([
-        _riga("light.cucina_1", "on"), _riga("light.cucina_2", "off"),
-        _riga("sensor.cucina_t", "19.5", unit="°C", state_class="measurement"),
-        _riga("binary_sensor.porta", "on"),
-        _riga("sensor.energia_oggi", "4.5", unit="kWh", state_class="total_increasing"),
-        _riga("sensor.vento_direzione", "180", unit="°", state_class="measurement_angle"),
-        _riga("script.buonanotte", "off"), _riga("script.risveglio", "off"),
-        *[_riga(f"automation.rifiuto_{n}", "on", automation_id=f"17713{i}")
-          for i, n in enumerate(_RIFIUTI)]], **altro)
+    return _SpecchioContato(_righe_grezze(), **altro)
 
 
 def _traccia(run_id, ore=1, **altro):
@@ -451,15 +463,15 @@ async def test_un_contatore_con_last_reset_non_inventa_il_consumato(tmp_path):
     un `total` che riparte a ogni ciclo avrebbe un consumato sbagliato.
 
     Mutazione ESEGUITA: `attributes={}` in `_value_history` -- rossa."""
-    righe = [r for r in _history_mirror().all_states() if r["id"] != "sensor.energia_oggi"]
-    righe.append(_riga("sensor.energia_oggi", "1.0", unit="kWh", state_class="total",
-                       # Le ceste di `_to_minimal`: per un sensore
-                       # `last_reset` e' fra i valori dichiarati.
-                       attributes={VALUES: {"last_reset": "2026-09-30T00:00:00+00:00"}}))
+    righe = [r for r in _righe_grezze() if r["entity_id"] != "sensor.energia_oggi"]
+    # `last_reset` e' un attributo grezzo: `_to_minimal` lo mette nelle ceste
+    # (per un sensore, fra i valori dichiarati).
+    righe.append(raw_state("sensor.energia_oggi", "1.0", unit_of_measurement="kWh",
+                           state_class="total", last_reset="2026-09-30T00:00:00+00:00"))
     punti = [{"quando": (_ADESSO - timedelta(hours=h)).isoformat(), "valore": v}
              for h, v in ((5, "3.0"), (3, "4.0"), (1, "1.0"))]
     ha = _house(serie={"sensor.energia_oggi": punti})
-    esito = await _history_dispatcher(tmp_path, ha, cache=_Specchio(righe)).dispatch(
+    esito = await _history_dispatcher(tmp_path, ha, cache=SpecchioFinto(righe)).dispatch(
         "history", {"cosa": "valori", "riferimento": "sensor.energia_oggi", "ore": 6})
     riga = esito["voci"][0]
     assert "consumato_non_calcolato" in riga and "consumato" not in riga
@@ -611,12 +623,11 @@ async def test_un_automazione_senza_id_e_nominata_fra_i_non_letti(tmp_path):
     Mutazione ESEGUITA: chiedere anche la chiave irrisolta, come
     `("automation", "rifiuto_carta")` -- rossa (5 chiavi chieste, nessun non
     letto)."""
-    righe = [r for r in _history_mirror().all_states()
-             if r["id"] != "automation.rifiuto_carta"]
-    righe.append(_riga("automation.rifiuto_carta", "on"))
+    righe = [r for r in _righe_grezze() if r["entity_id"] != "automation.rifiuto_carta"]
+    righe.append(raw_state("automation.rifiuto_carta", "on"))
     tracce = {f"automation.17713{i}": [_traccia(f"r{i}")] for i in range(1, 5)}
     ha = _house(tracce=tracce)
-    esito = await _history_dispatcher(tmp_path, ha, cache=_Specchio(righe)).dispatch(
+    esito = await _history_dispatcher(tmp_path, ha, cache=SpecchioFinto(righe)).dispatch(
         "history", {"cosa": "esecuzioni", "nome": "rifiuti"})
     assert ha.connections == [("ws", ("trace/list",) * 4)]
     assert {(extra["domain"], extra["item_id"]) for _name, extra in _asked(ha)} == {
@@ -635,8 +646,8 @@ async def test_uno_specchio_non_pronto_non_da_la_colpa_all_identificatore(tmp_pa
     Mutazione ESEGUITA: togliere il controllo `unreadable_inventory_error` da
     `_run_history` -- rossa."""
     ha = _house()
-    spento = await _history_dispatcher(tmp_path, ha, cache=_Specchio(
-        _history_mirror().all_states(), loaded=False)).dispatch(
+    spento = await _history_dispatcher(tmp_path, ha, cache=SpecchioFinto(
+        _righe_grezze(), pronto=False)).dispatch(
         "history", {"cosa": "esecuzioni", "riferimento": "automation.rifiuto_carta"})
     assert spento == {"errore": INVENTORY_NOT_READY_ERROR}
     assert ha.calls == []

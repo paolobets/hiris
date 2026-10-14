@@ -227,11 +227,8 @@ async def test_behavior_reads_the_mirror_not_the_whole_house(tmp_path):
     await mirror.load(house)
     before = len(house.calls)
     home_space = HomeSpace(str(tmp_path), mirror=mirror)
-    try:
-        await reread(house, mirror, home_space, None)
-        entries = home_space.behavior()
-    finally:
-        home_space.close()
+    await reread(house, mirror, home_space, None)
+    entries = home_space.behavior()
     asked = [name for name, _extra in house.calls[before:]]
     assert "/api/states" not in asked
     assert asked == ["automation/config"]
@@ -244,11 +241,8 @@ async def test_behavior_does_not_read_a_mirror_that_is_not_ready(tmp_path):
     """Uno specchio mai caricato non e' una casa senza automazioni: la
     rilettura si ferma e la replica resta quella di prima."""
     home_space = HomeSpace(str(tmp_path))
-    try:
-        with pytest.raises(RuntimeError):
-            await reread(CasaFinta(synthetic_inputs()), EntityCache(), home_space, None)
-    finally:
-        home_space.close()
+    with pytest.raises(RuntimeError):
+        await reread(CasaFinta(synthetic_inputs()), EntityCache(), home_space, None)
 
 
 # ── D4: cio' che il recapito legge non arriva ai modelli ────────────────────
@@ -471,15 +465,3 @@ _PLANTED_SCANS = (
      "            states[eid] = entry\n"
      "    return states\n"),
 )
-
-
-def test_the_by_id_base_of_the_fake_mirrors_has_the_real_signatures():
-    """Le finte dello specchio delle prove rispondono per id da
-    `tests/_mirror_by_id.py`: con le firme dello specchio vero, o una finta
-    accetterebbe domande che il vero rifiuta."""
-    import inspect
-
-    from tests._mirror_by_id import MirrorById
-    for name in ("get", "states_for"):
-        assert (inspect.signature(getattr(MirrorById, name))
-                == inspect.signature(getattr(EntityCache, name))), name

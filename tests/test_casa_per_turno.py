@@ -76,6 +76,7 @@ from hiris.app.home_space.tools import ToolDispatcher
 #: qui si prova altro, non il permesso.
 _AMMINISTRATORE = consente(None, ruolo="amministratore")
 from tests._casa_sintetica import INSTANT, synthetic_inputs
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -201,22 +202,23 @@ class _Store:
         """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
 
 
-class _Cache:
-    loaded = True
+def _kitchen(state: str) -> SpecchioFinto:
+    """Lo specchio vero con la sola luce della cucina, nello stato dato."""
+    return SpecchioFinto([raw_state("light.cucina", state)])
 
-    def __init__(self, state: str) -> None:
-        self.state = state
 
-    def all_states(self) -> list[dict]:
-        return [{"id": "light.cucina", "state": self.state}]
+def _turn_on(cache: SpecchioFinto) -> None:
+    """La luce si accende: l'evento arriva dal rubinetto vero dello specchio."""
+    cache.on_state_changed({"entity_id": "light.cucina",
+                            "new_state": raw_state("light.cucina", "on")})
 
 
 class _Actuator:
-    def __init__(self, cache: _Cache) -> None:
+    def __init__(self, cache: SpecchioFinto) -> None:
         self._cache = cache
 
     async def execute(self, arguments, *, actor, subject):
-        self._cache.state = "on"
+        _turn_on(self._cache)
         return {"ok": True}
 
 
@@ -224,17 +226,17 @@ async def test_un_turno_nuovo_vede_la_casa_di_adesso():
     """Lo specchio cambia fra due turni: il secondo lo vede, sia dalla casa
     che apre il turno (`house_of`, come `handle_chat`) sia dal dispatcher
     che se la legge da se'."""
-    store, cache = _Store(), _Cache("off")
+    store, cache = _Store(), _kitchen("off")
     app = {"home_space_store": store, "entity_cache": cache}
     assert house_of(app).mirror.state["light.cucina"] == "off"
     assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "off"
-    cache.state = "on"
+    _turn_on(cache)
     assert house_of(app).mirror.state["light.cucina"] == "on"
     assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "on"
 
 
 async def test_l_anagrafe_ricostruita_a_meta_turno_si_rilegge():
-    store, cache = _Store(), _Cache("off")
+    store, cache = _Store(), _kitchen("off")
     dispatcher = ToolDispatcher(store, None, cache=cache)
     first = dispatcher._turn_house()
     assert dispatcher._turn_house() is first
@@ -245,7 +247,7 @@ async def test_l_anagrafe_ricostruita_a_meta_turno_si_rilegge():
 async def test_dopo_un_comando_lo_stesso_turno_rilegge_lo_specchio():
     """La domanda dopo un `execute`, nello stesso turno, deve vedere lo stato
     che il comando ha cambiato, non quello di prima."""
-    store, cache = _Store(), _Cache("off")
+    store, cache = _Store(), _kitchen("off")
     dispatcher = ToolDispatcher(store, None, cache=cache, actuator=_Actuator(cache))
     assert dispatcher._mirror().state["light.cucina"] == "off"
     await dispatcher._execute({"servizio": "light.turn_on"})

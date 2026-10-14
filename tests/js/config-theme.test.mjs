@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, stubFetch, tick } from './helpers/dom.mjs';
+import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 /* Registro C-16, il cambio dichiarato del Task 3 della Tappa 4: il tema
    dell'add-on (opzione `theme`, servita da GET api/config) vale anche per la
@@ -27,7 +28,7 @@ async function avvia(temaServer, salvato) {
   ctx.window.localStorage.clear();
   if (salvato) ctx.window.localStorage.setItem('hiris-theme', salvato);
   ctx.document.documentElement.removeAttribute('data-theme');
-  const calls = stubFetch(ctx.window, { 'api/config': { theme: temaServer } });
+  const calls = fintoFetch(ctx.window, { 'api/config': { theme: temaServer }, 'api/health': maiRisposta });
   ctx.document.dispatchEvent(new ctx.window.Event('DOMContentLoaded'));
   await tick(0);
   return { ...ctx, calls };

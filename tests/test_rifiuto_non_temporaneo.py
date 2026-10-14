@@ -12,21 +12,18 @@ della cronologia, che una frase di guasto non deve lasciar entrare.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from hiris.app.chat_store import _is_toxic_assistant
 from hiris.app.claude_runner import RunnerBackendError
 from hiris.app.llm_router import LLMRouter
 from hiris.app.model_resolution import TEMPORARY_FAILURE, failure_reply
+from tests._runner_finto import RunnerFinto
 
 
-def _refusing(family, code, said=None):
-    runner = MagicMock()
-    runner.chat = AsyncMock(side_effect=RunnerBackendError(
+def _refusing(family, code, said=None) -> RunnerFinto:
+    return RunnerFinto(RunnerBackendError(
         failure_reply(family, code, said), family=family, code=code, said=said))
-    return runner
 
 
 @pytest.mark.asyncio

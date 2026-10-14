@@ -36,21 +36,16 @@ from hiris.app import server
 from hiris.app.home_space import historian
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._runner_finto import RunnerFinto
 
 
-class _FintoModello:
-    """Il modello, dal lato del giro: conta le chiamate e risponde silenzio.
+def _finto_modello() -> RunnerFinto:
+    """Il modello, dal lato del giro: risponde silenzio.
 
     **Il silenzio e' un esito legittimo** (spec §10), e va bene per queste
     prove: qui si misura QUANDO il giro chiede, non cosa il modello risponde.
     """
-
-    def __init__(self):
-        self.chiamate = 0
-
-    async def chat(self, **kwargs):
-        self.chiamate += 1
-        return json.dumps({"osservazioni": []})
+    return RunnerFinto(json.dumps({"osservazioni": []}))
 
 
 def _resoconto(giorno, valore=1.0):
@@ -67,7 +62,7 @@ def casa(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
-    modello = _FintoModello()
+    modello = _finto_modello()
     app = {"observations": store, "llm_router": modello, "bridge_active": False}
     try:
         yield app, store, modello
@@ -83,7 +78,7 @@ async def test_un_giorno_senza_analisi_FA_un_turno_e_scrive_il_fondamento(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1
+    assert len(modello.chiamate) == 1
     # Il giorno si calcola **come lo calcola il giro** (fuso della casa), non
     # con l'orologio di chi fa girare la suite: una prova che guarda un altro
     # giorno passerebbe o cadrebbe a seconda dell'ora.
@@ -134,7 +129,7 @@ async def test_lo_STESSO_fondamento_non_fa_girare_niente(casa):
     await server.analyst_round(app)
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1
+    assert len(modello.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -146,12 +141,12 @@ async def test_un_resoconto_RECUPERATO_rifa_l_analisi(casa):
     rossa (il giorno recuperato non entra in nessuna analisi, mai)."""
     app, store, modello = casa
     await server.analyst_round(app)
-    assert modello.chiamate == 1
+    assert len(modello.chiamate) == 1
 
     store.replace_report("2026-09-14", _resoconto("2026-09-14"))
 
     await server.analyst_round(app)
-    assert modello.chiamate == 2, "il resoconto recuperato non ha fatto rifare l'analisi"
+    assert len(modello.chiamate) == 2, "il resoconto recuperato non ha fatto rifare l'analisi"
 
 
 @pytest.mark.asyncio
@@ -168,7 +163,7 @@ async def test_un_giorno_RIFATTO_rifa_l_analisi(casa):
     store.replace_report("2026-09-16", _resoconto("2026-09-16"))
 
     await server.analyst_round(app)
-    assert modello.chiamate == 2, "un giorno rifatto non ha fatto rifare l'analisi"
+    assert len(modello.chiamate) == 2, "un giorno rifatto non ha fatto rifare l'analisi"
 
 
 @pytest.mark.asyncio
@@ -183,11 +178,11 @@ async def test_l_analisi_rifatta_SOSTITUISCE_e_non_si_accoda(casa):
     await server.analyst_round(app)
     store.replace_report("2026-09-14", _resoconto("2026-09-14"))
     await server.analyst_round(app)
-    conteggio = modello.chiamate
+    conteggio = len(modello.chiamate)
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == conteggio, (
+    assert len(modello.chiamate) == conteggio, (
         "dopo aver rifatto l'analisi il giro ha chiesto di nuovo: il fondamento "
         "scritto non e' quello su cui e' stata rifatta")
 
@@ -239,7 +234,7 @@ async def test_un_turno_SCADUTO_non_blocca_l_analista_per_sempre(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1, (
+    assert len(modello.chiamate) == 1, (
         "un turno scaduto ha bloccato l'analista: e' il difetto del 17-21/09")
 
 
@@ -255,7 +250,7 @@ async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 0
+    assert len(modello.chiamate) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +323,7 @@ async def test_una_risposta_di_UN_ALTRO_GIORNO_non_blocca_l_analista(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1, (
+    assert len(modello.chiamate) == 1, (
         "un turno di un altro giorno ha impedito l'analisi di oggi: e' il "
         "difetto del 17-22/09")
 
@@ -408,7 +403,7 @@ async def test_un_turno_FALLITO_dal_ponte_non_blocca_il_giro(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1, "un turno fallito dal ponte ha fermato il giro"
+    assert len(modello.chiamate) == 1, "un turno fallito dal ponte ha fermato il giro"
 
 
 @pytest.mark.asyncio
@@ -422,7 +417,7 @@ async def test_un_RIFIUTO_non_si_rilegge_all_infinito(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 1, "una risposta rifiutata ha fermato il giro"
+    assert len(modello.chiamate) == 1, "una risposta rifiutata ha fermato il giro"
 
 
 @pytest.mark.asyncio
@@ -436,4 +431,4 @@ async def test_dopo_un_RIFIUTO_non_si_richiede_a_ogni_giro(casa):
 
     await server.analyst_round(app)
 
-    assert modello.chiamate == 0
+    assert len(modello.chiamate) == 0

@@ -650,8 +650,3 @@ class HomeSpace:
         """Se la dashboard tenuta e' stata letta in questo giro dell'anagrafe."""
         return self._energy_current
 
-    def close(self) -> None:
-        """Non c'e' niente da chiudere: l'anagrafe, il comportamento e le
-        plance vivono in memoria, e la cornice e' un file che si apre e si
-        chiude a ogni scrittura. Il metodo resta per chi lo chiama alla
-        chiusura (`server.py`, le prove)."""

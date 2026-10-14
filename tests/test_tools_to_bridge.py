@@ -57,6 +57,7 @@ from hiris.app.steering import SPECIES
 # seconda copia divergerebbe, e senza le due valvole della suite rimosse questi
 # test passerebbero anche col guasto in piedi. Viveva in
 # `tests/test_internal_token.py`, uscito il 22/09/2026 col segreto condiviso.
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_knowledge_tools import _semina_casa
 
 #: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
@@ -504,22 +505,9 @@ def _semina_gli_archivi(app, tmp_path):
     memoria = MemoryStore(memoria_db)
     app["home_space_store"] = casa
     app["memory_store"] = memoria
-    app["entity_cache"] = _CacheViva({"light.cucina_1": "on",
-                                      "light.cucina_2": "off"})
+    app["entity_cache"] = SpecchioFinto([raw_state("light.cucina_1", "on"),
+                                         raw_state("light.cucina_2", "off")])
     return casa, memoria, memoria_db
-
-
-class _CacheViva:
-    """La forma vera di `entity_cache`: chiave "id", non "entity_id"
-    (tests/test_knowledge_tools.py usa lo stesso doppio)."""
-
-    loaded = True
-
-    def __init__(self, stati):
-        self._stati = stati
-
-    def all_states(self):
-        return [{"id": k, "state": v} for k, v in self._stati.items()]
 
 
 @pytest.mark.asyncio
@@ -640,7 +628,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     dell'app, che e' l'argomento con cui il disegno ha scartato un
     sottoprocesso stdio."""
     client, coda, app, intestazioni = ponte_produzione
-    casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
+    _casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
     try:
         base = _base_url(client)
         adesso = time.time()
@@ -745,7 +733,6 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             "in cucina si cena alle 20"]
     finally:
         memoria.close()
-        casa.close()
 
 
 def _riga_init(*, stato: str = "connected", nomi=None) -> str:

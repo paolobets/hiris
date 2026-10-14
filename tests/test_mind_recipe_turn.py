@@ -22,6 +22,7 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.operations import CAUSES, FROZEN, NotComputable
+from tests._runner_finto import RunnerFinto
 
 CASA = House({
     "dispositivi": [{"id": "dev1", "nome": "Inverter ZCS"},
@@ -1061,15 +1062,11 @@ async def test_sulla_CATENA_la_frase_del_router_non_scrive_un_non_capito(sapere)
     la frase del router come evidenza): `steering.chain_answer` che
     restituisce `answer` anche quando il turno non ha risposto;
     `misura_turno` che non abbassa `TurnOutcome.answered`."""
-    from unittest.mock import AsyncMock, MagicMock
-
     from hiris.app.claude_runner import RunnerBackendError
     from hiris.app.llm_router import LLMRouter
 
     def _rifiuta(messaggio):
-        runner = MagicMock()
-        runner.chat = AsyncMock(side_effect=RunnerBackendError(messaggio))
-        return runner
+        return RunnerFinto(RunnerBackendError(messaggio))
 
     router = LLMRouter(claude=_rifiuta("giu'"), openrouter=_rifiuta("giu'"),
                        model_chain=["claude", "openrouter"])
@@ -1099,21 +1096,19 @@ async def test_le_ricette_si_dichiarano_RICETTE_non_osservatore(sapere, tmp_path
     from hiris.app.steering import RECIPES_SPECIES
     from hiris.app.usage.store import UsageStore
 
-    chiesto = {}
+    async def _dichiara_modello(runner, **kwargs):
+        # Come i runner veri: il modello che ha risposto lo dichiara il
+        # runner, nella misura del giro.
+        raccoglitore = _misura_corrente()
+        if raccoglitore is not None:
+            raccoglitore(1, {"model": "claude-sonnet-4-6", "output_tokens": 1})
 
-    class _Runner:
-        async def chat(self, **kw):
-            chiesto.update(kw)
-            raccoglitore = _misura_corrente()
-            if raccoglitore is not None:
-                raccoglitore(1, {"model": "claude-sonnet-4-6", "output_tokens": 1})
-            return "[]"
-
+    runner = RunnerFinto("[]", turno=_dichiara_modello)
     consumi = UsageStore(str(tmp_path / "consumi.db"))
-    await rt.ask(_Runner(), sapere, _casa_viva(), "dev1", objective="risparmiare",
+    await rt.ask(runner, sapere, _casa_viva(), "dev1", objective="risparmiare",
                  who="prova", when_ts=1_758_000_000.0, with_series=SERIE_VIVE,
                  measurements=consumi)
 
-    assert "agent_type" not in chiesto
+    assert "agent_type" not in runner.ultima
     [turno] = consumi.turns()
     assert (turno["species"], turno["model"]) == (RECIPES_SPECIES, "claude-sonnet-4-6")

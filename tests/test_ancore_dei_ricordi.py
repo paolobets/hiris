@@ -37,8 +37,7 @@ _SPARITA = {"tipo": "entita", "riferimento": "light.vecchia", "nome_visto": "vec
 def anagrafe(tmp_path):
     casa = HomeSpace(str(tmp_path))
     casa.hold_registries(dict(_REGISTRI))
-    yield casa
-    casa.close()
+    return casa
 
 
 @pytest.fixture

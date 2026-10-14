@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La pagina #/models (config/models-route.js). Fino alla 2.4.1 rispondeva a
    «com'è configurato?»; la domanda che l'utente ha davvero è «chi risponderà
@@ -11,10 +12,6 @@ const SCRIPTS = ['common.js', 'config/models-route.js'];
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
-}
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
 /* IL PAYLOAD È IN DISACCORDO CON SE STESSO, DI PROPOSITO.
@@ -94,35 +91,27 @@ function pannelloFinto(url, pannelli) {
 
 function monta(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  ctx.window.fetch = async (url, options) => {
-    const u = String(url);
-    chiamate.push({ url: u, opts: options || {} });
-    if (u.indexOf('api/models?') === 0) {
-      return opts.modelliRotto ? jsonResponse({ error: 'boom' }, 503)
-        : jsonResponse(pannelloFinto(u, opts.pannelli));
-    }
-    if (u === 'api/models/config') {
-      /* LA FINTA È SCOMODA DI PROPOSITO: dopo una PUT il server NON ricalcola
-         la topologia, restituisce la stessa risposta di prima. Un frontend che
-         si affidasse a un ricalcolo del server per aggiornare le posizioni
-         sembrerebbe funzionare in un test generoso; qui passa solo chi
-         aggiorna il proprio stato e si riordina i numeri da sé. */
-      if ((options || {}).method === 'PUT') {
-        return opts.putRotto ? jsonResponse({ error: 'boom' }, 503)
-          : jsonResponse({ ok: true });
-      }
-      if (opts.configRotta) return jsonResponse({ error: 'boom' }, 503);
+  const chiamate = fintoFetch(ctx.window, {
+    'GET api/models': (url) => (opts.modelliRotto ? risposta({ error: 'boom' }, 503)
+      : pannelloFinto(url, opts.pannelli)),
+    /* LA FINTA È SCOMODA DI PROPOSITO: dopo una PUT il server NON ricalcola
+       la topologia, restituisce la stessa risposta di prima. Un frontend che
+       si affidasse a un ricalcolo del server per aggiornare le posizioni
+       sembrerebbe funzionare in un test generoso; qui passa solo chi
+       aggiorna il proprio stato e si riordina i numeri da sé. */
+    'PUT api/models/config': () => (opts.putRotto ? risposta({ error: 'boom' }, 503)
+      : { ok: true }),
+    'GET api/models/config': () => {
+      if (opts.configRotta) return risposta({ error: 'boom' }, 503);
       /* `configRaw` consegna il payload TALE E QUALE, senza fonderlo con
          CONFIG: e' l'unico modo di esprimere una CHIAVE ASSENTE. Con la sola
          `config` (fusione) un payload a cui il test toglie `adesso` se lo
          ritrova rimesso dalla base CONFIG -- la finta sarebbe piu' generosa
          del server, che quella chiave puo' davvero non mandarla. */
-      if (opts.configRaw) return jsonResponse(opts.configRaw);
-      return jsonResponse(Object.assign({}, CONFIG, opts.config || {}));
-    }
-    return jsonResponse({ ok: true });
-  };
+      if (opts.configRaw) return opts.configRaw;
+      return Object.assign({}, CONFIG, opts.config || {});
+    },
+  });
   return Object.assign(ctx, { chiamate });
 }
 

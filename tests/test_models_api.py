@@ -5,6 +5,7 @@ import pytest
 
 from hiris.app import providers
 from hiris.app.api import handlers_models
+from tests._runner_finto import RunnerFinto
 
 # Reuse the aiohttp test-app fixture/factory from test_api.py (creates the real
 # app via create_app(), mocks HA + claude_runner, sets app["data_dir"] to a
@@ -1030,16 +1031,13 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     che non e' quello che c'e' stato. Qui il router e' costruito a mano con il
     registro dell'app, come fa `_on_startup`, e un turno vero lo riempie."""
     _with_claude_key(client)
-    from unittest.mock import AsyncMock, MagicMock
 
     from hiris.app.claude_runner import RunnerBackendError
     from hiris.app.llm_router import LLMRouter
 
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+    rotto = RunnerFinto(RunnerBackendError(
         "giu'", family="modello", code=404))
-    buono = MagicMock()
-    buono.chat = AsyncMock(return_value="ok")
+    buono = RunnerFinto("ok")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"],
                        registry=client.app["occurrence_registry"])

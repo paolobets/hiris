@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La home della configurazione (`#/`) e' «Cosa HIRIS sa»: la faccia di
    GET /api/home-space e GET /api/briefing.
@@ -96,15 +97,10 @@ const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded
    (le tre "Letta/Letto/Lette il"), condivisa con la pagina Consumi. */
 async function rendi(casa, nucleo = NUCLEO_VUOTO) {
   const ctx = loadScripts(['common.js', 'config/dashboard.js'], { html: HTML });
-  const chiamate = [];
-  ctx.window.fetch = (url) => {
-    const u = String(url);
-    chiamate.push(u);
-    const corpo = u.indexOf('api/briefing') !== -1 ? nucleo : casa;
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(corpo) });
-  };
+  const elenco = fintoFetch(ctx.window, { 'api/briefing': nucleo, 'api/home-space': casa });
   await ctx.window.HirisDashboard.mount();
   await tick(0);
+  const chiamate = elenco.map((c) => c.url);
   return { ...ctx, chiamate, testo: ctx.document.getElementById('route-outlet').textContent };
 }
 
@@ -333,9 +329,7 @@ test('una fetch caduta lo DICHIARA: la sezione non resta muta né finge una casa
   const errori = [];
   const consoleVera = console.error;
   console.error = (...a) => errori.push(a.join(' '));
-  ctx.window.fetch = (url) => (String(url).indexOf('api/home-space') !== -1
-    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
-    : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(NUCLEO_VUOTO) }));
+  fintoFetch(ctx.window, { 'api/home-space': risposta({}, 500), 'api/briefing': NUCLEO_VUOTO });
 
   await ctx.window.HirisDashboard.mount();
   await tick(0);

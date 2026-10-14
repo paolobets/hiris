@@ -35,6 +35,7 @@ from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 from tests.test_mind_analyst_round import _resoconto
 from tests.test_mind_analyst_turn import _serie as serie_analista
 from tests.test_mind_observer import _casa
@@ -174,8 +175,9 @@ async def test_il_router_dice_la_troncatura_di_chi_ha_risposto():
 async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
     """Un troncato di una chiamata PRECEDENTE dello stesso compito non deve
     leggersi come di questa, quando il router risponde da se'."""
-    primo = MagicMock()
-    primo.chat = AsyncMock(side_effect=RuntimeError("giu'"))
+    # Il backend che cade lascia scritto il segnale anche sull'oggetto: il
+    # router non deve ereditarlo da li'.
+    primo = RunnerFinto(RuntimeError("giu'"), dopo={"last_truncated": True})
     router = LLMRouter(claude=primo, model_chain=["claude"])
     # La chiamata di prima, nello stesso compito, era troncata: il segnale e'
     # la ContextVar condivisa, e un runner qualunque la scrive.
@@ -221,18 +223,9 @@ def test_ogni_runner_espone_il_segnale_di_troncatura():
 
 # -- l'imbuto lo registra e lo consegna ----------------------------------------
 
-class _Troncato:
+def _troncato(risposta: str) -> RunnerFinto:
     """Un runner che risponde un JSON valido MA dichiara la troncatura."""
-
-    def __init__(self, risposta: str, troncato: bool = True):
-        self.risposta = risposta
-        self.last_truncated = troncato
-        self.last_tool_calls = []
-        self.chiamate = 0
-
-    async def chat(self, **kwargs):
-        self.chiamate += 1
-        return self.risposta
+    return RunnerFinto(risposta, dopo={"last_truncated": True})
 
 
 @pytest.fixture()
@@ -246,7 +239,7 @@ def consumi(tmp_path):
 async def test_il_registro_dei_turni_scrive_TRONCATO(consumi):
     """Mutazione ESEGUITA: `misura_turno` che non legge il segnale -- rossa
     («riuscito»)."""
-    runner = _Troncato("x")
+    runner = _troncato("x")
     async with steering.misura_turno(consumi, runner, specie="analista",
                                      canale="catena") as turno:
         await runner.chat()
@@ -257,7 +250,7 @@ async def test_il_registro_dei_turni_scrive_TRONCATO(consumi):
 
 @pytest.mark.asyncio
 async def test_il_troncato_arriva_al_mestiere_anche_senza_archivio():
-    runner = _Troncato("x")
+    runner = _troncato("x")
     async with steering.misura_turno(None, runner, specie="analista",
                                      canale="catena") as turno:
         await runner.chat()
@@ -269,7 +262,7 @@ async def test_il_troncato_arriva_al_mestiere_anche_senza_archivio():
 async def test_l_osservatore_troncato_non_decide_niente(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
-        runner = _Troncato(json.dumps(
+        runner = _troncato(json.dumps(
             [{"id": "climate.camera_t", "dentro": True, "motivo": "scalda"}]))
 
         esito = await observer.reconsider(runner, archivio, _casa(),
@@ -286,7 +279,7 @@ async def test_l_osservatore_troncato_non_decide_niente(tmp_path):
 async def test_la_ricetta_troncata_non_si_scrive_ma_si_dice_perche(tmp_path):
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
     try:
-        runner = _Troncato(json.dumps(RICETTA_BUONA))
+        runner = _troncato(json.dumps(RICETTA_BUONA))
 
         esito = await rt.ask(runner, sapere, CASA, "dev1", objective="x",
                              who="prova", when_ts=1_758_000_000.0)
@@ -306,12 +299,12 @@ async def test_l_analista_troncato_non_scrive_l_analisi(tmp_path):
     try:
         for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
             store.replace_report(giorno, _resoconto(giorno))
-        runner = _Troncato(json.dumps({"osservazioni": []}))
+        runner = _troncato(json.dumps({"osservazioni": []}))
         app = {"observations": store, "llm_router": runner, "bridge_active": False}
 
         esito = await server.analyst_round(app)
 
-        assert runner.chiamate == 1
+        assert len(runner.chiamate) == 1
         assert esito["problemi"] == [steering.TRUNCATED_REASON]
         oggi = historian.today(historian.house_timezone(None)).isoformat()
         assert store.analysis(oggi) is None
@@ -360,7 +353,7 @@ async def test_il_freno_ferma_il_mestiere_dopo_N_troncati_di_fila(consumi, monke
     _troncati(consumi, "analista", 2)
 
     with pytest.raises(steering.TurnBraked):
-        async with steering.misura_turno(consumi, _Troncato("x"),
+        async with steering.misura_turno(consumi, _troncato("x"),
                                          specie="analista", canale="catena"):
             pytest.fail("il turno non doveva partire")
 

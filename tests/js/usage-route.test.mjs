@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La pagina `#/usage` («Consumi globali»), fetta «fix pre-UAT» voce C-1.
 
@@ -19,7 +20,13 @@ const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 const MESSAGGIO = "Sul percorso abbonamento i consumi non si misurano: la chat gira sull'abbonamento Claude.";
 
-async function monta(risposta) {
+/* `riepilogo` e' cio' che risponde `GET api/usage`: un corpo JSON (un 200) o
+   una `risposta(corpo, status)`. La pagina chiede anche la storia
+   (`api/usage/history`): prima la finta le rispondeva col riepilogo stesso,
+   che non ha `days`, cioe' un grafico vuoto -- qui lo si dice per esteso. */
+const STORIA_VUOTA = { days: [] };
+
+async function monta(riepilogo) {
   /* `common.js` prima non serviva: questa pagina aveva una copia privata
      delle sue funzioni di formattazione, e per lo stesso numero scriveva
      `1.3M` dove il riquadro della chat scriveva `1.28M`. Le copie sono uscite,
@@ -27,7 +34,7 @@ async function monta(risposta) {
      <script> che config.html carica PRIMA di questo (vedi l'ordine li'). La
      lista qui sotto adesso dice la verita' su cosa serve alla pagina. */
   const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
-  ctx.window.fetch = () => Promise.resolve(risposta());
+  fintoFetch(ctx.window, { 'api/usage': riepilogo, 'api/usage/history': STORIA_VUOTA });
   ctx.window.HirisUsageRoute.mount();
   await tick(0);
   await tick(0);
@@ -36,11 +43,7 @@ async function monta(risposta) {
 }
 
 test('C-1: in abbonamento la pagina Consumi DICE perché non ci sono numeri, invece di dire «errore»', async () => {
-  const { testo } = await monta(() => ({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve({ measured: false, reason: 'abbonamento', message: MESSAGGIO }),
-  }));
+  const { testo } = await monta({ measured: false, reason: 'abbonamento', message: MESSAGGIO });
 
   assert.ok(testo.includes(MESSAGGIO), 'la frase del server deve comparire per intero');
   assert.doesNotMatch(testo, /Errore caricamento consumi/,
@@ -48,11 +51,7 @@ test('C-1: in abbonamento la pagina Consumi DICE perché non ci sono numeri, inv
 });
 
 test('C-1: senza contatori non si offre di azzerarli', async () => {
-  const { outlet } = await monta(() => ({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve({ measured: false, reason: 'nessun_provider', message: MESSAGGIO }),
-  }));
+  const { outlet } = await monta({ measured: false, reason: 'nessun_provider', message: MESSAGGIO });
 
   /* Dalla fetta «i consumi, per modello» il pulsante non si nasconde: non
      viene disegnato affatto. Il fatto difeso e' lo stesso -- offrire di
@@ -63,21 +62,17 @@ test('C-1: senza contatori non si offre di azzerarli', async () => {
 });
 
 test('C-1: un guasto vero resta un guasto — la pagina non si confonde', async () => {
-  const { testo } = await monta(() => ({ ok: false, status: 500, json: () => Promise.resolve({}) }));
+  const { testo } = await monta(risposta({}, 500));
   assert.match(testo, /Errore caricamento consumi/,
     'un 500 non è una dichiarazione di non-misurabilità: va detto come errore');
 });
 
 test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', async () => {
-  const { outlet, testo } = await monta(() => ({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve({
-      measured: true, total_requests: 42, input_tokens: 1200,
-      output_tokens: 800, cost_eur: 1.5, last_reset: '2026-07-01T00:00:00Z',
-      partial_cost: false, sections: [],
-    }),
-  }));
+  const { outlet, testo } = await monta({
+    measured: true, total_requests: 42, input_tokens: 1200,
+    output_tokens: 800, cost_eur: 1.5, last_reset: '2026-07-01T00:00:00Z',
+    partial_cost: false, sections: [],
+  });
 
   assert.match(testo, /42/);
   assert.match(testo, /1\.2k/, 'i token si abbreviano, ma ci sono');
@@ -108,7 +103,7 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
       + '<div class="usage-row"><span class="usage-val" id="u-cost">—</span></div>'
       + '</div></body>',
   });
-  ctx.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(DATI) });
+  fintoFetch(ctx.window, { 'api/usage': DATI, 'api/usage/history': STORIA_VUOTA });
 
   await globalThis.loadUsage();          // il riquadro della chat
   ctx.window.HirisUsageRoute.mount();    // la pagina Consumi
@@ -139,9 +134,12 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
 });
 
 test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', async () => {
-  const { testo } = await monta(() => ({
-    ok: true, status: 200, json: () => Promise.resolve({ measured: true, total_requests: 0 }),
-  }));
+  /* Un'assenza vale solo su una pagina disegnata: senza il testimone qui
+     sotto la prova restava verde anche sulla pagina d'errore (T-06,
+     14/10/2026; mutazione ESEGUITA: `GET api/usage` a 500 -- rossa sul
+     testimone, prima verde). */
+  const { testo, outlet } = await monta({ ...MISURATO, total_requests: 0 });
+  assert.ok(outlet.querySelector('#usage-reset'), 'la pagina dei consumi non si è disegnata');
   assert.doesNotMatch(testo, /Chatbot/,
     'la 2.0 ha una chat sola: «Chatbot» è il vocabolario del prodotto vecchio');
 });
@@ -160,13 +158,10 @@ const MISURATO = {
 };
 
 test('i giri passati a consumo si leggono nella pagina, con chi e con quante volte', async () => {
-  const { testo } = await monta(() => ({
-    ok: true, status: 200,
-    json: () => Promise.resolve({ ...MISURATO, fallbacks: [
-      { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 22, last_ts: 1 },
-      { day: '2026-09-22', agent: 'ricette', reason: 'manca il token', count: 1, last_ts: 1 },
-    ] }),
-  }));
+  const { testo } = await monta({ ...MISURATO, fallbacks: [
+    { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 22, last_ts: 1 },
+    { day: '2026-09-22', agent: 'ricette', reason: 'manca il token', count: 1, last_ts: 1 },
+  ] });
 
   assert.match(testo, /analista/);
   assert.match(testo, /tetto giornaliero/);
@@ -179,12 +174,9 @@ test('chi non ha servito i giri lo dice il server, non la pagina', async () => {
      nome arriva in `fallbacks_from`, e il server lo chiede alla tabella dei
      provider. Mutazione ESEGUITA (07/10/2026): ripristinato il nome scritto a
      mano nelle due frasi -- rossa su «Un piano rinominato»; ripristinata. */
-  const { testo } = await monta(() => ({
-    ok: true, status: 200,
-    json: () => Promise.resolve({ ...MISURATO, fallbacks_from: 'Un piano rinominato', fallbacks: [
-      { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 1, last_ts: 1 },
-    ] }),
-  }));
+  const { testo } = await monta({ ...MISURATO, fallbacks_from: 'Un piano rinominato', fallbacks: [
+    { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 1, last_ts: 1 },
+  ] });
 
   assert.match(testo, /servito dal Un piano rinominato/);
   assert.doesNotMatch(testo, /Piano Claude Max/);
@@ -193,10 +185,10 @@ test('chi non ha servito i giri lo dice il server, non la pagina', async () => {
 test('senza ripieghi non compare nessun riquadro', async () => {
   /* Una sezione vuota che dice «nessun ripiego» ruberebbe spazio alla domanda
      con cui questa pagina si apre, che è quanto ho speso. */
-  const { outlet } = await monta(() => ({
-    ok: true, status: 200,
-    json: () => Promise.resolve({ ...MISURATO, fallbacks: [] }),
-  }));
+  const { outlet } = await monta({ ...MISURATO, fallbacks: [] });
 
+  /* Il testimone, come sopra: l'assenza del riquadro vale solo su una pagina
+     disegnata (T-06, mutazione ESEGUITA: `GET api/usage` a 500 -- rossa). */
+  assert.ok(outlet.querySelector('#usage-reset'), 'la pagina dei consumi non si è disegnata');
   assert.equal(outlet.querySelector('#usage-fallbacks'), null);
 });

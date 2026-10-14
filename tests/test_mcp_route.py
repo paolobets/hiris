@@ -89,7 +89,6 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     finally:
         coda.close()
         memoria.close()
-        casa.close()
 
 
 @pytest_asyncio.fixture

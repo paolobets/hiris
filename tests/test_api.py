@@ -2,7 +2,6 @@ import pathlib
 import re
 import sys
 from datetime import UTC
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -15,6 +14,8 @@ from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
+
+from tests._runner_finto import RunnerFinto
 
 
 def _cfg_version() -> str:
@@ -45,10 +46,7 @@ def reset_chat_stores():
 async def client(aiohttp_client, tmp_path):
     app = create_app()
 
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="Test response")
-    mock_runner.last_tool_calls = []
-    mock_runner.last_unanswered = False
+    mock_runner = RunnerFinto("Test response")
 
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
@@ -171,7 +169,7 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
         name="Energia", system_prompt="Sei un esperto di energia.",
     )
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="risposta energia")
+    runner.risposta = "risposta energia"
 
     resp = await client.post("/api/chat", json={
         "message": "quanto consumo?",
@@ -180,7 +178,7 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
     assert resp.status == 200
     data = await resp.json()
     assert data["response"] == "risposta energia"
-    call_kwargs = runner.chat.call_args.kwargs
+    call_kwargs = runner.ultima
     assert call_kwargs["system_prompt"] == "Sei un esperto di energia."
 
 
@@ -188,11 +186,11 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
 async def test_chat_senza_chatbot_id_usa_comunque_le_impostazioni(client):
     client.app["chat_settings"] = ChatSettings(system_prompt="Prompt di default HIRIS.")
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="risposta default")
+    runner.risposta = "risposta default"
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
-    call_kwargs = runner.chat.call_args.kwargs
+    call_kwargs = runner.ultima
     assert call_kwargs["system_prompt"] == "Prompt di default HIRIS."
 
 
@@ -204,14 +202,14 @@ async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
     perche' non seleziona piu' niente."""
     client.app["chat_settings"] = ChatSettings(system_prompt="Fallback prompt.")
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="fallback")
+    runner.risposta = "fallback"
 
     resp = await client.post("/api/chat", json={
         "message": "ciao",
         "agent_id": "non-esiste-123",
     })
     assert resp.status == 200
-    call_kwargs = runner.chat.call_args.kwargs
+    call_kwargs = runner.ultima
     assert call_kwargs["system_prompt"] == "Fallback prompt."
 
 
@@ -233,10 +231,7 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     differirebbero per `conversation_history` a prescindere da `chatbot_id`
     -- un rumore che nasconderebbe il confronto, non lo farebbe."""
     def _build(data_dir_name):
-        mock_runner = AsyncMock()
-        mock_runner.chat = AsyncMock(return_value="stessa risposta")
-        mock_runner.last_tool_calls = []
-        mock_runner.last_unanswered = False
+        mock_runner = RunnerFinto("stessa risposta")
         app = create_app()
         app["ha_client"] = CasaFinta(synthetic_inputs())
         app["chat_settings"] = ChatSettings(system_prompt="Prompt fisso.")
@@ -255,14 +250,14 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     })
     assert resp_con.status == 200
     body_con = await resp_con.json()
-    kwargs_con = dict(runner_con.chat.call_args.kwargs)
+    kwargs_con = dict(runner_con.ultima)
 
     app_senza, runner_senza = _build("senza")
     client_senza = await aiohttp_client(app_senza)
     resp_senza = await client_senza.post("/api/chat", json={"message": "ciao"})
     assert resp_senza.status == 200
     body_senza = await resp_senza.json()
-    kwargs_senza = dict(runner_senza.chat.call_args.kwargs)
+    kwargs_senza = dict(runner_senza.ultima)
 
     # `dispatcher` e' un oggetto per-app (un'istanza di ToolDispatcher
     # per `create_app()`), non qualcosa che `chatbot_id` influenza: due app
@@ -297,11 +292,11 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
         name="Haiku", system_prompt="Chat test", restrict_to_home=False,
     )
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="ok")
+    runner.risposta = "ok"
 
     await client.post("/api/chat", json={"message": "test"})
 
-    call_kwargs = runner.chat.call_args.kwargs
+    call_kwargs = runner.ultima
     assert call_kwargs["model"] == "auto"
     # fetta E4 Task 4: `max_tokens` non e' piu' un campo delle impostazioni
     # (era gia' inerte in pratica -- vedi handlers_chat.py) -- la chat usa
@@ -336,7 +331,7 @@ async def test_chat_persists_exchange_in_history(client):
     from hiris.app.chat_store import load_history
     data_dir = client.app["data_dir"]
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="stored response")
+    runner.risposta = "stored response"
 
     await client.post("/api/chat", json={"message": "persist me"})
 
@@ -360,7 +355,7 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     data_dir = client.app["data_dir"]
     client.app["chat_settings"] = ChatSettings(retention_days=5)
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="ok")
+    runner.risposta = "ok"
 
     store = _get_store(data_dir)
     vecchio_ts = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -382,7 +377,7 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
 
     await client.post("/api/chat", json={"message": "ciao adesso"})
 
-    call_kwargs = runner.chat.call_args.kwargs
+    call_kwargs = runner.ultima
     contenuti = [m["content"] for m in call_kwargs["conversation_history"]]
     assert "messaggio di dieci giorni fa" not in contenuti
 
@@ -404,9 +399,7 @@ async def test_chat_does_not_persist_toxic_response(client):
     from hiris.app.chat_store import load_history
     data_dir = client.app["data_dir"]
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(
-        return_value="Errore temporaneo del servizio AI. Riprova tra poco."
-    )
+    runner.risposta = "Errore temporaneo del servizio AI. Riprova tra poco."
 
     await client.post("/api/chat", json={"message": "fail me"})
 
@@ -424,7 +417,7 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
     from hiris.app.chat_store import load_history
     data_dir = client.app["data_dir"]
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value=TOOL_LEAK_USER_MSG)
+    runner.risposta = TOOL_LEAK_USER_MSG
 
     await client.post("/api/chat", json={"message": "leak me"})
 
@@ -471,11 +464,10 @@ async def test_chat_debug_tools_called_returns_objects(client):
     threw on t.input AFTER the answer had already rendered, surfacing a
     spurious "Errore di connessione. Riprova tra poco." with no backend error.
     """
-    from unittest.mock import AsyncMock
 
     runner = client.app["claude_runner"]
-    runner.chat = AsyncMock(return_value="Ecco i consumi energia")
-    runner.last_tool_calls = [
+    runner.risposta = "Ecco i consumi energia"
+    runner.dopo["last_tool_calls"] = [
         {"tool": "get_energy_history", "input": {"hours": 24}},
         {"tool": "get_home_status", "input": {}},
     ]

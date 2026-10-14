@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, stubFetch, asAdministrator } from './helpers/dom.mjs';
+import { loadScripts, asAdministrator } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 /* `config/main.js` è l'ultimo script di config.html ed è l'unico posto in cui
    OGNI route della SPA di configurazione viene registrata. Se il suo IIFE si
@@ -80,13 +81,12 @@ const ROUTE = [
 function avvia() {
   const ctx = loadScripts(COL_PALLINO, { html: HTML });
   asAdministrator(ctx.window);
-  // fetta E5 Task 8: mountChrome() non fa piu' NESSUNA fetch -- il badge
-  // `#nav-adv-count`, che interrogava una rotta uscita con la fetta E3 e
-  // scriveva `0` sul suo 404, e' uscito con la sua fonte. Lo stub resta
-  // perche' questo test simula "nessun modulo di route caricato" e la
-  // cornice potrebbe tornare a fare rete in futuro: senza, un domani il
-  // fallimento sarebbe "fetch is not a function" invece del vero motivo.
-  stubFetch(ctx.window, {});
+  // La cornice all'avvio chiede tema, versione e pallini (`api/config`,
+  // `api/health`, `api/pending`): qui non rispondono mai, perche' la prova
+  // guarda le route registrate, non cio' che il server dice. Fino al
+  // 14/10/2026 il finto rispondeva `{}` a tutto, e il commento qui diceva che
+  // la cornice non faceva nessuna richiesta (T-03).
+  fintoFetch(ctx.window, { 'api/config': maiRisposta, 'api/health': maiRisposta, 'api/pending': maiRisposta });
   return ctx;
 }
 

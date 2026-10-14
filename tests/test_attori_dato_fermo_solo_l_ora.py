@@ -47,9 +47,8 @@ from hiris.app.home_space.reader import build_home_space
 from hiris.app.mind.analyst import index
 from hiris.app.mind.operations import COVERAGE_LOW, FROZEN, MINIMUM_COVERAGE
 from hiris.app.mind.report import build_report, series_of_measures
-from hiris.app.proxy.entity_cache import _to_minimal
 from tests._casa_sintetica import synthetic_inputs
-from tests.test_attori_davanti_alla_fonte import _Cache
+from tests._specchio_finto import SpecchioFinto
 from tests.test_fonte_della_casa import _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -85,7 +84,7 @@ def _app():
         "dispositivi": [{"id": STATION, "name": "Stazione", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
     return {"knowledge": object(), "home_space_store": _Store(home_space),
-            "entity_cache": _Cache([_to_minimal(
+            "entity_cache": SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
 

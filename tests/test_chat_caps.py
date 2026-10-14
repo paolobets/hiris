@@ -37,7 +37,6 @@ New in this task:
 """
 import os
 import time
-from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
@@ -48,6 +47,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._runner_finto import RunnerFinto
 
 # Lo stesso filo che `request_thread` calcola per una richiesta di questo
 # file: l'app di prova non monta `middleware_internal_auth`, quindi
@@ -101,10 +101,7 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
     impostazioni = _make_impostazioni(max_chat_turns=max_chat_turns)
 
     if runner is None:
-        runner = AsyncMock()
-        runner.chat = AsyncMock(return_value="sync reply")
-        runner.last_tool_calls = []
-        runner.last_unanswered = False
+        runner = RunnerFinto("sync reply")
 
     app = web.Application()
     app["llm_router"] = runner
@@ -274,7 +271,7 @@ async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tm
         second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 200
         assert (await second.json())["response"] == "sync reply"
-    runner.chat.assert_awaited_once()
+    assert len(runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -312,7 +309,7 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
         body = await resp.json()
         assert body["response"] == "sync reply"
 
-    runner.chat.assert_called_once()
+    assert len(runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -355,12 +352,7 @@ async def test_sync_path_degrades_gracefully_on_runner_backend_error(tmp_path):
     a real regression this test guards against)."""
     from hiris.app.claude_runner import RunnerBackendError
 
-    runner = AsyncMock()
-    runner.chat = AsyncMock(
-        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
-    )
-    runner.last_tool_calls = []
-    runner.last_unanswered = False
+    runner = RunnerFinto(RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco."))
     app, _q, runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=False, tetto_giornaliero=0, runner=runner)
 
@@ -405,4 +397,4 @@ async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
         # Il primo job e' ancora pending E il tetto (1) e' gia' consumato.
         second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 409
-    runner.chat.assert_not_awaited()
+    assert runner.chiamate == []

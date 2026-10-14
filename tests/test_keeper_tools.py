@@ -19,7 +19,7 @@ from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -171,7 +171,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     solo se `verification()` e' arrivata fino in fondo al ramo giusto senza
     sollevare.
     """
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -218,11 +218,11 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     sicurezza (la casa non e' vuota, e' il registro che non e' stato letto),
     esattamente cio' da cui mette in guardia `action/actuator.py::_MUTE_REGISTRY`.
     """
-    # `cache=_CacheFinta()`: senza uno specchio dello stato leggibile
+    # `cache=_cache_finta()`: senza uno specchio dello stato leggibile
     # `_verify_now` si ferma prima (`_state_readings()` -> `None` -> nessun
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
     # esiste per chiudere -- vedi `verification()` in `action/verification.py`.
-    d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -273,7 +273,7 @@ async def test_un_chiedi_nasce_anche_senza_registro(promesse):
 
 @pytest.mark.asyncio
 async def test_un_fai_valido_nasce(promesse):
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -307,7 +307,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     ha = _house_with_services()
     registry = ServiceRegistry()
     assert registry.empty()  # la premessa esatta del difetto: mai caricato
-    d = _dispatcher(promesse, registry=registry, ha=ha, cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=registry, ha=ha, cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -334,7 +334,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     # Nessun canale e nessuna porta: in produzione la porta si monta col
     # client di Home Assistant, e senza di lei un `fai` non si puo' verificare
     # (Tappa 7 T1). Il rifiuto e' quello onesto dello strumento.
-    d = _dispatcher(promesse, registry=registry, cache=_CacheFinta(), actuator=None)
+    d = _dispatcher(promesse, registry=registry, cache=_cache_finta(), actuator=None)
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
         "quando": _fra(60),
@@ -347,7 +347,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
 
 @pytest.mark.asyncio
 async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica la temperatura",
         "quando": _fra(60),
@@ -371,7 +371,7 @@ async def test_l_istantanea_del_chiedi_resta_alla_profondita_corta(promesse):
     nel prompt di chi la riprende, campi che il confronto non usa.
 
     Mutazione ESEGUITA: `_snapshot` che rende alla profondita' media -- rossa."""
-    cache = _CacheFinta()
+    cache = _cache_finta()
     d = _dispatcher(promesse, registry=_RegistroFinto(), cache=cache)
     esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica la temperatura",
@@ -392,7 +392,7 @@ async def test_l_istantanea_passa_dal_filtro_di_riservatezza(promesse):
     usciva da `promise` e da `agenda`, e da nessun'altra porta.
 
     Rossa prima del fix (lo stato era «Lavoro»)."""
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheConUnaPersona())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_cache_persona())
     esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica dove e' Marta",
         "quando": _fra(60),
@@ -416,7 +416,7 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_at_birt
     su quel test gemello: un rifiuto generico che non nomina nulla
     lascerebbe passare una guardia rotta che rifiuta sempre, a caso.
     """
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_cache_finta())
     esito = await d.dispatch("promise", {
         "specie": "chiedi", "frase": "verifica il soggiorno",
         "quando": _fra(60),
@@ -461,28 +461,22 @@ async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verifi
 
 
 def test_la_cache_finta_riproduce_la_forma_minimale_vera():
-    """`_CacheFinta.all_states()` non inventa la forma: deve coincidere,
-    campo per campo, con cio' che `_to_minimal()` -- la funzione VERA di
-    `proxy/entity_cache.py` -- produce sulle stesse entita' HA grezze.
+    """Le righe dello specchio delle prove sono quelle di `_to_minimal()` --
+    la funzione VERA di `proxy/entity_cache.py` -- sulle stesse entita' HA
+    grezze, e portano l'unita' DI PRIMO LIVELLO (`unit`), non dentro gli
+    attributi: e' la forma su cui il difetto R6 si e' nascosto.
 
-    Questo e' il test che pinna il doppio (mutazione 2 del task R6): se
-    qualcuno rimettesse in `_CacheFinta` la forma HA grezza
-    (`attributes.unit_of_measurement` invece di `unit` di primo livello),
-    questo confronto fallirebbe SUBITO, invece di lasciare che il doppio si
-    allontani in silenzio dal codice vero -- esattamente come e' successo
-    con la forma precedente.
+    Dal 14/10/2026 (T-02) lo specchio delle prove E' un `EntityCache`, quindi
+    l'uguaglianza con `_to_minimal` vale per costruzione: cio' che questa
+    prova sorveglia ancora davvero e' la promozione dell'unita' nella
+    proiezione vera (se `_to_minimal` smettesse di promuoverla, la seconda
+    asserzione cadrebbe).
     """
-    grezzi = [
-        {"entity_id": "light.studio", "state": "off",
-         "attributes": {"friendly_name": "Studio"}},
-        {"entity_id": "sensor.camera_t", "state": "21.4",
-         "attributes": {"friendly_name": "Camera T",
-                         "unit_of_measurement": "°C",
-                         "device_class": "temperature",
-                         "state_class": "measurement"}},
-    ]
-    attesi = [_to_minimal(g) for g in grezzi]
-    assert _CacheFinta().all_states() == attesi
+    righe = _cache_finta().all_states()
+    assert righe == [_to_minimal(g) for g in _grezzi_casa()]
+    termometro = next(r for r in righe if r["id"] == "sensor.camera_t")
+    assert termometro["unit"] == "°C"
+    assert "unit_of_measurement" not in repr(termometro.get("attributes"))
 
 
 @pytest.mark.asyncio
@@ -642,64 +636,31 @@ class _RegistroTracciaScaldamento:
             "ensure_fresh non doveva essere chiamato senza un canale HA")
 
 
-class _CacheFinta(MirrorById):
-    """Il doppio dello specchio dello stato.
+def _grezzi_casa() -> list[dict]:
+    """Gli stati GREZZI di Home Assistant delle due entita' della casa delle
+    prove: una luce spenta e un termometro."""
+    return [
+        raw_state("light.studio", "off", "Studio"),
+        raw_state("sensor.camera_t", "21.4", "Camera T", unit_of_measurement="°C",
+                  device_class="temperature", state_class="measurement"),
+    ]
 
-    `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`); il
-    metodo che porta gli stati e' `all_states()`, non `get_all()` -- e'
-    quello vero di `EntityCache`, lo stesso che legge sia
-    `ToolDispatcher._specchio` sia `action/actuator.py::Porta._stati`.
-    Un doppio con `get_all()` non avrebbe mai potuto produrre il difetto che
-    il test del passo 7 chiede di provare: `_state_readings()` avrebbe sempre
-    ricevuto una cache "senza `all_states`" e il test sarebbe passato anche
-    con `_verify_now` saltata per intero.
 
-    Il difetto R6: `all_states()` NON e' lo stato grezzo di Home Assistant
-    (`entity_id`/`attributes.unit_of_measurement`/`attributes.friendly_name`)
-    -- e' cio' che produce `proxy/entity_cache.py::_to_minimal`, che PROIETTA
-    quella forma su una diversa: chiave `id` (non `entity_id`), `name` al
-    posto di `attributes.friendly_name`, e soprattutto `unit` DI PRIMO
-    LIVELLO al posto di `attributes.unit_of_measurement`. Prima di questo
-    fix il doppio riproduceva la forma grezza -- `{"attributes":
-    {"unit_of_measurement": "°C"}}` -- e cosi' facendo nascondeva il
-    disallineamento che il codice vero ha in produzione, invece di provarlo:
-    e' il decimo "test che non puo' fallire" di questo progetto (R6 della
-    spec 2026-08-20-i-riferimenti).
+def _cache_finta(*altri) -> SpecchioFinto:
+    """Lo specchio VERO dello stato, riempito con `_grezzi_casa` (piu' `altri`).
 
-    Le due voci sotto sono `_to_minimal()` applicata a mano alle stesse
-    entita' HA grezze che `test_la_cache_finta_riproduce_la_forma_minimale_vera`
-    ricalcola con la funzione vera: se questo elenco tornasse a imitare la
-    forma grezza, quel test lo direbbe SUBITO (mutazione 2 del task).
+    `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`), e le
+    righe sono quelle che produce `proxy/entity_cache.py::_to_minimal`, che
+    PROIETTA la forma grezza su una diversa: chiave `id` (non `entity_id`),
+    `name` al posto di `attributes.friendly_name`, e soprattutto `unit` DI
+    PRIMO LIVELLO al posto di `attributes.unit_of_measurement`. Il difetto
+    R6 della spec 2026-08-20-i-riferimenti nasceva da un doppio che
+    riproduceva la forma grezza e nascondeva il disallineamento: con lo
+    specchio vero (T-02, 14/10/2026) la forma non si imita piu', si eredita.
     """
-    loaded = True
-
-    def all_states(self):
-        return [
-            # `_to_minimal({"entity_id": "light.studio", "state": "off",
-            #               "attributes": {"friendly_name": "Studio"}})`:
-            # dominio "light" senza "brightness"/"color_temp" negli
-            # attributi -> nessuna chiave "attributes" nel risultato.
-            {"id": "light.studio", "state": "off", "name": "Studio",
-             "unit": None, "domain": "light", "device_class": None,
-             "state_class": None, "last_changed": None},
-            # `_to_minimal({"entity_id": "sensor.camera_t", "state": "21.4",
-            #               "attributes": {"friendly_name": "Camera T",
-            #                              "unit_of_measurement": "°C",
-            #                              "device_class": "temperature",
-            #                              "state_class": "measurement"}})`:
-            # dominio "sensor" non e' in `_DOMAIN_ATTRS` -> nessuna chiave
-            # "attributes" nemmeno qui.
-            {"id": "sensor.camera_t", "state": "21.4", "name": "Camera T",
-             "unit": "°C", "domain": "sensor", "device_class": "temperature",
-             "state_class": "measurement", "last_changed": None},
-        ]
+    return SpecchioFinto([*_grezzi_casa(), *altri])
 
 
-class _CacheConUnaPersona(_CacheFinta):
+def _cache_persona() -> SpecchioFinto:
     """Lo specchio con una persona fuori casa, in una zona che ha un nome."""
-
-    def all_states(self):
-        return super().all_states() + [
-            {"id": "person.marta", "state": "Lavoro", "name": "Marta",
-             "unit": None, "domain": "person", "device_class": None,
-             "state_class": None, "last_changed": None}]
+    return _cache_finta(raw_state("person.marta", "Lavoro", "Marta"))

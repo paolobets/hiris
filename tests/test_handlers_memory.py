@@ -78,7 +78,6 @@ async def test_api_memoria_mostra_la_frase_e_cosa_hiris_ha_capito(aiohttp_client
     assert body["total"] == 1
     assert body["shown"] == 1
 
-    home_space.close()
     memory.close()
 
 
@@ -140,7 +139,6 @@ async def test_una_correzione_con_un_ancora_inesistente_viene_rifiutata(aiohttp_
     r = memory.fetch()[0]
     assert r["ancore"] == []      # il ricordo resta com'era: nessuna scrittura a meta'
 
-    home_space.close()
     memory.close()
 
 
@@ -200,7 +198,6 @@ async def test_una_correzione_con_ancore_e_anagrafe_mai_letta_dice_la_ragione_ve
     assert any("non si puo' verificare" in p for p in body["problemi"])
     assert not any("non esiste nell'anagrafe" in p for p in body["problemi"])
 
-    home_space.close()
     memory.close()
 
 
@@ -226,7 +223,6 @@ async def test_get_con_anagrafe_mai_letta_non_dichiara_le_ancore_sparite(
     assert tether["esiste"] is None
     assert tether["nome_attuale"] is None
 
-    home_space.close()
     memory.close()
 
 
@@ -397,7 +393,6 @@ async def test_correggere_la_grandezza_ridedduce_l_unita(aiohttp_client, tmp_pat
     assert r["grandezza"] == "humidity"
     assert r["unita"] == "%"          # rideddotta, non piu' "°C"
 
-    home_space.close()
     memory.close()
 
 
@@ -506,5 +501,4 @@ async def test_le_rotte_dei_ricordi_chiedono_l_indice_alla_casa(
     assert (await client.get("/api/memories")).status == 200
     assert built == [1, 1]
 
-    home_space.close()
     memory.close()

@@ -41,7 +41,6 @@ Real APIs verified before writing this test (matches Task 1's report):
 import os
 import time
 from datetime import UTC
-from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
@@ -53,6 +52,7 @@ from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import PRIORITY_CHAT, ReasoningQueue
 from tests._avvio import started_app  # noqa: F401
+from tests._runner_finto import RunnerFinto
 
 # Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
 # volta (`request_thread`) e lo usa per cronologia, limite, 409 e job. L'app
@@ -112,10 +112,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
     impostazioni = _make_impostazioni(max_chat_turns=max_chat_turns)
 
     if runner is None:
-        runner = AsyncMock()
-        runner.chat = AsyncMock(return_value="sync reply")
-        runner.last_tool_calls = []
-        runner.last_unanswered = False
+        runner = RunnerFinto("sync reply")
 
     app = web.Application()
     app["llm_router"] = runner
@@ -150,7 +147,7 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
         assert body["status"] == "pending"
         assert isinstance(body["job_id"], str) and body["job_id"]
 
-    runner.chat.assert_not_called()
+    assert runner.chiamate == []
 
     job = q.get(body["job_id"])
     assert job["kind"] == "chat"
@@ -214,7 +211,7 @@ async def test_flag_on_bridge_off_falls_back_to_sync(tmp_path):
         body = await resp.json()
         assert body["response"] == "sync reply"
 
-    runner.chat.assert_called_once()
+    assert len(runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -228,7 +225,7 @@ async def test_flag_off_uses_sync_path_even_with_bridge_on(tmp_path):
         body = await resp.json()
         assert body["response"] == "sync reply"
 
-    runner.chat.assert_called_once()
+    assert len(runner.chiamate) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +254,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
         assert body["turns"] == 1
         assert body["limit"] == 1
 
-    runner.chat.assert_not_called()
+    assert runner.chiamate == []
     # Nothing must have been enqueued into the reasoning queue either.
     assert q.claim(now=time.time()) is None
 
@@ -282,7 +279,7 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
         body = await resp.json()
         assert body["status"] == "pending"
 
-    runner.chat.assert_not_called()
+    assert runner.chiamate == []
 
 
 # ---------------------------------------------------------------------------
@@ -1041,7 +1038,6 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
             ruolo=soffitto_atteso.get("ruolo"),
             role_known=_ruolo_letto(soffitto_atteso))
     finally:
-        archivio_casa.close()
         archivio_memoria.close()
 
 
@@ -1105,7 +1101,7 @@ async def test_il_turno_sincrono_chiede_sempre_auto_e_quindi_sempre_la_catena(tm
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
-    assert runner.chat.await_args.kwargs["model"] == "auto"
+    assert runner.ultima["model"] == "auto"
 
 
 @pytest.mark.asyncio
@@ -1217,7 +1213,7 @@ async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_pat
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
         assert (await resp.json())["response"] == "sync reply"
-    runner.chat.assert_awaited_once()
+    assert len(runner.chiamate) == 1
     # E niente e' stato accodato: non si mette un messaggio in una coda che
     # nessuno servira'.
     assert q.count_exchanges_today() == 0
@@ -1230,7 +1226,7 @@ async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tm
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
-    runner.chat.assert_awaited_once()
+    assert len(runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -1246,7 +1242,7 @@ async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 409
-    runner.chat.assert_not_awaited()
+    assert runner.chiamate == []
 
 
 @pytest.mark.asyncio
@@ -1394,7 +1390,7 @@ async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sul
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "done", "reply": "sync reply"}
-    kwargs = runner.chat.await_args.kwargs
+    kwargs = runner.ultima
     # La cronologia del job CONTIENE GIA' il turno dell'utente: passarla intera
     # e ripetere il messaggio lo manderebbe due volte. In coda c'e' l'ora di
     # ADESSO, non quella dell'accodamento (D-51, 13/10/2026).
@@ -1433,7 +1429,7 @@ async def test_due_poll_concorrenti_ripiegano_una_volta_sola(tmp_path):
     async with TestClient(TestServer(app)) as client:
         await asyncio.gather(client.get("/api/chat/reply/" + jid),
                              client.get("/api/chat/reply/" + jid))
-    assert runner.chat.await_count == 1
+    assert len(runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -1447,7 +1443,7 @@ async def test_un_job_non_ancora_scaduto_continua_ad_aspettare_il_piano(tmp_path
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "pending"}
-    runner.chat.assert_not_awaited()
+    assert runner.chiamate == []
 
 
 @pytest.mark.asyncio
@@ -1546,7 +1542,7 @@ async def test_mentre_ripiega_la_conversazione_e_occupata(tmp_path):
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})
         assert resp.status == 409
-    runner.chat.assert_not_awaited()
+    assert runner.chiamate == []
 
 
 @pytest.mark.asyncio
@@ -1561,7 +1557,7 @@ async def test_un_ripiego_in_corso_si_aspetta_e_non_si_ritenta(tmp_path):
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "pending"}
-    runner.chat.assert_not_awaited()
+    assert runner.chiamate == []
 
 
 # ---------------------------------------------------------------------------
@@ -1585,7 +1581,7 @@ async def test_ramo_sincrono_l_esito_in_testa_arriva_al_modello(tmp_path):
         resp = await client.post("/api/chat", json={"message": "e quindi?"})
         assert resp.status == 200
 
-    assert "21,4 gradi in bagno" in runner.chat.await_args.kwargs["context_str"]
+    assert "21,4 gradi in bagno" in runner.ultima["context_str"]
 
 
 @pytest.mark.asyncio
@@ -1622,6 +1618,6 @@ async def test_una_conversazione_che_comincia_dall_utente_ha_il_contesto_di_prim
         await client.post("/api/chat", json={"message": "e quindi?"})
 
     soffitto = await ceiling_for(app, None)
-    assert runner.chat.await_args.kwargs["context_str"] == compose_chat_context(
+    assert runner.ultima["context_str"] == compose_chat_context(
         app, data_dir, thread=THREAD_TEST, soggetto=None,
         ruolo=soffitto.get("ruolo"), role_known=_ruolo_letto(soffitto))

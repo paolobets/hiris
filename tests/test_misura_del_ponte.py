@@ -105,13 +105,22 @@ def test_una_misura_rotta_non_fa_cadere_il_turno():
         ponte.set_turn_logger(None)
 
 
-def test_senza_gancio_non_succede_niente():
+def test_senza_gancio_non_succede_niente(caplog):
     """L'add-on puo' girare senza archivio dei consumi: `server.py` collega
-    il gancio solo quando c'e'."""
+    il gancio solo quando c'e'. Niente riga e niente avvertimento: l'assenza
+    del gancio e' un caso normale, non un guasto.
+
+    Mutazione ESEGUITA (14/10/2026, T-06): tolto il ritorno anticipato su
+    `_log_turn is None` -- rossa (l'avvertimento «la misura del turno del
+    ponte non si e' potuta scrivere»). Prima la prova non verificava niente:
+    la rete sotto inghiottiva il guasto e restava verde."""
     ponte.set_turn_logger(None)
-    ponte._measure_turn({"job_id": "j4", "kind": "chat"}, duration_ms=1,
-                           tools=[], occurrence=_occorrenza(),
-                           outcome="riuscito")
+    with caplog.at_level("WARNING", logger="hiris.agent"):
+        riga = ponte._measure_turn({"job_id": "j4", "kind": "chat"}, duration_ms=1,
+                                   tools=[], occurrence=_occorrenza(),
+                                   outcome="riuscito")
+    assert riga is None
+    assert caplog.records == []
 
 
 def test_il_funnel_delle_risposte_misura():

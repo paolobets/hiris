@@ -26,6 +26,7 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
 from hiris.app.mind.scope import OBSERVER
 from hiris.app.mind.store import ObservationsStore
+from tests._runner_finto import RunnerFinto
 
 
 @pytest.fixture
@@ -68,31 +69,21 @@ def _casa(**extra):
     return House(casa, Mirror(state={e["id"]: "on" for e in entita}))
 
 
-class _Modello:
+async def _dichiara_modello(runner, **kwargs):
+    # Come i runner veri: il modello che ha risposto lo dichiara il runner,
+    # nella misura del giro.
+    raccoglitore = _misura_corrente()
+    if raccoglitore is not None:
+        raccoglitore(1, {"model": "gpt-4o", "output_tokens": 1})
+
+
+def _modello(risposta="[]", *, solleva=False) -> RunnerFinto:
     """Il runner finto. Registra cosa gli e' stato chiesto -- il prompt e'
     meta' di questa fetta, e una finta che lo butti via non potrebbe mai
-    vederlo sbagliato."""
-
-    def __init__(self, risposta="[]", *, solleva=False):
-        self.risposta = risposta
-        self.solleva = solleva
-        self.chiamate = []
-
-    async def chat(self, *, user_message, system_prompt="", model="auto",
-                   max_tokens=0, **kw):
-        # Solo per NOME: `LLMRouter.chat` prende `**kwargs` e basta. Una finta
-        # che accetti anche il posizionale lascerebbe passare una chiamata che
-        # in produzione morirebbe al primo giro.
-        self.chiamate.append({"domanda": user_message, "sistema": system_prompt,
-                              "modello": model, "altri": kw})
-        # Come i runner veri: il modello che ha risposto lo dichiara il
-        # runner, nella misura del giro.
-        raccoglitore = _misura_corrente()
-        if raccoglitore is not None:
-            raccoglitore(1, {"model": "gpt-4o", "output_tokens": 1})
-        if self.solleva:
-            raise RuntimeError("il modello non risponde")
-        return self.risposta
+    vederlo sbagliato. Come `LLMRouter.chat`, accetta solo argomenti per
+    NOME: una chiamata posizionale morirebbe qui come in produzione."""
+    return RunnerFinto(RuntimeError("il modello non risponde") if solleva else risposta,
+                       turno=_dichiara_modello)
 
 
 # -- la casa che gli compete -------------------------------------------
@@ -254,7 +245,7 @@ def test_una_voce_malformata_si_salta_senza_buttare_le_altre():
 
 @pytest.mark.asyncio
 async def test_le_decisioni_finiscono_nell_archivio_col_loro_autore(archivio):
-    modello = _Modello(
+    modello = _modello(
         '[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda la casa"},'
         ' {"id": "sensor.presa_energia", "dentro": false, "motivo": "doppione del contatore"}]')
 
@@ -277,7 +268,7 @@ async def test_l_osservatore_non_decide_su_cio_che_non_gli_e_stato_mostrato(arch
 
     Mutazione che la uccide: scrivere ogni voce che arriva.
     """
-    modello = _Modello(
+    modello = _modello(
         '[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda"},'
         ' {"id": "sensor.inventato", "dentro": true, "motivo": "chissa"}]')
 
@@ -293,7 +284,7 @@ async def test_una_decisione_senza_motivo_non_entra_e_si_CONTA(archivio):
     """L'archivio la rifiuta (`decide_scope`), e il giro deve saperlo: un
     conteggio che dicesse «2 decise» quando una e' stata buttata sarebbe un
     numero non misurato scritto come misurato."""
-    modello = _Modello(
+    modello = _modello(
         '[{"id": "climate.camera_t", "dentro": true, "motivo": "   "},'
         ' {"id": "sensor.presa_energia", "dentro": true, "motivo": "pesa"}]')
 
@@ -314,7 +305,7 @@ async def test_un_modello_che_non_risponde_non_scrive_NIENTE(archivio):
     Mutazione che la uccide: annotare la riconsiderazione fuori dal ramo
     riuscito.
     """
-    modello = _Modello(solleva=True)
+    modello = _modello(solleva=True)
 
     esito = await observer.reconsider(modello, archivio, _casa(),
                                       reason="prima volta", now=1000.0)
@@ -326,7 +317,7 @@ async def test_un_modello_che_non_risponde_non_scrive_NIENTE(archivio):
 
 @pytest.mark.asyncio
 async def test_una_risposta_illeggibile_non_annota_un_giro_riuscito(archivio):
-    modello = _Modello("non oggi")
+    modello = _modello("non oggi")
 
     esito = await observer.reconsider(modello, archivio, _casa(),
                                       reason="prima volta", now=1000.0)
@@ -340,7 +331,7 @@ async def test_il_giro_riuscito_si_annota_con_la_ragione_e_la_misura(archivio):
     """La pagina dira' «l'ultima volta e' stata il 9, perche' era comparso un
     termostato nuovo, e la cadenza e' 84 ore perche' Home Assistant ricorda 7
     giorni». Tutti e quattro i numeri vengono da qui."""
-    modello = _Modello('[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda"}]')
+    modello = _modello('[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda"}]')
 
     await observer.reconsider(modello, archivio, _casa(), reason="e' comparso qualcosa",
                               window_s=604800.0, cadence_s=302400.0, now=1000.0)
@@ -369,13 +360,13 @@ async def test_l_osservatore_si_dichiara_al_registro_dei_turni(archivio, tmp_pat
     from hiris.app.usage.store import UsageStore
 
     consumi = UsageStore(str(tmp_path / "consumi.db"))
-    modello = _Modello("[]")
+    modello = _modello("[]")
 
     await observer.reconsider(modello, archivio, _casa(), reason="x", now=1000.0,
                               measurements=consumi)
 
-    assert "agent_type" not in modello.chiamate[0]["altri"]
-    assert modello.chiamate[0]["modello"] == "auto"
+    assert "agent_type" not in modello.chiamate[0]
+    assert modello.chiamate[0].get("model", "auto") == "auto"
     [turno] = consumi.turns()
     assert (turno["species"], turno["model"]) == (OBSERVER_SPECIES, "gpt-4o")
 
@@ -412,13 +403,13 @@ def test_il_turno_del_ponte_porta_la_STESSA_domanda_del_giro_sincrono(archivio):
     import asyncio
 
     casa = _casa()
-    modello = _Modello("[]")
+    modello = _modello("[]")
     asyncio.run(observer.reconsider(modello, archivio, casa, reason="x", now=1000.0))
 
     turno = observer.bridge_turn(archivio, casa)
 
     assert (turno["history"][0]["content"] + chr(10) + turno["istruzione"]
-            == modello.chiamate[0]["domanda"])
+            == modello.chiamate[0]["user_message"])
 
 
 def test_il_turno_del_ponte_porta_lo_STESSO_mestiere(archivio):
@@ -583,14 +574,11 @@ async def test_sulla_CATENA_nessuno_risponde_e_si_dice_cosi(archivio):
 
     Mutazione ESEGUITA: `reconsider` che passa la risposta senza
     `chain_answer` -- rossa («non e' un JSON leggibile»)."""
-    from unittest.mock import AsyncMock, MagicMock
-
     from hiris.app.claude_runner import RunnerBackendError
     from hiris.app.llm_router import LLMRouter
     from hiris.app.steering import NO_ANSWER_REASON
 
-    giu = MagicMock()
-    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    giu = RunnerFinto(RunnerBackendError("Errore Claude."))
     router = LLMRouter(claude=giu, model_chain=["claude"])
 
     esito = await observer.reconsider(router, archivio, _casa(),

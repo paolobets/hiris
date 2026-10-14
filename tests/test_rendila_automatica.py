@@ -25,28 +25,28 @@ from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 from tests.test_api_proposte import _richiesta
 from tests.test_construction_workshop import _intento, banco  # noqa: F401
 
 _SERRATURA = [{"action": "lock.unlock", "target": {"entity_id": "lock.ingresso"}}]
 
 
-class _Modello:
+class _Modello(RunnerFinto):
     """Il modello sulla catena: esegue le chiamate di strumento col
-    dispatcher del turno, poi risponde."""
+    dispatcher del turno, poi risponde. Sottoclasse solo per tenere cio' che
+    gli strumenti hanno risposto: `chat` e' quella di `RunnerFinto`."""
 
-    def __init__(self, chiamate, risposta):
-        self.chiamate = chiamate
-        self.risposta = risposta
+    def __init__(self, passi, risposta):
+        super().__init__(turno=self._passo)
+        self.passi = passi
+        self.finale = risposta
         self.risultati: list[dict] = []
-        self.strumenti: list[str] = []
-        self.last_tool_calls: list = []
 
-    async def chat(self, **kwargs):
-        self.strumenti = [d["name"] for d in kwargs.get("tools") or []]
-        for nome, argomenti in self.chiamate:
+    async def _passo(self, runner, **kwargs):
+        for nome, argomenti in self.passi:
             self.risultati.append(await kwargs["dispatcher"].dispatch(nome, argomenti))
-        return self.risposta(self.risultati) if callable(self.risposta) else self.risposta
+        return self.finale(self.risultati) if callable(self.finale) else self.finale
 
 
 @pytest.fixture()

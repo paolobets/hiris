@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadScripts, tick, staticSnapshotDir } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 /* Task B8: build-check.test.mjs prova il modulo condiviso ISOLATO, chiamando
    `verifica()` a mano. Non basta -- il difetto n.1 ripetuto in questa
@@ -64,8 +65,18 @@ function fixtureHtml(buildLocale) {
   </body>`;
 }
 
-function jsonResponse(body) {
-  return { ok: true, status: 200, json: async () => body };
+/* Gli indirizzi che il boot della chat chiede davvero. Conta solo
+   `api/health`, che porta il build del server: gli altri la pagina li chiede
+   al boot ma queste prove non li guardano, e restano senza risposta. */
+function rete(window, buildRemoto) {
+  return fintoFetch(window, {
+    'api/health': { status: 'ok', version: '3.0.0', build: buildRemoto },
+    'api/config': maiRisposta,
+    'api/chat-settings': maiRisposta,
+    'api/chat/history': maiRisposta,
+    'api/chat/conversations': maiRisposta,
+    'api/pending': maiRisposta,
+  });
 }
 
 /* Carica tutto TRANNE chat/main.js, stubba fetch/matchMedia/setInterval, poi
@@ -82,11 +93,7 @@ async function avvia(t, { buildLocale, buildRemoto }) {
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
   try { ctx.window.sessionStorage.clear(); } catch {}
-  ctx.window.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: buildRemoto });
-    return jsonResponse({});
-  };
+  rete(ctx.window, buildRemoto);
 
   const veroSet = globalThis.setInterval;
   globalThis.setInterval = () => 0; // non serve osservare i timer qui, solo evitare che restino pendenti
@@ -155,11 +162,7 @@ test('boot della chat: HirisBuildCheck presente ma verifica() solleva dentro -- 
     matches: false, media: '', addListener() {}, removeListener() {},
     addEventListener() {}, removeEventListener() {},
   });
-  ctx.window.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: 'stamp-nuovo' });
-    return jsonResponse({});
-  };
+  rete(ctx.window, 'stamp-nuovo');
   ctx.window.HirisBuildCheck.verifica = () => {
     throw new Error('SecurityError simulato -- window.location.reload() in un iframe sandboxed');
   };
@@ -196,11 +199,7 @@ test('boot della chat: guscio precedente a B8 (senza build-check.js) -- il palli
     matches: false, media: '', addListener() {}, removeListener() {},
     addEventListener() {}, removeEventListener() {},
   });
-  ctx.window.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '3.0.0', build: 'stamp-nuovo' });
-    return jsonResponse({});
-  };
+  rete(ctx.window, 'stamp-nuovo');
 
   const veroSet = globalThis.setInterval;
   globalThis.setInterval = () => 0;

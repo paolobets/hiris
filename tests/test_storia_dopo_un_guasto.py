@@ -31,10 +31,9 @@ async def _written_after(aiohttp_client, tmp_path, monkeypatch, **runner_attr):
 async def test_il_ramo_sincrono_scrive_la_domanda_anche_se_il_turno_cade(
         aiohttp_client, tmp_path, monkeypatch):
     """Rossa sul codice di prima: nessuna scrittura."""
-    from unittest.mock import AsyncMock
     scritti = await _written_after(
         aiohttp_client, tmp_path, monkeypatch,
-        chat=AsyncMock(side_effect=RunnerBackendError("Errore Claude.")))
+        risposta=RunnerBackendError("Errore Claude."))
     assert scritti == [["user"]]
 
 
@@ -48,7 +47,7 @@ async def test_un_turno_senza_risposta_non_scrive_la_frase_di_hiris(
     Mutazione ESEGUITA il 13/10/2026: la risposta scritta senza guardare
     `turn.answered` -- rossa."""
     scritti = await _written_after(aiohttp_client, tmp_path, monkeypatch,
-                                  last_unanswered=True)
+                                  dopo={"last_unanswered": True})
     assert scritti == [["user"]]
 
 
@@ -72,15 +71,14 @@ async def test_dopo_un_turno_sincrono_caduto_il_turno_dopo_non_manda_due_domande
 
     Rossa sul codice di prima: la storia del secondo turno finiva con
     «accendi la luce»."""
-    from unittest.mock import AsyncMock
     client, runner = await _build_chat_client(aiohttp_client, tmp_path)
-    riuscito = runner.chat
-    runner.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    riuscito = runner.risposta
+    runner.risposta = RunnerBackendError("Errore Claude.")
     assert (await client.post("/api/chat", json={"message": "accendi la luce"})).status == 200
 
-    runner.chat = riuscito
+    runner.risposta = riuscito
     assert (await client.post("/api/chat", json={"message": "e adesso?"})).status == 200
-    kwargs = runner.chat.call_args.kwargs
+    kwargs = runner.ultima
     storia = kwargs["conversation_history"]
     assert not storia or storia[-1]["role"] != "user"
     assert kwargs["user_message"].startswith("e adesso?")

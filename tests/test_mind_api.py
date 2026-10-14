@@ -15,9 +15,9 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind import knowledge as sap
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
-from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.state_translations import StateTranslations
 from tests._contracts import assert_stessa_firma
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 
 class _FintoOsservatore:
@@ -956,20 +956,6 @@ def test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte():
 # regola del primo piano, che ha il suo file (`test_mind_report_page.py`).
 # ---------------------------------------------------------------------------
 
-class _FintoSpecchio:
-    """Lo specchio delle entita' dal lato dei nomi vivi."""
-
-    def __init__(self, stati):
-        self._stati = list(stati)
-
-    def all_states(self):
-        return list(self._stati)
-
-
-assert_stessa_firma(EntityCache.all_states, _FintoSpecchio.all_states,
-                    nome="all_states")
-
-
 def _giudizi_seme():
     from hiris.app.home_space import type_vocabulary as tv
     from hiris.app.home_space.type_judgments import TypeJudgments
@@ -1025,9 +1011,10 @@ async def test_il_nome_VIVO_di_un_entita_arriva_dallo_SPECCHIO():
     """
     app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
            "type_judgments": _giudizi_seme(),
-           "entity_cache": _FintoSpecchio([
-               {"id": "alarm_control_panel.piano_terra", "name": "Allarme piano terra"},
-               {"id": "light.studio", "name": "Studio"}])}
+           "entity_cache": SpecchioFinto([
+               raw_state("alarm_control_panel.piano_terra", "disarmed",
+                         "Allarme piano terra"),
+               raw_state("light.studio", "off", "Studio")])}
     r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
 
     cronaca = json.loads(r.text)["resoconto"]["cronaca"]

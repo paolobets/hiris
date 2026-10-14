@@ -38,7 +38,7 @@ from hiris.app.mind.store import ATTEMPT_DONE, ATTEMPT_FAILED, ObservationsStore
 #: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
 #: qui si prova altro, non il permesso.
 _AMMINISTRATORE = consente(None, ruolo="amministratore")
-from tests.test_home_space_energy import PREFS, _Cache, _house, _store
+from tests.test_home_space_energy import PREFS, _cache, _house, _store
 
 DAY = "2026-10-04"
 
@@ -231,7 +231,7 @@ async def test_l_energia_e_la_dashboard_della_casa(tmp_path):
     store = _store(tmp_path)
     ha = CasaFinta({"energy_prefs": PREFS})
     # Senza letture del cervello: l'energia non passa di li'.
-    dispatcher = ToolDispatcher(store, None, cache=_Cache(), ha=ha)
+    dispatcher = ToolDispatcher(store, None, cache=_cache(), ha=ha)
     answer = await dispatcher.dispatch("mind", {"cosa": "energia"})
     expected = await energy.energy_dashboard(ha, store, _house(store))
     assert answer == {"energia": expected}

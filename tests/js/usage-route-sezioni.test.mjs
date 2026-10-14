@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 import { conLetture } from './helpers/costo.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 /* La pagina Consumi, fetta «i consumi, per modello».
 
@@ -87,27 +88,21 @@ const STORIA = {
   ],
 };
 
-function rispondi(corpo) {
-  return { ok: true, status: 200, json: () => Promise.resolve(corpo) };
-}
-
 async function monta(usage = RISPOSTA, storia = STORIA) {
   const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
-  const chiamate = [];
-  ctx.window.fetch = (u, opzioni) => {
-    chiamate.push({ url: String(u), opzioni: opzioni });
-    // Era `.includes('storia')`, che non intercetta MAI la rotta vera
-    // (`api/usage/history`, config/usage-route.js): "history" non contiene
-    // la sottostringa "storia" ('history' = h-i-s-t-o-r-y, non ...-i-a).
-    // Il parametro `storia` di questa `monta()` non arrivava mai al
-    // grafico -- charts() riceveva la stessa RISPOSTA del riepilogo, priva
-    // di `.days`, e ogni test di questo file che non ispezionava il
-    // contenuto del grafico non se n'e' mai accorto. Trovato scrivendo i
-    // due test C5 sui grafici qui sotto, che DIPENDONO da una storia vera.
-    if (String(u).includes('api/usage/history')) return Promise.resolve(rispondi(storia));
-    if (String(u).includes('reset')) return Promise.resolve(rispondi({ last_reset: 'x', deleted: false }));
-    return Promise.resolve(rispondi(conLetture(usage)));
-  };
+  // La storia aveva un ramo `.includes('storia')`, che non intercettava MAI
+  // la rotta vera (`api/usage/history`, config/usage-route.js): "history"
+  // non contiene la sottostringa "storia". Il parametro `storia` di questa
+  // `monta()` non arrivava mai al grafico -- charts() riceveva la stessa
+  // RISPOSTA del riepilogo, priva di `.days`, e ogni test di questo file che
+  // non ispezionava il contenuto del grafico non se n'e' mai accorto. Trovato
+  // scrivendo i due test C5 sui grafici qui sotto, che DIPENDONO da una
+  // storia vera. Ora le rotte sono percorsi: la storia ha la sua.
+  const chiamate = fintoFetch(ctx.window, {
+    'api/usage': () => conLetture(usage),
+    'api/usage/history': storia,
+    'POST api/usage/reset': { last_reset: 'x', deleted: false },
+  });
   ctx.window.HirisUsageRoute.mount();
   for (let i = 0; i < 8; i++) await tick(0);
   const outlet = ctx.document.getElementById('route-outlet');

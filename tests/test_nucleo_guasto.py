@@ -9,6 +9,7 @@ come gli altri: lo dice il compositore, e ogni porta riceve la stessa frase.
 import pytest
 
 from hiris.app.api.handlers_home_space import BRIEFING_FAILED, compose_briefing
+from tests._runner_finto import RunnerFinto
 
 
 class _MemoriaGuasta:
@@ -61,18 +62,15 @@ async def test_la_promessa_sulla_catena_riceve_la_stessa_frase():
     vuota invece di un guasto."""
     from hiris.app.keeper.exchange import interpreta_promise
 
-    chiamato_con = {}
+    async def _conclude(_runner, **kwargs):
+        await kwargs["dispatcher"].dispatch(
+            "conclude", {"avvisare": False, "testo": "niente"})
 
-    class _Runner:
-        async def chat(self, **kwargs):
-            chiamato_con.update(kwargs)
-            await kwargs["dispatcher"].dispatch(
-                "conclude", {"avvisare": False, "testo": "niente"})
-
-    app = {"llm_router": _Runner(), **_app_guasta()}
+    modello = RunnerFinto(turno=_conclude)
+    app = {"llm_router": modello, **_app_guasta()}
     await interpreta_promise(app, {"id": "p1", "frase": "dimmi", "domanda": "guarda",
                                    "istantanea": []})
-    assert chiamato_con["context_str"] == BRIEFING_FAILED
+    assert modello.ultima["context_str"] == BRIEFING_FAILED
 
 
 def test_la_promessa_sul_ponte_riceve_la_stessa_frase(monkeypatch):

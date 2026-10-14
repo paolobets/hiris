@@ -27,6 +27,8 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
 from hiris.app.mind.store import ObservationsStore
+from tests._runner_finto import RunnerFinto
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 #: Chi chiede dalla pagina: un amministratore entrato dall'ingress, come lo
 #: lascia il confine (stessa premessa di `test_handlers_mind_judgment.py`).
@@ -218,20 +220,15 @@ class _Anagrafe:
         return {}
 
 
-class _Specchio:
+def _specchio(*ids) -> SpecchioFinto:
     """La cache degli stati, letta, con le sole entita' nominate."""
-
-    def __init__(self, *ids):
-        self._ids = ids
-
-    def all_states(self):
-        return [{"id": i, "state": "on"} for i in self._ids]
+    return SpecchioFinto([raw_state(i, "on") for i in ids])
 
 
 def _casa(*ids):
     """La casa di adesso, letta per intero (anagrafe e specchio), con le sole
     entita' nominate."""
-    return House.read(_Anagrafe(*ids), _Specchio(*ids))
+    return House.read(_Anagrafe(*ids), _specchio(*ids))
 
 
 def _analisi(*ids):
@@ -347,7 +344,7 @@ def test_una_fonte_viva_rientra(archivio):
 
 @pytest.mark.parametrize("casa", [
     House.read(None, None),
-    House.read(_Anagrafe(), _Specchio("sensor.altro")),
+    House.read(_Anagrafe(), _specchio("sensor.altro")),
     House.read(_Anagrafe("sensor.altro"), None),
 ], ids=["niente letto", "anagrafe non letta", "specchio non letto"])
 def test_con_la_casa_non_letta_il_rifiuto_dice_il_vero(archivio, casa):
@@ -379,11 +376,10 @@ def test_un_analisi_senza_rimetti_passa_com_e(archivio):
 
 # -- Dal giro dell'analista, per intero --------------------------------------
 
-class _ModelloCheRimette:
-    async def chat(self, **kwargs):
-        return json.dumps({"osservazioni": [], "rimetti": [
-            {"id": "sensor.pioggia", "perche": "spiega il crollo"},
-            {"id": "sensor.vicino", "perche": "forse serve"}]})
+def _modello_rimettitore() -> RunnerFinto:
+    return RunnerFinto(json.dumps({"osservazioni": [], "rimetti": [
+        {"id": "sensor.pioggia", "perche": "spiega il crollo"},
+        {"id": "sensor.vicino", "perche": "forse serve"}]}))
 
 
 @pytest.mark.asyncio
@@ -402,10 +398,10 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
     archivio.decide_scope("sensor.vicino", inside=False, reason="e' del vicino", author=OWNER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheRimette(),
+    await server.analyst_round({"observations": archivio, "llm_router": _modello_rimettitore(),
                                 "bridge_active": False,
                                 "home_space_store": _Anagrafe("sensor.pioggia", "sensor.vicino"),
-                                "entity_cache": _Specchio("sensor.pioggia", "sensor.vicino")})
+                                "entity_cache": _specchio("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
     assert (scope["sensor.pioggia"]["dentro"], scope["sensor.pioggia"]["autore"]) == (
@@ -418,11 +414,10 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
                      "sensor.vicino": analyst.BACK_IN_REFUSED}
 
 
-class _ModelloCheInventa:
-    async def chat(self, **kwargs):
-        return json.dumps({"osservazioni": [], "rimetti": [
-            {"id": "sensor.pioggia", "perche": "spiega il crollo"},
-            {"id": "sensor.inventato", "perche": "forse serve"}]})
+def _modello_inventore() -> RunnerFinto:
+    return RunnerFinto(json.dumps({"osservazioni": [], "rimetti": [
+        {"id": "sensor.pioggia", "perche": "spiega il crollo"},
+        {"id": "sensor.inventato", "perche": "forse serve"}]}))
 
 
 @pytest.mark.asyncio
@@ -445,10 +440,10 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheInventa(),
+    await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
                                 "bridge_active": False,
                                 "home_space_store": _Anagrafe("sensor.pioggia"),
-                                "entity_cache": _Specchio("sensor.pioggia")})
+                                "entity_cache": _specchio("sensor.pioggia")})
 
     assert "sensor.inventato" not in archivio.scope()
     assert archivio.scope()["sensor.pioggia"]["autore"] == ANALYST
@@ -474,7 +469,7 @@ async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _ModelloCheInventa(),
+    await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
                                 "bridge_active": False, "home_space_store": _Anagrafe()})
 
     assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER

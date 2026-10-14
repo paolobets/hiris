@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta, risposta } from './helpers/fetch.mjs';
 
 /* SP-4 Fase B Task 8: rebuild della pagina chat standalone (static/index.html).
    Il JS inline (~610 righe) è stato estratto in static/chat/*.js, uno per
@@ -91,16 +92,37 @@ function setupChat(t) {
 
 /* Il cestino cancella la conversazione che l'elenco del server marca
    `attiva` (chat/conversations.js): i test che lo premono ne hanno bisogno
-   di una. `altrimenti` risponde a tutto il resto. */
-function conUnaConversazioneAperta(window, altrimenti) {
-  window.fetch = async (url, opts) => {
-    if (String(url) === 'api/chat/conversations' && !(opts && opts.method)) {
-      return { ok: true, status: 200, json: async () => ({ conversations: [
-        { id: 'c1', titolo: 'ciao', ultimo_messaggio: '', attiva: true }] }) };
-    }
-    return altrimenti(url, opts);
+   di una. `rotte` sono le altre rotte della prova; restituisce l'elenco delle
+   chiamate, compresa la lettura dell'elenco che apre la conversazione. */
+const ELENCO_APERTO = 'GET api/chat/conversations';
+
+async function conUnaConversazioneAperta(window, rotte) {
+  const chiamate = fintoFetch(window, {
+    ...rotte,
+    [ELENCO_APERTO]: { conversations: [
+      { id: 'c1', titolo: 'ciao', ultimo_messaggio: '', attiva: true }] },
+  });
+  await window.HirisChatConversations.refresh();
+  return chiamate;
+}
+
+/* Finito un turno la pagina rilegge il distintivo degli Impegni e l'elenco
+   delle conversazioni (chat/send.js), senza aspettarli: dove la prova non li
+   guarda restano in attesa. L'elenco di `conUnaConversazioneAperta` vince
+   su questo. */
+const DOPO_IL_TURNO = {
+  'GET api/pending': maiRisposta,
+  'GET api/chat/conversations': maiRisposta,
+};
+
+/* Il turno via ponte: la POST risponde 202 col lavoro accodato, e il poll
+   su `api/chat/reply/<job>` risponde `reply`. */
+function rottePonte(reply) {
+  return {
+    'POST api/chat': risposta({ status: 'pending', job_id: 'job-1' }, 202),
+    'GET api/chat/reply': reply,
+    ...DOPO_IL_TURNO,
   };
-  return window.HirisChatConversations.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -109,11 +131,10 @@ function conUnaConversazioneAperta(window, altrimenti) {
 
 test('inviare un messaggio fa POST a api/chat con X-Requested-With (niente più chatbot_id, Task 3)', async (t) => {
   const { window } = setupChat(t);
-  const calls = [];
-  window.fetch = async (url, opts) => {
-    calls.push({ url: String(url), opts: opts || {} });
-    return { ok: true, status: 200, json: async () => ({ response: 'ok' }) };
-  };
+  const calls = fintoFetch(window, {
+    'POST api/chat': { response: 'ok' },
+    ...DOPO_IL_TURNO,
+  });
 
   await window.HirisChatSend.send('ciao HIRIS');
 
@@ -130,16 +151,10 @@ test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non c
      togliere il ramo 413 -- la bolla resterebbe «inviata», il turno contato
      e il campo vuoto. */
   const { window, document } = setupChat(t);
-  window.fetch = async (url) => {
-    const u = String(url);
-    if (u.endsWith('api/chat-settings')) {
-      return { ok: true, status: 200, json: async () => ({ max_chat_turns: 0, max_message_chars: 4000 }) };
-    }
-    if (u.endsWith('api/chat')) {
-      return { ok: false, status: 413, json: async () => ({ error: 'Frase del server.' }) };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, {
+    'GET api/chat-settings': { max_chat_turns: 0, max_message_chars: 4000 },
+    'POST api/chat': risposta({ error: 'Frase del server.' }, 413),
+  });
   await window.HirisChatAgents.loadSettings();
   const input = document.getElementById('input');
   assert.equal(input.maxLength, 4000, 'il tetto del campo e\' quello dichiarato dal server');
@@ -164,16 +179,7 @@ test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non c
 
 test('risposta 202 pending: il polling completa e la risposta finale viene renderizzata', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = async (url) => {
-    const u = String(url);
-    if (u.endsWith('api/chat')) {
-      return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'job-1' }) };
-    }
-    if (u.includes('api/chat/reply/')) {
-      return { ok: true, status: 200, json: async () => ({ status: 'done', reply: 'Risposta via abbonamento' }) };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, rottePonte({ status: 'done', reply: 'Risposta via abbonamento' }));
 
   await window.HirisChatSend.send('quanto consumo oggi?');
 
@@ -205,17 +211,8 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 
 test('A6: il poll fallito mostra il testo che il server manda in error', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = async (url) => {
-    const u = String(url);
-    if (u.endsWith('api/chat')) {
-      return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'job-1' }) };
-    }
-    if (u.includes('api/chat/reply/')) {
-      return { ok: true, status: 200, json: async () => ({
-        status: 'error', error: 'La risposta non è arrivata in tempo. Riprova.' }) };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, rottePonte({
+    status: 'error', error: 'La risposta non è arrivata in tempo. Riprova.' }));
   await window.HirisChatSend.send('ci sei?');
   await tick(3700);
   const bubbles = document.querySelectorAll('.msg-row.assistant .bubble');
@@ -241,30 +238,17 @@ test('A6: il poll fallito mostra il testo che il server manda in error', async (
 // il primo.
 // ---------------------------------------------------------------------------
 
-function fetchPonte(replyPayload) {
-  return async (url) => {
-    const u = String(url);
-    if (u.endsWith('api/chat')) {
-      return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'job-1' }) };
-    }
-    if (u.includes('api/chat/reply/')) {
-      return { ok: true, status: 200, json: async () => replyPayload };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
-}
-
 test('i nomi degli strumenti non compaiono in chat, nemmeno se il payload li porta', async (t) => {
   /* LA FINTA E' SCOMODA DI PROPOSITO: manda `debug.tools_called` come faceva il
      backend prima di questa fetta. Cosi' il test coglie sia la rimozione della
      resa nel frontend sia un eventuale ritorno del payload dal backend: basta
      che una delle due strade si riapra e questo cade. */
   const { window, document } = setupChat(t);
-  window.fetch = fetchPonte({
+  fintoFetch(window, rottePonte({
     status: 'done',
     reply: 'Ho annotato.',
     debug: { tools_called: [{ tool: 'ricorda', input: { frase: 'la caldaia perde' } }] },
-  });
+  }));
 
   /* Il messaggio dell'utente NON contiene la parola «ricorda»: altrimenti
      l'ultima asserzione la troverebbe nella sua stessa bolla e cadrebbe per la
@@ -283,11 +267,11 @@ test('i nomi degli strumenti non compaiono in chat, nemmeno se il payload li por
 test('e la risposta arriva comunque intera', async (t) => {
   /* La meta' che impedisce di passare il test qui sopra non rendendo NIENTE. */
   const { window, document } = setupChat(t);
-  window.fetch = fetchPonte({
+  fintoFetch(window, rottePonte({
     status: 'done',
     reply: 'Ho annotato.',
     debug: { tools_called: [{ tool: 'ricorda', input: {} }] },
-  });
+  }));
 
   await window.HirisChatSend.send('ricordati che la caldaia perde');
   await tick(3700);
@@ -314,7 +298,7 @@ const NOTA = 'Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRout
 
 test('via ponte (202): quando il turno ripiega, la risposta lo dice sotto la bolla', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.', nota: NOTA });
+  fintoFetch(window, rottePonte({ status: 'done', reply: 'Le luci accese sono due.', nota: NOTA }));
 
   await window.HirisChatSend.send('quante luci accese?');
   await tick(3700);
@@ -337,7 +321,7 @@ test('via ponte (202): quando il turno ripiega, la risposta lo dice sotto la bol
 
 test('via ponte (202): senza nota non compare nessuna riga vuota', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = fetchPonte({ status: 'done', reply: 'Le luci accese sono due.' });
+  fintoFetch(window, rottePonte({ status: 'done', reply: 'Le luci accese sono due.' }));
 
   await window.HirisChatSend.send('quante luci accese?');
   await tick(3700);
@@ -348,9 +332,9 @@ test('via ponte (202): senza nota non compare nessuna riga vuota', async (t) => 
 
 test('ramo diretto (200): il ripiego a monte si annuncia sotto la bolla', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = async () => ({
-    ok: true, status: 200,
-    json: async () => ({ response: 'Le luci accese sono due.', nota: NOTA }),
+  fintoFetch(window, {
+    'POST api/chat': { response: 'Le luci accese sono due.', nota: NOTA },
+    ...DOPO_IL_TURNO,
   });
 
   await window.HirisChatSend.send('quante luci accese?');
@@ -362,8 +346,9 @@ test('ramo diretto (200): il ripiego a monte si annuncia sotto la bolla', async 
 
 test('ramo diretto (200): senza nota non compare nessuna riga vuota', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = async () => ({
-    ok: true, status: 200, json: async () => ({ response: 'Le luci accese sono due.' }),
+  fintoFetch(window, {
+    'POST api/chat': { response: 'Le luci accese sono due.' },
+    ...DOPO_IL_TURNO,
   });
 
   await window.HirisChatSend.send('quante luci accese?');
@@ -390,9 +375,9 @@ test('appendNote con una nota vuota non disegna niente', (t) => {
 
 test('la nota non viene interpretata: è testo, non markup', async (t) => {
   const { window, document } = setupChat(t);
-  window.fetch = async () => ({
-    ok: true, status: 200,
-    json: async () => ({ response: 'ok', nota: '<img src=x onerror=alert(1)>' }),
+  fintoFetch(window, {
+    'POST api/chat': { response: 'ok', nota: '<img src=x onerror=alert(1)>' },
+    ...DOPO_IL_TURNO,
   });
 
   await window.HirisChatSend.send('ciao');
@@ -419,21 +404,16 @@ test('la nota non viene interpretata: è testo, non markup', async (t) => {
 
 test('restore() ricarica la history salvata della conversazione', async (t) => {
   const { window, document } = setupChat(t);
-  const seen = [];
-  window.fetch = async (url) => {
-    seen.push(String(url));
-    if (String(url).includes('/history')) {
-      return { ok: true, status: 200, json: async () => ({ messages: [
-        { role: 'user', content: 'ciao' },
-        { role: 'assistant', content: 'risposta salvata' },
-      ], turni: 1 }) };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  const chiamate = fintoFetch(window, {
+    'GET api/chat/history': { messages: [
+      { role: 'user', content: 'ciao' },
+      { role: 'assistant', content: 'risposta salvata' },
+    ], turni: 1 },
+  });
 
   await window.HirisChatAgents.restore();
 
-  assert.ok(seen.some((u) => /api\/chat\/history/.test(u)),
+  assert.ok(chiamate.some((c) => /api\/chat\/history/.test(c.url)),
     'restore deve fetchare la history della conversazione');
   const bubbles = document.querySelectorAll('.msg-row .bubble');
   assert.ok(bubbles.length >= 2, 'i messaggi salvati devono ricomparire');
@@ -448,15 +428,12 @@ test('il contatore dei turni viene dal server, non dalla storia tagliata (C-15)'
      conversazione. Mutazione ESEGUITA il 13/10/2026: il conteggio sui
      `messages` rimesso in chat/agents.js -- rossa (1 contro 31). */
   const { window } = setupChat(t);
-  window.fetch = async (url) => {
-    if (String(url).includes('/history')) {
-      return { ok: true, status: 200, json: async () => ({ messages: [
-        { role: 'user', content: 'trentunesima' },
-        { role: 'assistant', content: 'risposta' },
-      ], turni: 31 }) };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, {
+    'GET api/chat/history': { messages: [
+      { role: 'user', content: 'trentunesima' },
+      { role: 'assistant', content: 'risposta' },
+    ], turni: 31 },
+  });
 
   await window.HirisChatAgents.restore();
 
@@ -632,24 +609,13 @@ test('la risposta arriva anche se la riga e\' stata staccata dal DOM mentre HIRI
 // dei suoi utenti proprio nell\'istante in cui decidono se abbandonare.
 // ---------------------------------------------------------------------------
 
-/* `fetch` che non risponde mai: e\' l\'unico modo di tenere viva l\'attesa sul
-   percorso diretto, che e\' appunto quello senza scadenza. */
-function fetchCheNonTorna() {
-  return () => new Promise(() => {});
-}
-
 test('a due minuti, sul ponte, l\'attesa dice che si puo\' chiudere la pagina', async (t) => {
   const { window, document } = setupChat(t);
   const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
   const originale = soglie.servizio;
   soglie.servizio = 60;
   try {
-    window.fetch = async (url) => {
-      if (String(url).endsWith('api/chat')) {
-        return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
-      }
-      return { ok: true, status: 200, json: async () => ({ status: 'pending' }) };
-    };
+    fintoFetch(window, rottePonte({ status: 'pending' }));
 
     await window.HirisChatSend.send('dimmi tutto della casa');
     await tick(200);
@@ -670,7 +636,9 @@ test('a due minuti, sul percorso diretto, l\'attesa dice di tenere la pagina ape
   const originale = soglie.servizio;
   soglie.servizio = 60;
   try {
-    window.fetch = fetchCheNonTorna();
+    /* Una POST che non risponde mai: e\' l\'unico modo di tenere viva
+       l\'attesa sul percorso diretto, che e\' appunto quello senza scadenza. */
+    fintoFetch(window, { 'POST api/chat': maiRisposta });
     window.HirisChatSend.send('dimmi tutto della casa'); // non si conclude: e\' il punto
     await tick(200);
 
@@ -698,12 +666,7 @@ test('l\'attesa annuncia che sta per arrendersi SOLO dove una resa esiste', asyn
      la stessa promessa falsa di R1, spostata dal percorso al tempo. */
   soglie.margineResa = 5 * 60 * 1000 - 700;
   try {
-    window.fetch = async (url) => {
-      if (String(url).endsWith('api/chat')) {
-        return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
-      }
-      return { ok: true, status: 200, json: async () => ({ status: 'pending' }) };
-    };
+    fintoFetch(window, rottePonte({ status: 'pending' }));
 
     await window.HirisChatSend.send('una domanda lunga');
 
@@ -725,7 +688,7 @@ test('sul percorso diretto non promette nessuna resa, perche\' non ne ha una', a
   const originale = soglie.senzaScadenza;
   soglie.senzaScadenza = 80;
   try {
-    window.fetch = fetchCheNonTorna();
+    fintoFetch(window, { 'POST api/chat': maiRisposta });
     window.HirisChatSend.send('una domanda lunga');
     await tick(250);
 
@@ -754,8 +717,10 @@ test('svuotare la conversazione ferma i cronometri delle attese che ci vivevano 
     t.after(() => clearInterval(idIntervallo));
 
     window.confirm = () => true;
-    await conUnaConversazioneAperta(window,
-      async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    await conUnaConversazioneAperta(window, {
+      'DELETE api/chat/conversations/c1': {},
+      'GET api/chat/history': {},
+    });
     await window.HirisChatAgents.clearConversation();
 
     assert.equal(row._attesa, null,
@@ -771,12 +736,7 @@ test('durante la risposta via abbonamento (202) l\'input resta bloccato e un sec
   /* Una conversazione aperta: senza, il cestino resterebbe spento per
      l'altra ragione (niente da cancellare), e il test non vedrebbe piu'
      quella che pinna -- l'elaborazione in corso. */
-  await conUnaConversazioneAperta(window, async (url) => {
-    const u = String(url);
-    if (u.endsWith('api/chat')) return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
-    if (u.includes('api/chat/reply/')) return { ok: true, status: 200, json: async () => ({ status: 'done', reply: 'fatto' }) };
-    return { ok: true, status: 200, json: async () => ({}) };
-  });
+  await conUnaConversazioneAperta(window, rottePonte({ status: 'done', reply: 'fatto' }));
   assert.equal(document.getElementById('delete-conv-btn').disabled, false,
     "precondizione: prima dell'invio il cestino e' acceso");
 
@@ -826,11 +786,7 @@ function componiComposer(window, document, testo, evento) {
 
 test('Maiusc+Invio va a capo e NON invia', (t) => {
   const { window, document } = setupChat(t);
-  const inviati = [];
-  window.fetch = async (url, _opts) => {
-    inviati.push(String(url));
-    return { ok: true, status: 200, json: async () => ({ response: 'ok' }) };
-  };
+  const chiamate = fintoFetch(window, { 'POST api/chat': { response: 'ok' } });
   window.HirisChatSend.wireComposer();
   const input = document.getElementById('input');
 
@@ -838,20 +794,19 @@ test('Maiusc+Invio va a capo e NON invia', (t) => {
   input.value = 'riga uno\n';
   input.dispatchEvent(new window.InputEvent('input', { inputType: 'insertLineBreak', bubbles: true }));
 
-  assert.equal(inviati.filter((u) => u.endsWith('api/chat')).length, 0,
+  assert.equal(chiamate.filter((c) => c.url.endsWith('api/chat')).length, 0,
     'Maiusc+Invio significa "vado a capo", non "manda"');
   assert.equal(input.value, 'riga uno\n', 'e l\'a-capo appena scritto deve restare nel campo');
 });
 
 test('incollare due righe non invia, e non salda le parole', async (t) => {
   const { window, document } = setupChat(t);
-  const inviati = [];
-  window.fetch = async (url) => { inviati.push(String(url)); return { ok: true, status: 200, json: async () => ({ response: 'ok' }) }; };
+  const chiamate = fintoFetch(window, { 'POST api/chat': { response: 'ok' } });
 
   componiComposer(window, document, 'riga uno\nriga due',
     new window.InputEvent('input', { inputType: 'insertFromPaste', bubbles: true }));
 
-  assert.equal(inviati.filter((u) => u.endsWith('api/chat')).length, 0,
+  assert.equal(chiamate.filter((c) => c.url.endsWith('api/chat')).length, 0,
     'un incolla non e\' un invio');
   assert.equal(document.getElementById('input').value, 'riga uno\nriga due',
     'il testo incollato resta come l\'utente lo vede, a-capo compreso');
@@ -859,18 +814,17 @@ test('incollare due righe non invia, e non salda le parole', async (t) => {
 
 test('la tastiera che inserisce un a-capo invece di premere Invio invia ancora, unendo con uno spazio', async (t) => {
   const { window, document } = setupChat(t);
-  const corpi = [];
-  window.fetch = async (url, opts) => {
-    if (String(url).endsWith('api/chat') && opts && opts.body) corpi.push(JSON.parse(opts.body));
-    return { ok: true, status: 200, json: async () => ({ response: 'ok' }) };
-  };
+  const chiamate = fintoFetch(window, { 'POST api/chat': { response: 'ok' }, ...DOPO_IL_TURNO });
+  const corpi = () => chiamate
+    .filter((c) => c.url.endsWith('api/chat') && c.corpo)
+    .map((c) => JSON.parse(c.corpo));
 
   componiComposer(window, document, 'riga uno\nriga due',
     new window.InputEvent('input', { inputType: 'insertLineBreak', bubbles: true }));
   await tick(20);
 
-  assert.equal(corpi.length, 1, 'e\' il caso per cui questa euristica esiste: deve inviare');
-  assert.equal(corpi[0].message, 'riga uno riga due',
+  assert.equal(corpi().length, 1, 'e\' il caso per cui questa euristica esiste: deve inviare');
+  assert.equal(corpi()[0].message, 'riga uno riga due',
     'le righe si uniscono con uno SPAZIO: cancellare l\'a-capo saldava le parole');
 });
 
@@ -922,11 +876,11 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', (t) =
 
 test('clearConversation chiede conferma prima di cancellare', async (t) => {
   const { window, document } = setupChat(t);
-  const calls = [];
-  await conUnaConversazioneAperta(window, async (url, opts) => {
-    calls.push({ url: String(url), opts });
-    return { ok: true, status: 200, json: async () => ({}) };
+  const chiamate = await conUnaConversazioneAperta(window, {
+    'DELETE api/chat/conversations/c1': {},
   });
+  /* tutte le chiamate tranne la lettura dell'elenco che apre la conversazione */
+  const calls = () => chiamate.filter((c) => c.metodo + ' ' + c.url !== ELENCO_APERTO);
   window.HirisChatMessages.appendMsg('user', 'ciao');
 
   let confirmMsg = null;
@@ -941,16 +895,16 @@ test('clearConversation chiede conferma prima di cancellare', async (t) => {
     'la conferma deve dire COSA si perde');
   assert.match(confirmMsg, /Le tue altre conversazioni restano/,
     'e che le altre conversazioni non si toccano');
-  assert.equal(calls.length, 0, 'con la conferma negata nessuna DELETE deve partire');
+  assert.equal(calls().length, 0, 'con la conferma negata nessuna DELETE deve partire');
   assert.ok(document.querySelector('.msg-row.user'), 'i messaggi non devono sparire se non confermato');
 });
 
 test('clearConversation confermata: DELETE parte e i messaggi si svuotano', async (t) => {
   const { window, document } = setupChat(t);
-  const calls = [];
-  await conUnaConversazioneAperta(window, async (url, opts) => {
-    calls.push({ url: String(url), opts });
-    return { ok: true, status: 200, json: async () => ({}) };
+  /* dopo la DELETE la pagina rilegge la storia: vuota, come l'aveva il server */
+  const calls = await conUnaConversazioneAperta(window, {
+    'DELETE api/chat/conversations/c1': {},
+    'GET api/chat/history': {},
   });
   window.HirisChatMessages.appendMsg('user', 'ciao');
   window.confirm = () => true;
@@ -965,8 +919,9 @@ test('clearConversation confermata: DELETE parte e i messaggi si svuotano', asyn
 
 test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spariscono e viene avvisato', async (t) => {
   const { window, document } = setupChat(t);
-  await conUnaConversazioneAperta(window,
-    async () => ({ ok: false, status: 500, json: async () => ({}) }));
+  await conUnaConversazioneAperta(window, {
+    'DELETE api/chat/conversations/c1': risposta({}, 500),
+  });
   window.HirisChatMessages.appendMsg('user', 'messaggio importante');
   window.confirm = () => true;
 

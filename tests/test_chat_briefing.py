@@ -25,7 +25,7 @@ Segue la convenzione REST-vera gia' in tests/test_handlers_home_space.py (per
 (ora rimosso -- testava esattamente la sovrapposizione che questo task
 chiude, vedi il rapporto): un `client` costruito con `create_app()` +
 `aiohttp_client`, che legge `context_str`/`strumenti`/`dispatcher` da
-`mock_runner.chat.call_args.kwargs` -- esattamente cio' che `handle_chat`
+`runner.ultima` (`tests/_runner_finto.py`) -- esattamente cio' che `handle_chat`
 consegna davvero al runner.
 """
 import json
@@ -48,7 +48,7 @@ def _strumenti_loggati(caplog):
 import sys
 from datetime import UTC
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -69,6 +69,8 @@ from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
+from tests._runner_finto import RunnerFinto
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_knowledge_tools import _semina_casa as _semina_casa_con_comportamento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -81,20 +83,6 @@ def _close_chat_stores_after_each_test():
     close_all_stores()
 
 
-class _CacheFinta:
-    """Sostituto minimo di `EntityCache` -- stessa forma usata da
-    tests/test_handlers_home_space.py per `handle_get_briefing`: `all_states()`
-    restituisce dict con chiave "id" (non "entity_id"), e `loaded` governa
-    `inventory_is_readable()`."""
-
-    def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
-        self._stati = stati
-        self.loaded = pronta
-
-    def all_states(self) -> list[dict]:
-        return self._stati
-
-
 async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
                              archivio_memoria=None, cache=None):
     """Stessa forma di `_build_chat_client` nei test di chat pre-esistenti
@@ -105,10 +93,7 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     e' cio' da cui la chat legge adesso."""
     app = create_app()
 
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="ok")
-    mock_runner.last_tool_calls = []
-    mock_runner.last_unanswered = False
+    mock_runner = RunnerFinto("ok")
 
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings(system_prompt="base prompt")
@@ -157,14 +142,13 @@ async def test_il_contesto_della_chat_e_il_nucleo(aiohttp_client, tmp_path):
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    context_str = mock_runner.ultima["context_str"]
     # Le sezioni del nucleo -- lo stesso testo che GET /api/briefing mostra --
     # non le quattro vecchie intestazioni.
     assert "## La casa" in context_str
     assert "## Ciò che la casa fa già da sola" in context_str
     assert "Cucina" in context_str
     assert "## Contesto casa" not in context_str
-    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -180,7 +164,7 @@ async def test_lo_stato_del_momento_non_entra_nel_contesto_della_chat(
     porta sola per la casa» §5). La prova sta qui, e non solo su `compose()`,
     perche' questo e' il testo che il modello riceve davvero."""
     archivio_casa = _semina_casa(tmp_path)
-    cache = _CacheFinta([{"id": "light.cucina", "state": "on"}])
+    cache = SpecchioFinto([raw_state("light.cucina", "on")])
     client, mock_runner = await _build_chat_client(
         aiohttp_client, tmp_path, archivio_casa=archivio_casa, cache=cache,
     )
@@ -188,11 +172,10 @@ async def test_lo_stato_del_momento_non_entra_nel_contesto_della_chat(
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    context_str = mock_runner.ultima["context_str"]
     assert "Cucina" in context_str        # la casa c'e'
     assert "Notevole adesso" not in context_str
     assert "Faretti" not in context_str   # la luce accesa no: si chiede
-    archivio_casa.close()
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +191,7 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    call_kwargs = mock_runner.chat.call_args.kwargs
+    call_kwargs = mock_runner.ultima
     nomi = {t["name"] for t in call_kwargs["tools"]}
     # Derivati, non ricopiati: cio' che questo test prova e' che la rotta
     # passi al runner IL catalogo (`KNOWLEDGE_TOOLS`), non un elenco
@@ -233,7 +216,7 @@ async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    dispatcher = mock_runner.chat.call_args.kwargs["dispatcher"]
+    dispatcher = mock_runner.ultima["dispatcher"]
     assert isinstance(dispatcher._exchange, str) and dispatcher._exchange, (
         "il dispatcher che arriva al runner non porta un'identita' di turno "
         "non vuota: la guardia dell'officina rifiuterebbe QUALUNQUE "
@@ -260,7 +243,7 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    context_str = mock_runner.ultima["context_str"]
     assert "Nessun piano registrato." in context_str
     # Mai un nucleo vuoto spacciato per una casa vuota: il nucleo dice
     # "non ho potuto guardare".
@@ -274,34 +257,35 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
 # esplicito: "un fallimento qui non deve mai impedire alla chat di
 # rispondere" (vedi git blame su handlers_chat.py). Diventare una fonte sola
 # (Task 3) ha fatto sparire quel commento insieme al codice, e la regola con
-# lui -- `compose_briefing()` non era protetta, quindi un `casa.db` in lock
-# dopo un riavvio sporco (qui riprodotto chiudendo la connessione sotto
-# l'archivio, che e' esattamente lo stesso sqlite3.ProgrammingError di un
-# database inutilizzabile) faceva sollevare handle_chat per intero.
+# lui -- `compose_briefing()` non era protetta, quindi un archivio in lock
+# dopo un riavvio sporco faceva sollevare handle_chat per intero.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_un_archivio_chiuso_non_toglie_piu_la_casa_alla_chat(aiohttp_client, tmp_path):
-    """**Cio' che la fetta del 10/09/2026 ha comprato.** Prima l'anagrafe stava
-    su disco: un archivio guasto voleva dire chat senza contesto, e la prova
-    verificava che il modello almeno lo SAPESSE invece di ricevere un vuoto da
-    scambiare per una casa vuota. Adesso anagrafe e comportamento si tengono a
-    memoria, e un archivio chiuso -- che custodisce solo le plance e la
-    cornice -- non toglie piu' niente alla chat: la casa c'e'.
+async def test_un_archivio_guasto_non_fa_rispondere_500_alla_chat(aiohttp_client, tmp_path):
+    """L'archivio guasto e' quello della MEMORIA, chiuso sotto la chat: lo
+    stesso `sqlite3.ProgrammingError` di un database inutilizzabile. Fino al
+    14/10/2026 la prova chiudeva l'anagrafe, che dal 10/09 vive in memoria e
+    il cui `close()` non faceva niente (M-51, uscito): la prova restava verde
+    senza piu' guastare nulla (T-06).
 
-    La chat continua a non rispondere 500, che era e resta il punto."""
-    archivio_casa = _semina_casa(tmp_path)
-    archivio_casa.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
+    La chat risponde, e il modello SA che il nucleo manca invece di ricevere
+    un vuoto da scambiare per una casa vuota.
+
+    Mutazione ESEGUITA (14/10/2026): tolto il `try/except` di
+    `compose_briefing` -- rossa (500)."""
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    memoria.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
     client, mock_runner = await _build_chat_client(
-        aiohttp_client, tmp_path, archivio_casa=archivio_casa,
+        aiohttp_client, tmp_path, archivio_casa=_semina_casa(tmp_path),
+        archivio_memoria=memoria,
     )
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200  # non 500: la chat risponde comunque
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    assert "nucleo non si e' potuto comporre" not in context_str
-    assert "Cucina" in context_str
+    context_str = mock_runner.ultima["context_str"]
+    assert "nucleo non si e' potuto comporre" in context_str
 
 
 
@@ -336,12 +320,11 @@ async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    context_str = mock_runner.ultima["context_str"]
     assert "## Sessioni precedenti" in context_str
     assert "irrigazione del giardino" in context_str
     # Cronologia, non conoscenza: non e' dentro nessuna sezione del nucleo.
     assert "## La casa" in context_str  # il nucleo c'e' comunque, a fianco
-    archivio_casa.close()
 
 
 @pytest.mark.asyncio
@@ -366,7 +349,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    context_str = mock_runner.chat.call_args.kwargs["context_str"]
+    context_str = mock_runner.ultima["context_str"]
     assert "## Sessioni precedenti" in context_str
     assert "irrigazione del giardino" in context_str
     # -- fine dei test pre-esistenti (Task 3) --
@@ -487,7 +470,6 @@ async def test_conversazione_1_cosa_c_e_in_cucina_risponde_dal_nucleo(aiohttp_cl
     assert runner.last_tool_calls == []
     assert body["response"] == "In cucina hai due luci e un sensore di temperatura."
 
-    archivio_casa.close()
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +538,6 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
         "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero."
     )
 
-    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -606,7 +587,6 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
         "esattamente qui: la frase deve trovarsi DAVVERO nell'archivio della memoria"
     )
 
-    archivio_casa.close()
     archivio_memoria.close()
 
 
@@ -727,7 +707,6 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     # sostituita. Per un'AZIONE questa e' la tracciabilita' che conta.
     assert "execute" in _strumenti_loggati(caplog)
 
-    archivio_casa.close()
 
 
 # ---------------------------------------------------------------------------
@@ -775,4 +754,3 @@ async def test_senza_porta_esegui_resta_offerto_ma_dichiara_il_motivo(
         "il rifiuto deve portare il MOTIVO: «non posso» senza motivo e' "
         "esattamente cio' che i vincoli della fetta vietano")
 
-    archivio_casa.close()

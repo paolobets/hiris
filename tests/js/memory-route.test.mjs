@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick, asAdministrator } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* fetta E5 Task 9: la pagina #/memory (config/memory-route.js). Sostituisce
    il pannello Memoria della chat (coda di approvazione, uscita con questo
@@ -21,10 +22,6 @@ function fixtureHtml() {
 /* Il pallino c'e' perche' correggere e cancellare sono di chi configura
    (spec 2026-09-27 §4): queste prove guardano un amministratore. */
 const SCRIPTS = ['common.js', 'pending-badge.js', 'config/memory-route.js'];
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
 
 const RICORDO = {
   id: 7,
@@ -56,30 +53,25 @@ const RICORDO = {
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   asAdministrator(ctx.window);
-  const chiamate = [];
   let getCount = 0;
-  ctx.window.fetch = async (url, options) => {
-    const u = String(url);
-    const method = (options || {}).method || 'GET';
-    chiamate.push({ url: u, method, opts: options || {} });
-    if (method === 'GET') {
+  const chiamate = fintoFetch(ctx.window, {
+    'GET api/memories': () => {
       getCount += 1;
       if (opts.getRotto) throw new Error('rete giu\'');
       const corpo = getCount === 1 || !opts.getSuccessivo ? opts.get : opts.getSuccessivo;
-      return jsonResponse(corpo !== undefined ? corpo : {
+      return risposta(corpo !== undefined ? corpo : {
         available: true, memories: [RICORDO], total: 1, shown: 1,
       });
-    }
-    if (method === 'PATCH') {
+    },
+    'PATCH api/memories': () => {
       if (opts.patchRotto) throw new Error('rete giu\'');
-      return jsonResponse(opts.patchBody !== undefined ? opts.patchBody : { ok: true }, opts.patchStatus);
-    }
-    if (method === 'DELETE') {
+      return risposta(opts.patchBody !== undefined ? opts.patchBody : { ok: true }, opts.patchStatus);
+    },
+    'DELETE api/memories': () => {
       if (opts.deleteRotto) throw new Error('rete giu\'');
-      return jsonResponse(opts.deleteBody || {}, opts.deleteStatus !== undefined ? opts.deleteStatus : 204);
-    }
-    throw new Error('metodo inatteso: ' + method);
-  };
+      return risposta(opts.deleteBody || {}, opts.deleteStatus !== undefined ? opts.deleteStatus : 204);
+    },
+  });
   return Object.assign(ctx, { chiamate, getCount: () => getCount });
 }
 
@@ -266,7 +258,7 @@ test('«Correggi» apre un modulo senza campo per il testo, e Salva manda un PAT
   bottone(document, 'Salva correzione').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
-  const patch = chiamate.find((c) => c.method === 'PATCH');
+  const patch = chiamate.find((c) => c.metodo === 'PATCH');
   assert.ok(patch, 'il click deve mandare un PATCH');
   assert.equal(patch.url, 'api/memories/7');
   assert.equal(patch.opts.headers['X-Requested-With'], 'fetch',
@@ -300,7 +292,7 @@ test('«Annulla» chiude il modulo senza mandare nessuna richiesta', async () =>
 
   assert.equal(outlet.querySelectorAll('select').length, 0,
     '«Annulla» deve chiudere il modulo, non solo restare a schermo inerte');
-  assert.equal(chiamate.filter((c) => c.method !== 'GET').length, 0,
+  assert.equal(chiamate.filter((c) => c.metodo !== 'GET').length, 0,
     '«Annulla» non deve mandare nessuna richiesta di scrittura (ne\' PATCH ne\' altro)');
 
   // Riaprendo, il modulo riparte dai valori del ricordo, non da quelli
@@ -385,7 +377,7 @@ test('«Dimentica» chiede conferma mostrando la frase esatta, e annullare non m
   assert.ok(messaggioConferma, 'deve chiedere conferma esplicita');
   assert.match(messaggioConferma, /d'inverno la sala da pranzo/,
     'la conferma deve mostrare cosa si sta per cancellare, non un generico "sei sicuro?"');
-  assert.equal(chiamate.some((c) => c.method === 'DELETE'), false,
+  assert.equal(chiamate.some((c) => c.metodo === 'DELETE'), false,
     'annullare la conferma non deve mandare nessuna richiesta');
 });
 
@@ -400,7 +392,7 @@ test('confermare la cancellazione manda una DELETE con X-Requested-With, e ricar
   bottone(document, 'Dimentica').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
-  const del = chiamate.find((c) => c.method === 'DELETE');
+  const del = chiamate.find((c) => c.metodo === 'DELETE');
   assert.ok(del, 'confermare deve mandare la DELETE');
   assert.equal(del.url, 'api/memories/7');
   assert.equal(del.opts.headers['X-Requested-With'], 'fetch');

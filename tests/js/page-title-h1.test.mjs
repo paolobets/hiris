@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadScripts, STATIC_VIVO, asAdministrator } from './helpers/dom.mjs';
+import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Collaudo usabilita' 3.22.3, rilievo A: il titolo di ogni pagina della SPA
  * di configurazione ESISTEVA -- ventidue occorrenze in undici file -- ma era
@@ -88,9 +89,11 @@ test('la pagina non trovata (nessuna rotta combacia) mostra ESATTAMENTE un h1', 
 test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TUTTI un solo h1', async () => {
   const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
-  function monta(rispondi) {
+  /* La pagina chiede due indirizzi: `api/usage` (il riepilogo) e
+     `api/usage/history` (i giorni). */
+  function monta(rotte) {
     const ctx = loadScripts(['common.js', 'config/usage-route.js'], { html: HTML });
-    ctx.window.fetch = rispondi;
+    fintoFetch(ctx.window, rotte);
     return ctx;
   }
 
@@ -102,17 +105,16 @@ test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TU
   //    mount() scrive «Carico…» in modo sincrono, quindi si guarda subito
   //    dopo averlo chiamato, senza await.
   {
-    const ctx = monta(() => new Promise(() => {})); // non si risolve mai
+    const ctx = monta({ 'api/usage': maiRisposta, 'api/usage/history': maiRisposta });
     ctx.window.HirisUsageRoute.mount();
     assert.equal(h1s(ctx).length, 1, 'stato di caricamento: un solo h1');
   }
 
   // 2) misurato:false (200, ma niente da mostrare)
   {
-    const ctx = monta(() => Promise.resolve({
-      ok: true, status: 200,
-      json: () => Promise.resolve({ measured: false, message: 'niente da misurare' }),
-    }));
+    /* Lo stesso corpo alle due richieste, com'era nel finto di prima. */
+    const corpo = { measured: false, message: 'niente da misurare' };
+    const ctx = monta({ 'api/usage': corpo, 'api/usage/history': corpo });
     ctx.window.HirisUsageRoute.mount();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
@@ -121,17 +123,12 @@ test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TU
 
   // 3) contenuto normale
   {
-    const ctx = monta((url) => {
-      if (String(url).indexOf('api/usage/history') === 0) {
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ days: [] }) });
-      }
-      return Promise.resolve({
-        ok: true, status: 200,
-        json: () => Promise.resolve({
-          measured: true, timezone_known: true, timezone: 'Europe/Rome',
-          cost_eur: 0, cost_state: 'gratuito', requests: 0, sections: [],
-        }),
-      });
+    const ctx = monta({
+      'api/usage/history': { days: [] },
+      'api/usage': {
+        measured: true, timezone_known: true, timezone: 'Europe/Rome',
+        cost_eur: 0, cost_state: 'gratuito', requests: 0, sections: [],
+      },
     });
     ctx.window.HirisUsageRoute.mount();
     await new Promise((r) => setTimeout(r, 0));
@@ -141,7 +138,8 @@ test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TU
 
   // 4) errore di rete
   {
-    const ctx = monta(() => Promise.reject(new Error('rete giu\'')));
+    const reteGiu = () => { throw new Error('rete giu\''); };
+    const ctx = monta({ 'api/usage': reteGiu, 'api/usage/history': reteGiu });
     ctx.window.HirisUsageRoute.mount();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
@@ -159,7 +157,7 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
   // 1) caricamento
   {
     const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
-    ctx.window.fetch = () => new Promise(() => {});
+    fintoFetch(ctx.window, { 'api/chat-settings': maiRisposta });
     ctx.window.HirisSettingsRoute.mount();
     assert.equal(h1s(ctx).length, 1, 'stato di caricamento: un solo h1');
   }
@@ -167,15 +165,12 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
   // 2) contenuto
   {
     const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
-    ctx.window.fetch = () => Promise.resolve({
-      ok: true, status: 200,
-      json: () => Promise.resolve({
-        name: 'HIRIS', system_prompt: '', response_mode: 'compact',
-        thinking_budget: 2048, max_chat_turns: 4, restrict_to_home: true,
-        retention_days: 30, response_modes: ['auto', 'compact', 'minimal'],
-        default_system_prompt: '',
-      }),
-    });
+    fintoFetch(ctx.window, { 'api/chat-settings': {
+      name: 'HIRIS', system_prompt: '', response_mode: 'compact',
+      thinking_budget: 2048, max_chat_turns: 4, restrict_to_home: true,
+      retention_days: 30, response_modes: ['auto', 'compact', 'minimal'],
+      default_system_prompt: '',
+    } });
     ctx.window.HirisSettingsRoute.mount();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
@@ -185,7 +180,7 @@ test('Impostazioni chat: caricamento, contenuto ed errore hanno TUTTI un solo h1
   // 3) errore
   {
     const ctx = loadScripts(['common.js', 'config/settings-route.js'], { html: HTML });
-    ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    fintoFetch(ctx.window, { 'api/chat-settings': risposta({}, 500) });
     ctx.window.HirisSettingsRoute.mount();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));

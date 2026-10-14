@@ -31,12 +31,13 @@ specchio si muove **solo** quando arriva un annuncio, e l'annuncio arriva
 **dopo** il ritorno della chiamata. Se lo stato deve cambiare, qualcuno deve
 annunciarlo -- come in casa.
 
-`EntityCache` (`hiris/app/proxy/entity_cache.py`) espone `all_states()`, che
-restituisce una **lista** di dizionari minimali con chiave `id` (non
-`entity_id`): la finta e' adattata al metodo vero, il codice di produzione non
-e' stato piegato al test. Espone anche `loaded`, la bandiera che distingue
-«casa senza entita'» da «inventario non ancora pronto», e da questa versione
-`add_state_listener`/`remove_state_listener`, il rubinetto degli annunci.
+Lo specchio delle prove E' lo specchio vero (`SpecchioFinto`, un
+`EntityCache` di `hiris/app/proxy/entity_cache.py`, riempito con gli stati
+grezzi di Home Assistant): la forma delle righe e le domande per id sono
+quelle del prodotto per costruzione (T-02, 14/10/2026). Espone anche
+`loaded`, la bandiera che distingue «casa senza entita'» da «inventario non
+ancora pronto»; il client espone `add_state_listener`/`remove_state_listener`,
+il rubinetto degli annunci.
 
 Come in `tests/test_action_verification.py`: niente fixture asincrone — la suite
 gira in modalita' `strict` di pytest-asyncio, quindi ogni test async porta il
@@ -56,13 +57,9 @@ from casa_finta import CasaFinta
 from hiris.app.action import actuator as porta_modulo
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.proxy.entity_cache import (
-    EntityCache,
-    _to_minimal,
-    inherited_attributes,
-)
+from hiris.app.proxy.entity_cache import EntityCache
 from tests._casa_sintetica import synthetic_inputs
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_action_registry import _house
 from tests.test_action_targets import _without
 
@@ -151,7 +148,7 @@ def _client(cambiati=None, annuncia=None, ritardo=0.0, specchio=None,
             asyncio.get_running_loop().call_later(
                 ritardo, _annuncia, house, annuncia, specchio)
         if specchio is not None:
-            specchio.at_return = specchio.sbircia()
+            specchio.at_return = _sbircia(specchio)
         return list(cambiati or [])
 
     house = _house(RISPOSTA_HA, answers={"POST /api/services/": reply}, **faults)
@@ -163,7 +160,7 @@ def _annuncia(house: CasaFinta, stati, specchio) -> None:
         # Prima lo specchio, poi chi ascolta: e' l'ordine con cui il ciclo
         # websocket vero percorre `_state_listeners`.
         if specchio is not None:
-            specchio.annuncio(stato)
+            specchio.on_state_changed({"entity_id": stato["entity_id"], "new_state": stato})
         house.announce_state(stato)
 
 
@@ -185,13 +182,17 @@ def _chiamate(house: CasaFinta) -> list[tuple[str, str, dict]]:
             for what, body in house.calls if what.startswith("POST /api/services/")]
 
 
-class FintaCache(MirrorById):
-    """Lo specchio dello stato vivo. **Si muove solo quando l'evento arriva.**
+class FintaCache(SpecchioFinto):
+    """Lo specchio VERO dello stato vivo (`SpecchioFinto`, un `EntityCache`).
+    **Si muove solo quando l'evento arriva**: col rubinetto vero,
+    `on_state_changed`, l'unico modo in cui lo specchio cambia.
 
-    Imita `EntityCache`: `all_states()` restituisce una lista di dizionari
-    minimali (`id`, `state`, ...), `loaded` dice se la prima lettura da Home
-    Assistant e' mai arrivata in fondo, e `annuncio()` fa esattamente cio' che
-    fa `on_state_changed` -- l'unico modo in cui questo specchio cambia.
+    Sovrascrive solo `states_for`, la domanda che la porta fa allo specchio
+    (`entity_cache.states_by_id`): per CONTARE le letture e per farlo cadere
+    a comando dalla lettura `rompe_dalla_lettura`. `at_return` e' cio' che
+    lo specchio mostrava nell'istante in cui `call_service` e' tornata: lo
+    scrive la casa di `_client`, ed e' il campione che smaschera una finta
+    troppo gentile.
 
     **Qui c'era la bugia** (vedi il docstring del file): il vecchio `dopo=`
     mostrava lo stato nuovo alla seconda lettura, cioe' regalava alla porta la
@@ -199,59 +200,41 @@ class FintaCache(MirrorById):
     """
 
     def __init__(self, stati, loaded=True, rompe_dalla_lettura=None):
-        self._stati = {eid: _voce(eid, valore) for eid, valore in stati.items()}
-        self.loaded = loaded
+        super().__init__([_grezzo(eid, valore) for eid, valore in stati.items()],
+                         pronto=loaded)
         self._rompe_dalla_lettura = rompe_dalla_lettura
         self.letture = 0
-        # Cosa mostrava lo specchio nell'istante in cui `call_service` e'
-        # tornata: lo scrive la casa di `_client`. E' il campione che smaschera
-        # una finta troppo gentile.
         self.at_return = None
 
-    def all_states(self):
+    def states_for(self, entity_ids=None):
         self.letture += 1
         if (self._rompe_dalla_lettura is not None
                 and self.letture >= self._rompe_dalla_lettura):
             raise RuntimeError("websocket caduto")
-        return [dict(voce) for voce in self._stati.values()]
-
-    def annuncio(self, stato_ha):
-        """Cio' che fa `EntityCache.on_state_changed`, con la normalizzazione
-        VERA (`_to_minimal`): se domani cambiasse la forma della voce
-        minimale, questa finta cambierebbe con lei invece di restare indietro
-        in silenzio."""
-        voce = _to_minimal(stato_ha)
-        self._stati[voce["id"]] = voce
-
-    def sbircia(self):
-        """Lo stato dello specchio SENZA contare come lettura -- serve ai test
-        per dimostrare che al ritorno di `call_service` era ancora indietro."""
-        return {eid: voce.get("state") for eid, voce in self._stati.items()}
+        return super().states_for(entity_ids)
 
 
-def _voce(eid: str, valore) -> dict:
-    """Una voce minimale come la costruisce `EntityCache._to_minimal`.
+def _sbircia(specchio: SpecchioFinto) -> dict:
+    """Lo stato dello specchio SENZA contare come lettura (`all_states` non e'
+    la domanda della porta) -- serve ai test per dimostrare che al ritorno di
+    `call_service` era ancora indietro."""
+    return {riga["id"]: riga["state"] for riga in specchio.all_states()}
+
+
+def _grezzo(eid: str, valore) -> dict:
+    """Lo stato GREZZO di Home Assistant (`raw_state`) da cui lo specchio vero
+    ricava la sua riga minimale, con la proiezione vera (`_to_minimal`).
 
     La forma corta (`"light.salotto": "on"`) resta quella dei casi in cui
     conta solo lo stato; quella lunga (`{"state": ..., "attributes": {...}}`)
     serve ai comandi parametrici, dove lo stato NON cambia e cambia un
-    attributo -- ed e' la stessa forma che `_to_minimal` produce davvero,
-    pinnata da `test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene`.
-
-    **Gli attributi passano da `inherited_attributes`, non si scrivono a
-    mano.** Dalla fetta dell'eredita' (07/09/2026) la voce minimale porta
-    quattro ceste, non un dizionario piatto: una finta che scrivesse ancora
-    `{"attributes": {"temperature": 19}}` modellerebbe una forma che la
-    produzione non ha piu' -- ed e' esattamente la trappola dello stato
-    condiviso pigro che questo file gia' documenta per il `dopo=`.
+    attributo -- e gli attributi finiscono nelle ceste per mano di
+    `_to_minimal`, non scritti a mano (pinnato da
+    `test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene`).
     """
     if isinstance(valore, dict):
-        voce = {"id": eid, **valore}
-        grezzi = voce.pop("attributes", None)
-        if grezzi:
-            voce["attributes"] = inherited_attributes(grezzi, eid.split(".")[0])
-        return voce
-    return {"id": eid, "state": valore}
+        return raw_state(eid, valore["state"], **(valore.get("attributes") or {}))
+    return raw_state(eid, valore)
 
 
 def _casa(stati, *, cambiati=None, annuncia=None, ritardo=0.0, loaded=True,
@@ -513,7 +496,7 @@ async def test_uno_specchio_non_ancora_pronto_non_nega_un_entita_che_esiste():
 @pytest.mark.asyncio
 async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
     """La cucitura del rilievo 7 dell'audit delle fondamenta, con lo specchio
-    VERO (`EntityCache`), non con `FintaCache`.
+    VERO (`EntityCache`) nudo, senza il contatore di `FintaCache`.
 
     Prima della correzione lo specchio non toglieva mai una voce: cancellata
     `light.salotto` in Home Assistant, la verifica «esiste» la trovava ancora

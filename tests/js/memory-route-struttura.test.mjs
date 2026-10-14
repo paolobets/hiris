@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 /* Collaudo usabilita' 3.22.3, rilievo B: `config/memory-route.js:317-330`.
  *
@@ -26,10 +27,6 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 const SCRIPTS = ['common.js', 'config/memory-route.js'];
 
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
-
 const BASE_RICORDO = {
   id: 1,
   testo: 'un ricordo qualsiasi',
@@ -47,9 +44,9 @@ const BASE_RICORDO = {
 
 async function montaConRicordo(ricordo) {
   const ctx = loadScripts(SCRIPTS, { html: HTML });
-  ctx.window.fetch = () => Promise.resolve(jsonResponse({
-    available: true, memories: [ricordo], total: 1, shown: 1,
-  }));
+  fintoFetch(ctx.window, {
+    'api/memories': { available: true, memories: [ricordo], total: 1, shown: 1 },
+  });
   ctx.window.HirisMemoryRoute.mount();
   await tick(0);
   await tick(0);

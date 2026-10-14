@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, stubFetch, tick } from './helpers/dom.mjs';
+import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 /* Task B8: la SPA di configurazione non faceva NESSUNA fetch a api/health
    prima di questo task (verificato: `grep -rn "api/health" static/config/`
@@ -28,7 +29,8 @@ function avvia(buildLocale, buildRemoto) {
   const reloadCalls = [];
   ctx.window.HirisBuildCheck._internal_reload = () => { reloadCalls.push(true); };
   try { ctx.window.sessionStorage.clear(); } catch {}
-  stubFetch(ctx.window, { 'api/health': { status: 'ok', version: '3.0.0', build: buildRemoto } });
+  fintoFetch(ctx.window, { 'api/health': { status: 'ok', version: '3.0.0', build: buildRemoto },
+    'api/config': maiRisposta });
   return { ...ctx, reloadCalls };
 }
 

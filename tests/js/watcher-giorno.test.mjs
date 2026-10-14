@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La scheda «Il giorno» (config/watcher-giorno.js): il resoconto di UN
    giorno, col suo selettore.
@@ -20,10 +21,6 @@ const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
-}
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
 function resoconto(extra) {
@@ -60,39 +57,35 @@ function nonCalcolabile(nome, perche) {
 }
 
 /* Il finto server della SOLA scheda «Il giorno»: una rotta,
-   `api/mind/report`. Un altro indirizzo solleva -- se aprendo questa scheda la
+   `api/mind/report`. Un altro indirizzo fa fallire la prova -- se aprendo questa scheda la
    pagina chiedesse gli 86 KB dell'osservatore, il carico pigro sarebbe rotto e
    si vedrebbe qui. La chiave `resoconto` e' quella vera di
    `handlers_mind.handle_report`, ed e' PINNATA: se una delle due parti la
    rinomina, queste prove cadono. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  const corpiInviati = [];
-  ctx.window.fetch = async (url, init) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (init && init.body) corpiInviati.push(String(init.body));
-    if (u.indexOf('api/mind/report') === 0) {
+  const elenco = fintoFetch(ctx.window, {
+    'api/mind/report': () => {
       if (opts.resocontoRotto) throw new Error('rete giu\'');
-      return jsonResponse(
+      return risposta(
         opts.resoconto !== undefined ? opts.resoconto : { resoconto: resoconto() },
         opts.resocontoStatus);
-    }
-    throw new Error('url inatteso: ' + u);
-  };
-  return Object.assign(ctx, { chiamate, corpiInviati });
+    },
+  });
+  return Object.defineProperty(ctx, 'chiamate', { get: () => elenco.map((c) => c.url) });
 }
 
-// -- date locali, calcolate come le calcola la pagina (fuso del browser di
-//    chi fa girare il test), MAI hardcoded: una data fissa scritta nel test
-//    diventerebbe falsa il giorno dopo. --
-function pad2(n) { return n < 10 ? '0' + n : String(n); }
-function isoLocale(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+// -- date locali, chieste alla pagina (`HirisWatcherShared.isoData`, la stessa
+//    che la scheda usa per «ieri»), MAI hardcoded: una data fissa scritta nel
+//    test diventerebbe falsa il giorno dopo. Fino al 14/10/2026 qui stava una
+//    copia di `isoData` (T-10); che la funzione della pagina sia giusta lo
+//    dice la prova `isoData e localOggi` piu' sotto, con un atteso calcolato
+//    in modo indipendente. --
+const CONDIVISA = loadScripts(['common.js', 'config/watcher-shared.js']).window.HirisWatcherShared;
 function giornoFa(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return isoLocale(d);
+  return CONDIVISA.isoData(d);
 }
 
 const OGGI = giornoFa(0);
@@ -719,4 +712,24 @@ test('seam _rendiResoconto: le forme stanno dietro un bottone, non in colonna', 
   assert.match(corpo.textContent, /8 forme/);
   const apri = [...corpo.querySelectorAll('button')].filter((b) => /Vedi tutte \(8\)/.test(b.textContent))[0];
   assert.ok(apri, 'le forme sono ancora disegnate tutte');
+});
+
+/* T-10: `isoData` e `localOggi` della pagina, contro un atteso che NON viene
+   da loro. Le date fisse coprono lo zero davanti a mese e giorno (gennaio, il
+   5) e i due numeri pieni (dicembre, il 25); il giorno di oggi si confronta
+   con `Intl.DateTimeFormat` in `en-CA`, che scrive AAAA-MM-GG nel fuso
+   locale: un calcolo diverso, della piattaforma, non una copia.
+   Mutazioni ESEGUITE (14/10/2026): `pad2` di `common.js` che non aggiunge
+   lo zero -- rossa («2026-1-5»); `getMonth()` senza il +1 -- rossa
+   («2026-00-05»); `localOggi` sulla data UTC (`toISOString().slice(0, 10)`)
+   -- rossa con TZ=America/Los_Angeles alle 00:57 UTC («2026-10-14» contro
+   «2026-10-13»), VERDE con TZ=UTC: quella mutazione si vede solo dove fuso
+   e ora spostano il giorno, ed e' scritto qui perche' non si creda il
+   contrario. */
+test('isoData e localOggi: la data locale in AAAA-MM-GG, contro un calcolo indipendente', () => {
+  assert.equal(CONDIVISA.isoData(new Date(2026, 0, 5)), '2026-01-05');
+  assert.equal(CONDIVISA.isoData(new Date(2026, 11, 25, 23, 59)), '2026-12-25');
+  const oggi = new Intl.DateTimeFormat('en-CA',
+    { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  assert.equal(CONDIVISA.localOggi(), oggi);
 });

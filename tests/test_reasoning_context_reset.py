@@ -278,6 +278,5 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
             assert corpo["reply"] == "in cucina ci sono i faretti"
             assert ricordo_segreto not in json.dumps(corpo, ensure_ascii=False)
     finally:
-        archivio_casa.close()
         archivio_memoria.close()
         reasoning_queue.close()

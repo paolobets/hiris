@@ -17,8 +17,7 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import build_home_space
 from hiris.app.mind import compute, operations
 from hiris.app.mind.recipes import Recipe, hourly_points
-from hiris.app.proxy.entity_cache import _to_minimal
-from tests.test_attori_davanti_alla_fonte import _Cache
+from tests._specchio_finto import SpecchioFinto
 from tests.test_fonte_della_casa import _Store
 from tests.test_history_tool import _HISTORY_PATH, _asked
 from tests.test_history_tool import _house as _ha_house
@@ -58,7 +57,7 @@ def _house(entities, listed=None):
              "device_id": None, "disabled_by": None, "hidden_by": None}
             for e in entities]
     home_space = build_home_space({"entita": rows, "integrazioni": [], "dispositivi": []})
-    mirror = _Cache([_to_minimal({"entity_id": e, "state": "1", "attributes": {}})
+    mirror = SpecchioFinto([({"entity_id": e, "state": "1", "attributes": {}})
                      for e in entities])
     return House.read(_Store(home_space), mirror).with_statistics(
         set(entities) if listed is None else listed)

@@ -20,23 +20,21 @@ from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 
 _RIFIUTATA = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
 _PROBLEMA = "il rimetti 1 vuole `id` e `perche`"
 
 
-class _Modello:
-    """Il modello dal lato del giro: risponde quello che gli si da', e tiene
-    le domande."""
+def _modello(*risposte) -> RunnerFinto:
+    """Il modello dal lato del giro: risponde, in ordine, quello che gli si
+    da'; le domande restano nelle sue chiamate."""
+    coda = list(risposte)
 
-    def __init__(self, *risposte):
-        self.risposte = list(risposte)
-        self.domande: list[str] = []
-        self.last_tool_calls: list = []
+    async def _turno(_runner, **_kwargs):
+        return coda.pop(0)
 
-    async def chat(self, **kwargs):
-        self.domande.append(kwargs["user_message"])
-        return self.risposte.pop(0)
+    return RunnerFinto(turno=_turno)
 
 
 def _resoconto(giorno):
@@ -72,24 +70,24 @@ async def test_sulla_CATENA_il_rifiuto_si_scrive_e_torna_nella_domanda(casa):
     `declare_refused` -- rossa (l'esito resta «riuscito»); senza
     `refused_problems` -- rossa (la seconda domanda non porta il problema)."""
     app = casa
-    modello = _Modello(_RIFIUTATA, json.dumps({"osservazioni": []}))
+    modello = _modello(_RIFIUTATA, json.dumps({"osservazioni": []}))
     app["llm_router"] = modello
 
     await server.analyst_round(app)
     riga = app["usage"].turns(species=steering.ANALYST_SPECIES)[0]
     assert riga["outcome"] == steering.REFUSED
     assert any(_PROBLEMA in p for p in riga["problems"])
-    assert _PROBLEMA not in modello.domande[0]
+    assert _PROBLEMA not in modello.chiamate[0]["user_message"]
 
     await server.analyst_round(app)
-    assert _PROBLEMA in modello.domande[1]
+    assert _PROBLEMA in modello.chiamate[1]["user_message"]
     assert app["observations"].analysis(_oggi(app)) is not None
 
 
 @pytest.mark.asyncio
 async def test_una_risposta_buona_NON_si_segna_rifiutata(casa):
     app = casa
-    app["llm_router"] = _Modello(json.dumps({"osservazioni": []}))
+    app["llm_router"] = _modello(json.dumps({"osservazioni": []}))
     await server.analyst_round(app)
     assert app["usage"].turns()[0]["outcome"] == "riuscito"
 

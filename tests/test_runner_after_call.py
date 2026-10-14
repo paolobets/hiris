@@ -20,6 +20,7 @@ from pathlib import Path
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.llm_router import LLMRouter
+from tests._runner_finto import RunnerFinto
 
 _APP = Path(__file__).resolve().parent.parent / "hiris" / "app"
 
@@ -30,6 +31,10 @@ _DELIBERATELY_ABSENT = {
         "(`LLMRouter.provider_name`, dalla sua ContextVar): Claude e' uno solo, "
         "mentre `OpenAICompatRunner` lo porta perche' una classe serve tre "
         "provider (openai, ollama, openrouter)",
+    ("RunnerFinto", "provider_name"):
+        "il runner delle prove ha la forma di `ClaudeRunner`, e come lui lo "
+        "lascia scrivere al router: con un nome suo, ogni prova che misura "
+        "dietro un finto registrerebbe un canale che nessun backend porta",
 }
 
 
@@ -58,8 +63,13 @@ def _read_after_call() -> dict[str, set[str]]:
 
 
 def _runners() -> list:
+    """I due backend veri, e il runner delle prove (T-02): la finta ha la
+    forma del vero perche' qui lo si verifica, non perche' qualcuno se ne e'
+    ricordato. Mutazione ESEGUITA (14/10/2026): tolto l'azzeramento di
+    `last_unanswered` da `RunnerFinto.chat` -- rossa."""
     return [ClaudeRunner(api_key="sk-prova"),
-            OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-prova")]
+            OpenAICompatRunner(base_url="https://api.openai.com/v1", api_key="sk-prova"),
+            RunnerFinto()]
 
 
 def test_the_derivation_still_sees_what_is_read():

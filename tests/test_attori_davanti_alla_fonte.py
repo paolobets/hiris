@@ -62,6 +62,7 @@ from hiris.app.mind.report import build_report
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from tests._casa_sintetica import synthetic_inputs
+from tests._specchio_finto import SpecchioFinto
 from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house, _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -135,21 +136,9 @@ def _registries(extra_devices=()):
 
 
 def _mirror_cache():
-    from hiris.app.proxy.entity_cache import _to_minimal
+    """Lo specchio vero dal lato della rotta, con gli stati grezzi della casa."""
     from tests.test_fonte_della_casa import STATES
-    return _Cache([_to_minimal(row) for row in STATES])
-
-
-class _Cache:
-    """Lo specchio dal lato della rotta: `topology.read_mirror` chiede
-    `all_states` (una cache senza `loaded` vale pronta,
-    `entity_cache.inventory_is_readable`)."""
-
-    def __init__(self, rows):
-        self._rows = rows
-
-    def all_states(self):
-        return list(self._rows)
+    return SpecchioFinto(STATES)
 
 
 @pytest.mark.asyncio

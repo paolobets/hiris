@@ -212,16 +212,13 @@ def test_l_anagrafe_tenuta_a_memoria_risponde_come_rispondeva_dal_disco(tmp_path
     di quello tenuto.
     """
     casa = HomeSpace(str(tmp_path))
-    try:
-        anagrafe = build_home_space(_REGISTRI_COMPLETI)
-        casa.hold(anagrafe, ["etichette"], reference_frame={"fuso": "Europe/Rome"})
+    anagrafe = build_home_space(_REGISTRI_COMPLETI)
+    casa.hold(anagrafe, ["etichette"], reference_frame={"fuso": "Europe/Rome"})
 
-        assert casa.read() == anagrafe
-        assert casa.unavailable() == ["etichette"]
-        assert casa.reference_frame() == {"fuso": "Europe/Rome"}
-        assert casa.updated_at() is not None
-    finally:
-        casa.close()
+    assert casa.read() == anagrafe
+    assert casa.unavailable() == ["etichette"]
+    assert casa.reference_frame() == {"fuso": "Europe/Rome"}
+    assert casa.updated_at() is not None
 
 
 def test_prima_della_prima_lettura_la_casa_dice_di_non_esserci_non_di_essere_vuota(tmp_path):
@@ -238,12 +235,9 @@ def test_prima_della_prima_lettura_la_casa_dice_di_non_esserci_non_di_essere_vuo
     aggiornamento (es. l'istante della costruzione).
     """
     casa = HomeSpace(str(tmp_path))
-    try:
-        assert casa.updated_at() is None
-        assert casa.read() == {}
-        assert casa.reference_frame() == {}
-    finally:
-        casa.close()
+    assert casa.updated_at() is None
+    assert casa.read() == {}
+    assert casa.reference_frame() == {}
 
 
 def test_la_casa_tenuta_ha_sempre_le_sette_tabelle(tmp_path):
@@ -259,15 +253,12 @@ def test_la_casa_tenuta_ha_sempre_le_sette_tabelle(tmp_path):
     arriva.
     """
     casa = HomeSpace(str(tmp_path))
-    try:
-        casa.hold({"entita": [{"id": "light.cucina"}]})
+    casa.hold({"entita": [{"id": "light.cucina"}]})
 
-        assert set(casa.read()) == {"piani", "aree", "dispositivi", "entita",
-                                    "etichette", "categorie", "integrazioni", "manifesti"}
-        assert casa.read()["dispositivi"] == []
-        assert casa.read()["entita"] == [{"id": "light.cucina"}]
-    finally:
-        casa.close()
+    assert set(casa.read()) == {"piani", "aree", "dispositivi", "entita",
+                                "etichette", "categorie", "integrazioni", "manifesti"}
+    assert casa.read()["dispositivi"] == []
+    assert casa.read()["entita"] == [{"id": "light.cucina"}]
 
 
 # ─── Cio' che difendeva `HomeSpaceStore.replace()`, e difende ancora ──────
@@ -330,8 +321,7 @@ _MOTIVO_LUNGO_LEGITTIMO = (
 @pytest.fixture
 def anagrafe(tmp_path):
     a = HomeSpace(str(tmp_path))
-    yield a
-    a.close()
+    return a
 
 
 def test_una_casa_vuota_si_legge_senza_esplodere(anagrafe):

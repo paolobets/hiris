@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): `GET
    /api/home-space` manda l'albero completo che `anagrafe.gerarchia()` costruisce
@@ -21,14 +22,10 @@ function rendi(casa) {
   // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtDateTime`,
   // condivisa con la pagina Consumi -- non e' piu' un file isolato.
   const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
-  const chiamate = [];
-  ctx.window.fetch = (url) => {
-    chiamate.push(String(url));
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(casa) });
-  };
+  const chiamate = fintoFetch(ctx.window, { 'api/home-space': casa });
   return ctx.window.HirisTreeRoute.mount().then(() => {
     ctx.testo = ctx.document.getElementById('route-outlet').textContent;
-    ctx.chiamate = chiamate;
+    ctx.chiamate = chiamate.map((c) => c.url);
     return ctx;
   });
 }
@@ -447,7 +444,7 @@ test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', a
   const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const consoleVera = console.error;
   console.error = () => {};
-  ctx.window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+  fintoFetch(ctx.window, { 'api/home-space': risposta({}, 500) });
   await ctx.window.HirisTreeRoute.mount();
   await tick(0);
   console.error = consoleVera;

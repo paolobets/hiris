@@ -31,6 +31,7 @@ from hiris.app.home_space.privacy import MOVING_DOMAINS
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
 from hiris.app.mind.store import ObservationsStore
+from tests._runner_finto import RunnerFinto
 
 #: I nomi che non devono arrivare al modello, in ogni forma in cui la casa li
 #: porta: il nome mostrato e l'object_id.
@@ -103,24 +104,14 @@ def test_il_segnaposto_non_puo_essere_un_entity_id_vero():
         assert not object_id.match(handle.split(".", 1)[1])
 
 
-class _Model:
-    def __init__(self, answer="[]"):
-        self.answer = answer
-        self.questions = []
-
-    async def chat(self, *, user_message, system_prompt="", model="auto",
-                   max_tokens=0, **kw):
-        self.questions.append(user_message + "\n" + system_prompt)
-        return self.answer
-
-
 @pytest.mark.asyncio
 async def test_sulla_CATENA_la_domanda_non_porta_i_nomi_e_la_decisione_torna_all_id(archivio):
-    model = _Model('[{"id": "person.#1", "dentro": true, '
-                   '"motivo": "la presenza spiega il riscaldamento"}]')
+    model = RunnerFinto('[{"id": "person.#1", "dentro": true, '
+                        '"motivo": "la presenza spiega il riscaldamento"}]')
     outcome = await observer.reconsider(model, archivio, _house(), reason="prova",
                                         now=1000.0)
-    _without_names(model.questions[0])
+    asked = model.chiamate[0]
+    _without_names(asked["user_message"] + "\n" + asked.get("system_prompt", ""))
     assert outcome["decise"] == 1, outcome
     # person.#1 e' la prima persona in ordine d'id: giulia.
     assert archivio.scope()["person.giulia"]["dentro"] is True

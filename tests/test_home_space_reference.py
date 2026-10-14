@@ -24,6 +24,7 @@ from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_briefing import compose
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -50,8 +51,7 @@ _CONFIG = {
 @pytest.fixture
 def archivio(tmp_path):
     a = HomeSpace(str(tmp_path))
-    yield a
-    a.close()
+    return a
 
 
 # --- la distillazione: cosa entra, cosa resta fuori ------------------------
@@ -280,20 +280,6 @@ def test_senza_riferimento_il_nucleo_non_ne_inventa_uno():
     assert "fuso" not in testo.lower()
 
 
-class _SpecchioFinto:
-    """La forma vera di `entity_cache._to_minimal`: `id`, `state`, `unit`.
-    L'unita' viva sta QUI e solo qui -- e' il punto del sistema di
-    riferimento: la casa dice come ragiona, l'entita' dice cosa e'."""
-
-    loaded = True
-
-    def __init__(self, righe):
-        self._righe = righe
-
-    def all_states(self):
-        return list(self._righe)
-
-
 # --- LA PROVA CHE CONTA: il riferimento non e' un ripiego -----------------
 
 @pytest.mark.asyncio
@@ -337,9 +323,12 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             [], reference_frame=reference_frame(_CONFIG))
         assert archivio.reference_frame()["sistema_unita"]["temperature"] == "C"
 
-        cache = _SpecchioFinto([
-            {"id": "sensor.indice", "state": "72", "unit": None},
-            {"id": "sensor.termo", "state": "72", "unit": "F"},
+        # L'unita' viva sta nello specchio e solo li' -- e' il punto del
+        # sistema di riferimento: la casa dice come ragiona, l'entita' dice
+        # cosa e'.
+        cache = SpecchioFinto([
+            raw_state("sensor.indice", "72"),
+            raw_state("sensor.termo", "72", unit_of_measurement="F"),
         ])
         d = ToolDispatcher(archivio, memoria, cache=cache)
         esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
@@ -351,5 +340,4 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             "l'unita' propria dell'entita' deve arrivare, e vincere su quella "
             "della casa")
     finally:
-        archivio.close()
         memoria.close()

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { loadScripts } from './helpers/dom.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 /* ── Cancellare dice anche COSA RESTA (reperto C-6, 23/09/2026) ────────────
 
@@ -36,8 +37,10 @@ async function conferma() {
       <div id="turn-counter"></div><div id="session-ended-msg"></div>
       <button id="delete-conv-btn"></button></body>` },
   );
-  window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ conversations: [
-    { id: 'c1', titolo: 'ciao', ultimo_messaggio: '', attiva: true }] }) });
+  fintoFetch(window, {
+    'api/chat/conversations': { conversations: [
+      { id: 'c1', titolo: 'ciao', ultimo_messaggio: '', attiva: true }] },
+  });
   await window.HirisChatConversations.refresh();
   let domanda = null;
   window.confirm = (m) => { domanda = m; return false; };

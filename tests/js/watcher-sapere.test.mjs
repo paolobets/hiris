@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La scheda «Cosa ho capito» (config/watcher-sapere.js): il sapere, i giudizi
    sui tipi, le domande aperte e le correzioni del proprietario.
@@ -38,38 +39,33 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
-
 /* Il finto server della SOLA scheda «Cosa ho capito»: la sua lettura
    (`api/mind/knowledge`) e la sua scrittura (`api/mind/judgment`, con la
    chiave vera di `handlers_mind.handle_set_judgment` -- `riga`/`impronta`/
-   `da`, o `errore` sul 400/409). Un altro indirizzo solleva. */
+   `da`, o `errore` sul 400/409). Un altro indirizzo fa fallire la prova. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  const corpiInviati = [];
-  ctx.window.fetch = async (url, init) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (init && init.body) corpiInviati.push(String(init.body));
-    if (u.indexOf('api/mind/judgment') === 0) {
+  const elenco = fintoFetch(ctx.window, {
+    'api/mind/judgment': () => {
       if (opts.giudizioRotto) throw new Error('rete interrotta');
-      return jsonResponse(
+      return risposta(
         opts.giudizio !== undefined ? opts.giudizio : { riga: null, impronta: 'x', da: 'sapere' },
         opts.giudizioStatus);
-    }
-    if (u.indexOf('api/mind/knowledge') === 0) {
+    },
+    'api/mind/knowledge': () => {
       if (opts.sapereRotto) throw new Error('rete interrotta');
-      return jsonResponse(
+      return risposta(
         opts.sapere !== undefined ? opts.sapere
           : { conteggi: { totale: 0, righe: [] }, non_capito: [] },
         opts.sapereStatus);
-    }
-    throw new Error('url inatteso: ' + u);
-  };
-  return Object.assign(ctx, { chiamate, corpiInviati });
+    },
+  });
+  /* Due viste vive dell'elenco delle chiamate: gli indirizzi, e i corpi
+     inviati (solo le richieste che ne hanno uno). */
+  return Object.defineProperties(ctx, {
+    chiamate: { get: () => elenco.map((c) => c.url) },
+    corpiInviati: { get: () => elenco.filter((c) => c.corpo).map((c) => String(c.corpo)) },
+  });
 }
 
 /* Dal 20/09/2026 un gruppo del seme non e' piu' un rivelatore col titolo nel
@@ -1290,8 +1286,10 @@ test('seam _rendiSapere: una correzione dice CHI l\'ha scritta, e il nome resta 
 async function sapereConCostruire(canBuild) {
   const ctx = loadScripts([...SCRIPTS, 'pending-badge.js'], { html: fixtureHtml() });
   const risposte = [canBuild];
-  ctx.window.fetch = async () => jsonResponse(
-    { agenda_unread: 0, constructions_pending: 0, can_build: risposte[risposte.length - 1] });
+  fintoFetch(ctx.window, {
+    'api/pending': () => (
+      { agenda_unread: 0, constructions_pending: 0, can_build: risposte[risposte.length - 1] }),
+  });
   await ctx.window.HirisPendingBadge.mount();
   await tick(0);
   const corpo = ctx.document.createElement('div');

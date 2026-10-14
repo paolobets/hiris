@@ -13,7 +13,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import web
@@ -31,6 +30,7 @@ from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.server import _chat_reply_submitter
 from tests._casa_sintetica import synthetic_inputs
+from tests._runner_finto import RunnerFinto
 
 PAOLO = ChatThread("persona:paolo", "pannello")
 MARTA = ChatThread("persona:marta", "pannello")
@@ -74,10 +74,7 @@ _UTENTI = [
 def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
-    runner = AsyncMock()
-    runner.chat = AsyncMock(return_value="risposta sincrona")
-    runner.last_tool_calls = []
-    runner.last_unanswered = False
+    runner = RunnerFinto("risposta sincrona")
 
     app = web.Application(middlewares=[_finto_confine])
     app["llm_router"] = runner

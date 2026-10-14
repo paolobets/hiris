@@ -18,6 +18,7 @@ from hiris.app.home_space.tools import (
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import MAX_CALENDAR_EVENTS
 from tests._casa_sintetica import synthetic_inputs
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_briefing import _CASA, _COMPORTAMENTO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -64,8 +65,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO_LETTO):
 @pytest.fixture
 def archivio_casa(tmp_path):
     a = _semina_casa(tmp_path)
-    yield a
-    a.close()
+    return a
 
 
 @pytest.fixture
@@ -81,8 +81,7 @@ def archivio_casa_ambiguo(tmp_path):
         "entita": [],
     }
     a = _semina_casa(tmp_path, casa=casa, comportamento=[])
-    yield a
-    a.close()
+    return a
 
 
 @pytest.fixture
@@ -720,13 +719,11 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
-    class _MirrorWithoutThisEntry:
-        loaded = True
-        def all_states(self):
-            return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
+    # Lo specchio senza "light.senza": si legge, ma per un'ALTRA entita'.
+    specchio = SpecchioFinto([raw_state("light.altra", "on", "Un'altra luce")])
 
     result = await ToolDispatcher(archivio_casa, memoria,
-                                   cache=_MirrorWithoutThisEntry()).dispatch(
+                                   cache=specchio).dispatch(
         "search", {"nome": "abat-jour"})
     assert result["trovate"] == 0
     assert result["nulla_riconosciuto"] is True
@@ -838,14 +835,9 @@ def test_la_descrizione_del_bersaglio_etichette_dice_che_si_danno_per_id():
     assert "si prendono da" not in descrizione
 
 
-class _CacheFinta:
-    """La forma vera di `entity_cache`: chiave "id", non "entity_id"."""
-
-    def __init__(self, stati):
-        self._stati = stati
-
-    def all_states(self):
-        return [{"id": k, "state": v} for k, v in self._stati.items()]
+def _specchio_stati(stati):
+    """Lo specchio vero con gli stati dati (`entity_id -> stato`), senza nomi."""
+    return SpecchioFinto([raw_state(k, v) for k, v in stati.items()])
 
 
 @pytest.mark.asyncio
@@ -855,7 +847,7 @@ async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
     agisce. Chi scrive e' `execute`, e passa dalla porta. Prima `view`
     restituiva sempre `stato: None` perche' la cache non era cablata --
     onesto ma inutile."""
-    cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
+    cache = _specchio_stati({"light.cucina_1": "on", "light.cucina_2": "off"})
     d = ToolDispatcher(archivio_casa, memoria, cache=cache)
     esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
     stati = {e["id"]: e["stato"] for e in esito["voci"][0]["entita"]}
@@ -873,14 +865,12 @@ async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivi
     assert esito["stato_non_letto"] is True
 
 
-class _CacheGuastaMaDichiarataPronta:
+class _CacheGuastaMaDichiarataPronta(SpecchioFinto):
     """`loaded` e' True (la cache si dichiara pronta) ma `all_states()`
     solleva -- il caso che il fix E1-③ chiude: senza di esso
     `inventory_is_readable()` vedrebbe solo `loaded=True` e non
     dichiarerebbe mai `stato_non_letto`, anche con la lettura vera fallita
-    e `stato: None` su tutto."""
-
-    loaded = True
+    e `stato: None` su tutto. Sovrascrive solo la lettura, per romperla."""
 
     def all_states(self):
         raise RuntimeError("cache corrotta")
@@ -896,16 +886,22 @@ async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, m
     assert esito["stato_non_letto"] is True
 
 
-class _CacheConNomi:
-    """Una cache finta che mente come mente la realta': entita' con
-    friendly_name, entita' senza, e la chiave "id" (non "entity_id")."""
-    loaded = True
+def _specchio_nominato():
+    """Lo specchio vero che mente come mente la realta': un'entita' con
+    friendly_name, due senza (`friendly_name` vuoto: `_to_minimal` ne fa
+    `name: ""`)."""
+    return SpecchioFinto([raw_state("light.abat_jour_1", "off", "Abat-jour"),
+                          raw_state("light.x", "on"),
+                          raw_state("sensor.y", "21")])
+
+
+class _SpecchioRigaNonDict(SpecchioFinto):
+    """Lo specchio vero con in coda una riga che NON e' un dizionario: forma
+    che `EntityCache` non puo' produrre (T-06). Sovrascrive solo la lettura,
+    per tenere la prova di `live_mirror` che la salta."""
 
     def all_states(self):
-        return [{"id": "light.abat_jour_1", "state": "off", "name": "Abat-jour"},
-                {"id": "light.x", "state": "on", "name": ""},
-                {"id": "sensor.y", "state": "21"},          # senza chiave "name"
-                "non un dizionario"]
+        return [*super().all_states(), "non un dizionario"]
 
 
 def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archivio_casa, memoria):
@@ -913,12 +909,15 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
     sarebbero la stessa classe di divergenza che il nucleo chiude condividendo
     un solo albero -- ed e' la ragione per cui l'unita' e' entrata qui invece
     che in un metodo suo."""
-    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    specchio = _SpecchioRigaNonDict(
+        [raw_state("light.abat_jour_1", "off", "Abat-jour"),
+         raw_state("light.x", "on"), raw_state("sensor.y", "21")])
+    d = ToolDispatcher(archivio_casa, memoria, cache=specchio)
     mirror = d._mirror()
     assert mirror.readable is True
     assert mirror.state["light.abat_jour_1"] == "off" and mirror.state["sensor.y"] == "21"
     assert mirror.names == {"light.abat_jour_1": "Abat-jour"}
-    # `_CacheConNomi` non porta unita': l'assenza e' un dizionario vuoto, non
+    # Lo specchio non porta unita': l'assenza e' un dizionario vuoto, non
     # una chiave con valore nullo.
     assert mirror.units == {}
 
@@ -928,7 +927,7 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
     """Le abat-jour, dal vivo: quattro giri di `search` diventano uno."""
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
-    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_specchio_nominato())
     esito = await d.dispatch("search", {"nome": "abat-jour"})
     riferimenti = [v.get("id") for v in esito["voci"]]
     assert riferimenti == ["light.abat_jour_1"]
@@ -949,7 +948,7 @@ async def test_guarda_un_entita_senza_nome_da_il_nome_vivo_dal_dispatcher(
     `search` con `riferimento` in `tools.py`)."""
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
-    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_specchio_nominato())
     esito = await d.dispatch("search", {"genere": "entita", "riferimento": "light.abat_jour_1"})
     assert esito["voci"][0]["esiste"] is True
     assert esito["voci"][0]["nome"] == "Abat-jour"
@@ -973,7 +972,7 @@ async def test_guarda_un_area_da_il_nome_vivo_delle_sue_entita_dal_dispatcher(
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
                     "name": None, "original_name": None}],
     }, [])
-    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_specchio_nominato())
     esito = await d.dispatch("search", {"genere": "area", "riferimento": "giardino"})
     assert esito["voci"][0]["esiste"] is True
     entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
@@ -994,7 +993,7 @@ async def test_guarda_un_dispositivo_da_il_nome_vivo_delle_sue_entita_dal_dispat
         "entita": [{"entity_id": "light.abat_jour_1", "device_id": "dev_irr",
                     "name": None, "original_name": None}],
     }, [])
-    d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
+    d = ToolDispatcher(archivio_casa, memoria, cache=_specchio_nominato())
     esito = await d.dispatch("search", {"genere": "dispositivo", "riferimento": "dev_irr"})
     assert esito["voci"][0]["esiste"] is True
     entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
@@ -1027,11 +1026,8 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
-    class _NonPronta:
-        loaded = False
-        def all_states(self): return []
-
-    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria,
+                                 cache=SpecchioFinto(pronto=False)).dispatch(
         "search", {"nome": "abat-jour"})
     assert any("specchio" in m for m in esito["non_ho_potuto_guardare"])
 
@@ -1041,11 +1037,8 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"}]}, [])
 
-    class _NonPronta:
-        loaded = False
-        def all_states(self): return []
-
-    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria,
+                                 cache=SpecchioFinto(pronto=False)).dispatch(
         "search", {"nome": "luce cucina"})
     assert "non_ho_potuto_guardare" not in esito
 
@@ -1063,15 +1056,12 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
-    class _SpecchioSenzaQuestaVoce:
-        loaded = True
-        def all_states(self):
-            # "light.senza" non compare: lo specchio e' leggibile ma non sa
-            # come Home Assistant chiama proprio questa entita'.
-            return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
+    # "light.senza" non compare: lo specchio e' leggibile ma non sa come
+    # Home Assistant chiama proprio questa entita'.
+    specchio = SpecchioFinto([raw_state("light.altra", "on", "Un'altra luce")])
 
     esito = await ToolDispatcher(archivio_casa, memoria,
-                                      cache=_SpecchioSenzaQuestaVoce()).dispatch(
+                                      cache=specchio).dispatch(
         "search", {"nome": "abat-jour"})
     assert esito["trovate"] == 0
     assert "non_ho_potuto_guardare" in esito
@@ -1108,16 +1098,13 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
-    class _SpecchioSenzaLaSecondaVoce:
-        loaded = True
-        def all_states(self):
-            # "light.senza" non compare: lo specchio e' leggibile ma non sa
-            # come Home Assistant chiama proprio questa entita' -- lo stesso
-            # fatto stabile misurato sull'impianto vero.
-            return [{"id": "light.c", "state": "on", "name": "Luce cucina"}]
+    # "light.senza" non compare: lo specchio e' leggibile ma non sa come
+    # Home Assistant chiama proprio questa entita' -- lo stesso fatto
+    # stabile misurato sull'impianto vero.
+    specchio = SpecchioFinto([raw_state("light.c", "on", "Luce cucina")])
 
     esito = await ToolDispatcher(archivio_casa, memoria,
-                                      cache=_SpecchioSenzaLaSecondaVoce()).dispatch(
+                                      cache=specchio).dispatch(
         "search", {"nome": "luce cucina"})
     riferimenti = [v.get("id") for v in esito["voci"]]
     assert riferimenti == ["light.c"]
@@ -1148,11 +1135,8 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
         {"entity_id": "light.senza", "name": None, "original_name": None}]},
         ["dispositivi"])  # registro "dispositivi" caduto; "entita"/"aree" letti bene
 
-    class _NonPronta:
-        loaded = False
-        def all_states(self): return []
-
-    esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
+    esito = await ToolDispatcher(archivio_casa, memoria,
+                                 cache=SpecchioFinto(pronto=False)).dispatch(
         "search", {"nome": "luce cucina"})
 
     riferimenti = [v.get("id") for v in esito["voci"]]
@@ -1341,19 +1325,14 @@ async def test_un_nome_vivo_nuovo_si_trova_alla_ricerca_dopo(archivio_casa, memo
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
 
-    class _CacheMutevole:
-        loaded = True
-        def __init__(self, nome):
-            self.nome = nome
-        def all_states(self):
-            return [{"id": "light.abat_jour_1", "state": "off", "name": self.nome}]
-
-    cache_stato = _CacheMutevole("")  # nessun nome ancora
+    cache_stato = SpecchioFinto([raw_state("light.abat_jour_1", "off")])  # nessun nome ancora
     d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato)
     prima = await d.dispatch("search", {"nome": "abat-jour"})
     assert prima["trovate"] == 0
 
-    cache_stato.nome = "Abat-jour"  # ora HA ha un nome vivo per l'entita'
+    # ora HA ha un nome vivo per l'entita': arriva dal rubinetto vero
+    cache_stato.on_state_changed({"entity_id": "light.abat_jour_1",
+                                  "new_state": raw_state("light.abat_jour_1", "off", "Abat-jour")})
     d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato)  # il turno dopo
     dopo = await d.dispatch("search", {"nome": "abat-jour"})
     riferimenti = [v.get("id") for v in dopo["voci"]]
@@ -1404,20 +1383,6 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     await d.dispatch("remember", {"testo": "ancora dopo, stesso stato"})
     assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
 
-    vuoto.close()
-
-
-class _CacheConUnita:
-    """La forma vera di `entity_cache`: `_to_minimal` mette `unit` accanto a
-    `state` e `name` (`proxy/entity_cache.py`). La finta la porta perche' la
-    porta anche la cosa vera -- se la togliessi, questa prova misurerebbe una
-    casa che non esiste."""
-
-    def __init__(self, voci):
-        self._voci = voci
-
-    def all_states(self):
-        return list(self._voci)
 
 
 @pytest.mark.asyncio
@@ -1429,12 +1394,13 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
     `state` e `name`: l'unita' non usciva mai dalla cache. Le prove su
     `view()` passano un dizionario a mano e resterebbero verdi anche cosi' --
     e' esattamente la forma «prova che non puo' fallire» gia' pagata su questo
-    ramo (il commento su `_CacheFinta` racconta la volta scorsa: «prima guarda
+    ramo (`test_guarda_mostra_lo_stato_vivo` racconta la volta scorsa: «prima guarda
     restituiva sempre stato: None perche' la cache non era cablata»).
     """
-    cache = _CacheConUnita([
-        {"id": "sensor.cucina_t", "state": "21.5", "name": "Temperatura", "unit": "°C"},
-        {"id": "light.cucina_1", "state": "on", "name": "Faretti"},
+    # Lo specchio vero: `_to_minimal` mette `unit` accanto a `state` e `name`.
+    cache = SpecchioFinto([
+        raw_state("sensor.cucina_t", "21.5", "Temperatura", unit_of_measurement="°C"),
+        raw_state("light.cucina_1", "on", "Faretti"),
     ])
     d = ToolDispatcher(archivio_casa, memoria, cache=cache)
     esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
@@ -1482,24 +1448,16 @@ def _calendar_house(listing, events_by_entity, *, refuse=None, silence=(), delay
     return house
 
 
-class _CalendarMirror:
-    """Lo specchio coi soli calendari di `_calendar_house`, nella forma vera
-    di `entity_cache` (chiave `id`, `name` il `friendly_name`)."""
-
-    loaded = True
-
-    def __init__(self, listing):
-        self._rows = [{"id": entry["entity_id"], "state": "off", "name": entry["name"]}
-                      for entry in listing]
-
-    def all_states(self):
-        return list(self._rows)
+def _calendar_mirror(listing):
+    """Lo specchio vero coi soli calendari di `_calendar_house`."""
+    return SpecchioFinto([raw_state(entry["entity_id"], "off", entry["name"])
+                          for entry in listing])
 
 
 def _calendar_dispatcher(house):
     """Il dispatcher della chat su `house`, con lo specchio dei suoi
     calendari."""
-    return ToolDispatcher(None, None, ha=house, cache=_CalendarMirror(house.calendar_listing))
+    return ToolDispatcher(None, None, ha=house, cache=_calendar_mirror(house.calendar_listing))
 
 
 def _asked_window(house):

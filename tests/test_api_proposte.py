@@ -23,6 +23,7 @@ from hiris.app.api.handlers_proposals import (
 )
 from hiris.app.mind.store import ObservationsStore
 from tests._casa_sintetica import synthetic_inputs
+from tests._runner_finto import RunnerFinto
 
 #: Chi decide, in queste prove: un amministratore. Dal 26/09/2026 le
 #: proposte sono di chi costruisce (spec 2026-09-26 §3, decisione 5) e ogni
@@ -157,17 +158,11 @@ async def test_RIFALLA_accoda_il_giro_e_riscrive_il_testo(casa, monkeypatch):
     Mutazione: non passare il filo al modello -- rossa (la domanda non porta
     la forma scartata)."""
     app, store, ident = casa
-    domande = []
-
-    class _Modello:
-        async def chat(self, **kwargs):
-            domande.append(kwargs.get("user_message") or "")
-            return json.dumps({"esiti": [{
-                "osservazione": 0, "esito": "a_mano",
-                "testo": "Sposta la lavatrice dopo le 14",
-                "perche": "cosi' cade nelle ore di sole"}]})
-
-    app["llm_router"] = _Modello()
+    modello = RunnerFinto(json.dumps({"esiti": [{
+        "osservazione": 0, "esito": "a_mano",
+        "testo": "Sposta la lavatrice dopo le 14",
+        "perche": "cosi' cade nelle ore di sole"}]}))
+    app["llm_router"] = modello
 
     r = await handle_proposal_redo(
         _richiesta(app, {"id": ident}, {"richiesta": "troppo presto, dopo le 14"}))
@@ -177,6 +172,7 @@ async def test_RIFALLA_accoda_il_giro_e_riscrive_il_testo(casa, monkeypatch):
     assert riga["testo"] == "Sposta la lavatrice dopo le 14"
     assert riga["stato"] == "in_attesa", "un giro non chiude niente"
     assert [g["richiesta"] for g in riga["giri"]] == ["troppo presto, dopo le 14"]
+    domande = [c.get("user_message") or "" for c in modello.chiamate]
     assert "troppo presto" in domande[0], "la tua richiesta non e' arrivata al modello"
     assert "Sposta la lavatrice nel primo pomeriggio" in domande[0], (
         "la forma scartata non e' arrivata al modello: al giro dopo potrebbe "
@@ -205,14 +201,11 @@ async def test_sulla_CATENA_nessuno_risponde_e_RIFALLA_lo_dice(casa):
     il modello che non ha risposto (503), come quando il giro non parte.
 
     Mutazione ESEGUITA: la rotta senza il ramo `turn.answered` -- rossa (502)."""
-    from unittest.mock import AsyncMock, MagicMock
-
     from hiris.app.claude_runner import RunnerBackendError
     from hiris.app.llm_router import LLMRouter
 
     app, store, ident = casa
-    giu = MagicMock()
-    giu.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude."))
+    giu = RunnerFinto(RunnerBackendError("Errore Claude."))
     app["llm_router"] = LLMRouter(claude=giu, model_chain=["claude"])
 
     r = await handle_proposal_redo(

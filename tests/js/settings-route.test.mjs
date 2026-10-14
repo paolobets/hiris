@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* fetta E5 Task 2: la pagina #/settings (config/settings-route.js).
    E' la prima interfaccia che i campi di ChatSettings abbiano mai avuto:
@@ -20,10 +21,6 @@ function fixtureHtml() {
 
 const SCRIPTS = ['common.js', 'config/settings-route.js'];
 
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
-
 const IMPOSTAZIONI = {
   name: 'HIRIS',
   system_prompt: 'Il prompt salvato dall\'utente.',
@@ -39,30 +36,29 @@ const IMPOSTAZIONI = {
   thinking_budget_min: 777,
 };
 
-/* Il finto server: risponde all'unica rotta che la pagina usa. Le opzioni
-   permettono a ogni test di rompere solo il pezzo che gli interessa.
+/* Il finto server: risponde all'unica rotta che la pagina usa
+   (`api/chat-settings`, in GET e in PUT). Le opzioni permettono a ogni test
+   di rompere solo il pezzo che gli interessa.
 
    La finta e' SCOMODA proprio dove serve a questo task: `api/models` non e'
-   piu' prevista da nessun ramo, quindi se la pagina tornasse a chiederla si
-   prenderebbe la risposta delle impostazioni -- un oggetto senza `providers`
-   -- invece di una finta compiacente costruita apposta per accoglierla. Il
-   test «mount: la pagina non chiede piu' l'elenco dei modelli» lo pinna
+   fra le sue rotte, quindi se la pagina tornasse a chiederla la prova
+   fallirebbe da se' (indirizzo sconosciuto al finto fetch) invece di
+   trovare una finta compiacente costruita apposta per accoglierla. Il test
+   «mount: la pagina non chiede piu' l'elenco dei modelli» lo pinna anche
    direttamente sulle chiamate, cosi' il ritorno dello scavalco non puo'
    passare in silenzio. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  ctx.window.fetch = async (url, options) => {
-    const u = String(url);
-    chiamate.push({ url: u, opts: options || {} });
-    if ((options || {}).method === 'PUT') {
+  const chiamate = fintoFetch(ctx.window, {
+    'PUT api/chat-settings': () => {
       if (opts.putRotto) throw new Error('rete giu\'');
-      return jsonResponse(opts.putBody || Object.assign({ ok: true }, IMPOSTAZIONI),
-        opts.putStatus);
-    }
-    if (opts.getRotto) return jsonResponse({ error: 'boom' }, 503);
-    return jsonResponse(opts.impostazioni || IMPOSTAZIONI);
-  };
+      return risposta(opts.putBody || Object.assign({ ok: true }, IMPOSTAZIONI),
+        opts.putStatus || 200);
+    },
+    'GET api/chat-settings': () => (opts.getRotto
+      ? risposta({ error: 'boom' }, 503)
+      : opts.impostazioni || IMPOSTAZIONI),
+  });
   return Object.assign(ctx, { chiamate });
 }
 

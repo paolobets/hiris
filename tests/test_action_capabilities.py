@@ -47,6 +47,7 @@ from hiris.app.home_space.topology import live_mirror
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal, disclosable_attributes
 from tests import _vocabulary_tables
+from tests._specchio_finto import SpecchioFinto
 from tests.test_action_registry import _house
 
 # --------------------------------------------------------------------------
@@ -635,13 +636,9 @@ def test_un_limite_dell_entita_si_prende_solo_intero():
 # e la prova che la fa e' questa: parte da un registro MAI CARICATO e passa
 # dal dispatcher vero.
 
-class _CacheDellAlberello:
-    """La forma vera di `entity_cache.all_states()`, col payload vero."""
-
-    loaded = True
-
-    def all_states(self):
-        return [_to_minimal(LIGHT_ALBERELLO)]
+def _cache_alberello() -> SpecchioFinto:
+    """Lo specchio VERO (`SpecchioFinto`), col payload vero dell'alberello."""
+    return SpecchioFinto([LIGHT_ALBERELLO])
 
 
 @pytest.mark.asyncio
@@ -669,14 +666,13 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
     registro = ServiceRegistry()
     assert registro.empty() is True, "questa prova parte da un registro MAI letto"
     house = _house(HA_SERVICES)
-    dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
+    dispatcher = ToolDispatcher(casa, memoria, cache=_cache_alberello(),
                                 ha=house, registry=registro)
     try:
         risposta = await dispatcher.dispatch(
             "search", {"genere": "entita", "riferimento": "light.alberello"})
     finally:
         memoria.close()
-        casa.close()
     esito = risposta["voci"][0]
     assert esito["esiste"] is True
     assert "comandi" in esito, (
@@ -704,14 +700,13 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     registro = ServiceRegistry()
     house = _house(HA_SERVICES)
-    dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
+    dispatcher = ToolDispatcher(casa, memoria, cache=_cache_alberello(),
                                 ha=house, registry=registro)
     try:
         risposta = await dispatcher.dispatch(
             "search", {"genere": "ricordo", "riferimento": 1})
     finally:
         memoria.close()
-        casa.close()
     # La risposta e' davvero passata dalla porta: senza, la prova sarebbe
     # verde anche con uno strumento rifiutato, che non scalda niente.
     assert risposta["profondita"] == "completa"

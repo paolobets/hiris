@@ -37,6 +37,7 @@ from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
+from tests._runner_finto import RunnerFinto
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -250,17 +251,6 @@ async def test_la_memoria_e_piu_breve_di_ogni_giro_che_la_usa(started_app):
     assert house_history.STATISTIC_IDS_MEMORY_S < min(intervals)
 
 
-class _Modello:
-    """Il modello della catena: conta le domande, risponde senza ricetta."""
-
-    def __init__(self):
-        self.domande = []
-
-    async def chat(self, user_message, **kw):
-        self.domande.append(user_message)
-        return "{}"
-
-
 async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
     """Il dispositivo la cui ricetta non puo' calcolare (nessuna sua entita'
     ha statistiche) torna una domanda, e si chiede GIA' in questo giro, con
@@ -280,15 +270,15 @@ async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
     house = CasaFinta(synthetic_inputs(), answers={_LIST: lambda extra: []},
                       refuse={"energy/get_prefs": {"code": "not_found",
                                                    "message": "No prefs"}})
-    modello = _Modello()
+    modello = RunnerFinto("{}")  # il modello della catena: risponde senza ricetta
     app = {**_app(stores, house), "llm_router": modello}
 
     await server.recipe_round(app)
 
     assert recipe_turn.recipes(sapere).get("dev1") is None
-    assert len(modello.domande) == 1
-    assert "Inverter" in modello.domande[0]
-    assert "non funziona piu'" in modello.domande[0]
+    assert len(modello.chiamate) == 1
+    assert "Inverter" in modello.ultima["user_message"]
+    assert "non funziona piu'" in modello.ultima["user_message"]
     assert _asked(house) == 1
 
 

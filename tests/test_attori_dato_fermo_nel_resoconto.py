@@ -47,9 +47,8 @@ from hiris.app.home_space.reader import build_home_space
 from hiris.app.mind.flatline import HISTORY_DAYS
 from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
-from hiris.app.proxy.entity_cache import _to_minimal
 from tests._casa_sintetica import synthetic_inputs
-from tests.test_attori_davanti_alla_fonte import _Cache
+from tests._specchio_finto import SpecchioFinto
 from tests.test_fonte_della_casa import _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -86,7 +85,7 @@ def _app():
     return {"knowledge": object(), "home_space_store": _Store(home_space),
             # Le tre fonti sono vive: senza stato sarebbero «sparite», e le
             # loro ricette mute (`recipes.muted_recipes`).
-            "entity_cache": _Cache([_to_minimal(
+            "entity_cache": SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
 
@@ -201,7 +200,7 @@ def _house(entities, statistic_ids, state_classes=None):
     from hiris.app.home_space.house import House
     home_space = build_home_space({"entita": entities, "integrazioni": [],
                                    "dispositivi": []})
-    mirror = _Cache([_to_minimal({"entity_id": e, "state": "1",
+    mirror = SpecchioFinto([({"entity_id": e, "state": "1",
                                   "attributes": {"state_class": c}})
                      for e, c in (state_classes or {}).items()])
     return House.read(_Store(home_space), mirror, statistic_ids=statistic_ids)
@@ -259,12 +258,12 @@ def _thermometer_app():
         "dispositivi": [*({"id": f"d_termometro_{i}", "name": f"Termometro {i}",
                            "disabled_by": None} for i in range(len(THERMOMETERS))),
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    cache = [_to_minimal({"entity_id": t, "state": "21.3", "attributes": {}})
+    cache = [({"entity_id": t, "state": "21.3", "attributes": {}})
              for t in THERMOMETERS]
-    cache.append(_to_minimal({"entity_id": HOUSE_METER, "state": "1",
-                              "attributes": {"state_class": "total_increasing"}}))
+    cache.append({"entity_id": HOUSE_METER, "state": "1",
+                              "attributes": {"state_class": "total_increasing"}})
     return {"knowledge": object(), "home_space_store": _Store(home_space),
-            "entity_cache": _Cache(cache)}
+            "entity_cache": SpecchioFinto(cache)}
 
 
 def _thermometer_rows(entity_id, from_iso, to_iso, frozen_from):
