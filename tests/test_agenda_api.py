@@ -106,6 +106,23 @@ async def test_get_dichiara_la_finestra_con_total_e_shown(client):
 
 
 @pytest.mark.asyncio
+async def test_get_manda_le_parole_degli_stati_che_la_pagina_riconosce(client):
+    """N159-2 (14/10/2026): la pagina Impegni confronta `stato` con le parole
+    che la rotta le manda, per nome della costante di `states.py`, invece di
+    scriverle in JS; e la promessa non porta piu' tre uguaglianze col suo
+    `stato`. Mutazione ESEGUITA: `stati` tolto dalla risposta -- rossa qui e
+    nelle prove JS della pagina."""
+    from hiris.app import states
+    archivio = client.app["agenda"]
+    archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
+                     "domanda": "?"}, thread=SVILUPPO, now=1.0)
+    corpo = await (await client.get("/api/agenda?all=1")).json()
+    assert corpo["stati"] == {nome: getattr(states, nome) for nome in corpo["stati"]}
+    assert set(corpo["stati"]) == {"KEPT", "FAILED", "CANCELLED"}
+    assert not {"mantenuta", "fallita", "disdetta"} & set(corpo["agenda"][0])
+
+
+@pytest.mark.asyncio
 async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",

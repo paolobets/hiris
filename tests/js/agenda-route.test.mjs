@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conLetturaPromessa, etichetta } from './helpers/stati.mjs';
 import { fintoFetch, risposta } from './helpers/fetch.mjs';
@@ -21,6 +22,21 @@ import { fintoFetch, risposta } from './helpers/fetch.mjs';
      prove la chiedono a `etichetta` invece di ricopiarla;
    - nessun window.confirm() per disdire: e' reversibile (chiedendo di nuovo a
      voce) e la riga non sparisce, passa allo storico. */
+
+/* Le parole degli stati che la rotta manda come `stati`
+   (`handlers_agenda.PAGE_STATES`, N159-2): i nomi dalla rotta, le parole
+   da `states.py`, come fa il server. */
+const ROTTA = readFileSync(new URL('../../hiris/app/api/handlers_agenda.py', import.meta.url), 'utf8');
+const VOCABOLARIO = readFileSync(new URL('../../hiris/app/states.py', import.meta.url), 'utf8');
+const bloccoStati = ROTTA.match(/^PAGE_STATES = \{([^}]*)\}/m);
+assert.ok(bloccoStati, 'handlers_agenda.py: PAGE_STATES non si legge');
+const STATI = {};
+for (const m of bloccoStati[1].matchAll(/"(\w+)": ([A-Z_]+)/g)) {
+  const parola = VOCABOLARIO.match(new RegExp('^' + m[2] + ' = "([^"]*)"$', 'm'));
+  assert.ok(parola, 'states.py: ' + m[2] + ' non si legge');
+  STATI[m[1]] = parola[1];
+}
+assert.ok(Object.keys(STATI).length >= 3, 'PAGE_STATES: troppo pochi stati letti');
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
@@ -86,7 +102,7 @@ function montaConServer(opts = {}) {
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
       const scelto = corpo !== undefined ? corpo : { agenda: PROMESSE };
       return risposta(scelto && Array.isArray(scelto.agenda)
-        ? { ...scelto, agenda: scelto.agenda.map(conLetturaPromessa) } : scelto);
+        ? { stati: STATI, ...scelto, agenda: scelto.agenda.map(conLetturaPromessa) } : scelto);
     },
     'POST api/agenda/read': (url, options) => {
       if (opts.readRotto) throw new Error('rete giu');
@@ -243,10 +259,11 @@ test('una promessa fallita dice «Non riuscita», mai «Non eseguita»', async (
   assert.ok(!testo.includes(etichetta('saltata')));
 });
 
-test('il motivo e\' rosso solo per una fallita: il colore lo decide `fallita` della promessa', async () => {
+test('il motivo e\' rosso solo per una fallita: lo stato confrontato con la parola della rotta', async () => {
   /* C-10 (Chiusura, 14/10/2026): `reasonColor` confrontava lo stato con
-     'fallita' scritto in JS; ora legge `fallita`, che manda `serializza`.
-     Mutazione ESEGUITA: `p.mantenuta` al posto di `p.fallita` -- rossa. */
+     'fallita' scritto in JS; ora confronta `stato` con la parola che la
+     rotta manda in `stati.FAILED` (N159-2).
+     Mutazione ESEGUITA: `pageStates.KEPT` al posto di `pageStates.FAILED` -- rossa. */
   const { document } = await monta({
     get: { agenda: [
       { ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' },

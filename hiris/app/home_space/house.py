@@ -53,7 +53,7 @@ from .topology import DISABLED, HIDDEN, SERVICE, VISIBLE, Mirror, live_mirror, r
 from .type_vocabulary import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 #: La chiave di `escluse` per ogni classe del fuori (`topology.visibility`).
-_EXCLUDED_KEY = {DISABLED: "disabilitate", HIDDEN: "nascoste", SERVICE: "servizio"}
+_EXCLUDED_KEY = {HIDDEN: "nascoste", SERVICE: "servizio", DISABLED: "disabilitate"}
 
 #: Tre dei sette stati di `House.source` (D6), con un nome: quelli in cui
 #: Home Assistant **non parla piu'** dell'entita' -- spenta (dal proprietario
@@ -279,7 +279,7 @@ class House:
         entries = self.entity_entries()
         searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
         shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()
-        excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
+        excluded = dict.fromkeys(_EXCLUDED_KEY.values(), 0)
         # Le classi che questa porta conta (D7): le disabilitate mai, le
         # nascoste e quelle di servizio a richiesta. Un'entita' fuori per
         # piu' ragioni si conta sotto la PRIMA che la porta non ammette.

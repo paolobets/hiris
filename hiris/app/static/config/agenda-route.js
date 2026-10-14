@@ -145,12 +145,19 @@ window.HirisAgendaRoute = (function () {
     return RTF.format(Math.round(diffS / 3600), 'hour');
   }
 
+  /* Le parole degli stati che la pagina riconosce uno per uno, per nome
+     della costante di `states.py` (`KEPT`, `FAILED`, `CANCELLED`): le manda
+     `GET api/agenda` come `stati` (`handlers_agenda.PAGE_STATES`, N159-2,
+     14/10/2026), e `load()` le rilegge a ogni giro. Fino ad allora erano
+     scritte qui come 'mantenuta', 'fallita' e 'disdetta'. */
+  var pageStates = {};
+
   /* Il colore del TESTO del motivo porta il significato, non solo il badge
      (guida §3, stesso principio di rendiAncore in memory-route.js): rosso
      solo per un vero fallimento, ambra per tutto il resto (compresa la
      nota su una "mantenuta" con motivo -- §6 della spec). */
   function reasonColor(p) {
-    return p.fallita ? 'var(--err-ink)' : 'var(--warn-ink)';
+    return p.stato === pageStates.FAILED ? 'var(--err-ink)' : 'var(--warn-ink)';
   }
 
   function formatSnapshot(snapshot) {
@@ -214,7 +221,7 @@ window.HirisAgendaRoute = (function () {
      `motivo` che l'utente vede e' gia' `esito.errore` (`keeper/sweeper.py::
      _keep_fai`): la stessa frase, non un secondo dettaglio da aprire. */
   function addExecutionDetail(line, p) {
-    if (!(p.specie === 'fai' && p.mantenuta && p.esecuzione_id)) return;
+    if (!(p.specie === 'fai' && p.stato === pageStates.KEPT && p.esecuzione_id)) return;
 
     var group = el('div', 'field-group');
     group.style.marginTop = '8px';
@@ -354,7 +361,7 @@ window.HirisAgendaRoute = (function () {
     /* Il motivo MAI per `disdetta`, come nella pagina Costruzioni: il «no»
        di una persona non e' un fallimento, e non si colora come uno
        (ux-ui-specialist, 08/10/2026: una regola sola per le due code). */
-    if (p.motivo && !p.disdetta) {
+    if (p.motivo && p.stato !== pageStates.CANCELLED) {
       var reason = el('p', null, p.motivo);
       reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p);
       line.appendChild(reason);
@@ -365,7 +372,7 @@ window.HirisAgendaRoute = (function () {
        §6, §8.2) -- anche quando HIRIS ha concluso "in silenzio"
        (`avvisare:false`): questa pagina e' di sola lettura, quindi non
        importa se non e' arrivata una notifica. */
-    if (p.specie === 'chiedi' && p.mantenuta && p.testo) {
+    if (p.specie === 'chiedi' && p.stato === pageStates.KEPT && p.testo) {
       var group = el('div', 'field-group');
       group.style.marginTop = '8px';
       group.appendChild(el('div', 'fg-label', 'HIRIS ha risposto'));
@@ -532,6 +539,7 @@ window.HirisAgendaRoute = (function () {
       return r.json();
     }).then(function (data) {
       var all = data.agenda || [];
+      pageStates = data.stati || {};
       var pending = all.filter(function (p) { return p.sospesa === true; });
       var history = all.filter(function (p) { return p.sospesa !== true; });
       /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:
