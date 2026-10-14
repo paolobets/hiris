@@ -1,5 +1,104 @@
 # HIRIS — Changelog
 
+## [3.79.0] — L'ora della casa, una chat sola su catena e ponte, la terza porta finita: la Chiusura di «Una fonte sola di verità», rilascio 1 (2026-10-14)
+
+### Perché
+
+Lo sprint «Una fonte sola di verità» ha lasciato nel registro più di cento voci fatte a metà o mai
+chiuse. Questo rilascio porta quasi tutte quelle che cambiano il comportamento. Le pagine
+scrivevano le ore col fuso del dispositivo, e la stessa ora poteva uscire in cinque forme. La chat
+si componeva in due modi diversi sulla catena e sul ponte. La voce di menu e la card parlavano con
+Home Assistant per conto proprio, fuori dalle tre porte. Ora ogni fatto ha una casa sola. Lo
+spezzettamento di `server.py` e i documenti arrivano nel rilascio 2.
+
+### Cosa cambia per chi usa HIRIS
+
+**L'ora è quella della casa**
+
+- **Le ore e le date di tutte le pagine sono quelle della casa**, non del dispositivo da cui le
+  guardi. Se il dispositivo è in un altro fuso, sotto il titolo compare «Gli orari sono quelli
+  della casa (Europe/Rome), non del tuo dispositivo.».
+- **Una forma sola per gli istanti**: «oggi alle 14:30», «ieri alle 14:30», «12/10, 14:30»,
+  «12/10/2025, 14:30». La virgola è l'unico separatore fra giorno e ora (prima «12/10 14:30» e
+  simili).
+- **Osservatore**: gli intervalli si leggono «ieri alle 03:12 → 03:19» (prima «dalle … alle …»),
+  l'ultima prova «l'ultima: …», e «Letto alle» è l'ora della casa. Negli elenchi dei tentativi
+  non compare più «… fa». «Ieri» e «oggi» del selettore li decide la casa.
+- **Chat**: l'ora delle bolle e «oggi/ieri» della barra delle conversazioni sono quelli della casa,
+  anche per una risposta appena arrivata. Il saluto resta sull'ora del tuo dispositivo.
+
+**La chat**
+
+- **Un compositore solo per catena e ponte**: la stessa domanda arriva al modello con lo stesso
+  contesto sulle due strade, e l'ora del turno sta in coda al messaggio invece che nel nucleo.
+- **Dopo uno strumento che scrive, la chat non passa al modello successivo**: si ferma con una
+  frase, invece di rischiare di ripetere la scrittura.
+- **Gli errori della chat sono in italiano**, compreso «Il messaggio è troppo lungo: al massimo
+  4000 caratteri.».
+- **Il conto dei turni lo dà il server**, lo stesso del tetto della conversazione.
+- **Dopo un guasto la cronologia segue una regola sola**: la domanda resta, la risposta solo se
+  c'è.
+- **Il nucleo guasto si dichiara con una frase sola** in chat, nelle promesse e su
+  `GET /api/briefing`, che prima rispondeva 500.
+- **Un valore infinito nelle impostazioni della chat non ferma più l'avvio.**
+
+**Il ponte**
+
+- **Il ponte non offre al modello gli strumenti della CLI**: solo i dodici di HIRIS. La richiesta
+  si accorcia; quanto, lo dice la batteria dopo il rilascio.
+- **Quando la CLI fallisce, il log dice perché**: la riga porta l'esito vero del turno invece
+  dell'inizio della risposta.
+- **Una consegna normale non scrive più avvisi nel log.**
+
+**Le pagine**
+
+- **Impegni** chiede al server se una promessa si può disdire, e dichiara quante righe mostra.
+  Anche **Costruzioni** lo dichiara.
+- **La domanda del risveglio di una promessa** dice «Quando me l'hai chiesto (istante), Nome (id)
+  era …», con il nome dell'entità e l'istante della misura.
+- **Il sapere** porta il nome del dispositivo su ogni riga.
+- **L'albero della casa**: i segni di ciò che sta «fuori» li manda il server.
+- **Cancellare un ricordo che non esiste** risponde «non trovato» invece di un errore.
+- **Le lettere accentate** sono tornate dove c'erano apostrofi.
+- **La pagina delle proposte** si chiama «Proposte» ovunque.
+- **Il gruppo «Accendibile» esce**: era un giudizio scritto a mano, non qualcosa che Home Assistant
+  dichiara.
+- **I nomi delle integrazioni** vengono dal loro manifesto, e **i calendari** dallo specchio
+  della casa.
+
+**Scrivere su Home Assistant**
+
+- **La voce di menu e la card passano dalla terza porta** (`action/installation.py`) e dal client
+  di Home Assistant: nessun'altra parte dell'add-on apre più connessioni proprie. Dopo la
+  disinstallazione della card resta un segno in `/data`, così non si ritenta a ogni avvio.
+- **Un ripristino chiesto dalla chat si rifiuta** con la sua ragione: rimettere una configurazione
+  vecchia è un gesto tuo.
+- **La descrizione della porta dell'add-on dice la verità**: HTTP in chiaro sulla rete di casa, e
+  fuori dall'ingress risponde solo un servizio accoppiato che firma ogni richiesta.
+
+**Gli archivi e gli attori**
+
+- **Una riga guasta in un archivio non ferma più l'elenco**: si salta e si dice una volta nel log.
+- **L'osservatore descrive bene la storia di Home Assistant**: il dettaglio si tiene per i giorni
+  della sua pulizia, le statistiche orarie restano.
+- **Lo storico si legge un pezzo alla volta**: il primo che fallisce ferma gli altri.
+
+### Componenti
+
+- CLI del ponte **2.1.296**.
+- `ruff` fino a `<0.18.0`.
+
+### Da sapere
+
+- **Il proponente resta fermo**, come nella 3.78.0.
+- **`GET /api/usage` non porta più `timezone`**: il fuso sta in `orologio.fuso`, che ora
+  accompagna ogni risposta con un istante.
+- **`POST /api/chat` non porta più `debug` né `thinking_blocks`**: nessuna pagina li leggeva.
+- **Ogni lettura apre la sua connessione WebSocket**, ora contata (A-28, scelta di Paolo del
+  14/10).
+- **La pagina Modelli salva tutto insieme**: con due schede aperte vince l'ultima che salva. È
+  nel BACKLOG (C-21).
+
 ## [3.78.0] — L'analista che indaga, gli archivi che seguono la casa, una resa per oggetto: la Tappa 7, la Tappa 8 e la Tappa 9 di «Una fonte sola di verita'», e gli attori, strati 3 e 4 (2026-10-13)
 
 ### Perche'
