@@ -9,7 +9,7 @@ from ..chat_store import (
     new_conversation,
     resume_conversation,
 )
-from ..chat_thread import SYNC_TURNS_KEY, adopt_if_owner, request_thread, unknown_id_text
+from ..chat_thread import SYNC_TURNS_KEY, request_thread, unknown_id_text
 from ..home_space.historian import home_space_zone, instant_out
 from ..home_space.reader import house_timezone_of
 from ..reasoning.queue import REASONING_QUEUE_KEY
@@ -61,10 +61,9 @@ def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
 async def handle_get_chat_history(request: web.Request) -> web.Response:
     data_dir = request.app[DATA_DIR_KEY]
     thread = request_thread(request)
-    # La cronologia di prima va al proprietario alla sua prima lettura: e' la
-    # pagina che apre per prima, e senza questa riga la vedrebbe vuota finche'
-    # non scrive un messaggio (spec §3).
-    await adopt_if_owner(request.app, request, thread)
+    # Una lettura non adotta (S-41, Chiusura, 14/10/2026): la cronologia di
+    # prima va al proprietario con `POST /api/chat/adopt`, che la pagina
+    # chiama prima di leggere qui (`handlers_chat.handle_adopt_orphans`).
     # Si passa `retention_days` esplicitamente: senza, `load_history`
     # ricadrebbe in silenzio sul default del suo parametro, qualunque cosa
     # l'utente abbia scelto in «Impostazioni chat».
@@ -93,11 +92,10 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
 
 async def handle_list_conversations(request: web.Request) -> web.Response:
     thread = request_thread(request)
-    # Adotta come `GET /api/chat/history`: la barra laterale si apre insieme
-    # alla cronologia, e il proprietario deve trovarci anche le conversazioni
-    # di prima. Le tre scritture qui sotto NON adottano: su un'orfana
-    # rispondono come per un id che non esiste.
-    await adopt_if_owner(request.app, request, thread)
+    # Non adotta, come `GET /api/chat/history` (S-41): le conversazioni di
+    # prima le porta al proprietario `POST /api/chat/adopt`, che la pagina
+    # chiama prima di questo elenco. Le tre scritture qui sotto non adottano:
+    # su un'orfana rispondono come per un id che non esiste.
     rows = list_conversations(request.app[DATA_DIR_KEY], thread=thread,
                               days=request.app[CHAT_SETTINGS_KEY].value.retention_days)
     # «oggi», «ieri» della barra laterale: li dice l'orologio della casa

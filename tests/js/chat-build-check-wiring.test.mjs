@@ -73,6 +73,7 @@ function rete(window, buildRemoto) {
     'api/health': { status: 'ok', version: '3.0.0', build: buildRemoto },
     'api/config': maiRisposta,
     'api/chat-settings': maiRisposta,
+    'POST api/chat/adopt': maiRisposta,
     'api/chat/history': maiRisposta,
     'api/chat/conversations': maiRisposta,
     'api/pending': maiRisposta,

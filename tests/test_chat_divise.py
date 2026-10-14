@@ -31,7 +31,7 @@ from hiris.app.storage import DATA_DIR_KEY
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
-from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
+from hiris.app.api.handlers_chat import handle_adopt_orphans, handle_chat, handle_chat_reply_poll
 from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -106,6 +106,7 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
     app.router.add_get("/api/chat/history", handle_get_chat_history)
+    app.router.add_post("/api/chat/adopt", handle_adopt_orphans)
     return app, q, data_dir
 
 
@@ -253,22 +254,34 @@ def _semina_orfane(data_dir):
     conn.commit()
 
 
-# 8. La cronologia di prima va al proprietario, e a nessun altro.
+# 8. La cronologia di prima va al proprietario, e a nessun altro: con la
+# `POST` dell'apertura, mai con una lettura (S-41, Chiusura, 14/10/2026).
+# Mutazione ESEGUITA: l'adozione rimessa in `handle_get_chat_history` --
+# rossa su «una lettura non adotta», la prova che era rossa sul codice di
+# prima.
 @pytest.mark.asyncio
 async def test_la_cronologia_di_prima_va_al_proprietario(tmp_path):
+    from hiris.app.chat_store import has_orphans
+
     app, _q, data_dir = _make_app(tmp_path)
     _semina_orfane(data_dir)
     async with TestClient(TestServer(app)) as client:
-        marta = await (await client.get("/api/chat/history",
-                                        headers={"X-Chi": "marta"})).json()
-        assert _contenuti(marta) == []
-        from hiris.app.chat_store import has_orphans
+        for _ in range(2):
+            paolo = await (await client.get("/api/chat/history",
+                                            headers={"X-Chi": "paolo"})).json()
+            assert _contenuti(paolo) == []
+        assert has_orphans(data_dir), "una lettura non adotta, nemmeno ripetuta"
+
+        marta = await client.post("/api/chat/adopt", headers={"X-Chi": "marta"})
+        assert marta.status == 204
         assert has_orphans(data_dir), "una non proprietaria non adotta nulla"
 
+        adozione = await client.post("/api/chat/adopt", headers={"X-Chi": "paolo"})
+        assert adozione.status == 204
+        assert not has_orphans(data_dir)
         paolo = await (await client.get("/api/chat/history",
                                         headers={"X-Chi": "paolo"})).json()
     assert _contenuti(paolo) == ["detto prima delle chat divise"]
-    assert not has_orphans(data_dir)
 
 
 # L'adozione vale solo dal pannello: il proprietario che arriva da un servizio
@@ -289,6 +302,7 @@ async def test_il_proprietario_da_un_altro_ingresso_non_adotta(tmp_path):
     app.middlewares.clear()
     app.middlewares.append(_signed_boundary)
     async with TestClient(TestServer(app)) as client:
+        assert (await client.post("/api/chat/adopt")).status == 204
         paolo = await (await client.get("/api/chat/history")).json()
     assert _contenuti(paolo) == []
     assert has_orphans(data_dir), "le orfane aspettano il proprietario dal pannello"

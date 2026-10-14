@@ -948,6 +948,23 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+async def handle_adopt_orphans(request: web.Request) -> web.Response:
+    """Cio' che c'era prima delle chat divise passa al proprietario: le
+    sessioni e le promesse senza filo (`chat_thread.adopt_if_owner`, che
+    decide chi e quando).
+
+    **Una scrittura, quindi una `POST`** (S-41, Chiusura, 14/10/2026): fino a
+    quel giorno l'adozione girava dentro tre `GET` -- la cronologia, l'elenco
+    delle conversazioni e gli Impegni --, e una lettura cambiava il
+    proprietario di cio' che leggeva. La pagina della chat la chiama una volta
+    all'apertura, prima di leggere la cronologia e l'elenco
+    (`chat/agents.js::adoptOrphans`). Per chi non e' il proprietario non fa
+    niente, e lo stesso vale quando non resta niente da adottare. `POST
+    /api/chat` adotta ancora prima del turno: e' gia' una scrittura."""
+    await adopt_if_owner(request.app, request, request_thread(request))
+    return web.Response(status=204)
+
+
 async def handle_chat(request: web.Request) -> web.Response:
     body = await json_object(request)
 

@@ -113,6 +113,7 @@ async function avviaChat(usage) {
     /* Il resto del boot della chat: queste prove non lo guardano. */
     'api/config': maiRisposta,
     'api/chat-settings': maiRisposta,
+    'POST api/chat/adopt': maiRisposta,
     'api/chat/history': maiRisposta,
     'api/chat/conversations': maiRisposta,
   });

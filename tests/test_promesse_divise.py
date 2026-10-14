@@ -46,6 +46,7 @@ from hiris.app.api.handlers_agenda import (
     handle_get_execution,
     handle_mark_read,
 )
+from hiris.app.api.handlers_chat import handle_adopt_orphans
 from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.api.handlers_pending import handle_get_pending
 from hiris.app.chat_settings import ChatSettings
@@ -444,6 +445,7 @@ async def rotte(aiohttp_client, tmp_path):
     app.router.add_get("/api/executions/{id}", handle_get_execution)
     app.router.add_get("/api/pending", handle_get_pending)
     app.router.add_get("/api/chat/history", handle_get_chat_history)
+    app.router.add_post("/api/chat/adopt", handle_adopt_orphans)
     client = await aiohttp_client(app)
     yield client
     app[AGENDA_KEY].close()
@@ -569,13 +571,24 @@ async def test_la_cronaca_non_legata_a_una_promessa_e_di_chi_l_ha_fatta(rotte):
 
 @pytest.mark.asyncio
 async def test_le_promesse_di_prima_vanno_al_proprietario_e_a_nessun_altro(rotte):
+    """Con la `POST` dell'apertura, mai con una lettura (S-41, Chiusura,
+    14/10/2026): `GET /api/agenda` ripetuta non cambia il proprietario di
+    un'orfana. Rossa sul codice di prima (la GET adottava). Mutazione
+    ESEGUITA: l'adozione rimessa in `handle_get_agenda` -- rossa."""
     agenda = rotte.app[AGENDA_KEY]
     orfana = _semina_orfana(agenda, adesso=time.time())
 
+    for _ in range(2):
+        paolo = await (await rotte.get("/api/agenda", headers=_chi("paolo"))).json()
+        assert paolo["agenda"] == []
+    assert agenda.has_orphans(), "una lettura non adotta, nemmeno ripetuta"
+
+    assert (await rotte.post("/api/chat/adopt", headers=_chi("marta"))).status == 204
     marta = await (await rotte.get("/api/agenda", headers=_chi("marta"))).json()
     assert marta["agenda"] == []
     assert agenda.has_orphans(), "una non proprietaria non adotta nulla"
 
+    assert (await rotte.post("/api/chat/adopt", headers=_chi("paolo"))).status == 204
     paolo = await (await rotte.get("/api/agenda", headers=_chi("paolo"))).json()
     assert [p["id"] for p in paolo["agenda"]] == [orfana]
     assert not agenda.has_orphans()
@@ -585,11 +598,12 @@ async def test_le_promesse_di_prima_vanno_al_proprietario_e_a_nessun_altro(rotte
 @pytest.mark.asyncio
 async def test_le_promesse_di_prima_si_adottano_con_la_cronologia(rotte):
     """Stesso momento, stessa regola: la prima pagina che il proprietario apre
-    e' la chat, e da li' passano sia la cronologia sia le promesse."""
+    e' la chat, e la sua adozione d'apertura (`POST /api/chat/adopt`, S-41)
+    porta sia la cronologia sia le promesse."""
     agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
-    risposta = await rotte.get("/api/chat/history", headers=_chi("paolo"))
-    assert risposta.status == 200
+    risposta = await rotte.post("/api/chat/adopt", headers=_chi("paolo"))
+    assert risposta.status == 204
     assert not agenda.has_orphans()
     assert len(agenda.list(thread=PAOLO)) == 1
 
@@ -599,6 +613,7 @@ async def test_un_anonimo_non_adotta_le_promesse_di_prima(rotte):
     """Pin (8): `persona:-` dal pannello non e' il proprietario."""
     agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
+    assert (await rotte.post("/api/chat/adopt", headers=_chi("anonimo"))).status == 204
     corpo = await (await rotte.get("/api/agenda", headers=_chi("anonimo"))).json()
     assert corpo["agenda"] == []
     assert agenda.has_orphans()
@@ -608,6 +623,7 @@ async def test_un_anonimo_non_adotta_le_promesse_di_prima(rotte):
 async def test_il_proprietario_da_un_altro_ingresso_non_adotta_le_promesse(rotte):
     agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
+    assert (await rotte.post("/api/chat/adopt", headers=_chi("paolo-firma"))).status == 204
     corpo = await (await rotte.get("/api/agenda", headers=_chi("paolo-firma"))).json()
     assert corpo["agenda"] == []
     assert agenda.has_orphans()

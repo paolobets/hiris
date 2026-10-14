@@ -577,12 +577,25 @@ async def test_un_turno_sincrono_che_fallisce_libera_il_filo(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_l_elenco_adotta_la_cronologia_di_prima_per_il_proprietario(tmp_path):
+async def test_l_elenco_non_adotta_la_cronologia_di_prima_la_post_si(tmp_path):
+    """S-41 (Chiusura, 14/10/2026): l'elenco e' una lettura, e non cambia il
+    proprietario di niente, nemmeno ripetuto; le conversazioni di prima le
+    porta al proprietario `POST /api/chat/adopt`. Rossa sul codice di prima
+    (l'elenco adottava). Mutazione ESEGUITA: l'adozione rimessa in
+    `handle_list_conversations` -- rossa."""
+    from hiris.app.chat_store import has_orphans
+
     app, _q, d = _app_with_conversations(tmp_path)
     _get_store(d)
     _semina_orfane(d)
     async with TestClient(TestServer(app)) as client:
+        for _ in range(2):
+            paolo = await (await client.get("/api/chat/conversations", headers=_P)).json()
+            assert paolo["conversations"] == []
+        assert has_orphans(d)
+        assert (await client.post("/api/chat/adopt", headers=_M)).status == 204
         marta = await (await client.get("/api/chat/conversations", headers=_M)).json()
+        assert (await client.post("/api/chat/adopt", headers=_P)).status == 204
         paolo = await (await client.get("/api/chat/conversations", headers=_P)).json()
     assert marta["conversations"] == []
     assert [(c["id"], c["titolo"]) for c in paolo["conversations"]] == [
