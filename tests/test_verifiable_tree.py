@@ -43,7 +43,6 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
-from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import (
     choose_sample,
@@ -53,6 +52,7 @@ from hiris.app.home_space.topology import (
 )
 from hiris.app.server import tree_comparison_round
 from tests._casa_sintetica import synthetic_inputs
+from tests.test_briefing import compose
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta

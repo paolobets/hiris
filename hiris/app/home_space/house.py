@@ -354,14 +354,17 @@ class House:
         if kind in ("entita", *_BEHAVIOR_KINDS):
             entry = self.entry(identifier) or {}
             return topology.live_name(identifier, entry.get("nome"), self.mirror)
-        table = {"dispositivo": "dispositivi", "area": "aree", "piano": "piani"}.get(kind)
+        if kind == "dispositivo":
+            # L'indice che la casa tiene gia' (`device`): il nucleo chiede qui
+            # il nome di ogni dispositivo che annota (A-16).
+            device = self.device(identifier)
+            return None if device is None else topology.device_name(device)
+        table = {"area": "aree", "piano": "piani"}.get(kind)
         if table is None:
             raise ValueError(f"genere sconosciuto: {kind!r}")
         row = next((r for r in self.home_space.get(table) or []
                     if isinstance(r, dict) and r.get("id") == identifier), None)
-        if row is None:
-            return None
-        return topology.device_name(row) if kind == "dispositivo" else row.get("nome")
+        return None if row is None else row.get("nome")
 
     def kind_of(self, entity_id: str) -> dict | None:
         """TIPO (§4.1; Tappa 3, Task 7, B-17): il dominio, la classe e l'unita'

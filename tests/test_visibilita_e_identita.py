@@ -40,6 +40,7 @@ from hiris.app.home_space.queries import view
 from hiris.app.home_space.reader import build_home_space
 from hiris.app.home_space.render import render_behavior
 from hiris.app.home_space.topology import Mirror, visibility
+from tests.test_briefing import compose
 
 
 def _riga(entity_id: str, **campi) -> dict:
@@ -125,7 +126,7 @@ def test_search_tiene_fuori_una_nascosta_di_servizio_se_ammetti_solo_le_nascoste
 
 
 def _core_text(home_space: dict) -> str:
-    testo, _meta = briefing.compose(home_space, [], [], {})
+    testo, _meta = compose(home_space, [], [], {})
     return testo
 
 
@@ -180,8 +181,8 @@ def test_un_dispositivo_si_chiama_col_nome_altrimenti_con_l_id():
 
 def test_il_nucleo_marca_ancora_come_id_un_dispositivo_senza_nome():
     entita = [{"id": f"valve.v{n}", "dispositivo_id": "dev9"} for n in range(3)]
-    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "dev9"}) == " (id: dev9)"
-    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "Irrigatore"}) == \
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "dev9"}.get) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "Irrigatore"}.get) == \
         " (Irrigatore)"
 
 

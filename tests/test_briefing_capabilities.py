@@ -19,8 +19,8 @@ La suite gira senza la casa: qui gli attributi sono quelli letti allora,
 ridotti ai casi che decidono.
 """
 from hiris.app.home_space import briefing
-from hiris.app.home_space.briefing import compose
 from hiris.app.proxy.entity_cache import CAPABILITIES, UNINTERPRETED, VALUES
+from tests.test_briefing import compose
 
 _PIANI = [{"id": "terra", "nome": "Piano terra", "livello": 0}]
 

@@ -18,12 +18,13 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.home_space.briefing import compose, now_line
+from hiris.app.home_space.briefing import now_line
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS
+from tests.test_briefing import compose
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta

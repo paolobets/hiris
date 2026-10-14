@@ -1,8 +1,22 @@
 import re
 
 from hiris.app.home_space import briefing
-from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.house import House
 from hiris.app.home_space.render import BODY_UNKNOWN
+from hiris.app.home_space.topology import Mirror
+
+
+def compose(home_space, behavior, memories, state, *, unavailable=(), house=None, **other):
+    """`briefing.compose` su un'anagrafe scritta a mano: la casa del turno la
+    costruisce qui la prova, dalla stessa anagrafe e dagli stessi registri
+    caduti, con lo specchio vuoto (il nucleo non lo legge dalla casa: lo
+    stato arriva come argomento). In produzione la casa la compone solo
+    `House.read` (`test_casa_per_turno`); il nucleo la riceve obbligatoria
+    dal 14/10/2026 (A-16, F11 della Chiusura)."""
+    if house is None:
+        house = House(home_space, Mirror(), unavailable)
+    return briefing.compose(home_space, behavior, memories, state,
+                            unavailable=unavailable, house=house, **other)
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
@@ -698,7 +712,7 @@ def test_quattro_valvole_di_un_solo_dispositivo_si_annotano_col_nome():
     conosce il nome."""
     entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
     assert briefing._device_annotation(
-        entita, "valve", 4, {"dev1": "Irrigazione giardino"}) == " (Irrigazione giardino)"
+        entita, "valve", 4, {"dev1": "Irrigazione giardino"}.get) == " (Irrigazione giardino)"
 
 
 def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
@@ -712,7 +726,7 @@ def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
     frequente della casa. La presa porta anche un `sensor`: il filtro sul
     dominio deve escluderlo."""
     entita = [_e("light.presa", "dev1"), _e("sensor.presa_w", "dev1")]
-    assert briefing._device_annotation(entita, "light", 1, {"dev1": "Presa cucina"}) == ""
+    assert briefing._device_annotation(entita, "light", 1, {"dev1": "Presa cucina"}.get) == ""
 
 
 def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
@@ -723,7 +737,7 @@ def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
     per una."""
     entita = [_e(f"valve.v{i}", f"dev{i}") for i in range(4)]
     nomi = {f"dev{i}": f"Valvola {i}" for i in range(4)}
-    assert briefing._device_annotation(entita, "valve", 4, nomi) == ""
+    assert briefing._device_annotation(entita, "valve", 4, nomi.get) == ""
 
 
 def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
@@ -731,7 +745,7 @@ def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
     che tiene il budget: senza, 61 righe come questa citerebbero 344 nomi."""
     entita = [_e(f"sensor.s{i}", f"dev{i % 3}") for i in range(12)]
     nomi = {f"dev{i}": f"Presa {i}" for i in range(3)}
-    assert briefing._device_annotation(entita, "sensor", 12, nomi) == ""
+    assert briefing._device_annotation(entita, "sensor", 12, nomi.get) == ""
 
 
 def test_un_dispositivo_e_un_entita_libera_non_producono_un_annotazione_parziale():
@@ -739,7 +753,7 @@ def test_un_dispositivo_e_un_entita_libera_non_producono_un_annotazione_parziale
     coprirebbe solo una parte del conteggio. Mutazione uccisa: togliere
     `senza or` dalla condizione."""
     entita = [_e("sensor.a", "dev1"), _e("sensor.b", "dev1"), _e("sensor.c")]
-    assert briefing._device_annotation(entita, "sensor", 3, {"dev1": "Presa"}) == ""
+    assert briefing._device_annotation(entita, "sensor", 3, {"dev1": "Presa"}.get) == ""
 
 
 def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
@@ -752,14 +766,14 @@ def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
     non nomina -- mutazione uccisa: togliere `.strip()`, che stamperebbe
     " (   )")."""
     entita = [_e(f"valve.v{i}", "dev9") for i in range(3)]
-    assert briefing._device_annotation(entita, "valve", 3, {"dev9": ""}) == " (id: dev9)"
-    assert briefing._device_annotation(entita, "valve", 3, {}) == " (id: dev9)"
-    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "   "}) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": ""}.get) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {}.get) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "   "}.get) == " (id: dev9)"
 
 
 def test_col_registro_dispositivi_caduto_non_si_annota_niente():
     """`None` non e' `{}`: "non ho potuto guardare" non e' "nessun
-    dispositivo". Mutazione uccisa: usare `device_names or {}` invece del
+    dispositivo". Mutazione uccisa: usare `device_name_lookup or {}.get` invece del
     controllo esplicito, che stamperebbe "(id: ...)" su tutta la casa."""
     entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
     assert briefing._device_annotation(entita, "valve", 4, None) == ""
@@ -909,9 +923,9 @@ def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():
     `compose()` -- ed e' proprio per questo che la guardia va pinnata a mano:
     nessun test di composizione puo' farla cadere. Mutazione uccisa:
     togliere `if not dispositivi` -> `IndexError: list index out of range`."""
-    assert briefing._device_annotation([], "valve", 4, {"dev1": "Irrigazione"}) == ""
+    assert briefing._device_annotation([], "valve", 4, {"dev1": "Irrigazione"}.get) == ""
     assert briefing._device_annotation(
-        [_e("light.a", "dev1")], "valve", 4, {"dev1": "Irrigazione"}) == ""
+        [_e("light.a", "dev1")], "valve", 4, {"dev1": "Irrigazione"}.get) == ""
 
 
 def test_il_nucleo_regge_un_registro_dispositivi_a_meta():

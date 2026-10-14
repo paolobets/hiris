@@ -413,7 +413,6 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     return compose(
         house.home_space, behavior, memories, mirror.state,
         unavailable=house.unavailable,
-        floors=house.hierarchy(),
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,
@@ -422,6 +421,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         attributes=mirror.attributes,
+        house=house,
     )
 
 
