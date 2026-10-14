@@ -708,3 +708,36 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   (i conti in una casa sola, che aspetta la misura sugli ingressi congelati), le misure **dal vivo**
   della chiusura (sonda sulla cattura nuova, batterie della chat e degli attori, censimento delle
   fonti, fotografia sugli ingressi veri) e i **due rilasci** della tappa, col sì del proprietario.
+- **05/10/2026** — Rilasciate la **3.75.0** (la Tappa 3: la casa in un oggetto solo, letto una volta
+  per turno) e la **3.76.0** (le Tappe 4, 5 e 6: una resa, gli strumenti in tabella, un turno solo
+  dal ponte e dalla catena; e lo strato 1 degli attori).
+- **06/10/2026** — Rilasciata la **3.77.0**: gli strati 1 e 2 degli attori (il dato fermo, i ruoli
+  dell'energia letti dalla dashboard Energia).
+- **13/10/2026** — Rilasciata la **3.78.0**: le Tappe 7, 8 e 9 e gli strati 3 e 4 degli attori; il
+  proponente prende il posto dell'attuatore e resta fermo. Lo stesso giorno il proprietario approva
+  il piano della **Chiusura dello sprint** (`/mnt/project-files/piani/2026-10-chiusura.md`, D1-D6
+  come consigliate): D1 cambia il criterio 1 (le **trasferite**), D2 il criterio 3 (le
+  **ammissioni**), D4 decide **due rilasci**.
+- **14/10/2026** — Rilasciata la **3.79.0**, il **rilascio 1** della Chiusura: quasi tutte le voci
+  che cambiano il comportamento. Unita sul ramo d'integrazione la fetta F8, che spezza `server.py`
+  (resta `create_app`) con un commit di solo spostamento per passo e la fotografia delle porte
+  identica dopo ognuno. Il registro su quel ramo (`1a60d9b8`, `python scripts/registro.py conta`):
+  513 voci, 494 chiuse, 6 trasferite, 13 aperte, di cui 11 «chiudibili al rilascio» (le chiude il
+  rilascio 2) e 2 aperte vere, C-10 e S-41, nella fetta F12. La fetta F9 riscrive i documenti
+  (`CLAUDE.md`, `README.md`, `docs/BACKLOG.md`, questo §12) e fa la revisione dell'intero ramo dopo
+  F12; rapporto in `/mnt/project-files/chiusura/f9-rapporto.md`.
+
+**Lo stato finale, e come si verifica.** Lo sprint si chiude col **rilascio 2** (`server.py`
+spezzato e i documenti), e si dice chiuso quando il PC ha misurato tutti e otto i criteri del §8.
+Questo documento non scrive le misure: scrive come si prendono, e chi le prende.
+
+| § 8 | Come si verifica | Chi |
+|---|---|---|
+| 1. Registro | `python scripts/registro.py conta` dopo `rilascia`: zero aperte; `python scripts/registro.py verifica` passa, quindi ogni trasferita nomina una voce aperta del BACKLOG | il ramo e il rilascio |
+| 2. Sonda di parità | `python scripts/sonda_parita.py --ingressi <cattura> --cancello` sulla cattura nuova della casa vera (`scripts/casa.py`): zero disaccordi su tutte le domande | il PC |
+| 3. Cancello | `python scripts/cancelli.py` nel pre-push e nella CI; `scripts/doppioni_noti.json` vuoto; `tests/test_censimento.py` e `tests/test_fonte_unica.py` verdi, nessuna eccezione che citi una voce aperta | il ramo e la CI |
+| 4. Batteria della chat | `scripts/batteria_misure.py` sulle due strade (catena e ponte), confrontata con le misure di partenza di `docs/misure/2026-10-tappa-0.md`: risposte giuste, token e tempi non peggiorati; i costi fissi del §1.4 scesi | il PC |
+| 5. Batteria degli attori | `scripts/batteria_attori.py`: almeno i risultati di partenza, nessun turno troncato | il PC |
+| 6. Attori senza entità | `tests/test_attori_compongono.py` (fetta F7 della Chiusura): le funzioni da sorvegliare le chiede ai giri dello schedulatore, non a un elenco | il ramo |
+| 7. Ogni rilascio dal vivo | le verifiche dal vivo di ogni rilascio, dopo che il proprietario aggiorna l'add-on; per il rilascio 2 la fotografia delle porte (`scripts/fotografia_porte.py confronta`) identica a quella del rilascio 1 | il PC |
+| 8. Documenti veri | `tests/test_struttura_reale.py` (la struttura di `CLAUDE.md` contro il disco), `tests/js/readme-rotte.test.mjs` (le rotte del README contro il router) e la tabella delle affermazioni di `CLAUDE.md` rilette contro il codice, nel rapporto di F9 | il ramo e F9 |
