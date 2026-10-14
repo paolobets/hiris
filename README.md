@@ -143,14 +143,14 @@ action on your house and a real message that can arrive while you are asleep,
 and a sentence that says otherwise would be exactly the kind of claim this
 README has already had to walk back once (see above).
 
-The fourteenth and fifteenth were added by "the knowledge and the recipes" and
-"the daily report" slices. The fourteenth asks the model, every 10 minutes, how
+The thirteenth and fourteenth were added by "the knowledge and the recipes" and
+"the daily report" slices. The thirteenth asks the model, every 10 minutes, how
 **one** device that weighs is measured, and then stops for that device: a recipe
 written, or a refusal recorded, is never asked again
 (`mind/recipe_round.py::recipe_round`). One at a time is not generic caution — thirty
 devices asked together would empty the plan's daily ceiling on their own, and
 from there every turn, chat included, would fall through to the paid providers.
-The fifteenth takes care of **one** day every 5 minutes, oldest first
+The fourteenth takes care of **one** day every 5 minutes, oldest first
 (`mind/day_report.py::backfill_one_report`). It exists because of a measurement taken on
 the owner's house on 14/09/2026: the reports for the 12th and the 13th existed
 and nothing else did, while the 7th through the 11th had raw state changes and
@@ -166,7 +166,7 @@ and it never goes further back than the raw itself: a day can only be redone
 while its raw still exists.
 
 
-The sixteenth is the analyst (spec §10), every hour
+The fifteenth is the analyst (spec §10), every hour
 (`mind/analyst_round.py::analyst_round`). It reads the measures of many days — pivoted so
 that one line is one measure across thirty days — and says **what could be
 done**: what it saw, which of the three triggers it is, whether it is already
@@ -184,7 +184,13 @@ inside an authoritative-looking report is impossible.
 
 The sixteenth is the proposer (`mind/proposer_round.py::proposer_round`),
 on the same hourly beat — the actor that was called the actuator until
-06/10/2026, paused from 01/10 because its turn started with no read tools. It
+06/10/2026, paused from 01/10 because its turn started with no read tools.
+**In this version its round is switched off** (`ENABLED = False` in
+`mind/proposer_round.py`, the owner's choice of 12/10/2026): the hourly beat
+(`proposer_beat`) asks the model nothing and only retries the alerts of
+`alto` proposals, which can still be born from a «Rifalla» started by a
+person. It is switched on by a commit, after the new analyst has been measured
+on the house. What follows is what it does once on. It
 does nothing until today's analysis has observations still open: the analyst
 investigates now, and what it explained (`spiegato`) never reaches the
 proposer. For each open observation the proposer gives **one outcome**:
@@ -339,7 +345,7 @@ There is no per-provider switch any more and no model picked per chat.
 
 The three presets — `balanced`, `quality_first`, `cost_first` — are **gestures**
 on the Models page that rewrite the chain, not a state the chain is derived
-from (`hiris/app/llm_router.py::_STRATEGY_ORDER` holds their orders).
+from (`hiris/app/providers.py::PRESETS` holds their orders).
 
 A new installation starts with every credentialed pay-per-use provider in the
 chain, in the `balanced` order (Claude → OpenRouter → OpenAI). Ollama and the
@@ -364,7 +370,7 @@ and moved into HIRIS in 3.0.0.
 
 **That path now carries the nucleo, and — when it can — the tools.** The
 turn is enqueued together with the same context the synchronous chat composes
-(`handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
+(`api/handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
 before it starts (`agent/runner.py::probe_tools`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model gets the
@@ -559,9 +565,11 @@ both ways, with the routes the panel's router actually registers:
 A person who is not a Home Assistant administrator (with `non_admin_access` on) sees a smaller
 HIRIS: in the chat, no usage widget and no «Configurazione» link; in the configuration panel, only
 **Commitments** (`#/agenda`, their landing page) and **Memory** (`#/memory`, their own memories,
-without the buttons to correct or forget). Any other route opened by address shows the server's
-refusal and a link back to Commitments. Hiding is only the interface: the server refuses those
-routes anyway.
+without the buttons to correct or forget). Any other route opened by address shows the
+server's refusal and a link back to Commitments (`#/` itself simply lands on Commitments).
+**Proposals** (`#/constructions`) is the exception: its menu entry is shown only to who can
+build, and opened by address it shows the server's own refusal in place. Hiding is only the
+interface: the server refuses those routes anyway.
 
 Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/out-of-scope/2026-08-08-frontend-da-rifare.md`](docs/out-of-scope/2026-08-08-frontend-da-rifare.md)
