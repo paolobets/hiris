@@ -301,10 +301,7 @@ async def test_home_space_route_sends_outside_marks(aiohttp_client, tmp_path):
     app["home_space_store"] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
-    try:
-        body = await (await client.get("/api/home-space")).json()
-    finally:
-        store.close()
+    body = await (await client.get("/api/home-space")).json()
     assert body["segni_fuori"] == outside_marks()
 
     app = web.Application()
