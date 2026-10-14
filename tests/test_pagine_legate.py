@@ -130,7 +130,7 @@ def test_service_sections_follow_the_store_states(tmp_path):
         store.approva("b", ruolo=role, specie=kind, now_ts=2.0)
         store.approva("c", ruolo=role, specie=kind, now_ts=2.0)
         store.revoca("c", now_ts=3.0)
-        sections = listing(store, 4.0)
+        sections = listing(store, 4.0, {})
     finally:
         store.close()
     assert {name: [r["nome"] for r in rows] for name, rows in sections.items()} == \

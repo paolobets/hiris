@@ -46,7 +46,7 @@ from ..chat_thread import (
 )
 from ..home_space.render import render_promise
 from ..states import CANCELLED, FAILED, KEPT
-from .boundary import error_response, json_object, occurrence_out
+from .boundary import error_response, house_clock_of, json_object, occurrence_out
 from .soffitto import restricted_person
 
 # Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
@@ -82,7 +82,10 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     # pagina della memoria. Fino ad allora oltre le 200 la pagina taceva.
     return web.json_response({"agenda": [render_promise(without_thread(r)) for r in rows],
                               "total": len(rows) + left_out, "shown": len(rows),
-                              "stati": PAGE_STATES})
+                              "stati": PAGE_STATES,
+                              # Che giorno e' oggi nella casa (C-17): la pagina
+                              # mostra le cifre di `quando` e dice «oggi».
+                              "orologio": house_clock_of(request.app)})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:

@@ -113,6 +113,15 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # `stateBadge` e' la mappa unica stato -> colore, che gli Impegni e le
     # Costruzioni tenevano ciascuno in una copia sua.
     assert "stateBadge" in globali
+    # 57 -> 62 con l'ora della casa (C-17, 14/10/2026): esce `fmtDateTime`,
+    # che formattava nel fuso del browser, ed entrano i sei nomi nudi di
+    # common.js che leggono le cifre dell'ISO della casa -- `fmtInstant`,
+    # `fmtHour`, `fmtDay` e `clockHint` per le pagine, `instantDigits` per
+    # l'osservatore e la barra delle conversazioni, `houseDayName` per la
+    # barra.
+    assert {"fmtInstant", "fmtHour", "fmtDay", "clockHint", "instantDigits",
+            "houseDayName"} <= globali
+    assert "fmtDateTime" not in globali
     #
     # 34 -> 45 con `static/common.js` (Tappa 4, Task 3, 05/10/2026): le
     # utilita' che ogni pagina si riscriveva -- `el`, `clearEl`, `byId`,
@@ -141,7 +150,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 57
+    assert len(globali) == 62
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

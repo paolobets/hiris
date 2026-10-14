@@ -22,7 +22,6 @@ window.HirisWatcherCosaFare = (function () {
   var fmtCount = S.fmtCount;
   var fmtPercent = S.fmtPercent;
   var fmtDuration = S.fmtDuration;
-  var localOggi = S.localOggi;
 
   /* Cosa il proponente ha fatto di questa osservazione (attori, strato 4,
      Task 4.6).
@@ -125,11 +124,15 @@ window.HirisWatcherCosaFare = (function () {
     clearEl(corpo);
     line(corpo, 'Caricamento…', TONE_CALM);
     function reload() { return carica(corpo, day); }
-    var giorno = day || localOggi();
-    return read('api/mind/analysis?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
+    /* «Oggi» si chiede PER NOME, e lo risolve il server nel fuso della casa
+       (C-17, passo 5): fino al 14/10/2026 era l'oggi del browser. La promessa
+       si risolve con l'orologio della risposta, per il «Letto alle». */
+    return read('api/mind/analysis?day=' + encodeURIComponent(day || 'oggi')).then(function (occurrence) {
       clearEl(corpo);
-      if (!occurrence.ok) { renderAnalysisError(corpo, occurrence.status, reload, occurrence.corpo); return; }
-      renderAnalysis(corpo, occurrence.corpo.analisi || {});
+      var risposta = occurrence.corpo || {};
+      if (!occurrence.ok) { renderAnalysisError(corpo, occurrence.status, reload, risposta); return risposta.orologio; }
+      renderAnalysis(corpo, risposta.analisi || {});
+      return risposta.orologio;
     }, function () {
       clearEl(corpo);
       renderAnalysisError(corpo, null, reload);

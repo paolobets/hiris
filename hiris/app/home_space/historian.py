@@ -19,6 +19,8 @@ import logging
 import time
 from datetime import UTC, date, datetime, timedelta
 
+from .field_vocabulary import FIELDS
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +78,24 @@ def today(timezone: str | None, now: float | None = None) -> date:
     """«Oggi», nel fuso della casa. `now` (epoch) si passa nei test per
     fermare l'orologio; in produzione nessuno lo passa."""
     return local_date(time.time() if now is None else now, timezone)
+
+
+#: I giorni che una pagina chiede per nome, e quanti giorni stanno prima di
+#: oggi: «il giorno da chiedere lo dice il server» (C-17, passo 5). La lista E'
+#: il fatto (le due parole che la pagina manda), non ne ricopia uno.
+NAMED_DAYS = {"oggi": 0, "ieri": 1}
+
+
+def resolve_day(day: str, timezone: str | None, now: float | None = None) -> str:
+    """Il giorno `AAAA-MM-GG` che una pagina chiede: `oggi` e `ieri` nel fuso
+    della CASA (`today`), qualunque altro valore com'e'.
+
+    Fino al 14/10/2026 la pagina dell'osservatore calcolava «ieri» e «oggi»
+    col fuso del browser: Paolo a New York, all'01:00 di Roma, chiedeva il
+    resoconto del giorno prima di quello giusto."""
+    if day not in NAMED_DAYS:
+        return day
+    return (today(timezone, now) - timedelta(days=NAMED_DAYS[day])).isoformat()
 
 
 def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
@@ -168,3 +188,56 @@ def instant_out(raw, zone) -> str | None:
     if moment is None:
         return str(raw)
     return moment.astimezone(zone).isoformat(timespec="seconds")
+
+
+def house_clock(timezone: str | None, now: float | None = None) -> dict:
+    """L'orologio della casa, per chi mostra un istante a una persona (C-17).
+
+    `{"fuso": "Europe/Rome", "adesso": "2026-10-14T16:40:12+02:00"}`: il NOME
+    del fuso (la pagina lo dice quando il browser sta altrove) e l'istante di
+    adesso nell'ora della casa. Le cifre di `adesso` SONO «oggi» nel fuso
+    della casa (D3 della Tappa 4: «oggi» e «ieri» li dice il server, il
+    browser non converte): la pagina le legge, non le ricalcola col suo
+    orologio. Un campo `oggi` accanto sarebbe lo stesso fatto due volte.
+
+    Senza un fuso noto la casa e' in UTC, e lo dice (`home_space_zone`).
+    `now` (epoch) si passa nei test per fermare l'orologio.
+    """
+    zone = home_space_zone(timezone)
+    return {"fuso": str(zone),
+            "adesso": instant_out(time.time() if now is None else now, zone)}
+
+
+#: I campi che il vocabolario dichiara istanti (`field_vocabulary.FIELDS`, la
+#: forma che comincia con «istante»): `quando` e i suoi fratelli. Chiesti al
+#: vocabolario, non ricopiati qui (I-0).
+_INSTANT_FIELDS = frozenset(name for name, field in FIELDS.items()
+                            if field.shape.startswith("istante"))
+
+
+def _is_instant_key(key) -> bool:
+    """Una chiave che porta un istante: un campo istante del vocabolario, o un
+    nome in `_ts`, la convenzione degli archivi per l'epoch (`quando_ts`,
+    `scritto_ts`, `creata_ts`...). La rinomina dei `_ts` e' T7 (D1): fino ad
+    allora il nome resta, e cambia la forma."""
+    return isinstance(key, str) and (key.endswith("_ts") or key in _INSTANT_FIELDS)
+
+
+def instants_out(value, zone):
+    """Una risposta intera con ogni istante in epoch nell'ora della casa (C-17,
+    D3 della Tappa 4): dict e liste si attraversano, e un numero sotto una
+    chiave d'istante passa da `instant_out`. Cio' che e' gia' un testo resta
+    com'e', quindi la si puo' applicare due volte.
+
+    Serve alle letture che escono intere verso la pagina e verso il modello
+    (`MindView`, il sapere): una lista di campi da convertire, scritta a
+    mano accanto a ogni composizione, invecchierebbe a ogni campo nuovo."""
+    if isinstance(value, dict):
+        return {key: (instant_out(item, zone)
+                      if _is_instant_key(key) and isinstance(item, int | float)
+                      and not isinstance(item, bool)
+                      else instants_out(item, zone))
+                for key, item in value.items()}
+    if isinstance(value, list):
+        return [instants_out(item, zone) for item in value]
+    return value

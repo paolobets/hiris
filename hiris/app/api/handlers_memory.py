@@ -38,7 +38,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.historian import home_space_zone, house_timezone
+from ..home_space.historian import home_space_zone, house_clock, house_timezone
 from ..home_space.house import House
 from ..home_space.render import render_memory
 from ..memory.interpretation import deduci_unit, validate
@@ -76,7 +76,8 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     # un'anagrafe mai letta, o un registro caduto, lasciano `esiste` a `None`.
     house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
     # `detto_il` nell'ora della casa, come da ogni porta (`render_memory`).
-    zone = home_space_zone(house_timezone(request.app.get("home_space_store")))
+    timezone = house_timezone(request.app.get("home_space_store"))
+    zone = home_space_zone(timezone)
 
     # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
     # che ha detto lei, con la chiave che scrive `remember` in chat e dal ponte
@@ -107,6 +108,9 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # il taglio sembrerebbe farlo.
         "total": total,
         "shown": len(memories),
+        # Che giorno e' oggi nella casa (C-17): la pagina mostra le cifre di
+        # `detto_il` e dice «oggi» e «ieri» con questo, non col browser.
+        "orologio": house_clock(timezone),
     })
 
 

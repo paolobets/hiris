@@ -33,12 +33,17 @@ un'ancora c'e' sempre. Il 409 resta solo per un'app senza archivio dei consumi.
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
 
 from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
-from ..home_space.historian import house_timezone, local_date
+from ..home_space.historian import (
+    home_space_zone,
+    house_clock,
+    house_timezone,
+    instant_out,
+    local_date,
+)
 from ..providers import SUBSCRIPTION
 from ..steering import chain_runner
 
@@ -119,8 +124,9 @@ def _unmeasured() -> dict:
     }
 
 
-def _iso(ts: float) -> str | None:
-    return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
+def _iso(ts: float, timezone: str) -> str | None:
+    """L'ancora nell'ora della casa (C-17): la pagina ne mostra le cifre."""
+    return instant_out(ts, home_space_zone(timezone)) if ts else None
 
 
 def _counters_out(row: dict) -> dict:
@@ -226,8 +232,11 @@ async def handle_usage(request: web.Request) -> web.Response:
         # Chi non li ha serviti: il nome lo dice la tabella dei provider
         # (D10a), la pagina non lo scrive a mano.
         "fallbacks_from": SUBSCRIPTION.name,
-        "last_reset": _iso(store.anchor()),
-        "timezone": timezone or "UTC",
+        "last_reset": _iso(store.anchor(), timezone),
+        # Il fuso con cui si leggono giorni e orari, e che giorno e' oggi
+        # (C-17): `orologio.fuso` e' il nome che la pagina scrive. Prima c'era
+        # anche `timezone`, lo stesso fatto in un secondo campo.
+        "orologio": house_clock(timezone),
         "timezone_known": bool(timezone),
         "sections": [{
             "provider": s["provider"],
@@ -308,4 +317,5 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
         body["deleted"] = False
         return web.json_response(body, status=409)
     when = store.sposta_anchor(time.time())
-    return web.json_response({"last_reset": _iso(when), "deleted": False})
+    return web.json_response({"last_reset": _iso(when, _house_timezone(request.app)),
+                              "deleted": False})

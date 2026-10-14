@@ -31,6 +31,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
+from ..home_space import historian
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, DECLINED_FIELD, MEANING_FIELD
@@ -46,7 +47,7 @@ from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
 from ..mind.store import READING_RETENTION_S
 from ..mind.view import MindView
-from .boundary import error_response, json_object
+from .boundary import error_response, house_clock_of, json_object
 from .soffitto import subject_name
 
 
@@ -64,6 +65,15 @@ def mind_view(app) -> MindView:
                     judgments=app.get("type_judgments"))
 
 
+def _asked_day(request) -> str:
+    """Il giorno chiesto, con `oggi` e `ieri` nel fuso della casa
+    (`historian.resolve_day`): la pagina chiede per nome, e la risposta le
+    dice quale giorno e' (`giorno`)."""
+    return historian.resolve_day(
+        request.query.get("day"),
+        historian.house_timezone(request.app.get("home_space_store")))
+
+
 async def handle_watching(request: web.Request) -> web.Response:
     """La pagina dello scope: **cosa guardo, perche', da quando, e quanto costa**
     (`MindView.scope`, dove le parti sono spiegate una per una).
@@ -74,7 +84,7 @@ async def handle_watching(request: web.Request) -> web.Response:
     scope = mind_view(request.app).scope()
     if scope is None:
         return error_response(503, "osservatore non disponibile")
-    return web.json_response(scope)
+    return web.json_response({**scope, "orologio": house_clock_of(request.app)})
 
 
 async def handle_report(request: web.Request) -> web.Response:
@@ -99,10 +109,13 @@ async def handle_report(request: web.Request) -> web.Response:
     view = mind_view(request.app)
     if view.store is None:
         return error_response(503, "archivio non disponibile")
-    day = request.query.get("day") or None
-    if day is None:
+    if not request.query.get("day"):
         # Solo le misure, e l'obiettivo di ogni giorno: `MindView.reports`.
         return web.json_response({"resoconti": view.reports()})
+    # `giorno`: quale giorno e' stato chiesto, quando la pagina lo chiede per
+    # nome (`?day=ieri`, C-17): e' il giorno della casa, e la pagina lo scrive
+    # nel suo selettore.
+    day = _asked_day(request)
     resoconto = view.report(day)
     if resoconto is None:
         # `ora_notturna`: quando il resoconto di quel giorno si scrivera'. La
@@ -110,8 +123,10 @@ async def handle_report(request: web.Request) -> web.Response:
         # (C-11, Tappa 4, Task 5).
         return error_response(
             404, f"il giorno {day} non e' stato aggregato",
-            ora_notturna=view.nightly_time())
-    return web.json_response({"resoconto": resoconto})
+            ora_notturna=view.nightly_time(), giorno=day,
+            orologio=house_clock_of(request.app))
+    return web.json_response({"resoconto": resoconto, "giorno": day,
+                              "orologio": house_clock_of(request.app)})
 
 
 async def handle_set_objective(request) -> web.Response:
@@ -152,7 +167,9 @@ async def handle_set_objective(request) -> web.Response:
                                    "del prodotto, e senza criterio l'osservatore non sa "
                                    "piu' cosa guardare.")
     written = store.set_objective(text)
-    return web.json_response({"obiettivo": store.objective(),
+    # La lettura dalla vista (C-17): `scritto_ts` nell'ora della casa, come
+    # nello scope che la pagina ha gia' in mano.
+    return web.json_response({"obiettivo": mind_view(request.app).objective(),
                               "scritto": bool(written)})
 
 
@@ -288,16 +305,18 @@ async def handle_analysis(request) -> web.Response:
     view = mind_view(request.app)
     if view.store is None:
         return error_response(503, "archivio non disponibile")
-    day = (request.query.get("day") or "").strip()
-    if not day:
+    if not (request.query.get("day") or "").strip():
         return web.json_response({"analisi": view.analyses()})
+    day = _asked_day(request).strip()
     found = view.analysis(day)
     if found is None:
         # `analista_ogni_s`: ogni quanto l'analista guarda. La pagina lo dice
         # («non ha ancora guardato»), e lo riceve invece di saperlo (C-11).
         return error_response(404, f"il giorno {day} non e' stato analizzato",
-                              analista_ogni_s=view.analyst_every_s())
-    return web.json_response({"analisi": found})
+                              analista_ogni_s=view.analyst_every_s(), giorno=day,
+                              orologio=house_clock_of(request.app))
+    return web.json_response({"analisi": found, "giorno": day,
+                              "orologio": house_clock_of(request.app)})
 
 
 
@@ -360,7 +379,10 @@ async def handle_knowledge(request) -> web.Response:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()
     listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
-    return web.json_response({
+    zone = historian.home_space_zone(historian.house_timezone(request.app.get("home_space_store")))
+    # Ogni `quando_ts` nell'ora della casa (C-17), come le letture di
+    # `MindView`; e l'orologio, con cui la pagina dice «oggi».
+    return web.json_response({"orologio": house_clock_of(request.app)} | historian.instants_out({
         "conteggi": sapere.summary(),
         "non_capito": [_fact_row(f, names) for f in sapere.not_understood()],
         "significati": [_fact_row(f, names) for f in listed if f.field == MEANING_FIELD],
@@ -379,4 +401,4 @@ async def handle_knowledge(request) -> web.Response:
         # quanto il recupero ne scrive uno (C-11, Tappa 4, Task 5).
         "cronaca": {"ritenzione_s": READING_RETENTION_S,
                     "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60},
-    })
+    }, zone))

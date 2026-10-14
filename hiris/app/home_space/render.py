@@ -1162,8 +1162,8 @@ def render_promise(promise: dict) -> dict:
 
     C-32/C-39 (Paolo, 13/10/2026, «come consigliato»): verso il modello ogni
     istante era ISO con l'offset tranne i cinque della promessa. La pagina
-    Impegni riceve la stessa forma dalle sue rotte, e mostra gli istanti nel
-    fuso del browser: il passaggio all'ora della casa e' C-17.
+    Impegni riceve la stessa forma dalle sue rotte, e dal 14/10/2026 (C-17)
+    ne mostra le cifre: l'ora della casa, non quella del browser.
 
     `None` resta `null` (`instant_out`): una promessa mai risvegliata non ha
     `risvegliata_il`, e lo dice. L'ordine delle chiavi resta quello di

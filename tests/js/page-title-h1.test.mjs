@@ -126,7 +126,7 @@ test('Consumi: caricamento, misurato:false, contenuto normale ed errore hanno TU
     const ctx = monta({
       'api/usage/history': { days: [] },
       'api/usage': {
-        measured: true, timezone_known: true, timezone: 'Europe/Rome',
+        measured: true, timezone_known: true, orologio: { fuso: 'Europe/Rome', adesso: '2026-10-14T10:00:00+02:00' },
         cost_eur: 0, cost_state: 'gratuito', requests: 0, sections: [],
       },
     });

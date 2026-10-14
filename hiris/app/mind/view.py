@@ -107,7 +107,7 @@ class MindView:
         if self.watcher is None:
             return None
         store = self.store
-        return {
+        return self._in_house_hour({
             "watching": _with_integration(self.watcher.watching(house=self._house_read()),
                                           self.manifest()),
             "fuori": self._left_out(),
@@ -116,12 +116,21 @@ class MindView:
             "tentativi": ([attempt_out(t) for t in store.recent_attempts()]
                           if store is not None else None),
             "volume": self._volume(),
-        }
+        })
 
     def objective(self) -> dict | None:
         """L'obiettivo della casa, la sola manopola del prodotto; `None`
         senza archivio. E' lo stesso `obiettivo` dello scope."""
-        return self.store.objective() if self.store is not None else None
+        return (self._in_house_hour(self.store.objective())
+                if self.store is not None else None)
+
+    def _in_house_hour(self, reading):
+        """Una lettura con ogni istante nell'ora della casa (C-17, D3 della
+        Tappa 4): `historian.instants_out`, una volta per ogni lettura che
+        esce, verso la pagina e verso il modello -- la stessa forma dalle
+        due porte. Dentro il cervello gli istanti restano epoch."""
+        return historian.instants_out(
+            reading, historian.home_space_zone(historian.house_timezone(self._home_space)))
 
     def _house_read(self) -> House | None:
         """La casa del momento, per la fonte di ogni soggetto (Task 1.5, G-01).
@@ -184,9 +193,10 @@ class MindView:
         in serie deve sapere se in mezzo la domanda e' cambiata, o legge una
         tendenza dove c'e' un cambio di domanda."""
         names = self.device_names()
-        return [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
-                 "misure": _named(names, r.get("misure"))}
-                for r in self.store.reports(limit=RECENT_DAYS)]
+        return self._in_house_hour(
+            [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
+              "misure": _named(names, r.get("misure"))}
+             for r in self.store.reports(limit=RECENT_DAYS)])
 
     def report(self, day: str) -> dict | None:
         """Il resoconto di un giorno **reso** (`report.as_page`), o `None` se
@@ -206,8 +216,9 @@ class MindView:
         found = {**found,
                  "misure": _named(names, found.get("misure")),
                  "forme": _named(names, found.get("forme"))}
-        return as_page(found, judgments=self._judgments,
-                       manifest=self.manifest(), names=self.entity_names())
+        return self._in_house_hour(as_page(found, judgments=self._judgments,
+                                           manifest=self.manifest(),
+                                           names=self.entity_names()))
 
     @staticmethod
     def nightly_time() -> str:
@@ -228,8 +239,9 @@ class MindView:
     def analyses(self) -> list[dict]:
         """Le ultime analisi, dalla piu' recente, coi nomi risolti adesso."""
         names = self.device_names()
-        return [{**a, "osservazioni": _worded(_named(names, a.get("osservazioni")))}
-                for a in self.store.analyses(limit=RECENT_DAYS)]
+        return self._in_house_hour(
+            [{**a, "osservazioni": _worded(_named(names, a.get("osservazioni")))}
+             for a in self.store.analyses(limit=RECENT_DAYS)])
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di un giorno, o `None` se quel giorno non e' stato
@@ -248,7 +260,7 @@ class MindView:
             return None
         names = self.device_names()
         found = {**found, "osservazioni": _worded(_named(names, found.get("osservazioni")))}
-        return _with_outcomes(found)
+        return self._in_house_hour(_with_outcomes(found))
 
     # -- i nomi -----------------------------------------------------------
 

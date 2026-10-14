@@ -78,8 +78,14 @@ window.HirisWatcherRoute = (function () {
     }
     scheda.caricata = true;
     var esito = modulo.carica(scheda.corpo);
-    function segna() { scheda.fresca.segna(); }
-    if (esito && typeof esito.then === 'function') esito.then(segna, segna);
+    /* La scheda si risolve con l'orologio della sua risposta (C-17): «Letto
+       alle» e' l'ora della casa, e la riga del fuso si scrive sotto il titolo
+       quando il browser sta altrove. */
+    function segna(clock) {
+      scheda.fresca.segna(clock);
+      clockHint(document.querySelector('#route-outlet .page-title'), clock, []);
+    }
+    if (esito && typeof esito.then === 'function') esito.then(segna, function () { segna(); });
     else segna();
   }
 

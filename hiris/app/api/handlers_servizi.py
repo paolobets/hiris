@@ -34,6 +34,7 @@ import time
 from aiohttp import web
 
 from ..chat_thread import unknown_id_text
+from ..home_space.historian import home_space_zone, house_clock, house_timezone, instant_out
 from .boundary import error_response, json_object
 from .canali import PUO, RUOLI, SERVICE_SPECIES
 from .servizi import (
@@ -105,7 +106,7 @@ def species() -> list[dict]:
             for kind in _in_choice_order(SERVICE_SPECIES, _SPECIES_WORDS)]
 
 
-def listing(archivio, adesso: float) -> dict:
+def listing(archivio, adesso: float, app) -> dict:
     """I servizi divisi nelle tre sezioni della pagina, dallo stato che la
     riga porta (`servizi.STATE_*`): chi aspetta una decisione, chi e'
     accoppiato, chi e' stato revocato. Una forma sola per la lettura e per le
@@ -114,8 +115,12 @@ def listing(archivio, adesso: float) -> dict:
     where = {STATE_PENDING: "da_decidere", STATE_AUTHORIZED: "accoppiati",
              STATE_REVOKED: "revocati"}
     sections: dict[str, list] = {section: [] for section in where.values()}
+    # Gli istanti nell'ora della casa (C-17): la pagina ne mostra le cifre.
+    zone = home_space_zone(house_timezone(app.get("home_space_store")))
     for row in archivio.elenco(now_ts=adesso):
-        sections[where[row["stato"]]].append(row)
+        sections[where[row["stato"]]].append(
+            {**row, "visto_ts": instant_out(row["visto_ts"], zone),
+             "deciso_ts": instant_out(row["deciso_ts"], zone)})
     return sections
 
 
@@ -160,7 +165,8 @@ async def handle_services(request: web.Request) -> web.Response:
     adesso = time.time()
     finestra = request.app.get("finestra_servizi")
     return web.json_response({
-        "servizi": listing(archivio, adesso),
+        "servizi": listing(archivio, adesso, request.app),
+        "orologio": house_clock(house_timezone(request.app.get("home_space_store")), adesso),
         "finestra": {"aperta": finestra_aperta(finestra, adesso=adesso),
                      "resta_s": round(finestra_resta(finestra, adesso=adesso))},
         "ruoli": roles(), "specie": species()})
@@ -204,7 +210,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: approvato un servizio come «%s» (%s)",
                 dati.get("ruolo"), dati.get("specie"))
-    return web.json_response({"servizi": listing(archivio, adesso)})
+    return web.json_response({"servizi": listing(archivio, adesso, request.app)})
 
 
 async def handle_service_revoke(request: web.Request) -> web.Response:
@@ -217,4 +223,4 @@ async def handle_service_revoke(request: web.Request) -> web.Response:
     if not archivio.revoca(str(dati.get("chiave") or ""), now_ts=adesso):
         return error_response(404, _UNKNOWN_KEY)
     logger.info("servizi: accesso revocato a un servizio")
-    return web.json_response({"servizi": listing(archivio, adesso)})
+    return web.json_response({"servizi": listing(archivio, adesso, request.app)})

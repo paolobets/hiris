@@ -19,7 +19,7 @@ const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 function rendi(casa) {
   // `common.js` PRIMA di `config/tree-route.js`, come fa davvero
-  // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtDateTime`,
+  // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtInstant`,
   // condivisa con la pagina Consumi -- non e' piu' un file isolato.
   const ctx = loadScripts(['common.js', 'config/tree-route.js'], { html: HTML });
   const chiamate = fintoFetch(ctx.window, { 'api/home-space': casa });
@@ -37,7 +37,8 @@ function rendi(casa) {
    ogni asserzione parla di UNA causa sola. */
 function casaCompleta(extra = {}) {
   return Object.assign({
-    anagrafe_letta_il: '2026-08-17T09:00:00',
+    orologio: { fuso: 'Europe/Rome', adesso: '2026-10-14T10:00:00+02:00' },
+    anagrafe_letta_il: '2026-08-17T09:00:00+02:00',
     non_disponibili: [],
     conteggi: {},
     sistema_di_riferimento: {
@@ -289,25 +290,13 @@ test('un\'anagrafe mai letta non si traveste da albero vuoto', async () => {
     'nessun piano/area disegnato su una lettura mai avvenuta -- niente albero vuoto spacciato per verità');
 });
 
-test('collaudo 3.22 (A10): «Letta il» mostra la data nel formato italiano, non l’ISO grezzo in UTC', async () => {
+test('collaudo 3.22 (A10): «Letta il» mostra l’ora della casa, non l’ISO grezzo', async () => {
+  // Il difetto misurato era «Letta il 2026-09-07T05:13:52+00:00.», due righe
+  // sopra un orario nel fuso di casa. Dal 14/10/2026 (C-17) l'istante arriva
+  // nell'ora della casa e se ne mostrano le cifre (`fmtInstant`, common.js).
   const { testo } = await rendi(casaCompleta());
-  // La stessa funzione che la pagina Consumi già usa (common.js) --
-  // non una seconda copia della formattazione. Il difetto misurato era
-  // «Letta il 2026-09-07T05:13:52+00:00.», due righe sopra un orario nel
-  // fuso di casa: la stessa distanza di due ore che l'Osservatore dichiara
-  // altrove.
-  // `fmtDateTime` e' un global BARE (common.js non e' un modulo, vedi il suo
-  // commento in cima): il ponte di loadScripts() lo specchia su `window`
-  // solo per le assegnazioni `window.X = ...`, non per le dichiarazioni di
-  // funzione di primo livello -- quindi si legge da `globalThis`, come fa
-  // gia' `globalThis.loadUsage()` in chat-usage-widget.test.mjs.
-  const atteso = globalThis.fmtDateTime(casaCompleta().anagrafe_letta_il);
-  assert.ok(atteso, 'precondizione: fmtDateTime deve produrre qualcosa di leggibile per questa fixture');
-  assert.match(testo, /Letta il/);
-  assert.doesNotMatch(testo, /Letta il 2026-08-17T09:00:00/,
-    'l’ISO grezzo non deve comparire a schermo');
-  assert.ok(testo.indexOf('Letta il ' + atteso) >= 0,
-    'deve comparire la data formattata da fmtDateTime, non l’ISO grezzo');
+  assert.doesNotMatch(testo, /2026-08-17T09:00:00/, 'l’ISO grezzo non deve comparire a schermo');
+  assert.ok(testo.includes('Letta il 17/08, 09:00.'), testo);
 });
 
 test('sistema di riferimento: presente si legge, assente lo dichiara (mai silenzio)', async () => {
@@ -396,10 +385,9 @@ test('il segno del `fuori` usa le parole di oggi, e «[di servizio]» per le ent
 test('i registri caduti dicono di quando è la copia che HIRIS usa al loro posto', async () => {
   const { testo } = await rendi(casaCompleta({
     non_disponibili: ['piani', 'aree'],
-    non_disponibili_letti_il: { piani: '2026-10-03T12:20:00+00:00', aree: null },
+    non_disponibili_letti_il: { piani: '2026-10-13T12:20:00+02:00', aree: null },
   }));
-  const quando = globalThis.fmtDateTime('2026-10-03T12:20:00+00:00');
-  assert.ok(testo.includes('Piani — HIRIS usa la copia del ' + quando + '.'), testo);
+  assert.ok(testo.includes('Piani — HIRIS usa la copia di ieri alle 12:20.'), testo);
   assert.ok(testo.includes('Aree — nessuna copia disponibile, mai letto.'), testo);
 });
 
@@ -407,11 +395,10 @@ test('il confronto con Home Assistant: mai fatto, combacia, diverge, non si è p
   const mai = (await rendi(casaCompleta({ confronto: null }))).testo;
   assert.match(mai, /Mai confrontato: HIRIS non ha ancora verificato il suo albero/);
 
-  const letto = '2026-10-12T10:00:00+00:00';
+  const letto = '2026-10-12T10:00:00+02:00';
   const uguale = (await rendi(casaCompleta({ confronto: { aree_totali: 16, letto_il: letto,
     guardate: [{ area: 'cucina', nome: 'Cucina', mancanti: [], in_piu: [], assente_in_ha: false }] } }))).testo;
-  assert.ok(uguale.includes('Confronto del ' + globalThis.fmtDateTime(letto) +
-    ': controllata 1 area su 16.'), uguale);
+  assert.ok(uguale.includes('Confronto del 12/10, 10:00: controllata 1 area su 16.'), uguale);
   assert.match(uguale, /Tutto combacia: in queste aree/);
   assert.doesNotMatch(uguale, /tutta la casa/);
 

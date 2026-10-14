@@ -175,13 +175,13 @@ window.HirisDashboard = (function () {
      «Letto il», dove si leggono i numeri. `cosa` e' il soggetto della frase,
      accordato («questi numeri sono quelli», «queste plance sono quelle»).
      Torna vero se la sezione e' una replica conservata. */
-  function keptCopy(body, kept, loaded, cosa) {
+  function keptCopy(body, kept, loaded, cosa, clock) {
     if (!kept) return false;
     if (loaded == null) {
       line(body, 'L’ultima lettura non è riuscita e non c’è nessuna copia precedente.', TONE_UNKNOWN);
     } else {
-      line(body, 'L’ultima lettura non è riuscita: ' + cosa + ' di una lettura precedente, del ' +
-        fmtDateTime(kept.letto_il || loaded) + '.', TONE_UNKNOWN);
+      line(body, 'L’ultima lettura non è riuscita: ' + cosa + ' di una lettura precedente, ' +
+        fmtInstant(kept.letto_il || loaded, clock, 'del') + '.', TONE_UNKNOWN);
     }
     return true;
   }
@@ -195,18 +195,23 @@ window.HirisDashboard = (function () {
   /* ---------------------------------------------------------------- casa */
 
   /* Collaudo 3.22 (A10): le tre "Letta/Letto/Lette il" qui sotto scrivevano
-     l'ISO grezzo che il server manda (`2026-09-07T05:13:52+00:00`, in UTC),
-     due righe sopra un orario nel fuso di casa ("Adesso sono le 08:29...").
-     `fmtDateTime` (common.js) e' la STESSA funzione che gia' usa la
-     pagina Consumi -- non se ne scrive una seconda. */
+     l'ISO grezzo che il server manda, due righe sopra un orario nel fuso di
+     casa ("Adesso sono le 08:29..."). Dal 14/10/2026 (C-17) l'istante arriva
+     nell'ora della casa e `fmtInstant` (common.js) ne mostra le cifre: la
+     STESSA funzione di tutte le pagine -- non se ne scrive una seconda. */
   function renderHomeSpace(outlet, home_space) {
     var body = section(outlet, 'L’anagrafe della casa',
       'Piani, aree, dispositivi ed entità come HIRIS li ha ricostruiti dai registri di Home Assistant.');
+    var clock = home_space.orologio;
+    var comp = home_space.comportamento || {};
+    var dashboards = home_space.plance || {};
+    clockHint(outlet.querySelector('.page-title'), clock, [home_space.anagrafe_letta_il,
+      comp.letto_il, dashboards.lette_il]);
 
     if (home_space.anagrafe_letta_il == null) {
       line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONE_UNKNOWN);
     } else {
-      line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
+      line(body, 'Letta ' + fmtInstant(home_space.anagrafe_letta_il, clock, 'il') + '.', TONE_CALM);
       tile(body, home_space.conteggi, home_space.nomi_registri, unavailableRegisters(home_space.non_disponibili));
     }
 
@@ -217,16 +222,15 @@ window.HirisDashboard = (function () {
     }, function (voci) { return nomiRegistriInItaliano(voci, home_space.nomi_registri); });
 
     /* Comportamento */
-    var comp = home_space.comportamento || {};
     var behaviorBody = section(outlet, 'Ciò che la casa sa fare da sola',
       'Automazioni e script: quanti ne conosce, e di quanti conosce solo il nome.');
 
     if (comp.letto_il == null) {
       line(behaviorBody, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
-      keptCopy(behaviorBody, comp.conservato, null);
+      keptCopy(behaviorBody, comp.conservato, null, null, clock);
     } else {
-      if (!keptCopy(behaviorBody, comp.conservato, comp.letto_il, 'questi numeri sono quelli')) {
-        line(behaviorBody, 'Letto il ' + fmtDateTime(comp.letto_il) + '.', TONE_CALM);
+      if (!keptCopy(behaviorBody, comp.conservato, comp.letto_il, 'questi numeri sono quelli', clock)) {
+        line(behaviorBody, 'Letto ' + fmtInstant(comp.letto_il, clock, 'il') + '.', TONE_CALM);
       }
       tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO);
     }
@@ -266,17 +270,16 @@ window.HirisDashboard = (function () {
     }, behaviorKept), dictToEntries);
 
     /* Plance */
-    var dashboards = home_space.plance || {};
     var dashboardsBody = section(outlet, 'Le plance di Home Assistant',
       'Le dashboard Lovelace che HIRIS ha potuto leggere.');
 
     if (dashboards.lette_il == null) {
       line(dashboardsBody, 'Le plance non sono ancora state lette.', TONE_UNKNOWN);
-      keptCopy(dashboardsBody, dashboards.conservato, null);
+      keptCopy(dashboardsBody, dashboards.conservato, null, null, clock);
     } else {
       if (!keptCopy(dashboardsBody, dashboards.conservato, dashboards.lette_il,
-        'queste plance sono quelle')) {
-        line(dashboardsBody, 'Lette il ' + fmtDateTime(dashboards.lette_il) + '.', TONE_CALM);
+        'queste plance sono quelle', clock)) {
+        line(dashboardsBody, 'Lette ' + fmtInstant(dashboards.lette_il, clock, 'il') + '.', TONE_CALM);
       }
       var voci = dashboards.voci || [];
       line(dashboardsBody, voci.length === 1 ? '1 plancia letta.' : voci.length + ' plance lette.', TONE_CALM);

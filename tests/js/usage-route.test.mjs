@@ -153,7 +153,7 @@ test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', a
 const MISURATO = {
   measured: true, total_requests: 3, input_tokens: 10, output_tokens: 5,
   total_tokens: 15, cost_usd: 0.01, cost_eur: 0.01, partial_cost: false,
-  rate_limit_errors: 0, last_reset: null, timezone: 'Europe/Rome',
+  rate_limit_errors: 0, last_reset: null, orologio: { fuso: 'Europe/Rome', adesso: '2026-10-14T10:00:00+02:00' },
   timezone_known: true, sections: [], fallbacks_from: 'Piano Claude Max',
 };
 

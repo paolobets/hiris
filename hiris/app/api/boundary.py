@@ -29,6 +29,8 @@ import json
 
 from aiohttp import web
 
+from ..home_space.historian import house_clock, house_timezone
+
 
 def occurrence_out(occurrence: dict) -> dict:
     """L'occorrenza come esce su HTTP. Non modifica l'originale.
@@ -46,6 +48,14 @@ def occurrence_out(occurrence: dict) -> dict:
     return {("error" if k == "errore" else k):
             (occurrence_out(v) if k == "causa" and isinstance(v, dict) else v)
             for k, v in occurrence.items()}
+
+
+def house_clock_of(app) -> dict:
+    """L'orologio della casa che una risposta porta a chi mostra un istante a
+    una persona (C-17, `historian.house_clock`), col fuso letto dall'anagrafe
+    dell'applicazione. Una funzione sola per tutte le rotte che lo mandano:
+    il fuso si legge sempre dallo stesso posto."""
+    return house_clock(house_timezone(app.get("home_space_store")))
 
 
 def error_body(text: str, **fields) -> dict:

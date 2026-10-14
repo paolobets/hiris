@@ -161,11 +161,6 @@ window.HirisConstructions = (function () {
     { chiave: 'entities', etichetta: 'entità' }
   ];
 
-  function fmtData(ts) {
-    var d = new Date(ts * 1000);
-    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
-  }
-
   /* Nome dell'oggetto (guida §2.1): "lo stesso ripiego esatto che usa il
      backend" -- che per `create` legge l'alias del `dopo` (Officina._anteprima:
      `intento.get('alias')`, non c'e' nessun `prima`) e per `modifica`/
@@ -345,14 +340,14 @@ window.HirisConstructions = (function () {
   /* guida §7: il testo del confirm() composto solo da campi reali. */
   function restoreMessage(c) {
     if (c.stato === 'incerta') {
-      return 'Non so se la modifica del ' + fmtData(c.creata_ts) + ' a «' +
+      return 'Non so se la modifica del ' + fmtDay(c.creata_ts, true) + ' a «' +
         objectName(c) + '» sia arrivata. Controllo in Home Assistant: se è ' +
         'arrivata, rimetto ' + objectArticle(c) + ' com’era prima (le modifiche ' +
         'fatte dopo vengono sovrascritte); se non è arrivata, non scrivo niente. ' +
         'Procedo?';
     }
     return 'Rimetto ' + objectArticle(c) + ' «' + objectName(c) + '» com’era il ' +
-      fmtData(c.creata_ts) + '. Le modifiche fatte dopo vengono sovrascritte. Procedo?';
+      fmtDay(c.creata_ts, true) + '. Le modifiche fatte dopo vengono sovrascritte. Procedo?';
   }
 
   function executeAction(action, id, button, statusEl, reload) {
@@ -954,11 +949,15 @@ window.HirisConstructions = (function () {
     return box;
   }
 
+  /* `creata_ts` arriva in ISO con l'offset della casa (C-17): si ordina
+     sull'istante, non sul testo (due offset diversi intorno al cambio d'ora
+     ordinerebbero male). */
+  function bornAt(c) { return Date.parse(c.creata_ts); }
   function sortOpen(list) {
-    return list.slice().sort(function (a, b) { return a.creata_ts - b.creata_ts; });
+    return list.slice().sort(function (a, b) { return bornAt(a) - bornAt(b); });
   }
   function sortHistory(list) {
-    return list.slice().sort(function (a, b) { return b.creata_ts - a.creata_ts; });
+    return list.slice().sort(function (a, b) { return bornAt(b) - bornAt(a); });
   }
 
   function renderSection(body, list, empty, statusEl, reload, sort) {

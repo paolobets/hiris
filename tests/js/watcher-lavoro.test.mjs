@@ -27,12 +27,11 @@ function fixtureHtml() {
 /* Il payload nuovo di `GET /api/mind/watching` (fetta «i tre attori»,
    11/09/2026): cinque parti in una risposta sola. `paginaScope()` è la
    forma «archivio collegato, niente ancora deciso»; ogni prova sovrascrive
-   la parte che le serve. Le date sono epoch in secondi (float), come
-   `quando`/`scritto_ts`/`quando_ts` sul filo -- MAI
-   confrontate con una stringa fissa nei test: la resa è nel fuso del
-   browser di chi fa girare la suite. */
-const OBIETTIVO_DI_PROVA = { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: 1787000000 };
-const RICONSIDERAZIONE_DI_PROVA = { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 };
+   la parte che le serve. Le date sono ISO con l'offset della casa, come
+   `quando`/`scritto_ts`/`quando_ts` sul filo dal 14/10/2026 (C-17): la
+   pagina ne mostra le cifre, e il fuso del browser non conta. */
+const OBIETTIVO_DI_PROVA = { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: '2026-08-17T22:53:20+02:00' };
+const RICONSIDERAZIONE_DI_PROVA = { quando_ts: '2026-08-17T22:53:20+02:00', finestra_s: 604800, cadenza_s: 302400 };
 
 function paginaScope(extra) {
   return Object.assign({
@@ -45,7 +44,7 @@ function paginaScope(extra) {
 // che `Watcher.watching` (watcher.py) manda con `autore: null` e
 // `quando: null`, per costruzione.
 function voce(soggetto, extra) {
-  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', quando: 1787000000 }, extra || {});
+  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', quando: '2026-08-17T22:53:20+02:00' }, extra || {});
 }
 
 function condizione(soggetto) {
@@ -141,7 +140,7 @@ function titoli(corpo) {
   return Array.from(corpo.querySelectorAll('h3')).map((h) => h.textContent);
 }
 
-const DATA_ORA = /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/;
+const DATA_ORA = /\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}/;
 
 // -- 1. L'obiettivo ---------------------------------------------------------
 
@@ -149,12 +148,12 @@ test('seam _rendiScope: l\'obiettivo è la prima cosa, col suo testo e quando è
   // Mutazione che la uccide: togliere `renderObjective(body, p.obiettivo)`
   // da `renderScope` (il testo dell'obiettivo sparisce), oppure spostarla
   // dopo `renderWatched` (il primo h3 non è più «L’obiettivo»).
-  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'tenere la casa calda e spendere poco', scritto_ts: 1787000000 } }));
+  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'tenere la casa calda e spendere poco', scritto_ts: '2026-08-17T22:53:20+02:00' } }));
   assert.equal(titoli(corpo)[0], 'L’obiettivo', 'senza la domanda le scelte sono illeggibili: viene prima');
   const citazione = corpo.querySelector('blockquote');
   assert.ok(citazione, 'il testo dell\'obiettivo è una citazione del proprietario, non un paragrafo qualunque');
   assert.equal(citazione.textContent, 'tenere la casa calda e spendere poco');
-  assert.match(corpo.textContent, /Scritto il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/,
+  assert.match(corpo.textContent, /Scritto il 17\/08\/2026, 22:53/,
     'è datato, e la sua storia conta (spec §11): la data porta l\'anno');
 });
 
@@ -214,7 +213,7 @@ test('seam _rendiScope: le voci si raggruppano per chi ha deciso, nell\'ordine t
   const tuo = gruppo(corpo, 'Deciso da te');
   assert.match(tuo.textContent, /light\.cucina/);
   assert.match(tuo.textContent, /me l’hai chiesto tu/, 'il motivo sta accanto alla voce: è da lì che si toglie');
-  assert.match(tuo.textContent, /dal \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/, '«da quando» si dice, con l\'anno');
+  assert.match(tuo.textContent, /dal \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}/, '«da quando» si dice, con l\'anno');
   const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
   assert.match(osservatore.textContent, /il riscaldamento è la voce più pesante/);
 });
@@ -296,7 +295,7 @@ test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con mo
   // sulla frase: toglierla lascia leggere «lasciato fuori» come «tutto il
   // resto della casa».
   const { corpo } = rendiScope(paginaScope({
-    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', quando: 1787000001 }],
+    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', quando: '2026-08-17T22:53:21+02:00' }],
   }));
   assert.ok(titoli(corpo).indexOf('Lasciato fuori') > titoli(corpo).indexOf('Cosa guardo'),
     'l\'altra metà della trasparenza viene DOPO cosa si guarda');
@@ -316,7 +315,7 @@ test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con mo
   const quando = Array.from(fuori.querySelectorAll('.field-hint')).map((s) => s.textContent)
     .find((s) => /^(il|dal) /.test(s));
   assert.ok(quando, 'l’istante della decisione (`quando`) deve comparire accanto alla voce');
-  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/, 'una voce lasciata fuori si mostra come «il ...», non «dal ...»');
+  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/, 'una voce lasciata fuori si mostra come «il ...», non «dal ...»');
   assert.match(corpo.textContent, /non è stato escluso — non è stato considerato/);
 });
 
@@ -336,7 +335,7 @@ test('seam _rendiScope: la riconsiderazione mostra quando, la memoria misurata i
   // `tiles` in `renderReconsideration` -- «ogni 84 ore» resterebbe da
   // credere sulla parola, e `/7 giorni/` arrossisce. Mutazione su
   // `fmtHours`: dividere per 86400 invece di 3600 darebbe «3,5 ore».
-  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 } }));
+  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: '2026-08-17T22:53:20+02:00', finestra_s: 604800, cadenza_s: 302400 } }));
   const tessere = Array.from(corpo.querySelectorAll('.stat-tile')).map((t) =>
     [t.querySelector('.st-label').textContent, t.querySelector('.st-value').textContent]);
   assert.equal(tessere.length, 3);
@@ -364,7 +363,7 @@ test('seam _rendiScope: finestra non misurata dentro una riconsiderazione avvenu
   // risponde di no. Mutazione: togliere il ramo `if (r.finestra_s == null ||
   // r.cadenza_s == null)` -- la pagina direbbe «la cadenza è la metà della
   // memoria misurata» sotto a una tessera «non misurata».
-  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: null, cadenza_s: null } }));
+  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: '2026-08-17T22:53:20+02:00', finestra_s: null, cadenza_s: null } }));
   const valori = Array.from(corpo.querySelectorAll('.stat-tile .st-value')).map((v) => v.textContent);
   assert.equal(valori[1], 'non misurata');
   assert.equal(valori[2], 'nessuna');
@@ -585,7 +584,8 @@ test("seam _rendiScope: la dichiarazione «identificatore» sta sulle righe senz
 /* Un tentativo come lo manda la rotta: con la sua lettura (`attempt_out`,
    G-25), presa dai sorgenti Python e non ricopiata qui. */
 function tentativo(valore, quandoFa, dettaglio) {
-  return conLettura({ quando_ts: Math.floor(Date.now() / 1000) - quandoFa, esito: valore,
+  return conLettura({ quando_ts: new Date(Date.now() - quandoFa * 1000).toISOString()
+                        .replace(/\.\d{3}Z$/, '+00:00'), esito: valore,
                       dettaglio: dettaglio });
 }
 
@@ -838,7 +838,7 @@ test('seam _rendiScope: in testa i TRE numeri, e la riconsiderazione prima di co
      fuori». */
   const { corpo } = rendiScope(paginaScope({
     watching: moltiSoggetti(4, 'light'),
-    fuori: [{ soggetto: 'sensor.x', motivo: 'non riguarda l’obiettivo', autore: 'observer', quando: 1787000000 }],
+    fuori: [{ soggetto: 'sensor.x', motivo: 'non riguarda l’obiettivo', autore: 'observer', quando: '2026-08-17T22:53:20+02:00' }],
     volume: [{ giorno: '2026-09-19', righe: 13945 }],
   }));
 
@@ -885,11 +885,11 @@ test('seam _rendiScope: «Lasciato fuori» si raggruppa per TIPO di cosa, non pe
   const fuori = [];
   for (let i = 0; i < 12; i++) {
     fuori.push({ soggetto: 'sensor.s' + i, motivo: 'motivo numero ' + i,
-      autore: 'observer', quando: 1787000000 });
+      autore: 'observer', quando: '2026-08-17T22:53:20+02:00' });
   }
   for (let i = 0; i < 3; i++) {
     fuori.push({ soggetto: 'button.b' + i, motivo: 'un comando, non una misura',
-      autore: 'observer', quando: 1787000000 });
+      autore: 'observer', quando: '2026-08-17T22:53:20+02:00' });
   }
   const { corpo } = rendiScope(paginaScope({ fuori }));
 
@@ -907,7 +907,7 @@ test('seam _rendiScope: il motivo di una singola esclusione si legge, aperto il 
   const fuori = [];
   for (let i = 0; i < 6; i++) {
     fuori.push({ soggetto: 'camera.c' + i, motivo: 'Comando PTZ di una telecamera, non riguarda energia',
-      autore: 'observer', quando: 1787000000 });
+      autore: 'observer', quando: '2026-08-17T22:53:20+02:00' });
   }
   const { corpo } = rendiScope(paginaScope({ fuori }));
   apriIn(corpo, 'Vedi');
@@ -923,7 +923,7 @@ test('seam _rendiScope: nessun «summary» negli elenchi di questa scheda (spec 
      Mutazione che la uccide: rimettere `renderDecisionGroup` coi `<details>`. */
   const { corpo } = rendiScope(paginaScope({
     watching: moltiSoggetti(6, 'light'),
-    fuori: [{ soggetto: 'sensor.x', motivo: 'no', autore: 'observer', quando: 1787000000 }],
+    fuori: [{ soggetto: 'sensor.x', motivo: 'no', autore: 'observer', quando: '2026-08-17T22:53:20+02:00' }],
   }));
 
   assert.equal(corpo.querySelectorAll('summary').length, 0);
@@ -1028,8 +1028,8 @@ test('seam _rendiScope: «Togli» c’è sulle cose della casa decise, non sui s
 test('seam _rendiScope: ciò che hai tolto tu sta in testa a «Lasciato fuori», a parte dai tipi, col suo «Rimetti dentro»', () => {
   // Mutazione che la uccide: lasciare le righe del proprietario dentro i tipi.
   const { corpo } = rendiScope(paginaScope({ fuori: [
-    { soggetto: 'sensor.vicino', motivo: 'è del vicino', autore: 'owner', quando: 1787000000 },
-    { soggetto: 'sensor.uptime', motivo: 'di servizio', autore: 'observer', quando: 1787000000 },
+    { soggetto: 'sensor.vicino', motivo: 'è del vicino', autore: 'owner', quando: '2026-08-17T22:53:20+02:00' },
+    { soggetto: 'sensor.uptime', motivo: 'di servizio', autore: 'observer', quando: '2026-08-17T22:53:20+02:00' },
   ] }));
   const testo = corpo.textContent;
   assert.match(testo, /Tolto da te \(1\)/);
@@ -1040,7 +1040,7 @@ test('seam _rendiScope: ciò che hai tolto tu sta in testa a «Lasciato fuori»,
 
 test('mount: «Rimetti dentro» su una cosa esclusa dall’osservatore la rende una tua decisione, e lo dice', async () => {
   const fuori = [{ soggetto: 'sensor.pioggia', motivo: 'non pesa', autore: 'observer',
-    quando: 1787000000 }];
+    quando: '2026-08-17T22:53:20+02:00' }];
   const ctx = montaConServer({ watching: paginaScope({ fuori }) });
   ctx.window.HirisWatcherRoute.mount('lavoro');
   await tick(20);

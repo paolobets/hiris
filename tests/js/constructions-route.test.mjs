@@ -67,10 +67,10 @@ test('le proposte in attesa hanno il bottone di conferma, le applicate no', asyn
   const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
       chiave: '1771', anteprima: 'Creo un automazione', prima: null,
-      dopo: { alias: 'Tapparelle' }, creata_ts: 1756000000 },
+      dopo: { alias: 'Tapparelle' }, creata_ts: '2026-08-24T03:46:40+02:00' },
     { id: 'c1', stato: 'applicata', gesto: 'modifica', dominio: 'automation',
       chiave: '1772', anteprima: '', prima: { alias: 'vecchio' },
-      dopo: { alias: 'nuovo' }, creata_ts: 1756000000 },
+      dopo: { alias: 'nuovo' }, creata_ts: '2026-08-24T03:46:40+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const testo = dom.window.document.body.textContent;
@@ -91,10 +91,10 @@ test('una modifica a un oggetto non creato da HIRIS lo dichiara', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'c1', stato: 'applicata', gesto: 'modifica', dominio: 'automation',
       chiave: '1772', anteprima: '', prima: { alias: 'la tua automazione' },
-      dopo: { alias: 'modificata' }, creata_ts: 1756000000 },
+      dopo: { alias: 'modificata' }, creata_ts: '2026-08-24T03:46:40+02:00' },
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
       chiave: '1773', anteprima: '', prima: null,
-      dopo: { alias: 'nuova' }, creata_ts: 1756000000 },
+      dopo: { alias: 'nuova' }, creata_ts: '2026-08-24T03:46:40+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -118,7 +118,7 @@ test('il sorgente non usa innerHTML, in nessuna forma', () => {
 test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
+      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   assert.equal(dom.window.document.querySelectorAll('[data-azione="confirm"]').length, 1);
@@ -134,9 +134,9 @@ test('il no di chi costruisce non si mostra come un fallimento', async () => {
   // parola non torna sulla pagina (Tappa 8, D4).
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1, motivo: null },
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00', motivo: null },
     { id: 'r1', stato: 'fallita', gesto: 'crea', dominio: 'automation',
-      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
+      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00',
       motivo: 'Home Assistant non ha accettato la configurazione' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -159,10 +159,10 @@ test('una riga «disdetta» non mostra il motivo, qualunque testo porti: e\' un 
   // ESATTAMENTE come una senza.
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 2,
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-02T10:00:00+02:00',
       motivo: 'rifiutata dal proprietario' },
     { id: 'd2', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
-      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
+      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00',
       motivo: null },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -179,7 +179,7 @@ test('una riga «disdetta» non mostra il motivo, qualunque testo porti: e\' un 
 test('solo le costruzioni applicate o incerte offrono il ripristino', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
+      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   assert.equal(dom.window.document.querySelectorAll('[data-azione="restore"]').length, 0);
@@ -195,7 +195,7 @@ test('una costruzione «incerta» ha la sua faccia di avviso e si può rimettere
   const { dom } = montaCon({ constructions: [
     { id: 'i1', stato: 'incerta', gesto: 'modifica', dominio: 'automation',
       chiave: '1771', anteprima: '', prima: { alias: 'Luci' }, dopo: { alias: 'Luci' },
-      creata_ts: 1790000000,
+      creata_ts: '2026-09-21T16:13:20+02:00',
       motivo: 'Home Assistant non ha risposto alla scrittura' },
   ] });
   let chiesto = null;
@@ -219,7 +219,7 @@ test('una costruzione «incerta» ha la sua faccia di avviso e si può rimettere
   assert.equal(rimetti.textContent, 'Verifica e rimetti com’era');
   assert.match(riga.textContent, /«Verifica e rimetti» guarda prima la casa e scrive solo se serve/);
   rimetti.click();
-  assert.match(chiesto, /^Non so se la modifica del \d\d\/\d\d\/\d{4} a «Luci» sia arrivata\. Controllo in Home Assistant: se è arrivata, rimetto l’automazione com’era prima/);
+  assert.match(chiesto, /^Non so se la modifica del 21\/09\/2026 a «Luci» sia arrivata\. Controllo in Home Assistant: se è arrivata, rimetto l’automazione com’era prima/);
 });
 
 test('una «incerta» senza motivo dice il dubbio, non una causa; un’applicata resta «Rimetti com’era»', async () => {
@@ -229,10 +229,10 @@ test('una «incerta» senza motivo dice il dubbio, non una causa; un’applicata
   const { dom } = montaCon({ constructions: [
     { id: 'i2', stato: 'incerta', gesto: 'crea', dominio: 'automation',
       chiave: '9', anteprima: '', prima: null, dopo: { alias: 'Notte' },
-      creata_ts: 1790000000 },
+      creata_ts: '2026-09-21T16:13:20+02:00' },
     { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
       chiave: '8', anteprima: '', prima: null, dopo: { alias: 'Giorno' },
-      creata_ts: 1790000000 },
+      creata_ts: '2026-09-21T16:13:20+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const [incerta, applicata] = ['i2', 'a1'].map((id) =>
@@ -256,7 +256,7 @@ test('una scena mostra il conteggio e gli entity_id anche se `entities` è un di
       prima: { alias: 'Scena sera', entities: { 'light.cucina': { state: 'on' } } },
       dopo: { alias: 'Scena sera', entities: {
         'light.cucina': { state: 'on' }, 'light.salotto': { state: 'off' } } },
-      creata_ts: 1 },
+      creata_ts: '2026-10-01T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -285,14 +285,14 @@ test('una scena mostra il conteggio e gli entity_id anche se `entities` è un di
 test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1 },
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
     { id: 's1', stato: 'scaduta', gesto: 'crea', dominio: 'script',
-      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 2 },
+      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-02T10:00:00+02:00' },
     // Una in attesa: non conta nello storico, e la sua presenza e' cio' che
     // rende il conteggio (2) diverso dal totale (3) -- senza di lei un
     // `all.length` sbagliato passerebbe lo stesso.
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '3', anteprima: 'x', prima: null, dopo: {}, creata_ts: 3 },
+      chiave: '3', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-03T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -320,7 +320,7 @@ test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
 test('lo storico si apre con un click, e il bottone lo dice', async () => {
   const { dom } = montaCon({ constructions: [
     { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1 },
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -348,7 +348,7 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
     'POST api/constructions/p1/confirm': maiRisposta,
     'GET api/constructions': { constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
     ] },
   });
   new dom.window.Function(SORGENTE)();
@@ -379,7 +379,7 @@ function propostaAMano(extra) {
     id: 'm1', stato: 'attesa', sospesa: true, a_mano: true, chi_applica: 'tu',
     testo: 'Sposta la lavatrice nel primo pomeriggio',
     perche: 'il prelievo dalla rete si concentra la mattina',
-    giri: [], creata_ts: 1756000100,
+    giri: [], creata_ts: '2026-08-24T03:48:20+02:00',
   }, extra || {});
 }
 
@@ -482,7 +482,7 @@ async function pannelloDi(extra) {
     id: 'b4', stato: 'in_attesa', sospesa: true, gesto: 'modifica', dominio: 'automation',
     chiave: 'buonanotte', anteprima: '',
     prima: { alias: 'Buonanotte' }, dopo: { alias: 'Buonanotte' },
-    creata_ts: 1,
+    creata_ts: '2026-10-01T10:00:00+02:00',
   }, extra)] });
   await dom.window.HirisConstructions.mount(
     dom.window.document.getElementById('route-outlet'));
@@ -574,13 +574,13 @@ test('ogni proposta dice CHI l’ha chiesta, e il nome resta testo', async () =>
      rossa. */
   const { dom } = montaCon({ constructions: [
     { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 2,
+      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-02T10:00:00+02:00',
       chiesta_da: '<img src=x onerror=1>' },
     { id: 'p2', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '2', anteprima: 'y', prima: null, dopo: {}, creata_ts: 1,
+      chiave: '2', anteprima: 'y', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00',
       chiesta_da: 'Marta' },
     { id: 'a1', stato: 'attesa', sospesa: true, a_mano: true, testo: 'Sposta la lavatrice',
-      chi_applica: 'tu', creata_ts: 3, chiesta_da: null },
+      chi_applica: 'tu', creata_ts: '2026-10-03T10:00:00+02:00', chiesta_da: null },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -622,7 +622,7 @@ test('un’azione negata dal cancello mostra il motivo del server, non «Errore 
     'POST api/constructions/p1/reject': risposta({ error: 'non sei amministratore' }, 403),
     'GET api/constructions': { constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 }] },
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' }] },
   });
   new dom.window.Function(SORGENTE)();
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -645,9 +645,9 @@ test('la sezione «In attesa» la decide il server (`sospesa`), non lo stato let
      scambierebbero di sezione. */
   const { dom } = montaCon({ constructions: [
     { id: 'x1', stato: 'parola_nuova', sospesa: true, gesto: 'crea', dominio: 'automation',
-      chiave: '1', anteprima: 'Sospesa per il server', prima: null, dopo: {}, creata_ts: 1 },
+      chiave: '1', anteprima: 'Sospesa per il server', prima: null, dopo: {}, creata_ts: '2026-10-01T10:00:00+02:00' },
     { id: 'x2', stato: 'in_attesa', sospesa: false, gesto: 'crea', dominio: 'automation',
-      chiave: '2', anteprima: 'Conclusa per il server', prima: null, dopo: {}, creata_ts: 2 },
+      chiave: '2', anteprima: 'Conclusa per il server', prima: null, dopo: {}, creata_ts: '2026-10-02T10:00:00+02:00' },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
@@ -734,7 +734,7 @@ test('il legame si legge dai due lati: «Ne è nata» e «Nata da»', async () =
     propostaAMano({ stato: 'automatizzata', sospesa: false, costruzione_id: 'p9' }),
     { id: 'p9', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
       chiave: '9', anteprima: 'Creo', prima: null, dopo: { alias: 'Lavatrice' },
-      creata_ts: 1756000200,
+      creata_ts: '2026-08-24T03:50:00+02:00',
       nata_da: { id: 'm1', testo: 'Sposta la lavatrice nel primo pomeriggio' } },
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -926,7 +926,7 @@ test('oltre la finestra la pagina lo dice, dentro no (C-14)', async () => {
      il server ne ha di piu' (`total` > `shown`). Mutazione ESEGUITA: la riga
      tolta -- rossa. */
   const righe = [{ id: 'c1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
-    chiave: '1', anteprima: '', prima: null, dopo: { alias: 'Uno' }, creata_ts: 1756000000 }];
+    chiave: '1', anteprima: '', prima: null, dopo: { alias: 'Uno' }, creata_ts: '2026-08-24T03:46:40+02:00' }];
   const tagliata = montaCon({ constructions: righe, total: 450, shown: 1 });
   await tagliata.dom.window.HirisConstructions.mount(
     tagliata.dom.window.document.getElementById('route-outlet'));

@@ -303,3 +303,19 @@ def test_a_snapshot_without_a_known_zone_stays_utc():
                                     "quando": QUARTER_PAST_EIGHT_ROME}],
                                   fuso=None))
     assert out["istantanea"][0]["quando"] == "2026-10-04T06:15:00+00:00"
+
+
+# -- L'orologio della casa (C-17) ---------------------------------------
+
+def test_the_house_clock_says_the_zone_and_now_in_the_house_hour():
+    # 13/10/2026 23:30 UTC sono gia' le 01:30 del 14 a Roma: «oggi», per la
+    # pagina, e' il 14 anche se il processo e il browser stanno altrove.
+    now = datetime(2026, 10, 13, 23, 30, tzinfo=UTC).timestamp()
+    assert historian.house_clock("Europe/Rome", now=now) == {
+        "fuso": "Europe/Rome", "adesso": "2026-10-14T01:30:00+02:00"}
+
+
+def test_the_house_clock_without_a_known_zone_says_utc():
+    now = datetime(2026, 10, 13, 23, 30, tzinfo=UTC).timestamp()
+    assert historian.house_clock(None, now=now) == {
+        "fuso": "UTC", "adesso": "2026-10-13T23:30:00+00:00"}

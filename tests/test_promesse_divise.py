@@ -458,6 +458,15 @@ async def test_l_amministratore_vede_solo_le_sue(rotte):
 
 
 @pytest.mark.asyncio
+async def test_la_pagina_riceve_l_orologio_della_casa(rotte):
+    """C-17: «oggi» lo dice il server, accanto agli istanti che manda. Questa
+    app non ha un'anagrafe: la casa e' in UTC, e lo dice."""
+    corpo = await (await rotte.get("/api/agenda?all=1", headers=_chi("paolo"))).json()
+    assert corpo["orologio"]["fuso"] == "UTC"
+    assert corpo["orologio"]["adesso"].endswith("+00:00")
+
+
+@pytest.mark.asyncio
 async def test_delete_di_una_promessa_altrui_e_il_404_di_una_inesistente(rotte):
     agenda = rotte.app["agenda"]
     ident = _crea(agenda, PAOLO)

@@ -417,13 +417,13 @@ window.HirisTreeRoute = (function () {
   /* Per ogni registro che non ha risposto, la copia che l'anagrafe tiene al
      suo posto e di quando e' (`non_disponibili_letti_il`, S-36): `null` se
      quel registro non ha mai risposto. Senza la mappa, i soli nomi. */
-  function unavailableWithCopy(unavailable, since, registerNames) {
+  function unavailableWithCopy(unavailable, since, registerNames, clock) {
     var names = nomiRegistriInItaliano(unavailable, registerNames);
     if (!since) return names;
     return unavailable.map(function (entry, i) {
       var at = since[entry];
       return names[i] + ' — ' + (at
-        ? 'HIRIS usa la copia del ' + fmtDateTime(at) + '.'
+        ? 'HIRIS usa la copia ' + fmtInstant(at, clock, 'del') + '.'
         : 'nessuna copia disponibile, mai letto.');
     });
   }
@@ -466,7 +466,7 @@ window.HirisTreeRoute = (function () {
      risponde su un campione di aree (`topology.compare_with_home_assistant`).
      Ogni frase dice quante aree si sono guardate: «combacia» su un campione
      non e' «tutta la casa combacia». */
-  function renderComparison(body, comparison, floors) {
+  function renderComparison(body, comparison, floors, clock) {
     var title = el('div', null, 'Confronto con Home Assistant');
     title.style.cssText = 'font-weight:500;margin-top:14px';
     body.appendChild(title);
@@ -485,7 +485,7 @@ window.HirisTreeRoute = (function () {
       line(body, 'Il confronto non ha avuto aree da controllare.', TONE_CALM);
       return;
     }
-    var when = comparison.letto_il ? 'Confronto del ' + fmtDateTime(comparison.letto_il) : 'Ultimo confronto';
+    var when = comparison.letto_il ? 'Confronto ' + fmtInstant(comparison.letto_il, clock, 'del') : 'Ultimo confronto';
     line(body, when + ': ' + (checked.length === 1 ? 'controllata 1 area' : 'controllate ' + checked.length + ' aree') +
       ' su ' + comparison.aree_totali + '.', TONE_CALM);
 
@@ -533,9 +533,11 @@ window.HirisTreeRoute = (function () {
     }
 
     /* Collaudo 3.22 (A10, stessa correzione di dashboard.js::renderHomeSpace):
-       ISO grezzo in UTC -> fmtDateTime (common.js), non una seconda
-       funzione di formattazione. */
-    line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
+       l'istante nell'ora della casa -> fmtInstant (common.js, C-17), non una
+       seconda funzione di formattazione. */
+    var clock = home_space.orologio;
+    clockHint(outlet.querySelector('.page-title'), clock, [home_space.anagrafe_letta_il]);
+    line(body, 'Letta ' + fmtInstant(home_space.anagrafe_letta_il, clock, 'il') + '.', TONE_CALM);
     /* Lo stato accanto a ogni entita' e' quello dello specchio quando la
        pagina si e' aperta (Tappa 9, F5): lo specchio segue gli eventi di Home
        Assistant, ma con la connessione caduta resta fermo all'ultimo
@@ -561,12 +563,12 @@ window.HirisTreeRoute = (function () {
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
         TONE_PROBLEM);
       list(body, unavailableWithCopy(home_space.non_disponibili,
-        home_space.non_disponibili_letti_il, home_space.nomi_registri));
+        home_space.non_disponibili_letti_il, home_space.nomi_registri, clock));
     } else {
       line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }
 
-    renderComparison(body, home_space.confronto, home_space.piani || []);
+    renderComparison(body, home_space.confronto, home_space.piani || [], clock);
 
     renderSystem(body, home_space.sistema_di_riferimento, home_space.nomi_misure);
 
