@@ -27,7 +27,9 @@ from .ha_vocabulary import domain_of, entity_category_measure_rule
 from .historian import home_space_zone, instant_out
 from .reference import normalize
 from .topology import (
+    DISABLED,
     HVAC_ACTION_ATTRIBUTE,
+    SERVICE,
     VISIBLE,
     categories_with_name,
     clean_text,
@@ -266,7 +268,7 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
     # dispositivo con 53 sensori diagnostici ripeterebbe la stessa stringa
     # 53 volte (~18 KB, misurato il 07/09/2026).
     rule = entity_category_measure_rule(
-        domain_of(entity_id), dict(visibility_classes(entry)).get("servizio"),
+        domain_of(entity_id), dict(visibility_classes(entry)).get(SERVICE),
         row.get("classe"), row.get("unita"))
     if rule:
         row["regola"] = rule
@@ -403,7 +405,7 @@ def render_device(house: House, device: dict, depth: str) -> dict:
     if area is not None:
         row["area"] = area
     if device.get("disabilitato"):
-        row["fuori"] = {"classe": "disabilitata", "causa": device.get("disabilitato_da")}
+        row["fuori"] = {"classe": DISABLED, "causa": device.get("disabilitato_da")}
     if depth == "corta":
         return row
     for key in ("produttore", "modello"):

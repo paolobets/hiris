@@ -49,12 +49,11 @@ from .house_query import (
     _behavior_matches,
     _entity_matches,
 )
-from .topology import Mirror, live_mirror, read_mirror
+from .topology import DISABLED, HIDDEN, SERVICE, VISIBLE, Mirror, live_mirror, read_mirror
 from .type_vocabulary import STATE_UNAVAILABLE, STATE_UNKNOWN
 
 #: La chiave di `escluse` per ogni classe del fuori (`topology.visibility`).
-_EXCLUDED_KEY = {"disabilitata": "disabilitate", "nascosta": "nascoste",
-                 "servizio": "servizio"}
+_EXCLUDED_KEY = {DISABLED: "disabilitate", HIDDEN: "nascoste", SERVICE: "servizio"}
 
 #: Tre dei sette stati di `House.source` (D6), con un nome: quelli in cui
 #: Home Assistant **non parla piu'** dell'entita' -- spenta (dal proprietario
@@ -173,9 +172,9 @@ class House:
         out = []
         for floor in self.hierarchy():
             for area in floor.get("aree") or []:
-                for key, where in (("entita", "visibile"),
-                                   ("entita_nascoste", "nascosta"),
-                                   ("entita_disabilitate", "disabilitata")):
+                for key, where in (("entita", VISIBLE),
+                                   ("entita_nascoste", HIDDEN),
+                                   ("entita_disabilitate", DISABLED)):
                     for entry in area.get(key) or []:
                         if isinstance(entry, dict) and entry.get("id"):
                             out.append((entry, area, floor, where))
@@ -284,8 +283,8 @@ class House:
         # Le classi che questa porta conta (D7): le disabilitate mai, le
         # nascoste e quelle di servizio a richiesta. Un'entita' fuori per
         # piu' ragioni si conta sotto la PRIMA che la porta non ammette.
-        admitted = ({"nascosta"} if f.include_hidden else set()) | (
-            {"servizio"} if f.include_service else set())
+        admitted = ({HIDDEN} if f.include_hidden else set()) | (
+            {SERVICE} if f.include_service else set())
         matched = []
         if "entita" in kinds:
             for entry, area, floor, where in entries:
@@ -542,7 +541,7 @@ class House:
                             "disabilitata_da": row.get("disabilitata_da")}
         state, cause, switched_off_by = None, None, None
         visibility = self.visibility(entity_id) if entry is not None else None
-        if visibility is not None and visibility[0] == "disabilitata":
+        if visibility is not None and visibility[0] == DISABLED:
             cause = visibility[1]
             switched_off_by = self._switched_off_by(entry, cause)
             state = (SOURCE_SWITCHED_OFF_BY_OWNER if switched_off_by == ENTITY_DISABLED_BY_USER

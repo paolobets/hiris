@@ -53,7 +53,10 @@ from .house import House
 from .queries import sanitized_memories
 from .render import BODY_UNKNOWN
 from .topology import (
+    DISABLED,
+    HIDDEN,
     PROBLEM_SEVERITY,
+    SERVICE,
     VISIBLE,
     id_marker,
     name_with_id,
@@ -591,7 +594,7 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     # Le disabilitate non hanno uno stato da dire: fuori. Le nascoste e quelle
     # di servizio si' (D7: questa porta conta tutte le classi tranne una).
     active_entities = [e for e in home_space.get("entita", [])
-                       if visibility(e)[0] != "disabilitata"]
+                       if visibility(e)[0] != DISABLED]
     if not active_entities:
         return False
     # «Leggibile» = non uno dei due «non lo so» del vocabolario (B-08; Tappa 3,
@@ -1623,7 +1626,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
     # senza chiamare uno strumento per ognuna delle sedici aree. `search` le
     # riporta con `includi_nascoste`: la conoscenza c'e', qui c'e' il numero.
-    hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == "nascosta"]
+    hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == HIDDEN]
     if hidden:
         n = len(hidden)
         entry = _plural(n, "entità nascosta", "entità nascoste")
@@ -1649,7 +1652,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # nascoste. Fino al 04/10/2026 quest'ultima si contava in tutti e due i
     # conteggi, e la somma delle righe del nucleo superava le entita' vere;
     # `search` la contava gia' una volta sola, fra le nascoste.
-    service = [e for e in home_space.get("entita", []) if visibility(e)[0] == "servizio"]
+    service = [e for e in home_space.get("entita", []) if visibility(e)[0] == SERVICE]
     if service:
         n = len(service)
         # NON `_plural()`: "entita' di servizio" e' invariante al plurale in

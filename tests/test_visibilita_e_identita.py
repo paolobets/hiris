@@ -189,3 +189,32 @@ def test_il_nucleo_marca_ancora_come_id_un_dispositivo_senza_nome():
 def test_un_genere_che_la_casa_non_conosce_e_un_errore_non_un_silenzio():
     with pytest.raises(ValueError):
         House({}, Mirror()).name("integrazione", "hue")
+
+
+def test_le_classi_del_fuori_si_confrontano_con_le_costanti_di_topology():
+    """N158-1 (giro 158, 14/10/2026): le tre classi hanno un nome in
+    `topology` (`DISABLED`, `HIDDEN`, `SERVICE`, piu' `VISIBLE`), e chi le
+    confronta lo importa. Sette lettori le riscrivevano a mano.
+
+    I valori si chiedono a `topology`, non si ricopiano. Mutazione ESEGUITA:
+    `!= "disabilitata"` rimesso in `tools.py` -- rossa."""
+    from pathlib import Path
+
+    from hiris.app.home_space import topology
+
+    valori = (*topology.OUTSIDE_CLASSES, topology.VISIBLE)
+    assert len(valori) == 4
+    prodotto = Path(topology.__file__).resolve().parents[1]
+    trovati = []
+    for sorgente in prodotto.rglob("*.py"):
+        if sorgente.name == "topology.py":
+            continue
+        for numero, riga in enumerate(sorgente.read_text(encoding="utf-8").splitlines(), 1):
+            for valore in valori:
+                # Non `.get("servizio")`: «servizio» e' anche la chiave di una
+                # chiamata (`{"servizio": "light.turn_on"}`), un'altra cosa.
+                for forma in (f'== "{valore}"', f'!= "{valore}"', f'"classe": "{valore}"',
+                              f'{{"{valore}"}}'):
+                    if forma in riga:
+                        trovati.append(f"{sorgente.relative_to(prodotto)}:{numero}: {forma}")
+    assert not trovati, trovati

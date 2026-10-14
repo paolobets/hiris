@@ -35,6 +35,7 @@ from .render import (
 )
 from .topology import (
     _ID_WITHOUT_AREA,
+    DISABLED,
     Mirror,
     is_pseudo_area,
     live_first,
@@ -464,8 +465,7 @@ def _disabled_by_reference(f: HouseFilters, house: House, excluded: dict) -> str
     dalla sua scheda, e `fetch` non serve piu'."""
     if not _only_the_reference(f) or {k for k, n in excluded.items() if n} != {"disabilitate"}:
         return None
-    if f.kind in (None, "entita") and (house.visibility(f.reference) or ("",))[0] == \
-            "disabilitata":
+    if f.kind in (None, "entita") and (house.visibility(f.reference) or ("",))[0] == DISABLED:
         return "entita"
     if f.kind in (None, "dispositivo") and any(
             d.get("id") == f.reference and d.get("disabilitato")
