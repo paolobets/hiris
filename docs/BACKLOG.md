@@ -1042,6 +1042,37 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### La credenziale del ponte vive quanto il turno — aperta il 14/10/2026
+
+`origine: F3b della Chiusura (S-24 del registro dei doppioni), accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/server.py::_intestazioni_ponte` · `hiris/app/api/credenziali.py`
+
+Il ponte chiama `/api/mcp` con una credenziale coniata al claim del turno. La credenziale dura 600 s
+e si rinnova a meta' vita, quindi al claim vive almeno 300 s; la scadenza predefinita di un turno
+(`ponte.scadenza_min`) e' 5 minuti, cioe' 300 s. Con il valore predefinito il guasto non puo'
+succedere. Con `ponte.scadenza_min` oltre 5, invece, un turno lungo puo' sopravvivere alla sua
+credenziale, e le chiamate agli strumenti di HIRIS dopo quel punto verrebbero rifiutate.
+
+Misurato dal PC il 13/10/2026 sul registro dei turni: 127 turni sul ponte dal 02/10 al 13/10,
+durata mediana 10,7 s, p90 24,8 s, massimo 71,3 s; 308 righe su `/api/mcp`, nessun 401. Oggi non
+si vede: diventa vero solo alzando la scadenza.
+
+Correzione: la credenziale coniata al claim vive almeno fino alla scadenza del turno che la usa.
+
+### Un turno fallito del ponte dice perche' — aperta il 14/10/2026
+
+`origine: lo Sprint (dalle misure su S-38 e sui 27 turni falliti dell'osservatore), proposta da F3b della Chiusura, accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/usage/store.py::UsageStore.log_turn` · `hiris/app/agent/runner.py`
+
+Un turno `fallito` nel registro dei turni (`usage`, tabella `turn`) non porta la causa, sul ponte
+come sulla catena: la causa resta solo nel log dell'add-on, che ruota. Il caso che l'ha mostrato:
+27 turni dell'osservatore falliti di fila dall'08/10 23:45 all'11/10 13:47. Lo Sprint ha misurato
+dal log che la CLI usciva con 1 senza consumare token, e che la causa non arrivava nemmeno al log:
+la riga `claude rc=1` portava i primi 500 caratteri dello stdout, cioe' l'evento `init`. Dalla
+Chiusura (F3b, `e422a70a`) quella riga porta l'evento `result`; il registro dei turni ancora no.
+
+Da fare: il registro dei turni porta `subtype` e `stop_reason` dell'evento `result`, la causa di
+un fallimento e, per l'osservatore, la dimensione del lotto e quanti soggetti sono stati decisi.
+Vale anche per la catena, che oggi scrive `fallito` senza ragione.
+
 ### Una costruzione «incerta» cambia stato dopo la verifica — aperta il 07/10/2026
 
 `origine: passaggio di ux-ui-specialist sulla pagina Costruzioni (07/10/2026, in sola lettura del codice), girato dal coordinatore; lo stato resta fermo per scelta della Tappa 7 (N84-1) finche' la Tappa 8 non decide il vocabolario; da fare alla Tappa 8 (D4)` · nessun documento
