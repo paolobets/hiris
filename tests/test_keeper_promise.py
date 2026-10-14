@@ -171,12 +171,12 @@ def test_ogni_stato_di_una_promessa_ha_un_badge_e_una_frase():
         assert READABLE.get(stato), f"il vocabolario non ha la frase di «{stato}»"
 
 
-def test_cosa_fare_di_una_promessa_lo_dice_serializza():
+def test_se_una_promessa_si_disdice_lo_dice_serializza():
     """C-10 (Chiusura, 14/10/2026): la pagina Impegni confrontava `stato` con
-    'in_attesa', 'mantenuta', 'fallita' e 'disdetta' scritti in JS. Ora le
-    quattro risposte arrivano con la promessa, e `disdicibile` e' la regola
-    di `AgendaStore.cancel` (`CANCELLABLE`): `in_corso` e' in sospeso ma non
-    si disdice.
+    'in_attesa' scritto in JS. Ora `disdicibile` arriva con la promessa ed e'
+    la regola di `AgendaStore.cancel` (`CANCELLABLE`): `in_corso` e' in
+    sospeso ma non si disdice. Le uguaglianze semplici non viaggiano qui
+    (N159-2): sono `stato` scritto una seconda volta.
 
     Mutazione ESEGUITA: `"disdicibile": row["stato"] in SUSPENDED` -- rossa
     su `in_corso`."""
@@ -187,9 +187,5 @@ def test_cosa_fare_di_una_promessa_lo_dice_serializza():
                 "motivo": None, "esecuzione_id": None, "testo": None,
                 "avvisare": None, "nata_ts": 0.5, "risvegliata_ts": None,
                 "esito_letto_ts": None}
-    veri = {stato: {chiave for chiave in ("disdicibile", "mantenuta", "fallita", "disdetta")
-                    if serializza(riga(stato))[chiave]}
-            for stato in PROMISE_STATES}
-    assert veri == {"in_attesa": {"disdicibile"}, "in_corso": set(),
-                    "mantenuta": {"mantenuta"}, "saltata": set(),
-                    "disdetta": {"disdetta"}, "fallita": {"fallita"}}
+    disdicibili = {stato for stato in PROMISE_STATES if serializza(riga(stato))["disdicibile"]}
+    assert disdicibili == {"in_attesa"}

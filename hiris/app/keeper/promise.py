@@ -101,11 +101,12 @@ _CHIAVI = (
     # in sospeso (`states.SUSPENDED`) e un esito da leggere (`STATES_ESITO`).
     # La pagina Impegni ne teneva le due liste sue.
     "sospesa", "esito",
-    # Cosa la pagina Impegni fa di una promessa, chiesto qui (C-10, Chiusura,
-    # 14/10/2026): il bottone «Disdici», il blocco della risposta e il
-    # dettaglio dell'esecuzione, il motivo taciuto e il suo colore. La pagina
-    # confrontava `stato` con le parole del vocabolario, scritte in JS.
-    "disdicibile", "mantenuta", "fallita", "disdetta",
+    # Se si puo' disdire (C-10, Chiusura, 14/10/2026): la regola di
+    # `AgendaStore.cancel`, che la pagina Impegni ricopiava in JS. Le
+    # uguaglianze semplici (`stato == mantenuta`...) non viaggiano qui: sono
+    # `stato` scritto una seconda volta (N159-2), e la pagina le fa con le
+    # parole che la rotta le manda (`handlers_agenda.PAGE_STATES`).
+    "disdicibile",
 )
 
 
@@ -349,9 +350,6 @@ def serializza(row) -> dict:
         "sospesa": row["stato"] in SUSPENDED,
         "esito": row["stato"] in STATES_ESITO,
         "disdicibile": row["stato"] == CANCELLABLE,
-        "mantenuta": row["stato"] == KEPT,
-        "fallita": row["stato"] == FAILED,
-        "disdetta": row["stato"] == CANCELLED,
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

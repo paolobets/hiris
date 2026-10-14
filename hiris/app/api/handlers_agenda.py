@@ -45,6 +45,7 @@ from ..chat_thread import (
     without_thread,
 )
 from ..home_space.render import render_promise
+from ..states import CANCELLED, FAILED, KEPT
 from .boundary import error_response, json_object, occurrence_out
 from .soffitto import restricted_person
 
@@ -56,6 +57,13 @@ _MAX_IDS = 500
 # Il corpo del 404, uno solo per «non esiste» e «non e' tuo».
 _PROMISE_NOT_FOUND = unknown_id_text("nessuna promessa")
 _EXECUTION_NOT_FOUND = unknown_id_text("nessuna esecuzione")
+
+#: Gli stati che la pagina Impegni riconosce uno per uno, col nome della loro
+#: costante in `states.py` (N159-2, Chiusura, 14/10/2026): la pagina confronta
+#: `stato` con queste parole invece di scriverle in JS, come l'albero fa coi
+#: `segni_fuori`. Una lista di ammissione: uno stato nuovo che la pagina deve
+#: riconoscere entra qui, e la pagina lo legge per nome.
+PAGE_STATES = {"KEPT": KEPT, "FAILED": FAILED, "CANCELLED": CANCELLED}
 
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
@@ -73,7 +81,8 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     # La finestra si dichiara (C-14, 13/10/2026): `total` e `shown`, come la
     # pagina della memoria. Fino ad allora oltre le 200 la pagina taceva.
     return web.json_response({"agenda": [render_promise(without_thread(r)) for r in rows],
-                              "total": len(rows) + left_out, "shown": len(rows)})
+                              "total": len(rows) + left_out, "shown": len(rows),
+                              "stati": PAGE_STATES})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
