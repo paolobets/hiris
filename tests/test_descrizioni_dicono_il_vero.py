@@ -191,6 +191,11 @@ def unaccounted(name: str, rendered: dict[str, Rendered]) -> list[str]:
 # -- la casa e i giri ---------------------------------------------------------
 
 _PERSON = {"specie": "persona", "id": "u-admin"}
+#: L'istante della scena: lo rilegge `mounted_app` quando la monta, e i
+#: tempi della casa e delle promesse ne derivano a quel punto. Letto solo al
+#: caricamento del modulo, la promessa «fra un'ora» poteva nascere gia' nel
+#: passato se la raccolta precedeva il giro di un'ora (rossa il 14/10/2026,
+#: `{'promise': ['chiedi', 'fai']}`, con le prove 3600 secondi dopo la raccolta).
 _NOW = datetime.now(UTC)
 
 
@@ -204,6 +209,10 @@ def _ms(hours: float) -> int:
 
 #: La scena del giro: le risposte della casa la leggono per guastarsi.
 _SCENE = {"guasta": False}
+
+
+def _in_an_hour() -> str:
+    return (_NOW + timedelta(hours=1)).isoformat()
 
 
 def _calendars(path):
@@ -292,6 +301,8 @@ def _house(inputs):
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def mounted_app(tmp_path_factory):
+    global _NOW
+    _NOW = datetime.now(UTC)
     inputs = synthetic_inputs()
     data_dir = str(tmp_path_factory.mktemp("r9"))
     async with fotografia_porte.mounted(inputs, data_dir, _house(inputs)) as app:
@@ -391,11 +402,11 @@ CALLS: dict[str, list[tuple[dict, Callable]]] = {
                 ({"servizio": "light.turn_on",
                   "bersaglio": {"aree": ["stanza_uno"]}}, _healthy)],
     "promise": [({"specie": "fai", "frase": "fra un'ora accendi la luce uno",
-                  "quando": (_NOW + timedelta(hours=1)).isoformat(),
+                  "quando": _in_an_hour,
                   "chiamata": {"servizio": "light.turn_on",
                                "bersaglio": {"entita": ["light.luce_uno"]}}}, _healthy),
                 ({"specie": "chiedi", "frase": "fra un'ora dimmi se fa piu' caldo",
-                  "quando": (_NOW + timedelta(hours=1)).isoformat(),
+                  "quando": _in_an_hour,
                   "domanda": "la temperatura e' salita?",
                   "da_confrontare": ["sensor.sensore_a_temperatura"]}, _healthy)],
     "agenda": [({}, _healthy)],
@@ -432,6 +443,8 @@ async def rendered_by_tool(mounted_app) -> dict[str, Rendered]:
     rendered = {name: Rendered() for name in CALLS}
     for name, calls in CALLS.items():
         for arguments, scene in calls:
+            arguments = {key: value() if callable(value) else value
+                         for key, value in arguments.items()}
             with scene(mounted_app) as dispatcher:
                 rendered[name].add(await dispatcher.dispatch(name, arguments))
     return rendered
