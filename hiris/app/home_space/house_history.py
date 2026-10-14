@@ -32,7 +32,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from aiohttp import web
@@ -45,11 +45,12 @@ from . import ha_vocabulary
 from .behavior import BEHAVIOR_DOMAINS
 from .counts import hourly_consumed, hourly_mean_min_max
 from .historian import (
+    NAMED_DAYS,
     day_boundaries,
     home_space_zone,
     instant_epoch,
     instant_out,
-    local_date,
+    resolve_day,
 )
 from .house_query import (
     HouseFilters,
@@ -150,6 +151,10 @@ def _wrong_for_kind(kind: str, a: dict) -> str | None:
     return None
 
 
+#: Le parole dei giorni per nome come le legge una frase: «oggi», «ieri».
+_NAMED_DAYS_TEXT = ", ".join(f"«{word}»" for word in NAMED_DAYS)
+
+
 def _instant(raw, name: str, *, now: float, timezone: str | None) -> datetime | str:
     """Un estremo della finestra: «oggi», «ieri» o un istante ISO col fuso.
 
@@ -160,16 +165,16 @@ def _instant(raw, name: str, *, now: float, timezone: str | None) -> datetime | 
     fuso?"""
     zone = home_space_zone(timezone)
     word = str(raw).strip().lower()
-    if word in ("oggi", "ieri"):
-        today = local_date(now, timezone)
-        day = today if word == "oggi" else today - timedelta(days=1)
-        start_ts, end_ts = day_boundaries(day.isoformat(), timezone)
+    if word in NAMED_DAYS:
+        # Il giorno lo dice `resolve_day`, la stessa risposta che riceve una
+        # pagina (N170-2, 14/10/2026: prima qui c'era una seconda copia).
+        start_ts, end_ts = day_boundaries(resolve_day(word, timezone, now), timezone)
         if name == "da":
             return datetime.fromtimestamp(start_ts, tz=zone)
         return datetime.fromtimestamp(min(end_ts, now), tz=zone)
     epoch = instant_epoch(str(raw))
     if epoch is None:
-        return (f"{name} vuole «oggi», «ieri» o un istante ISO col fuso "
+        return (f"{name} vuole {_NAMED_DAYS_TEXT} o un istante ISO col fuso "
                 "(es. 2026-09-30T08:00:00+02:00)")
     return datetime.fromtimestamp(epoch, tz=zone)
 
