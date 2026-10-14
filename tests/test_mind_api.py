@@ -16,6 +16,7 @@ from hiris.app.mind import knowledge as sap
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.state_translations import StateTranslations
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._contracts import assert_stessa_firma
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -68,21 +69,6 @@ class _FintoArchivioScope:
         return int(to_ts - from_ts)      # una riga al secondo: distingue i giorni
 
 
-class _FintaCasa:
-    """L'anagrafe dal lato di chi legge i nomi: una  e basta."""
-
-    def __init__(self, home_space):
-        self._home_space = home_space
-
-    def read(self):
-        return self._home_space
-
-    def unavailable(self):
-        """I registri caduti: nessuno. La casa del giro li chiede (`House.read`)."""
-        return ()
-
-    def energy(self):
-        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
 
 
 def _richiesta(app, query=None):
@@ -277,12 +263,6 @@ class _FinteTraduzioni:
         return self.esito
 
 
-class _FintaAnagrafe:
-    def __init__(self, frame):
-        self._frame = frame
-
-    def reference_frame(self):
-        return self._frame
 
 
 # **La sezione della rotta `api/mind/facts` e' uscita** (spec §13,
@@ -291,8 +271,6 @@ class _FintaAnagrafe:
 # la resa. Restano le due firme qui sotto, che riguardano l'anagrafe e le
 # traduzioni -- cose vive, che con gli oggetti non c'entravano.
 assert_stessa_firma(StateTranslations.read, _FinteTraduzioni.read, nome="read")
-assert_stessa_firma(HomeSpace.reference_frame, _FintaAnagrafe.reference_frame,
-                    nome="reference_frame")
 
 # ── I tentativi: «sta funzionando?» e' una domanda diversa da «quand'e'
 #    l'ultima volta che ha ripensato la casa» ─────────────────────────────────
@@ -657,7 +635,7 @@ async def test_l_analisi_risolve_i_nomi_che_non_aveva(tmp_path):
     Mutazione: non risolvere -- rossa.
     """
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
-    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"},
+    casa = AnagrafeFinta({"dispositivi": [{"id": "dev1", "nome": "SOLARE"},
                                        {"id": "dev2", "nome": "Termostato"}]})
     try:
         archivio.replace_analysis("2026-09-15", {"osservazioni": [
@@ -693,7 +671,7 @@ async def test_le_analisi_SENZA_giorno_risolvono_i_nomi_come_quella_col_giorno(t
     Mutazione ESEGUITA: risolvere solo la forma col giorno -- rossa.
     """
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
-    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    casa = AnagrafeFinta({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
     try:
         archivio.replace_analysis("2026-09-15", {"osservazioni": [
             {"soggetto": "dev1", "nome": None, "misura": "prelievo"}]})
@@ -718,7 +696,7 @@ async def test_le_MISURE_di_un_resoconto_portano_il_nome_come_la_cronaca(tmp_pat
     Mutazione ESEGUITA: lasciare le misure come stanno -- rossa.
     """
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
-    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    casa = AnagrafeFinta({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
     try:
         archivio.replace_report("2026-09-14", {
             "giorno": "2026-09-14", "obiettivo": None,
@@ -751,7 +729,7 @@ async def test_anche_la_SERIE_dei_resoconti_porta_i_nomi(tmp_path):
     Mutazione ESEGUITA: risolvere solo la forma col giorno -- rossa.
     """
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
-    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    casa = AnagrafeFinta({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
     try:
         archivio.replace_report("2026-09-14", {
             "giorno": "2026-09-14", "obiettivo": None,

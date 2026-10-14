@@ -49,10 +49,11 @@ from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
-from tests.test_fonte_della_casa import _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
+
+from tests._anagrafe_finta import AnagrafeFinta
 
 TIMEZONE = "Europe/Rome"
 FROZEN_DAY = "2026-09-30"
@@ -82,7 +83,7 @@ def _app():
         "integrazioni": [],
         "dispositivi": [{"id": DEVICE, "name": "Inverter", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    return {"knowledge": object(), "home_space_store": _Store(home_space),
+    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
             # Le tre fonti sono vive: senza stato sarebbero «sparite», e le
             # loro ricette mute (`recipes.muted_recipes`).
             "entity_cache": SpecchioFinto([(
@@ -203,7 +204,7 @@ def _house(entities, statistic_ids, state_classes=None):
     mirror = SpecchioFinto([({"entity_id": e, "state": "1",
                                   "attributes": {"state_class": c}})
                      for e, c in (state_classes or {}).items()])
-    return House.read(_Store(home_space), mirror, statistic_ids=statistic_ids)
+    return House.read(AnagrafeFinta(home_space), mirror, statistic_ids=statistic_ids)
 
 
 def test_le_sorelle_sono_il_dispositivo_quando_ha_due_entita_con_statistiche():
@@ -262,7 +263,7 @@ def _thermometer_app():
              for t in THERMOMETERS]
     cache.append({"entity_id": HOUSE_METER, "state": "1",
                               "attributes": {"state_class": "total_increasing"}})
-    return {"knowledge": object(), "home_space_store": _Store(home_space),
+    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
             "entity_cache": SpecchioFinto(cache)}
 
 

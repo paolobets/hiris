@@ -53,6 +53,8 @@ from tests.test_action_actuator import FintaCache, _asked, _registro_pronto
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta, Refused
 
+from tests._anagrafe_finta import AnagrafeFinta
+
 #: Le istanze: una caricata, una spenta dal proprietario (in Home Assistant
 #: `ConfigEntryDisabler` ha un valore solo, `user`), una che ritenta.
 ENTRIES = [
@@ -312,18 +314,6 @@ def test_senza_l_elenco_delle_statistiche_non_si_afferma_niente():
     assert silent_entities(_house(), ["light.viva"]) is None
 
 
-class _Store:
-    def __init__(self, home_space):
-        self._home_space = home_space
-
-    def read(self):
-        return self._home_space
-
-    def unavailable(self):
-        return []
-
-    def energy(self):
-        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
 
 
 #: La domanda delle statistiche orarie (`HAClient.hourly_statistics`).
@@ -336,7 +326,7 @@ async def _ingredients(answer, statistic_ids):
     registries = {"entita": ENTITIES, "integrazioni": ENTRIES, "dispositivi": DEVICES
                   + [{"id": "d_ricetta", "name": "Ricetta"}]}
     app = {"knowledge": object(),
-           "home_space_store": _Store(build_home_space(registries)),
+           "home_space_store": AnagrafeFinta(build_home_space(registries)),
            "entity_cache": None}
 
     async def _stat_ids(_app, _ha, **_kw):
@@ -406,7 +396,7 @@ async def test_la_porta_chiede_la_causa_alla_casa_e_non_tocca_niente():
     client = CasaFinta(synthetic_inputs())
     porta = ActionActuator(client, await _registro_pronto(),
                            FintaCache({"light.viva": "on"}),
-                           home_space_store=_Store(build_home_space(registries)))
+                           home_space_store=AnagrafeFinta(build_home_space(registries)))
     esito = await porta.execute(SPEGNI, actor="chat")
     assert esito["eseguito"] is False
     assert "spenta dal proprietario" in esito["errore"]

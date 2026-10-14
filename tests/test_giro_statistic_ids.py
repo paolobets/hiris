@@ -30,11 +30,11 @@ from casa_finta import CasaFinta
 from hiris.app import server
 from hiris.app.home_space import house_history
 from hiris.app.home_space.house import House
-from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
@@ -60,21 +60,6 @@ RICETTA = {
 }
 
 
-class _Anagrafe(HomeSpace):
-    """L'anagrafe vera con la casa di queste prove: serve intera, perche' il
-    giro le chiede anche la dashboard Energia (Task 2.2 degli attori)."""
-
-    def __init__(self):
-        super().__init__("/percorso/che/non/esiste")
-
-    def read(self):
-        return CASA
-
-    def unavailable(self):
-        return []
-
-    def energy(self):
-        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
 
 
 @pytest.fixture
@@ -101,7 +86,7 @@ def _house() -> CasaFinta:
 def _app(stores, house):
     sapere, archivio = stores
     return {"observations": archivio, "knowledge": sapere,
-            "home_space_store": _Anagrafe(), "ha_client": house}
+            "home_space_store": AnagrafeFinta(CASA), "ha_client": house}
 
 
 def _asked(house: CasaFinta) -> int:

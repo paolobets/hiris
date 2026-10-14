@@ -75,6 +75,7 @@ from hiris.app.home_space.tools import ToolDispatcher
 #: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
 #: qui si prova altro, non il permesso.
 _AMMINISTRATORE = consente(None, ruolo="amministratore")
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._casa_sintetica import INSTANT, synthetic_inputs
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -185,21 +186,6 @@ async def test_la_casa_del_turno_non_resta_nell_app(started_app):
 
 # -- quando la casa cambia sotto il turno ------------------------------------
 
-class _Store:
-    """L'anagrafe: `read()` restituisce un oggetto nuovo a ogni ricostruzione,
-    come `HomeSpace` (e' cio' su cui il dispatcher confronta)."""
-
-    def __init__(self) -> None:
-        self.home_space = {"entita": [], "aree": [], "dispositivi": []}
-
-    def read(self) -> dict:
-        return self.home_space
-
-    def unavailable(self) -> list[str]:
-        return []
-
-    def energy(self):
-        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
 
 
 def _kitchen(state: str) -> SpecchioFinto:
@@ -226,7 +212,7 @@ async def test_un_turno_nuovo_vede_la_casa_di_adesso():
     """Lo specchio cambia fra due turni: il secondo lo vede, sia dalla casa
     che apre il turno (`house_of`, come `handle_chat`) sia dal dispatcher
     che se la legge da se'."""
-    store, cache = _Store(), _kitchen("off")
+    store, cache = AnagrafeFinta({"entita": [], "aree": [], "dispositivi": []}), _kitchen("off")
     app = {"home_space_store": store, "entity_cache": cache}
     assert house_of(app).mirror.state["light.cucina"] == "off"
     assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "off"
@@ -236,18 +222,18 @@ async def test_un_turno_nuovo_vede_la_casa_di_adesso():
 
 
 async def test_l_anagrafe_ricostruita_a_meta_turno_si_rilegge():
-    store, cache = _Store(), _kitchen("off")
+    store, cache = AnagrafeFinta({"entita": [], "aree": [], "dispositivi": []}), _kitchen("off")
     dispatcher = ToolDispatcher(store, None, cache=cache)
     first = dispatcher._turn_house()
     assert dispatcher._turn_house() is first
-    store.home_space = {"entita": [], "aree": [], "dispositivi": []}
-    assert dispatcher._turn_house().home_space is store.home_space
+    store.hold({"entita": [], "aree": [], "dispositivi": []})
+    assert dispatcher._turn_house().home_space is store.read()
 
 
 async def test_dopo_un_comando_lo_stesso_turno_rilegge_lo_specchio():
     """La domanda dopo un `execute`, nello stesso turno, deve vedere lo stato
     che il comando ha cambiato, non quello di prima."""
-    store, cache = _Store(), _kitchen("off")
+    store, cache = AnagrafeFinta({"entita": [], "aree": [], "dispositivi": []}), _kitchen("off")
     dispatcher = ToolDispatcher(store, None, cache=cache, actuator=_Actuator(cache))
     assert dispatcher._mirror().state["light.cucina"] == "off"
     await dispatcher._execute({"servizio": "light.turn_on"})

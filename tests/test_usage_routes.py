@@ -20,9 +20,8 @@ from hiris.app.api.handlers_usage import (
     handle_usage,
     handle_usage_history,
 )
-from hiris.app.home_space.reader import HomeSpace
 from hiris.app.usage.store import UsageStore
-from tests._contracts import assert_stessa_firma
+from tests._anagrafe_finta import AnagrafeFinta
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00
@@ -37,26 +36,18 @@ class _Req:
         self.query = query or {}
 
 
-class _ArchivioCasaFinto:
-    """Il minimo che `historian.house_timezone` legge:
-    `reference_frame()`. Sostituisce `app["fuso_casa"]` (riparazione-
+def _archivio_casa(fuso):
+    """Il minimo che `historian.house_timezone` legge: il fuso nella cornice
+    dell'anagrafe vera. Sostituisce `app["fuso_casa"]` (riparazione-
     impoverisce-brief.md, appendice punto 7): quella chiave non la popolava
-    nessun codice di produzione, solo questa finta -- il difetto che questo
-    progetto chiama «chi lo riempie?». La strada vera passa da
+    nessun codice di produzione, solo una finta. La strada vera passa da
     `archivio_casa`, come ogni altra lettura del fuso nel prodotto."""
-
-    def __init__(self, fuso):
-        self._fuso = fuso
-
-    def reference_frame(self):
-        return {"fuso": self._fuso}
+    return AnagrafeFinta(cornice={"fuso": fuso})
 
 
 # Se `HomeSpace.reference_frame` cambia firma, questa riga cade invece
 # di lasciare che il finto imiti un contratto che non esiste piu' (fetta «la
 # rinomina», Task 8 -- la stessa classe di difetto gia' misurata nel Task 7).
-assert_stessa_firma(HomeSpace.reference_frame, _ArchivioCasaFinto.reference_frame,
-                     nome="reference_frame")
 
 
 def _corpo(risposta):
@@ -77,7 +68,7 @@ def app(tmp_path):
                       cost_usd=None, cost_state="non_noto", now=T22)
     try:
         yield {"usage": archivio, "llm_router": object(),
-              "home_space_store": _ArchivioCasaFinto(ROMA)}
+              "home_space_store": _archivio_casa(ROMA)}
     finally:
         archivio.close()
 
@@ -318,7 +309,7 @@ def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path)
                  cost_state="non_noto", now=T21)
     archivio.log("claude", "claude-sonnet-4-6", token_in=1, cost_usd=0.1,
                  cost_state="misurato", now=T22)
-    app = {"usage": archivio, "home_space_store": _ArchivioCasaFinto(ROMA)}
+    app = {"usage": archivio, "home_space_store": _archivio_casa(ROMA)}
     try:
         corpo = _corpo(_chiama(handle_usage_history, app,
                                {"from": "2026-08-21", "to": "2026-08-22"}))

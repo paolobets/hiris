@@ -92,6 +92,12 @@ export function fintoFetch(window, rotte) {
 /** Una richiesta che non torna mai: la pagina resta nel suo stato di attesa. */
 export const maiRisposta = () => new Promise(() => {});
 
+/** Svuota e restituisce gli indirizzi sconosciuti raccolti finora: solo per
+ *  la prova che uno sconosciuto VOLUTO si rifiuta (fetch-finto.test.mjs). */
+export function svuotaSconosciuti() {
+  return sconosciuti.splice(0);
+}
+
 function controlla() {
   if (sconosciuti.length === 0) return;
   const elenco = sconosciuti.splice(0);

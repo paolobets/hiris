@@ -63,10 +63,12 @@ from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
-from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house, _Store
+from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
+
+from tests._anagrafe_finta import AnagrafeFinta
 
 OBSERVER = "observer"
 
@@ -121,12 +123,6 @@ def test_le_condizioni_di_sistema_non_hanno_una_fonte_da_chiedere(store):
     assert "fonte" not in rows["problema:qualcosa"]
 
 
-class _HomeSpaceStore(_Store):
-    """L'anagrafe dal lato della pagina: anche il fuso (il volume del grezzo
-    lo chiede, `historian.house_timezone`)."""
-
-    def reference_frame(self):
-        return {}
 
 
 def _registries(extra_devices=()):
@@ -146,7 +142,7 @@ async def test_la_rotta_della_pagina_porta_la_fonte(store):
     """`GET /api/mind/watching` apre la casa del momento (`House.read`) e la
     passa a `watching`: la pagina e la batteria leggono la marca da li'."""
     app = {"watcher": Watcher(store), "observations": store,
-           "home_space_store": _HomeSpaceStore(_registries()),
+           "home_space_store": AnagrafeFinta(_registries()),
            "entity_cache": _mirror_cache()}
 
     class _Request:
@@ -170,7 +166,7 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
     Mutazione ESEGUITA: `_left_out` che torna a comporre la riga senza la
     casa -- rossa (`fonte` assente)."""
     app = {"watcher": Watcher(store), "observations": store,
-           "home_space_store": _HomeSpaceStore(_registries()),
+           "home_space_store": AnagrafeFinta(_registries()),
            "entity_cache": _mirror_cache()}
 
     class _Request:
@@ -185,7 +181,7 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
     assert set(left) == set(body["watching"][0]) | {"fonte"}
 
 
-@pytest.mark.parametrize("home_space_store", [None, _HomeSpaceStore({})],
+@pytest.mark.parametrize("home_space_store", [None, AnagrafeFinta()],
                          ids=["senza archivio", "anagrafe mai letta"])
 @pytest.mark.asyncio
 async def test_senza_anagrafe_la_rotta_non_inventa_fonti(store, home_space_store):
@@ -335,7 +331,7 @@ def test_il_resoconto_porta_una_riga_per_il_dispositivo_muto():
 
 async def _ingredients(recipes):
     app = {"knowledge": object(),
-           "home_space_store": _Store(_registries({"id": d, "name": d} for d in recipes)),
+           "home_space_store": AnagrafeFinta(_registries({"id": d, "name": d} for d in recipes)),
            "entity_cache": _mirror_cache()}
     asked: list[list[str]] = []
 

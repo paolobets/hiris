@@ -17,8 +17,8 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import build_home_space
 from hiris.app.mind import compute, operations
 from hiris.app.mind.recipes import Recipe, hourly_points
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._specchio_finto import SpecchioFinto
-from tests.test_fonte_della_casa import _Store
 from tests.test_history_tool import _HISTORY_PATH, _asked
 from tests.test_history_tool import _house as _ha_house
 
@@ -59,7 +59,7 @@ def _house(entities, listed=None):
     home_space = build_home_space({"entita": rows, "integrazioni": [], "dispositivi": []})
     mirror = SpecchioFinto([({"entity_id": e, "state": "1", "attributes": {}})
                      for e in entities])
-    return House.read(_Store(home_space), mirror).with_statistics(
+    return House.read(AnagrafeFinta(home_space), mirror).with_statistics(
         set(entities) if listed is None else listed)
 
 

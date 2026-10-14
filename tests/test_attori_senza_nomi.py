@@ -25,6 +25,7 @@ from hiris.app.home_space.privacy import PresenceMask, person_bound
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst_turn as at
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._runner_finto import RunnerFinto
 
 _NAMES = ("paolo", "giulia")
@@ -258,11 +259,8 @@ async def test_il_guardiano_costruito_per_il_turno_ha_il_filtro(monkeypatch):
     house = _house()
     monkeypatch.setattr(House, "read", classmethod(lambda cls, *a, **k: house))
 
-    class _Anagrafe:
-        def reference_frame(self):
-            return {}
 
-    guardiano = await at.guard({"home_space_store": _Anagrafe()})
+    guardiano = await at.guard({"home_space_store": AnagrafeFinta()})
     assert guardiano.presence is not None
     assert guardiano.presence.handles["person.paolo"] == "person.#2"
 
@@ -291,9 +289,6 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
     house = _house()
     monkeypatch.setattr(House, "read", classmethod(lambda cls, *a, **k: house))
 
-    class _Anagrafe:
-        def reference_frame(self):
-            return {}
 
     oggi = historian.today(None).isoformat()
 
@@ -309,7 +304,7 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         app = {"observations": store, "reasoning_queue": _Coda(),
-               "home_space_store": _Anagrafe()}
+               "home_space_store": AnagrafeFinta()}
         raccolto = server._collect_analyst_turn(app, store, oggi)
         assert raccolto["analisi"]["rimetti"] == [
             {"id": "sensor.iphone_di_paolo_batteria",
