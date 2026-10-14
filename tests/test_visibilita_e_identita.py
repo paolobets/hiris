@@ -191,30 +191,86 @@ def test_un_genere_che_la_casa_non_conosce_e_un_errore_non_un_silenzio():
         House({}, Mirror()).name("integrazione", "hue")
 
 
-def test_le_classi_del_fuori_si_confrontano_con_le_costanti_di_topology():
-    """N158-1 (giro 158, 14/10/2026): le tre classi hanno un nome in
-    `topology` (`DISABLED`, `HIDDEN`, `SERVICE`, piu' `VISIBLE`), e chi le
-    confronta lo importa. Sette lettori le riscrivevano a mano.
+# Le parole delle classi che nel prodotto compaiono scritte a mano per un'altra
+# ragione: (file, forma, parola) -> perche'. Una lista di AMMISSIONE: una voce
+# nuova e' vietata finche' qualcuno non la scrive qui con la ragione, e una
+# voce che non trova piu' niente nel prodotto fa arrossire la prova.
+_COLLISIONI = {
+    ("action/actuator.py", "chiave", "servizio"): "il servizio di una chiamata",
+    ("action/journal.py", "chiave", "servizio"): "il servizio di una chiamata",
+    ("action/journal.py", "elemento", "servizio"): "la colonna della cronaca",
+    ("home_space/house_history.py", "chiave", "servizio"): "il servizio di un atto",
+    ("home_space/tools.py", "chiave", "servizio"): "il parametro dello strumento",
+    ("keeper/promise.py", "chiave", "servizio"): "il servizio di una chiamata",
+    ("home_space/reader.py", "chiave", "disabilitata"): "la colonna dell'anagrafe",
+    ("home_space/reader.py", "chiave", "nascosta"): "la colonna dell'anagrafe",
+    ("home_space/field_vocabulary.py", "elemento", "disabilitata"): "il campo dell'anagrafe",
+    ("home_space/field_vocabulary.py", "elemento", "nascosta"): "il campo dell'anagrafe",
+    ("home_space/house_query.py", "chiave", "servizio"):
+        "la chiave delle escluse (`house._EXCLUDED_KEY`), non la classe",
+    ("home_space/house_query.py", "elemento", "nascosta"): "la parola di una frase",
+    ("home_space/house_query.py", "elemento", "disabilitata"): "la parola di una frase",
+}
 
-    I valori si chiedono a `topology`, non si ricopiano. Mutazione ESEGUITA:
-    `!= "disabilitata"` rimesso in `tools.py` -- rossa."""
+
+def _handwritten_classes() -> set[tuple[str, str, str, int]]:
+    """Dove il prodotto scrive a mano il valore di una classe: confronti
+    (anche dentro una tupla o un insieme), chiavi di dizionario, elementi di
+    tupla e di insieme. Si guarda l'albero, non il testo (N159-1)."""
+    import ast
     from pathlib import Path
 
     from hiris.app.home_space import topology
 
-    valori = (*topology.OUTSIDE_CLASSES, topology.VISIBLE)
+    valori = {*topology.OUTSIDE_CLASSES, topology.VISIBLE}
     assert len(valori) == 4
+
+    def parola(nodo):
+        return isinstance(nodo, ast.Constant) and nodo.value in valori
+
+    def dentro(nodo):
+        if parola(nodo):
+            return [nodo]
+        if isinstance(nodo, (ast.Tuple, ast.Set, ast.List)):
+            return [e for e in nodo.elts if parola(e)]
+        return []
+
     prodotto = Path(topology.__file__).resolve().parents[1]
-    trovati = []
+    trovati = set()
     for sorgente in prodotto.rglob("*.py"):
         if sorgente.name == "topology.py":
             continue
-        for numero, riga in enumerate(sorgente.read_text(encoding="utf-8").splitlines(), 1):
-            for valore in valori:
-                # Non `.get("servizio")`: «servizio» e' anche la chiave di una
-                # chiamata (`{"servizio": "light.turn_on"}`), un'altra cosa.
-                for forma in (f'== "{valore}"', f'!= "{valore}"', f'"classe": "{valore}"',
-                              f'{{"{valore}"}}'):
-                    if forma in riga:
-                        trovati.append(f"{sorgente.relative_to(prodotto)}:{numero}: {forma}")
-    assert not trovati, trovati
+        nome = sorgente.relative_to(prodotto).as_posix()
+        for nodo in ast.walk(ast.parse(sorgente.read_text(encoding="utf-8"))):
+            if isinstance(nodo, ast.Compare):
+                colpiti = [("confronto", c) for o in (nodo.left, *nodo.comparators)
+                           for c in dentro(o)]
+            elif isinstance(nodo, ast.Dict):
+                colpiti = [("chiave", k) for k in nodo.keys if k is not None and parola(k)]
+            elif isinstance(nodo, (ast.Tuple, ast.Set)):
+                colpiti = [("elemento", e) for e in nodo.elts if parola(e)]
+            else:
+                continue
+            trovati |= {(nome, forma, c.value, c.lineno) for forma, c in colpiti}
+    return trovati
+
+
+def test_le_classi_del_fuori_si_confrontano_con_le_costanti_di_topology():
+    """N158-1 e N159-1 (giri 158 e 159, 14/10/2026): le classi hanno un nome
+    in `topology` (`DISABLED`, `HIDDEN`, `SERVICE`, piu' `VISIBLE`), e chi le
+    confronta o ne fa una chiave lo importa. I valori si chiedono a
+    `topology`; le collisioni vere stanno in `_COLLISIONI`, con la ragione.
+
+    Mutazioni ESEGUITE: `!= "disabilitata"` rimesso in `tools.py`, e
+    `cls not in ("disabilitata", "nascosta")` in `queries.py` -- rosse. La
+    seconda la prova a testo del giro 158 non la vedeva."""
+    trovati = _handwritten_classes()
+    fuori = sorted(t for t in trovati if t[:3] not in _COLLISIONI)
+    assert not fuori, fuori
+
+
+def test_ogni_collisione_ammessa_esiste_ancora():
+    """La lista di ammissione puo' solo calare: una voce che non trova piu'
+    niente e' una porta lasciata aperta per niente."""
+    vive = {t[:3] for t in _handwritten_classes()}
+    assert not set(_COLLISIONI) - vive, sorted(set(_COLLISIONI) - vive)
