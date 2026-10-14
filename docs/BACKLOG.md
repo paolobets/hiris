@@ -77,7 +77,7 @@ restano nelle loro voci («`history`: cosa va provato dal vivo prima di dirla ch
 
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
-`origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/server.py::_on_startup` · `hiris/app/server.py::actuator_round`
+`origine: il proprietario, 01/10/2026, dopo l'audit degli attori sulla casa vera («i risultati non mi convincono, sembrano sommari e non mi ritrovo»)` · rapporti dell'audit in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · `hiris/app/startup.py::_on_startup` · `hiris/app/mind/proposer_round.py` (fino al 06/10/2026 `server.py::actuator_round`; dal 14/10/2026 `server.py` non ospita piu' niente, F8)
 
 **Il fatto.** Tre revisioni indipendenti, ognuna controverificata su Home Assistant (v3.72.1):
 gli attori non inventano quasi niente -- una osservazione allucinata su ventisei -- ma lavorano su

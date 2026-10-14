@@ -114,8 +114,10 @@ memoria **da solo**, apre questioni e **propone**; non tocca la casa senza un s�
 attivi solo dopo un sì).
 
 **Dove sta oggi il prodotto in quell'impianto.** ① c'è. ② c'è in parte: in `mind/` l'osservatore,
-le ricette e l'analista girano a cadenza, chiamano il modello e propongono; l'attuatore è in pausa
-dal 1° ottobre 2026 (voce «Gli attori si riparano dal basso» del BACKLOG). ③ no. Dalla fetta «comandare»
+le ricette e l'analista girano a cadenza e chiamano il modello; il proponente, che dalla 3.78.0 ha
+preso il posto dell'attuatore (in pausa dal 1° ottobre 2026), c'è ma è fermo (`ENABLED = False` in
+`mind/proposer_round.py`) finché l'analista nuovo non è misurato dal vivo (voce «⚠️ Prima di
+accendere il proponente» del BACKLOG). ③ no. Dalla fetta «comandare»
 (agosto 2026) la **chat** esegue: chiede a `hiris/app/action/actuator.py`, che verifica la chiamata
 contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
