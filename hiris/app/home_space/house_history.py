@@ -1395,18 +1395,21 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
 
 async def read_bands(ha, entity_ids: list[str], start: datetime, end: datetime) -> dict:
     """Le statistiche orarie di Home Assistant fra `start` e `end`: `{"serie"}`
-    o la busta del guasto, intera (`read_failure`). L'unica lettura delle
-    fasce orarie: la chiedono i valori di `history`, la ricetta al volo
-    (`mind/compute.py`) e il resoconto del giorno (`server._report_ingredients`,
-    A-41: fino al 14/10/2026 leggeva da se').
+    o la busta del guasto, intera. L'unica lettura delle fasce orarie: la
+    chiedono i valori di `history`, la ricetta al volo (`mind/compute.py`) e il
+    resoconto del giorno (`mind/day_report._report_ingredients`, A-41: fino al
+    14/10/2026 leggeva da se').
 
     La finestra sono due istanti e non una `HistoryQuery`: il resoconto ne
     calcola una sua (il giorno e la sua storia), che non nasce da una
-    domanda."""
-    answer = await ha.hourly_statistics(entity_ids, start.isoformat(), end.isoformat())
-    if not isinstance(answer, dict) or "serie" not in answer:
-        return read_failure(answer, "le statistiche orarie non sono arrivate")
-    return {"serie": answer["serie"]}
+    domanda.
+
+    **La forma la controlla il client, una volta**
+    (`HAClient._request_statistics`: `serie` e' un oggetto, o la busta di
+    `forma`). Fino al 14/10/2026 la ricontrollava anche questa funzione: un
+    secondo controllo dello stesso fatto (N162-1, revisore giro 162), come
+    quello tolto da `read_log` (N161-2)."""
+    return await ha.hourly_statistics(entity_ids, start.isoformat(), end.isoformat())
 
 
 def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
@@ -1499,20 +1502,20 @@ def run_key(cache, ident: str, entry: Callable[[str], dict | None]) -> tuple[str
 async def read_traces(ha, keys: list[tuple[str, str]]) -> dict:
     """Le esecuzioni recenti delle chiavi date (`run_key`), in una raffica:
     `{"tracce", "non_letti"}` grezze, come Home Assistant le conserva, o la
-    busta del guasto, intera (`read_failure`). Nessuna chiave, nessuna
-    domanda.
+    busta del guasto, intera.
 
     L'unica lettura delle tracce: la chiedono le esecuzioni di `history`
     (`read_runs`, che le sigilla prima di farne righe) e il giro degli esiti
     delle automazioni (`server.watch_automation_outcomes`, A-41: fino al
     14/10/2026 leggeva da se'), che ne guarda solo `run_id`, l'esito e
-    l'inizio."""
-    if not keys:
-        return {"tracce": {}, "non_letti": {}}
-    answer = await ha.traces(keys)
-    if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
-        return read_failure(answer, "le esecuzioni non sono arrivate")
-    return answer
+    l'inizio.
+
+    **Nessuna chiave, nessuna domanda; e la forma la controlla il client,
+    una volta** (`HAClient.traces`: le due chiavi ci sono sempre, o la busta).
+    Fino al 14/10/2026 questa funzione rifaceva tutte e due le cose: un
+    secondo controllo dello stesso fatto (N162-1, revisore giro 162), come
+    quello tolto da `read_log` (N161-2)."""
+    return await ha.traces(keys)
 
 
 async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
