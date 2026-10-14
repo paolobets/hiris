@@ -17,7 +17,7 @@ che provavano era gia' un no-op nel prodotto.
 
 ``_submit_chat_reply`` is a closure built by ``consegna._chat_reply_submitter``
 (called from ``startup._on_startup``), published as
-``app["submit_chat_reply"]``. Fino al 03/10/2026 la si
+``app[SUBMIT_CHAT_REPLY_KEY]``. Fino al 03/10/2026 la si
 ritagliava dal testo di ``_on_startup`` e la si eseguiva con le sue variabili
 libere ricopiate a mano; adesso l'app si avvia davvero
 (``tests/_avvio.py::started_with``) e si chiama la funzione che l'avvio ha
@@ -56,7 +56,7 @@ def reset_stores():
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def submitted(tmp_path_factory):
     """`(consegna, chiamate, data_dir)`: la consegna che l'avvio vero ha
-    pubblicato in `app["submit_chat_reply"]`, e le chiamate ad
+    pubblicato in `app[SUBMIT_CHAT_REPLY_KEY]`, e le chiamate ad
     `append_messages` che ha fatto (svuotate da ogni prova)."""
     from tests._avvio import started_with
 

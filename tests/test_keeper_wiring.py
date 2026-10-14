@@ -85,7 +85,7 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(recorded_s
     registro dei servizi e la stessa casa che l'app tiene.
 
     Mutazione ESEGUITA (03/10/2026): `ActionActuator(...)` costruita con
-    `None` al posto di `app["journal"]` -- rossa (`None is <Journal>`)."""
+    `None` al posto di `app[JOURNAL_KEY]` -- rossa (`None is <Journal>`)."""
     app, _jobs = recorded_startup
     assert isinstance(app[JOURNAL_KEY], Journal)
     assert isinstance(app[AGENDA_KEY], AgendaStore)
@@ -121,7 +121,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
     chiamata.
 
     Mutazione ESEGUITA (03/10/2026): tolta la chiamata
-    `app["agenda"].risana(...)` dall'avvio -- rossa (`'in_corso' ==
+    `app[AGENDA_KEY].risana(...)` dall'avvio -- rossa (`'in_corso' ==
     'fallita'`)."""
     from tests._avvio import started_with
 
@@ -162,7 +162,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
 @pytest.mark.asyncio(loop_scope="module")
 async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(recorded_startup):
     """Mutazione ESEGUITA (03/10/2026): `_battito` chiama
-    `app["sweeper"].batti()` senza l'istante -- rossa."""
+    `app[SWEEPER_KEY].batti()` senza l'istante -- rossa."""
     app, _jobs = recorded_startup
     battito = app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat").func
     with mock.patch.object(app[SWEEPER_KEY], "batti", AsyncMock()) as batti:
@@ -214,15 +214,15 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
 
 @pytest.mark.asyncio
 async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
-    """`_on_cleanup` chiude `app["memory_store"]` con `.close()`, e non chiede
-    niente a `app["home_space_store"]`: l'anagrafe vive in memoria e non ha
+    """`_on_cleanup` chiude `app[MEMORY_STORE_KEY]` con `.close()`, e non chiede
+    niente a `app[HOME_SPACE_KEY]`: l'anagrafe vive in memoria e non ha
     niente da chiudere. Il suo `close()` vuoto e' uscito con M-51 (14/10/2026)
     insieme alla chiamata in `_on_cleanup`.
 
     Le finte hanno la forma del vero (`create_autospec`, T-04): una
     `MagicMock` nuda rispondeva a qualunque nome, compreso un `close()` che
     l'anagrafe non ha piu'. Mutazione ESEGUITA (14/10/2026): rimessa la
-    chiamata `app["home_space_store"].close()` in `_on_cleanup` -- rossa
+    chiamata `app[HOME_SPACE_KEY].close()` in `_on_cleanup` -- rossa
     (`AttributeError`, la finta non ha quel metodo)."""
     archivio_casa_finto = create_autospec(HomeSpace, instance=True)
     archivio_memoria_finto = create_autospec(MemoryStore, instance=True)
@@ -244,7 +244,7 @@ async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
 def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     """Punto 1 del task: non basta `promesse=` -- serve anche `registro=`,
     preso dallo STESSO oggetto dell'app che alimenta la porta
-    (`app["service_registry"]`), non una seconda costruzione."""
+    (`app[SERVICE_REGISTRY_KEY]`), non una seconda costruzione."""
     registro_sentinella = object()
     promesse_sentinella = object()
     app = {**live_values(),

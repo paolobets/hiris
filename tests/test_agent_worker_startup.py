@@ -3,7 +3,7 @@
 **VERSIONE B (3.0.0).** `should_start_agent_worker` non legge piu' NIENTE
 dall'ambiente per decidere se il ponte e' acceso: `PROVIDER_SUBSCRIPTION` e
 `BRIDGE_ENABLED` erano le ultime due opzioni dell'add-on lette qui, e sono
-uscite dallo schema. Il valore arriva come argomento -- `app["bridge_active"]`,
+uscite dallo schema. Il valore arriva come argomento -- `app[BRIDGE_ACTIVE_KEY]`,
 lo stesso che governa la spazzata e l'instradamento della chat -- e il token
 resta letto dall'ambiente perche' e' una credenziale, e le credenziali stanno
 ancora fra le opzioni.
@@ -55,7 +55,7 @@ def test_il_token_da_solo_non_accende_il_lavoratore(monkeypatch):
 
     Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
     ponte da se' (`_sub_first_class`), e quindi anche questo lavoratore. Era
-    l'ultima seconda rappresentazione del prodotto: `app["bridge_active"]`
+    l'ultima seconda rappresentazione del prodotto: `app[BRIDGE_ACTIVE_KEY]`
     poteva valere True mentre `ponte.attivo` -- cio' che la pagina Modelli
     mostra e scrive -- diceva False.
 
@@ -158,7 +158,7 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
 async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(
         monkeypatch, tmp_path):
     """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
-    `_recompute_chain`. Se questa si limitasse a cablare `app["bridge_active"]`
+    `_recompute_chain`. Se questa si limitasse a cablare `app[BRIDGE_ACTIVE_KEY]`
     senza governare il lavoratore, ogni turno andrebbe in una coda senza
     consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")

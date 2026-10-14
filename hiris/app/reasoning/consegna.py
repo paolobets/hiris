@@ -164,8 +164,9 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
     # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
     # degli attori. Non c'e' niente da attuare -- la decisione resta
     # registrata -- e la risposta se la va a prendere dalla coda il giro
-    # periodico che ha accodato il turno (i raccoglitori in `server.py` e
-    # `mind/proposer_round._collect`). E' la consegna normale di un attore, e
+    # periodico che ha accodato il turno (i raccoglitori `_collect_*` di
+    # `mind/analyst_round.py`, `mind/recipe_round.py`, `mind/observer_round.py`
+    # e `mind/proposer_round._collect`). E' la consegna normale di un attore, e
     # non si annota: fino alla Chiusura (S-23) qui scattava un WARNING a ogni
     # consegna che non fosse dell'osservatore, su un meccanismo -- la
     # revisione olistica -- uscito da mesi.
@@ -206,7 +207,7 @@ def close_expired_promise(app, job: dict) -> None:
 
 def _chat_reply_submitter(app, data_dir: str):
     """La consegna del ponte per i turni `kind="chat"`, pubblicata
-    dall'avvio in `app["submit_chat_reply"]`.
+    dall'avvio in `app[SUBMIT_CHAT_REPLY_KEY]`.
 
     Viveva annidata in `_on_startup`; e' una funzione di modulo dal
     03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'», D1) perche'

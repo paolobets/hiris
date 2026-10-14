@@ -28,7 +28,7 @@
         state.els.connDot.textContent = 'connesso';
       }
       /* Task B8: confronta il build DICHIARATO dal guscio (la <meta> che
-         server._inject_version ha scritto in questa pagina) col build che il
+         shell._inject_version ha scritto in questa pagina) col build che il
          server dice di eseguire ORA. Nessuna seconda fetch: e' lo stesso
          d.build che la riga sopra mostra, solo con un lettore in piu'.
          Rilievo C1 (review finale): un guscio nato prima di B8 non carica

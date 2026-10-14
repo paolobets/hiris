@@ -33,7 +33,7 @@ class RecordingHouse(fotografia_porte.FrozenHouse):
     """La casa congelata dell'avvio: il client vero sugli ingressi sintetici
     (`scripts/casa_finta.py`), che dice chi si e' iscritto ai suoi eventi.
 
-    E' la casa che l'avvio trova in `app["ha_client"]`: una prova chiede a lei
+    E' la casa che l'avvio trova in `app[HA_CLIENT_KEY]`: una prova chiede a lei
     QUALI ascoltatori l'avvio ha registrato -- e li chiama -- invece di cercare
     `add_state_listener(` nel testo di `server.py`. La firma e' quella con cui
     `_on_startup` costruisce `HAClient`.
@@ -59,7 +59,7 @@ class RecordingHouse(fotografia_porte.FrozenHouse):
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def started_app(tmp_path_factory):
     """L'app avviata sulla casa sintetica, spenta alla fine del file. La casa
-    e' una `RecordingHouse`: `app["ha_client"].registered(genere)` dice chi
+    e' una `RecordingHouse`: `app[HA_CLIENT_KEY].registered(genere)` dice chi
     l'avvio ha iscritto ai suoi eventi."""
     data_dir = str(tmp_path_factory.mktemp("avvio"))
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir,

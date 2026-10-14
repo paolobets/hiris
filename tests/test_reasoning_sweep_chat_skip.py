@@ -21,9 +21,9 @@ spazzata non si ritaglia piu' dal sorgente di ``_on_startup`` per eseguirla
 in un namespace preparato a mano: si avvia l'app davvero
 (``fotografia_porte.mounted``) e si fa girare il lavoro
 ``hiris_reasoning_sweep`` che lo schedulatore ha registrato, sulla coda vera
-dell'app (``app["reasoning_queue"]``).
+dell'app (``app[REASONING_QUEUE_KEY]``).
 
-Dalla Tappa 8 (Task 6, D5) la spazzata non guarda piu' ``app["bridge_active"]``:
+Dalla Tappa 8 (Task 6, D5) la spazzata non guarda piu' ``app[BRIDGE_ACTIVE_KEY]``:
 gira acceso o spento che sia il ponte (`test_a_ponte_spento_la_coda_si_spazza`).
 """
 import contextlib
@@ -50,7 +50,7 @@ async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
     """La spazzata VERA, sull'app avviata: `(spazzata, coda, app)`.
 
     `bridge_active` e `deadline_min` si scrivono nelle chiavi che la spazzata
-    legge (`app["bridge_active"]`, `app["models_config"]["ponte"]`), come le
+    legge (`app[BRIDGE_ACTIVE_KEY]`, `app[MODELS_CONFIG_KEY]["ponte"]`), come le
     lascerebbero `_recompute_chain` e la pagina Modelli."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
         app[BRIDGE_ACTIVE_KEY].set(bridge_active)

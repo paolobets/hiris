@@ -94,7 +94,7 @@ async def test_get_porta_anche_i_modi_ammessi_e_il_prompt_di_default(client):
 
 @pytest.mark.asyncio
 async def test_get_mostra_cio_che_la_chat_sta_usando_non_il_disco(client):
-    """`app["chat_settings"]` e' l'oggetto che `handlers_chat.py` rilegge a
+    """`app[CHAT_SETTINGS_KEY]` e' l'oggetto che `handlers_chat.py` rilegge a
     ogni turno: la pagina legge quello, quindi non puo' mostrare qualcosa di
     diverso da cio' che e' in vigore."""
     client.app[CHAT_SETTINGS_KEY].set(ChatSettings(name="Solo in memoria"))

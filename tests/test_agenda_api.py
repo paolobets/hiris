@@ -283,10 +283,10 @@ async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
 async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
     # App a parte, SENZA "cronaca": mutare `client.app` di un'app gia'
     # avviata e' deprecato in aiohttp (e l'ha confermato un tentativo
-    # precedente di questo stesso test, con un `del client.app["journal"]`
+    # precedente di questo stesso test, con un `del client.app[JOURNAL_KEY]`
     # dopo il montaggio). Qui la chiave manca fin dall'inizio.
     #
-    # Mutazione: se la rotta leggesse `request.app["journal"]` con
+    # Mutazione: se la rotta leggesse `request.app[JOURNAL_KEY]` con
     # l'indicizzazione diretta invece di `.get(...)`, questa riga
     # solleverebbe un KeyError invece del 503 onesto -- il test lo
     # vedrebbe come un 500.

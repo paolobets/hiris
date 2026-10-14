@@ -35,7 +35,7 @@ LAST_REPAIR_KEY = web.AppKey("ultima_riparazione", LiveValue)
 
 logger = logging.getLogger(__name__)
 
-#: Il vocabolario chiuso di `stato` in `app["ultima_riparazione"]` (C-30): la
+#: Il vocabolario chiuso di `stato` in `app[LAST_REPAIR_KEY]` (C-30): la
 #: forma comune degli oggetti diagnostici di `/api/health`, che aprono tutti
 #: con `stato` e `perche` (come `agent/runner.INIT_STATES` e
 #: `mind/judgments.SNAPSHOT_STATES`). Fino alla Chiusura la chiave era
@@ -58,7 +58,7 @@ REPAIR_STATES = (REPAIR_DONE, REPAIR_RAISED)
 #: chiavi separate non direbbero niente di piu', e sarebbero due posti per lo
 #: stesso fatto: «questo giorno non si riesce a fare».
 #:
-#: Lo stato vive in `app["backfill_quiet"]` (giorno ->
+#: Lo stato vive in `app[BACKFILL_QUIET_KEY]` (giorno ->
 #: istante dell'ultimo warning), **creato vuoto da `_on_startup`**, prima che
 #: aiohttp congeli l'app: il giro gira ad app avviata, e aggiungere una chiave a
 #: quel punto e' «Changing state of started or joined application» (stessa
@@ -259,7 +259,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
 
     Il corpo vero e' `_reaggregate_days` qui sotto: questa e' la sola cosa che
     gli sta attorno. Il corpo scrive il proprio esito in
-    `app["ultima_riparazione"]` solo se arriva in fondo; **se solleva prima**,
+    `app[LAST_REPAIR_KEY]` solo se arriva in fondo; **se solleva prima**,
     l'eccezione risale al chiamante, che la ingoia in un warning, e senza
     questo involucro `GET /api/health` resterebbe a `riparazione: null`. Cioe'
     «non e' girata»: falso, ed e' proprio la domanda a cui deve rispondere.

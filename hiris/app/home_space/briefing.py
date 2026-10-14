@@ -1067,7 +1067,7 @@ def _problem_entry(p: dict) -> str:
     - `learn_more_url`: un indirizzo che il modello non puo' aprire. Chi puo'
       aprirlo lo trova gia' nella pagina delle riparazioni;
     - `created`: il registro dei problemi si rilegge ogni pochi minuti (vedi
-      `server.reread_ha_problems`), e una data di apertura non cambia cosa
+      `rounds.reread_ha_problems`), e una data di apertura non cambia cosa
       c'e' da fare.
     """
     name = f"{p.get('domain') or 'senza dominio'}: " \
@@ -1093,7 +1093,7 @@ def _problems_notice(problems: dict | None) -> str | None:
     evento -- sono condizioni, e restano vere finche' qualcuno non le ripara.
 
     `problems` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["ha_problems"]`), esattamente come `state` e
+    da `app[HA_PROBLEMS_KEY]`), esattamente come `state` e
     `reference_frame`: `compose()` resta PURA.
 
     I tre valori, e sono tre cose diverse:
@@ -1221,7 +1221,7 @@ def _comparison_notice(comparison: dict | None) -> str | None:
     le due liste una accanto all'altra su un campione di aree.
 
     `comparison` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["tree_comparison"]`), esattamente come `state`, `problems` e
+    da `app[TREE_COMPARISON_KEY]`), esattamente come `state`, `problems` e
     `reference_frame`: `compose()` resta PURA.
 
     **TRE ESITI, TRE DICITURE DIVERSE** -- la stessa disciplina con cui
@@ -1519,7 +1519,7 @@ def compose(behavior: list[dict], memories: list[dict],
 
     `comparison` e' l'esito dell'ultimo giro di verifica dell'albero contro
     Home Assistant (`topology.compare_with_home_assistant`, alimentato da
-    `server.tree_comparison_round`). Arriva come ARGOMENTO per la stessa
+    `rounds.tree_comparison_round`). Arriva come ARGOMENTO per la stessa
     ragione di `problems`: questa funzione non apre connessioni, e chiedere a
     HA cosa contiene un'area e' una chiamata di rete. `None` significa «il
     chiamante non ha chiesto», e NON «l'albero combacia»: vedi
@@ -1680,7 +1680,7 @@ def compose(behavior: list[dict], memories: list[dict],
     #
     # UN avviso solo (D-48, Tappa 9, F4): fino al 12/10/2026 erano due, uno
     # per le voci con il corpo `None` e uno per `unread_bodies`, e sono lo
-    # stesso insieme (`behavior.reread_behavior` mette in `unread` ogni voce
+    # stesso insieme (`behavior.reread` mette in `unread` ogni voce
     # che archivia senza corpo). Si contano insieme, per chi arriva da una
     # strada sola.
     unknown = without_body(behavior, unread_bodies)

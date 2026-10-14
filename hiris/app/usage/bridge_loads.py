@@ -6,7 +6,7 @@ la rotta sa per quale turno (`X-HIRIS-Turno`). Qui si annotano i CARATTERI --
 mai gli argomenti, mai i contenuti.
 
 **Due thread, quindi un lock.** Scrive il loop di aiohttp; legge il thread
-dell'executor del ponte (`server._registra_turno_ponte`). Il contatore dei
+dell'executor del ponte (`bridge_loads._registra_turno_ponte`). Il contatore dei
 giri di `handlers_mcp` fa a meno del lock perche' lo tocca un thread solo:
 questo no.
 

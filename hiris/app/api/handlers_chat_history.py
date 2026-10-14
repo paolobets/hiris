@@ -42,7 +42,7 @@ def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
     Due strade, una frase (quella di `handle_chat`): il turno del ponte, che
     la coda conosce (`has_pending_chat`, ripieghi compresi), e il turno
     sincrono della catena, che dura quanto la chiamata al modello e lascia il
-    suo segno in `app["sync_turns"]` (`handlers_chat._sync_turn`)."""
+    suo segno in `app[SYNC_TURNS_KEY]` (`handlers_chat._sync_turn`)."""
     queue = request.app.get(REASONING_QUEUE_KEY)
     sync_turns = request.app.get(SYNC_TURNS_KEY)
     if ((queue is not None and queue.has_pending_chat(thread))

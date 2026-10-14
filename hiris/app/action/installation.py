@@ -245,7 +245,7 @@ def _write_mark(mark: str) -> None:
 # All'avvio: lo slug si chiede al Supervisor, l'override si scrive in Home
 # Assistant, lo stato si rilegge e si dice nel registro. **La voce di menu non
 # e' un controllo d'accesso** (spec §1): il cancello vero legge
-# `app["non_admin_access"]` e il ruolo da Home Assistant, mai l'esito di questa
+# `app[ACCESS_FLAG_KEY]` e il ruolo da Home Assistant, mai l'esito di questa
 # parte. Per questo qui un guasto si dice e basta: nessun ritentare, nessuna
 # eccezione che fermi l'avvio.
 

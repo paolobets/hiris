@@ -161,7 +161,7 @@ def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
 
     Task B8: se `build_stamp` e' dato, dichiara anche da quale build il guscio
     e' nato -- una `<meta name="hiris-build" content="...">` in `<head>`, col
-    valore che l'app ha gia' (`app["build_stamp"]`, calcolato una sola volta in
+    valore che l'app ha gia' (`app[BUILD_STAMP_KEY]`, calcolato una sola volta in
     create_app()): questa funzione non lo ricalcola. E' la meta' che mancava
     perche' `static/chat/main.js` (e ora anche il boot della configurazione)
     potessero confrontare "da quale build sono nato" con "quale build gira

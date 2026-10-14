@@ -1491,7 +1491,7 @@ class ToolDispatcher:
         # motivo dentro. E' una degradazione dichiarata, non un guasto.
         self._translations = translations
         # L'istantanea dei giudizi sui tipi (spec 2026-09-16 §3): la STESSA
-        # istanza che legge il nucleo, `app["type_judgments"]`
+        # istanza che legge il nucleo, `app[TYPE_JUDGMENTS_KEY]`
         # (`handlers_chat.py::create_tool_dispatcher`). `None` e' legittimo
         # come per gli altri archivi -- il dispatcher e' SEMPRE costruibile --
         # e ricade sul solo seme del repo (`REPO_JUDGMENTS`): la stessa
@@ -2090,7 +2090,7 @@ class ToolDispatcher:
 
         Stessa forma di `action/actuator.py::ActionActuator.execute`: un
         `try/except` attorno a `ensure_fresh`, perche' il registro si
-        carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
+        carica PIGRAMENTE alla prima azione ESEGUITA (`startup.py::_on_startup`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
         nessuna azione arriva qui con un registro presente ma VUOTO, e senza
         questa chiamata la vista uscirebbe senza comandi, anche quando Home

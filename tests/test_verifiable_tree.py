@@ -480,7 +480,7 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
 
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
-    """La catena intera: `app["tree_comparison"]` -> `compose_briefing` ->
+    """La catena intera: `app[TREE_COMPARISON_KEY]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio il giro sarebbe un dato scritto e mai
     letto -- la quarta fondamenta al contrario."""
     app = {**live_values(), TREE_COMPARISON_KEY: LiveValue({"aree_totali": 4, "guardate": [

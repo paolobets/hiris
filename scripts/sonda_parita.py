@@ -190,7 +190,7 @@ def _recipe_reason(house: House, key: str) -> str:
     """Il motivo che una ricetta da' per un'entita' fuori da `statistic_ids`:
     una ricetta di un passo, eseguita con la funzione vera, col perche' che
     il resoconto le passa (`recipes.silent_entities`, come
-    `server._report_ingredients`)."""
+    `day_report._report_ingredients`)."""
     recipe = Recipe({"why": "sonda", "steps": [
         {"name": "misura", "operation": "somma_periodo",
          "inputs": [f"{ENTITY_MARK}{key}"], "params": {"unit": "h"}}]})

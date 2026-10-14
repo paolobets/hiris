@@ -73,8 +73,8 @@ logger = logging.getLogger(__name__)
 def _bridge_on(app) -> bool:
     """Se il ponte della coda di ragionamento e' cablato in questa app.
 
-    `server._on_startup` crea `app["reasoning_queue"]` sempre; `ponte.attivo`
-    (nell'archivio) governa la spazzata e `app["bridge_active"]`, non
+    `startup._on_startup` crea `app[REASONING_QUEUE_KEY]` sempre; `ponte.attivo`
+    (nell'archivio) governa la spazzata e `app[BRIDGE_ACTIVE_KEY]`, non
     l'esistenza dell'oggetto coda. Quindi la presenza della chiave e' il
     segnale giusto -- ed e' anche il modo in cui i test entrano e escono dal
     ramo senza toccare la configurazione.

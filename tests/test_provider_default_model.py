@@ -3,7 +3,7 @@
 Era il difetto peggiore trovato dal progetto (§0.5), e la parte peggiore era
 che riguardava lo STESSO valore: il modello di Claude API aveva effetto
 immediato sul ponte (`api/handlers_chat._enqueue_chat_job` rilegge
-`app["models_config"]` a ogni turno) e solo al riavvio sull'API (i tre runner
+`app[MODELS_CONFIG_KEY]` a ogni turno) e solo al riavvio sull'API (i tre runner
 lo ricevevano come argomento di costruzione, `default_model=`, e poi leggevano
 `self._default_model`). La pagina Modelli ne dichiarava uno solo: **sbagliata,
 non imprecisa**, cioe' l'invariante 4 della spec violato in due modi insieme.
@@ -104,7 +104,7 @@ async def test_un_modello_esplicito_vince_sulla_scelta():
 #
 # La finta e' SCOMODA nel modo in cui lo e' la produzione: `models_config` non
 # viene MUTATO, viene RIASSEGNATO -- e' quello che fa
-# `handle_save_models_config` (`request.app["models_config"] = clean`). Una
+# `handle_save_models_config` (`request.app[MODELS_CONFIG_KEY] = clean`). Una
 # finta che mutasse il dizionario in-place farebbe passare anche un runner che
 # si fosse tenuto un riferimento al dizionario di partenza, cioe' regalerebbe
 # una freschezza che la produzione non ha.
@@ -193,8 +193,8 @@ async def test_una_lettura_che_torna_None_non_rompe_il_turno():
 # credenziali di Claude API e di Ollama perche' i due runner nascano, e si
 # chiede la lettura AL RUNNER che l'ha ricevuta (`_read_model`).
 #
-# L'app e' una per file: le prove riassegnano `app["models_config"]` e lo
-# rimettono com'era alla fine (`_assigned`).
+# L'app e' una per file: le prove sostituiscono il valore di
+# `app[MODELS_CONFIG_KEY]` e lo rimettono com'era alla fine (`_assigned`).
 # ---------------------------------------------------------------------------
 
 

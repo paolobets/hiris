@@ -481,7 +481,7 @@ class HomeSpace:
         """Le integrazioni appena annunciate da Home Assistant, al posto di
         quelle dell'ultima ricostruzione (A-11, 03/10/2026; dal Task 7 della
         Tappa 2 le annuncia l'iscrizione `config_entries/subscribe`, vedi
-        `server.integration_follower`).
+        `rounds.integration_follower`).
 
         **Perche'.** L'anagrafe si ricostruisce sugli eventi dei registri, e lo
         stato di un'integrazione (`loaded`, `setup_error`, `not_loaded`...)

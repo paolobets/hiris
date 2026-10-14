@@ -1,6 +1,6 @@
 """La cartella dei dati si legge in un modo solo: `app[DATA_DIR_KEY]` (D-27).
 
-Fino alla Tappa 8 si leggeva in quattro forme -- `app["data_dir"]`,
+Fino alla Tappa 8 si leggeva in quattro forme -- `app[DATA_DIR_KEY]`,
 `app.get("data_dir")`, `app.get("data_dir", "/data")`, e una guardia `if not
 data_dir` a valle -- che divergevano sulla stringa vuota e sull'app che non
 l'aveva: una forma ripiegava sulla cartella di produzione, un'altra taceva.

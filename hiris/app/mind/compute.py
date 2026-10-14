@@ -268,7 +268,7 @@ async def compute(arguments: dict, *, ha, house, now: float,
     Le letture sono quelle di `history`, dal loro unico proprietario
     (`house_history.read_bands` e `read_series`; R1 di `tests/test_fonte_unica.py`).
     L'elenco delle statistiche arriva con la casa (`House.with_statistics`,
-    dalla lettura condivisa `server.statistic_ids_for_round`): senza, nessuna
+    dalla lettura condivisa `house_history.statistic_ids_for_round`): senza, nessuna
     entita' si dice «senza statistiche» -- chi non ha potuto chiedere non lo
     afferma.
     """

@@ -87,7 +87,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
 
 async def reread_ha_problems(app, ha_client) -> dict | None:
     """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
-    `app["ha_problems"]`. Ritorna cio' che ha scritto (`None` senza client).
+    `app[HA_PROBLEMS_KEY]`. Ritorna cio' che ha scritto (`None` senza client).
 
     DOVE VIVONO I PROBLEMI, e perche' qui e non dentro l'anagrafe
     (`HomeSpace`, `home_space/reader.py`).
@@ -129,7 +129,7 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     reader = getattr(ha_client, "problems", None)
     if reader is None:
         # Un client vecchio o un finto di prova che non dichiara `problemi`:
-        # non si scrive niente, cosi' `app["ha_problems"]` resta `None` e il
+        # non si scrive niente, cosi' `app[HA_PROBLEMS_KEY]` resta `None` e il
         # nucleo tace invece di affermare che la casa e' sana.
         return None
     try:
@@ -145,19 +145,19 @@ def integration_follower(app):
     """Restituisce l'ascoltatore dell'iscrizione alle integrazioni
     (`HAClient.add_integration_listener`, Task 7 della Tappa 2): riceve i
     cambi cosi' come Home Assistant li manda e tiene le voci in
-    `app["ha_integrations"]` -- le righe grezze, la stessa forma di
+    `app[HA_INTEGRATIONS_KEY]` -- le righe grezze, la stessa forma di
     `config_entries/get` (`ConfigEntry.as_json_fragment`, vedi
     `CONFIG_ENTRIES_SUBSCRIPTION` in `proxy/ha_client.py`) -- e nell'anagrafe,
     con lo stesso costruttore della ricostruzione
     (`HomeSpace.hold_integrations`).
 
-    **Dove vivono, e perche' due posti.** `app["ha_integrations"]` e' il
+    **Dove vivono, e perche' due posti.** `app[HA_INTEGRATIONS_KEY]` e' il
     grezzo che il giro delle condizioni passa all'osservatore
     (`Watcher.watch_system` legge `state`, `source`, `domain`, `title` di
-    Home Assistant), accanto ad `app["ha_problems"]` che e' la stessa specie
+    Home Assistant), accanto ad `app[HA_PROBLEMS_KEY]` che e' la stessa specie
     di dato; l'anagrafe ne tiene la forma di HIRIS (`dominio`, `stato`,
     `motivo`), come per ogni altra tabella. L'ascoltatore non ha una memoria
-    sua: il suo stato E' `app["ha_integrations"]`.
+    sua: il suo stato E' `app[HA_INTEGRATIONS_KEY]`.
 
     **L'elenco intero sostituisce, i cambi si applicano.** Un messaggio con
     voci a `type` nullo -- o vuoto: una casa senza integrazioni -- e' l'elenco
@@ -171,7 +171,7 @@ def integration_follower(app):
     **Cosa NON copre, dichiarato.** Anche la ricostruzione dell'anagrafe
     (`topology.rebuild`) legge le integrazioni, con tutti i registri; se un
     annuncio arriva fra la sua lettura e la sua consegna, l'anagrafe tiene la
-    lettura fino al prossimo annuncio. `app["ha_integrations"]` no: lo scrive
+    lettura fino al prossimo annuncio. `app[HA_INTEGRATIONS_KEY]` no: lo scrive
     solo l'iscrizione.
     """
     def follow(changes) -> None:
@@ -203,7 +203,7 @@ def integration_follower(app):
 
 def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
-    e scrive l'esito in `app["tree_comparison"]`.
+    e scrive l'esito in `app[TREE_COMPARISON_KEY]`.
 
     **Cosa fa, in una riga.** `home_space/topology.hierarchy()` e' una replica che
     HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
@@ -224,8 +224,8 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     registrazione nello schedulatore), che con `AREAS_PER_ROUND` a rotazione
     coprono una casa da sedici aree in poco piu' di un'ora.
 
-    **DOVE VIVE L'ESITO.** In RAM, in `app["tree_comparison"]`, accanto a
-    `app["ha_problems"]` e per la stessa ragione, gia' scritta per esteso su
+    **DOVE VIVE L'ESITO.** In RAM, in `app[TREE_COMPARISON_KEY]`, accanto a
+    `app[HA_PROBLEMS_KEY]` e per la stessa ragione, gia' scritta per esteso su
     `reread_ha_problems`: un confronto e' momentaneo -- la casa cambia e la
     replica si rifa' da sola al primo evento di registro -- e un archivio
     riletto di rado continuerebbe ad annunciare per ore una divergenza gia'

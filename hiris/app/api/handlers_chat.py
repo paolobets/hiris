@@ -87,7 +87,7 @@ _REPLY_NOT_ARRIVED = "La risposta non è arrivata in tempo. Riprova."
 _MAX_HISTORY_TOKENS = 6000
 
 def _sync_turn(app, thread: ChatThread):
-    """Il turno sincrono di `thread`, segnato in `app["sync_turns"]`.
+    """Il turno sincrono di `thread`, segnato in `app[SYNC_TURNS_KEY]`.
 
     L'app vera lo crea in `create_app`; un'app di prova costruita a mano che
     non lo porta non ha nessuna rotta delle conversazioni da proteggere, e il
@@ -301,7 +301,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
         exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
-        # `server.py`, mai una seconda apertura di `azioni.db`. Serve a
+        # `startup.py::_on_startup`, mai una seconda apertura di `azioni.db`. Serve a
         # `history` per attribuire a HIRIS cio' che ha fatto HIRIS.
         journal=app.get(JOURNAL_KEY),
         # Le parole con cui uno stato si rende, dall'08/09/2026 lette da Home
@@ -525,7 +525,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     ripiego silenzioso dal forfait al consumo si scopre a fine mese.
 
     **«Chi ha risposto» si MISURA, non si deduce.** La tentazione è leggere
-    `app["model_chain"][0]`, cioè «ha risposto il primo della catena»:
+    `app[MODEL_CHAIN_KEY][0]`, cioè «ha risposto il primo della catena»:
     sarebbe falso proprio nel caso che conta, perché il router RIPIEGA, quindi
     il primo può aver fallito e aver risposto il secondo. Si legge quindi il
     registro degli esiti (Task 11), che il ciclo di ripiego del router aggiorna
@@ -536,7 +536,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     l'esito del turno PRECEDENTE.
 
     Se non si può stabilire chi ha risposto -- registro assente (nessun router:
-    `app["claude_runner"]` da solo non registra niente), catena vuota, nessun
+    `app[CLAUDE_RUNNER_KEY]` da solo non registra niente), catena vuota, nessun
     successo osservato -- si restituisce "" e la nota NON si scrive. Meglio
     nessuna nota che una che nomina il provider sbagliato: questa riga parla di
     soldi, e una riga falsa sui soldi è peggio del silenzio.
@@ -700,7 +700,7 @@ async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
                 soggetto=soggetto, frase=phrase, thread=thread, house=house))
         answered = turn.answered
     except RunnerBackendError as exc:
-        # `runner` puo' essere `app["claude_runner"]`, cioe' un backend
+        # `runner` puo' essere `app[CLAUDE_RUNNER_KEY]`, cioe' un backend
         # diretto che SOLLEVA invece di consegnare una frase come il router.
         answer = exc.friendly_message
     if answered and not _is_toxic_assistant(answer):
@@ -719,7 +719,8 @@ async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
 async def _downgrade_to_chain(request: web.Request, job_id: str):
     """Rifà sulla catena il turno che il piano non ha servito in tempo.
 
-    È qui e non nello sweep di `server.py` per una ragione misurata: lo sweep
+    È qui e non nello sweep (`conservazione.reasoning_sweep`) per una ragione
+    misurata: lo sweep
     gira ogni 2 minuti, e `static/chat/send.js` smette di interrogare dopo
     `CHAT_POLL_MAX_MS` (5 minuti). Con la scadenza predefinita di 5 minuti, un
     ripiego fatto dallo sweep arriverebbe fra il quinto e il settimo minuto --
@@ -996,7 +997,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # raggiungibile (il turno numero N sta ancora aspettando quando arriva
     # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
     # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
-    # cronologia da solo (`server._submit_chat_reply`).
+    # cronologia da solo (`consegna._chat_reply_submitter`).
     if (bridge_in_play(request.app)
             and request.app[REASONING_QUEUE_KEY].has_pending_chat(thread)):
         return error_response(409, PENDING_REPLY_ERROR)

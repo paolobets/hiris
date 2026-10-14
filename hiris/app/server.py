@@ -50,7 +50,7 @@ def create_app() -> web.Application:
     ])
 
     app.on_startup.append(_on_startup)
-    # Dopo `_on_startup`, che crea `app["ha_client"]`. Parte in un compito a
+    # Dopo `_on_startup`, che crea `app[HA_CLIENT_KEY]`. Parte in un compito a
     # parte e non si aspetta: l'add-on puo' avviarsi prima del nucleo, e una
     # Home Assistant che non risponde non deve tenere chiuso HIRIS.
     app.on_startup.append(start_installation)

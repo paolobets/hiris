@@ -5,7 +5,7 @@ untouched.
 
 Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
-- handle_chat gates on app["bridge_active"] AND app["reasoning_queue"]
+- handle_chat gates on app[BRIDGE_ACTIVE_KEY] AND app[REASONING_QUEUE_KEY]
   present (``steering._bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
   thread=None) stores context as JSON; the chat job context carries

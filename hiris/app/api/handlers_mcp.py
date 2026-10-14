@@ -784,7 +784,8 @@ async def handle_mcp(request: web.Request) -> web.Response:
     Supervisor, un canale firmato, la credenziale di un turno del ponte, e
     (nella sola suite di test) la valvola `HIRIS_ALLOW_NO_TOKEN`. Questa rotta
     ne accetta **una sola**: `turno`, la credenziale effimera che il worker del
-    ponte manda (la conia `server.py::_intestazioni_ponte`). Fino al 22/09/2026 era il
+    ponte manda (la conia `agent/bridge_governor.py::_intestazioni_ponte`). Fino al
+    22/09/2026 era il
     segreto condiviso (`auth_via == "token"`), che da quel giorno il middleware
     non assegna piu'. Il controllo e' su `request["auth_via"]`,
     che il middleware scrive: non si ricopia qui un secondo confronto di segreti

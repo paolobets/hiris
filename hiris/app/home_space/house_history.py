@@ -1514,7 +1514,7 @@ async def read_traces(ha, keys: list[tuple[str, str]]) -> dict:
 
     L'unica lettura delle tracce: la chiedono le esecuzioni di `history`
     (`read_runs`, che le sigilla prima di farne righe) e il giro degli esiti
-    delle automazioni (`server.watch_automation_outcomes`, A-41: fino al
+    delle automazioni (`conditions_round.watch_automation_outcomes`, A-41: fino al
     14/10/2026 leggeva da se'), che ne guarda solo `run_id`, l'esito e
     l'inizio.
 
@@ -1613,7 +1613,7 @@ async def read_log(ha) -> dict:
 
     L'unica lettura del registro: la chiedono gli errori di `history`
     (`read_errors`, che sigilla le voci prima di farne righe) e il giro delle
-    condizioni (`server.watch_system_conditions`, A-41: fino al 14/10/2026
+    condizioni (`conditions_round.watch_system_conditions`, A-41: fino al 14/10/2026
     leggeva da se'), che passa le voci all'osservatore com'erano.
 
     **La forma la controlla il client, una volta** (`HAClient.system_log`:

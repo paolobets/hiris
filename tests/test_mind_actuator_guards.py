@@ -288,7 +288,7 @@ def test_il_grafo_su_tutto_il_prodotto_contiene_quello_del_solo_giro():
 
     Mutazione ESEGUITA (03/10/2026): un gesto dell'attuatore scritto in
     `action/rhythm.py` -- `_prova_scrive(app)`, che chiama
-    `app["ha_client"].call_service(...)` -- e chiamato da `actuator_round`: il
+    `app[HA_CLIENT_KEY].call_service(...)` -- e chiamato da `actuator_round`: il
     cancello di `test_l_attuatore_non_tocca_MAI_home_assistant` col grafo del
     solo `server.py` restava VERDE, col grafo di tutto il prodotto e' rosso.
     """
@@ -353,10 +353,10 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
 
     Mutazione ESEGUITA: `await ha_client.call_service(...)` in `actuator.py` --
     rossa. E `self._workshop.apply(...)` in `_file_proposals` -- rossa. Dal
-    06/10/2026 (Task 4.2, Passo 5): `app["action_actuator"].execute(...)` in
+    06/10/2026 (Task 4.2, Passo 5): `app[ACTUATOR_KEY].execute(...)` in
     `proposer_round._settle` -- rossa. Dal Task 4.3 (06/10/2026): `AMMESSI`
     senza `notify_admins` -- rossa su `soffitto._refresh_users` (`users`);
-    `app["action_actuator"].execute(...)` in `_alert_high`, accanto
+    `app[ACTUATOR_KEY].execute(...)` in `_alert_high`, accanto
     all'avviso ammesso -- rossa. Dal 07/10/2026 (la terza porta):
     `installation.disinstalla_card_lovelace(...)` in `proposer_round` --
     rossa; con i soli metodi delle classi (`_metodi_pubblici` al posto di

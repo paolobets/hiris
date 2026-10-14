@@ -51,7 +51,7 @@ def write_line(write, promise: dict, content: str, *,
 def tell_failure(data_dir: str, promise: dict, reason, *,
                  quoted: str | None = None) -> bool:
     """La riga breve di una promessa fallita, per chi ha `data_dir` e non
-    l'orologio. `data_dir` e' `app["data_dir"]`, letto senza ripiego (D-27,
+    l'orologio. `data_dir` e' `app[DATA_DIR_KEY]`, letto senza ripiego (D-27,
     Tappa 8): fino all'08/10/2026 qui c'era una guardia per «un'app non
     montata del tutto», cioe' per le prove che costruivano un'app senza la
     cartella -- in produzione l'avvio la scrive sempre per prima."""

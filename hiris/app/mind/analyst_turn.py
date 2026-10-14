@@ -103,7 +103,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
     il turno non dice quale lettura e' servita a quale osservazione, e
     ripeterle su ognuna sarebbe una copia. Dal Task 3.6 (D5) arrivano sulla
     catena da `steering.TurnOutcome.tool_calls`, sul ponte dalla decisione
-    del turno, con lo stesso nome nudo (`server._collect_analyst_turn`).
+    del turno, con lo stesso nome nudo (`analyst_round._collect_analyst_turn`).
 
     `presence` (`privacy.PresenceMask`) riporta all'id vero un segnaposto che
     il modello ha letto negli strumenti e scritto in un `rimetti`.
@@ -535,7 +535,7 @@ class AnalystDispatcher:
 
     Sta DAVANTI al dispatcher della chat invece di modificarlo, come
     `PromiseDispatcher`: `compute` non deve esistere nella chat. Lo stesso
-    oggetto risponde sulla catena (`server.analyst_round`) e sul ponte
+    oggetto risponde sulla catena (`analyst_round.analyst_round`) e sul ponte
     (`/api/mcp`, `steering.Species.guard`).
     """
 

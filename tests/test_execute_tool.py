@@ -128,7 +128,7 @@ def test_l_unico_costruttore_del_dispatcher_passa_l_istantanea_dei_giudizi():
     test sopra sulla porta, per l'istantanea dei giudizi (Task 5). Se
     `create_tool_dispatcher` non la inoltra, ogni turno di chat costruirebbe
     un `ToolDispatcher` che ricade silenziosamente sul solo seme
-    (`REPO_JUDGMENTS`) anche quando `app["type_judgments"]` porta una
+    (`REPO_JUDGMENTS`) anche quando `app[TYPE_JUDGMENTS_KEY]` porta una
     correzione viva del proprietario -- lo stesso guasto silenzioso del test
     sopra, sull'istantanea invece che sulla porta.
 

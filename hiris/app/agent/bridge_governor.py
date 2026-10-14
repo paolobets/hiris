@@ -48,7 +48,7 @@ def _bridge_active(store: dict | None) -> bool:
     Il proprietario ha fuso i due interruttori in uno solo (`ponte.attivo`,
     13 agosto 2026), e il fail-safe NON e' stato rimosso: e' diventato
     STRUTTURALE. C'e' UN valore, derivato UNA volta (`_recompute_chain`
-    scrive `app["bridge_active"]`) e letto da tutti -- la spazzata,
+    scrive `app[BRIDGE_ACTIVE_KEY]`) e letto da tutti -- la spazzata,
     l'instradamento della chat, il gate del lavoratore del ponte, la pagina.
     L'invariante «non accodare mai in una coda che nessuno spazza» non regge
     piu' su un `and` da non sbagliare, e nemmeno su due chiamate alla stessa
@@ -60,7 +60,7 @@ def _bridge_active(store: dict | None) -> bool:
     Il secondo era l'IMPLICAZIONE: il piano acceso accendeva il ponte da se'.
     Esce insieme all'opzione che lo alimentava, e non e' una perdita di
     comodita' senza contropartita -- era l'ultima seconda rappresentazione del
-    prodotto (invariante 1): `app["bridge_active"]` poteva valere True mentre
+    prodotto (invariante 1): `app[BRIDGE_ACTIVE_KEY]` poteva valere True mentre
     l'archivio, che e' cio' che la pagina Modelli mostra e scrive, diceva
     False. Con l'implicazione viva il bottone «Mettilo primo» non sarebbe
     costruibile: metterebbe a `true` un valore gia' scavalcato, e spegnere il
@@ -136,7 +136,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     VERSIONE B (3.0.0): non legge piu' NIENTE dall'ambiente per il ponte.
     `PROVIDER_SUBSCRIPTION` e `BRIDGE_ENABLED` erano le ultime due opzioni
     dell'add-on lette qui, e il valore arriva adesso come argomento --
-    `app["bridge_active"]`, lo stesso che governa la spazzata e
+    `app[BRIDGE_ACTIVE_KEY]`, lo stesso che governa la spazzata e
     l'instradamento. E' una funzione di modulo senza `app`: passarglielo e'
     l'unico modo di tenerla una funzione pura e di renderla chiamabile ANCHE
     a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
@@ -248,7 +248,7 @@ def _recompute_chain(app) -> None:
     """Rimette in vigore, a caldo, ciò che la pagina Modelli ha appena salvato.
 
     Senza questa funzione un riordino cambierebbe la PAGINA e non il RUNTIME:
-    `handle_save_models_config` aggiorna `app["models_config"]`, ma la catena
+    `handle_save_models_config` aggiorna `app[MODELS_CONFIG_KEY]`, ma la catena
     del router si costruiva solo all'avvio. Quindi il turno successivo usava
     l'ordine di prima e -- peggio -- la pagina, che descrive il runtime perché
     è la sola misura che ha, alla ricarica rimostrava l'ordine vecchio: il
@@ -256,7 +256,7 @@ def _recompute_chain(app) -> None:
     chiude, spostata di un livello, e fino al Task 10 c'era una riga in pagina
     che la confessava.
 
-    VERSIONE B (3.0.0): rimette in vigore anche il PONTE. `app["bridge_active"]`
+    VERSIONE B (3.0.0): rimette in vigore anche il PONTE. `app[BRIDGE_ACTIVE_KEY]`
     era una copia presa all'avvio da `BRIDGE_ENABLED`, e finche' quel valore
     veniva da un'opzione dell'add-on non poteva cambiare senza un riavvio.
     Adesso viene dall'archivio, che la pagina Modelli riscrive: se restasse

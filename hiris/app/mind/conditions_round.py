@@ -28,23 +28,23 @@ logger = logging.getLogger(__name__)
 async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
     caricate + voci del registro di errori) verso
-    `app["watcher"].watch_system` (fetta «l'osservatore», Task 5; il registro
+    `app[WATCHER_KEY].watch_system` (fetta «l'osservatore», Task 5; il registro
     di errori e' Task 2 di «le tracce e il log»). Torna quante ne ha scritte,
     o `None` se il giro e' stato saltato.
 
     **I problemi NON si rileggono qui** (A-02, 03/10/2026): li legge gia' il
     giro dei cinque minuti (`reread_ha_problems`, `hiris_ha_problems`) verso
-    `app["ha_problems"]`, e questo giro, ogni dieci, prende quelli -- vecchi
+    `app[HA_PROBLEMS_KEY]`, e questo giro, ogni dieci, prende quelli -- vecchi
     al piu' cinque minuti dentro una cadenza di dieci. Fino a quel giorno
     `repairs/list_issues` si chiedeva due volte, ed era scritto qui sotto
     come «doppione tollerato». Se la chiave non c'e' ancora (un giro partito
     prima della prima lettura) si fa quella lettura, una volta, e resta in
-    `app["ha_problems"]` per tutti.
+    `app[HA_PROBLEMS_KEY]` per tutti.
 
     **Le integrazioni NON si leggono qui** (Task 7 della Tappa 2, decisione di
     Paolo del 03/10/2026, «avviso»): arrivano per evento, dall'iscrizione
     `config_entries/subscribe` (`integration_follower`), in
-    `app["ha_integrations"]` e nell'anagrafe. Fino a quel giorno questo giro le
+    `app[HA_INTEGRATIONS_KEY]` e nell'anagrafe. Fino a quel giorno questo giro le
     rileggeva (`read_registry("integrazioni")`, Task 5) e le consegnava
     all'anagrafe ogni dieci minuti: una seconda lettura della stessa cosa,
     vecchia fino a un giro. Se l'elenco non e' ancora arrivato (l'iscrizione
@@ -111,7 +111,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
 async def watch_automation_outcomes(app, ha_client) -> int | None:
     """La cadenza BREVE (due minuti -- vedi il commento sul lavoro in
     `_on_startup` per il perche' di questo numero) verso
-    `app["watcher"].watch_automation_outcome` (Task 4 di «le tracce e il
+    `app[WATCHER_KEY].watch_automation_outcome` (Task 4 di «le tracce e il
     log»): rilegge le tracce di ogni automazione che l'evento ha SEGNATO
     (`Watcher.mark_automation`, sottoscritto piu' sopra in `_on_startup`) e
     scrive un cambio quando un'esecuzione e' in errore o quando un'esecuzione
@@ -132,7 +132,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     automazione. La traduzione sta QUI e non dentro il client (che resta
     «legge e non giudica», senza dipendere dallo stato): la fa
     `proxy/entity_cache.automation_config_id`, che legge lo specchio gia'
-    cablato in `app["entity_cache"]` -- nessuna lettura nuova verso Home
+    cablato in `app[ENTITY_CACHE_KEY]` -- nessuna lettura nuova verso Home
     Assistant, nessun secondo rubinetto.
 
     **Un id che non si risolve NON e' «non ha mai girato».** Se lo specchio
@@ -151,7 +151,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     processo, e un WARNING a ogni cadenza sarebbero 720 avvisi al giorno per
     una condizione che non puo' cambiare a caldo. Il primo giro che non
     risolve una certa entita' logga WARNING, i successivi DEBUG
-    (`app["automation_trace_unresolved"]`, l'insieme delle entita' gia'
+    (`app[TRACE_UNRESOLVED_KEY]`, l'insieme delle entita' gia'
     segnalate). Il fatto non si tace: cambia di livello. L'insieme e'
     limitato da quello dei segnati, quindi non cresce da solo, e un'entita'
     che torna a risolversi ne ESCE -- cosi' un guasto nuovo, dopo un periodo
@@ -185,7 +185,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     rivisto sempre nello stesso ordine); un'automazione rotta una volta e
     guarita produce un episodio di guasto NUOVO ogni due minuti (720 al
     giorno), «una bugia nella storia» ripetuta. Il cursore
-    (`app["automation_trace_cursors"]`, `entity_id -> {run_id gia'
+    (`app[TRACE_CURSORS_KEY]`, `entity_id -> {run_id gia'
     processati}`) **si sostituisce** con l'insieme del giro corrente, non
     si accumula: resta quindi limitato dal tetto che HA stesso impone
     alle tracce conservate, non cresce mai da solo.

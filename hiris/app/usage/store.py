@@ -615,7 +615,7 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
     qui. Allo stesso modo il registro dei turni ha una porta,
     `UsageStore.log_turn`, e due strade che la attraversano:
     `steering.misura_turno` per la catena, il gancio del ponte
-    (`server._registra_turno_ponte`) per la CLI.
+    (`bridge_loads._registra_turno_ponte`) per la CLI.
 
     I tre scrittori chiamavano `log_usage` a mano, senza rete: un disco pieno o un archivio
     chiuso a meta' sollevava DOPO che il modello aveva risposto, e la

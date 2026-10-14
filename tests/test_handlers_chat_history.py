@@ -30,7 +30,7 @@ def reset_stores():
 def _make_app(data_dir: str) -> MagicMock:
     from hiris.app.chat_settings import ChatSettings
 
-    # Task 12: handle_get_chat_history legge anche app["chat_settings"]
+    # Task 12: handle_get_chat_history legge anche app[CHAT_SETTINGS_KEY]
     # (giorni_conservazione) -- senza questa chiave il MagicMock tornerebbe
     # None e `.giorni_conservazione` esploderebbe con AttributeError.
     valori = {DATA_DIR_KEY: data_dir, CHAT_SETTINGS_KEY: LiveValue(ChatSettings())}

@@ -766,7 +766,7 @@ def has_statistics(entity_id, state_class, statistic_ids) -> bool:
     chiunque.
 
     `statistic_ids` e' l'elenco che Home Assistant tiene, letto dal giro
-    (`server.statistic_ids_for_round`): quando c'e', la risposta e' la sua --
+    (`house_history.statistic_ids_for_round`): quando c'e', la risposta e' la sua --
     comprese le statistiche importate da un'integrazione sotto un
     `entity_id` (`async_import_statistics`), che nessuna regola sul
     `state_class` saprebbe vedere, e esclusi i `sensor` che il recorder non

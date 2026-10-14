@@ -241,7 +241,7 @@ def _system_house(problems, integrations, log_entries=(), **faults) -> CasaFinta
 def _announced(app: dict, integrations) -> dict:
     """L'elenco iniziale dell'iscrizione alle integrazioni, nella forma di
     Home Assistant, passato all'ascoltatore che l'avvio iscrive: e' cosi' che
-    le integrazioni arrivano in `app["ha_integrations"]`."""
+    le integrazioni arrivano in `app[HA_INTEGRATIONS_KEY]`."""
     integration_follower(app)([{"type": None, "entry": row} for row in integrations])
     return app
 
@@ -914,7 +914,7 @@ def test_a_not_triggered_trace_is_not_forwarded():
 
 def test_a_trace_older_than_process_boot_is_not_forwarded():
     """Una traccia con `timestamp.start` precedente all'avvio di QUESTO
-    processo (`app["automation_traces_boot_ts"]`, scritto in `_on_startup`)
+    processo (`app[TRACES_BOOT_TS_KEY]`, scritto in `_on_startup`)
     e' scattata mentre HIRIS era spento, o in un avvio precedente: non si
     recupera -- stessa disciplina di `watch_system_conditions`, "meglio un
     buco nella storia che una bugia nella storia". `timestamp.start` e' un
@@ -1603,7 +1603,7 @@ def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path
     loggare la riga con la durata -- rossa.
 
     **L'impronta asserita qui e' vera per costruzione** (giro di correzioni 1,
-    punto 7): `app["type_judgments"]` porta `REPO_JUDGMENTS`, quindi
+    punto 7): `app[TYPE_JUDGMENTS_KEY]` porta `REPO_JUDGMENTS`, quindi
     l'uguaglianza dice «la cronaca rifatta ha scritto un'impronta», non «ha
     scritto quella dei giudizi che ha ricevuto». Che sia proprio quella --
     con un'istantanea diversa da quella del repo -- lo difende
@@ -2076,7 +2076,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
     scopre e' la (2).
     Mutazioni ESEGUITE: (a) `setdefault` nel giro e niente chiave in
     `_on_startup` -- rossa sulla (2); (b) il giro che riassegna
-    `app["backfill_quiet"]` -- rossa sulla (1)."""
+    `app[BACKFILL_QUIET_KEY]` -- rossa sulla (1)."""
     import warnings
     from datetime import datetime
 

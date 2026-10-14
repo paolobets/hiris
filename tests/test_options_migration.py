@@ -267,7 +267,8 @@ async def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path)
     ritroverebbe in catena un provider senza modello.
 
     Mutazione ESEGUITA (03/10/2026, sull'avvio vero): tolto `"ollama"` dai
-    nomi che `server._chain_as_it_was` tiene fuori -- rossa (`'ollama' not in
+    nomi che `server._chain_as_it_was` (oggi `options_migration._initial_chain`)
+    tiene fuori -- rossa (`'ollama' not in
     ['claude', 'openrouter', 'ollama']`)."""
     models_config = await _start_seeding_the_chain(
         tmp_path, {**CREDENZIALI_DEL_PROPRIETARIO, "ollama": True})

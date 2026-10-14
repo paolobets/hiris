@@ -143,7 +143,7 @@ async def reconcile(app) -> Reconciliation | None:
 async def after_rebuild(app) -> None:
     """Il seguito di ogni ricostruzione dell'anagrafe: le parole degli stati
     (che dipendono dalla cornice appena letta, A-14), poi la riconciliazione.
-    Le iscrive `server.py`, all'avvio e sull'ascoltatore di topologia
+    Le iscrive `startup.py::_on_startup`, all'avvio e sull'ascoltatore di topologia
     (`home_space/registry_follower.schedule_registry_rebuild`)."""
     await prime_state_translations(app)
     await reconcile(app)

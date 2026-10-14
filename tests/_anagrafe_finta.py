@@ -1,6 +1,6 @@
 """L'anagrafe delle prove: l'anagrafe VERA (N160-2, 14/10/2026).
 
-Fino a oggi ogni file di prova si scriveva il suo `app["home_space_store"]`:
+Fino a oggi ogni file di prova si scriveva il suo `app[HOME_SPACE_KEY]`:
 misurate il 14/10/2026, 17 classi in 13 file definivano a mano `read`,
 `unavailable`, `energy`, `reference_frame` o `behavior` di `HomeSpace`, con
 risposte inventate da ognuna (chi `[]`, chi `()` per i registri caduti; chi

@@ -1,7 +1,7 @@
 """Slice 4b Task 2: async subscription path for handle_chat.
 
-When ``app["bridge_active"]`` is truthy AND the reasoning-queue
-bridge is wired (``app["reasoning_queue"]`` present — see
+When ``app[BRIDGE_ACTIVE_KEY]`` is truthy AND the reasoning-queue
+bridge is wired (``app[REASONING_QUEUE_KEY]`` present — see
 ``steering._bridge_on``), ``handle_chat`` must:
   1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
      session could start on an assistant turn, which the Claude API rejects
@@ -677,7 +677,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # Il fail-safe non e' stato rimosso in nessuno dei due passaggi: ha finito di
 # cambiare natura. Da regola da non sbagliare (un `and` scritto a mano in due
 # punti), a espressione condivisa (la stessa funzione chiamata due volte), a
-# VALORE condiviso: `_recompute_chain` scrive `app["bridge_active"]`, e la
+# VALORE condiviso: `_recompute_chain` scrive `app[BRIDGE_ACTIVE_KEY]`, e la
 # spazzata e l'instradamento lo LEGGONO. Due letture dello stesso slot non
 # possono divergere nemmeno per distrazione.
 #
@@ -717,7 +717,7 @@ def test_il_token_da_solo_non_accende_il_ponte(monkeypatch):
     Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
     ponte da se' (`_sub_first_class`): chi stava nella configurazione
     consigliata non doveva accendere niente. Costava pero' l'ultima seconda
-    rappresentazione del prodotto -- `app["bridge_active"]` poteva valere True
+    rappresentazione del prodotto -- `app[BRIDGE_ACTIVE_KEY]` poteva valere True
     mentre `ponte.attivo`, cioe' cio' che la pagina Modelli mostra e scrive,
     diceva False -- e rendeva IMPOSSIBILE spegnere il ponte a chiunque avesse
     un token, oltre a rendere inutile il bottone che lo accende.
@@ -750,7 +750,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     spazzata non obbedisce ne' al valore ne' all'archivio).
 
     Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
-    `app["bridge_active"] = _bridge_active(cfg)` ->
+    `app[BRIDGE_ACTIVE_KEY] = _bridge_active(cfg)` ->
     `= bool((cfg.get("ponte") or {}).get("attivo"))` (la regola riscritta a
     mano) -- rossa."""
     from unittest import mock
@@ -786,8 +786,8 @@ async def test_il_ponte_segue_l_archivio_all_avvio_e_dopo(tmp_path):
     PUT.
 
     Mutazione ESEGUITA (03/10/2026): tolta l'assegnazione di
-    `app["bridge_active"]` da `_recompute_chain` -- rossa. Mutazione ESEGUITA:
-    `app["bridge_active"] = False` aggiunta in fondo a `_on_startup` (un
+    `app[BRIDGE_ACTIVE_KEY]` da `_recompute_chain` -- rossa. Mutazione ESEGUITA:
+    `app[BRIDGE_ACTIVE_KEY] = False` aggiunta in fondo a `_on_startup` (un
     cablaggio d'avvio) -- rossa."""
     from tests._avvio import credential_environment, started_with
 

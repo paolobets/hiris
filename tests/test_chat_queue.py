@@ -143,7 +143,7 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(tmp_path):
 
 @pytest.mark.asyncio
 async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(tmp_path):
-    """If app["submit_chat_reply"] isn't wired (misconfiguration), submit must
+    """If app[SUBMIT_CHAT_REPLY_KEY] isn't wired (misconfiguration), submit must
     still resolve the job instead of 500ing."""
     app, q = _app(tmp_path)  # no submit_chat_reply, no execute_decision
     q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C4", now=1.0, thread=T)

@@ -23,11 +23,12 @@ astratta apposta -- *«una prova dice che oggi nessuno l'ha fatto, il
 costruttore dice che non si puo' fare»*.
 
 **Il file si chiama `sapere.db`, e non `knowledge.db`.** Non e' un capriccio di
-lingua: un file `knowledge.db` ESISTE gia' in `/data` sulle installazioni che
-hanno attraversato la fetta «esce il documentale», con lo schema di un archivio
-documentale morto che nessuno legge piu' (`server.py` ne dichiara l'incontro
-nel log). Aprirlo qui troverebbe le sue tabelle, e il `CREATE TABLE IF NOT
-EXISTS` non direbbe niente. Misurato il 12/09/2026, vedi
+lingua: un file `knowledge.db` stava in `/data` sulle installazioni che hanno
+attraversato la fetta «esce il documentale», con lo schema di un archivio
+documentale morto che nessuno legge piu' (oggi l'avvio lo cancella:
+`conservazione.RESIDUI_DISMESSI`). Aprirlo qui avrebbe trovato le sue tabelle,
+e il `CREATE TABLE IF NOT EXISTS` non avrebbe detto niente. Misurato il
+12/09/2026, vedi
 `docs/design/2026-09-12-il-sapere-e-le-ricette.md`.
 
 **`ambito` non e' una colonna.** Sarebbe un doppione: `tipo` e `integrazione`
@@ -659,10 +660,10 @@ def _facts(rows) -> list[Fact]:
     giusto: una riga incoerente non deve circolare come se fosse un fatto. Ma
     questo archivio e' fatto per essere corretto a mano, e una sola riga storta
     -- `nostro` con una verifica, una provenienza scritta male -- farebbe
-    sollevare la lettura di TUTTO il soggetto. Il chiamante lo
-    tradurrebbe in un messaggio che parla d'altro: «comprimari non costruiti,
-    riparazione saltata» (`server.py`), cioe' esattamente il difetto che quella
-    prova esiste per impedire (revisione indipendente, 13/09/2026).
+    sollevare la lettura di TUTTO il soggetto. Il chiamante di allora lo
+    traduceva in un messaggio che parlava d'altro: «comprimari non costruiti,
+    riparazione saltata», cioe' esattamente il difetto che quella prova
+    esiste per impedire (revisione indipendente, 13/09/2026).
 
     Quindi: si salta e si dichiara nel registro. La riga resta sul disco --
     non si cancella mai niente dell'utente -- e chi guarda il log sa quale.

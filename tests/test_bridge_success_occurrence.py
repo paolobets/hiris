@@ -11,7 +11,7 @@ diceva «non l'hai ancora usato» con 105 turni riusciti sul ponte in
 `consumo_giorno` (`GET /api/usage`), l'ultimo lo stesso giorno.
 
 Il percorso vero, dalla consegna in giu': `reasoning/consegna.consegna` (job
-`kind="chat"`, come la chiama il lavoratore del ponte) -> `app["submit_chat_reply"]` --
+`kind="chat"`, come la chiama il lavoratore del ponte) -> `app[SUBMIT_CHAT_REPLY_KEY]` --
 che qui e' la funzione REALE che l'avvio vero pubblica (dal 03/10/2026 l'app
 si avvia davvero, `tests/_avvio.py::started_with`; prima la si ritagliava dal
 testo di `_on_startup`), non una copia a mano che potrebbe divergere in
@@ -37,7 +37,7 @@ T = ChatThread("persona:paolo", "pannello")
 
 @contextlib.asynccontextmanager
 async def _real_submit(tmp_path, registry):
-    """La consegna VERA che l'avvio pubblica in `app["submit_chat_reply"]`,
+    """La consegna VERA che l'avvio pubblica in `app[SUBMIT_CHAT_REPLY_KEY]`,
     con il registro degli esiti dell'app sostituito da `registry` (la
     consegna lo chiede all'app a ogni chiamata)."""
     from tests._avvio import started_with
@@ -54,7 +54,7 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     """Accoda un job `kind="chat"` nella coda del ponte, lo reclama come
     farebbe il lavoratore in-addon, e lo consegna con una risposta pulita
     attraverso la consegna vera -- `reasoning/consegna`, che
-    chiama `app["submit_chat_reply"]`: qui la funzione VERA che l'avvio
+    chiama `app[SUBMIT_CHAT_REPLY_KEY]`: qui la funzione VERA che l'avvio
     pubblica, non la riga isolata che questa fetta ha aggiunto.
 
     Mutazione ESEGUITA (03/10/2026): tolto `registry.successo("subscription")`

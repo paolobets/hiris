@@ -839,7 +839,7 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     la inoltra soltanto, a `_view_entity` -> `commands_for` ->
     `_command_parameters` -> `_limits_of_entity` (il solo ramo che li legge).
     Arriva come ARGOMENTO, come `house`. In
-    produzione e' sempre l'istantanea viva, `app["type_judgments"]` (via
+    produzione e' sempre l'istantanea viva, `app[TYPE_JUDGMENTS_KEY]` (via
     `home_space/tools.py::ToolDispatcher._full_detail_sync`); il predefinito
     `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove. Una prova
     strutturale (`tests/test_judgments_passed_in_production.py`) boccia ogni

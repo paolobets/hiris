@@ -129,19 +129,18 @@ logger = logging.getLogger(__name__)
 def _open_knowledge(app, data_dir: str) -> None:
     """Apre il sapere, lo semina e costruisce l'istantanea dei giudizi.
 
-    **Il file e' `sapere.db`, NON `knowledge.db`**: quel nome e' gia' occupato
-    su disco da un archivio documentale morto, dichiarato piu' sotto in
-    `_on_startup`. Aprirlo qui troverebbe le sue tabelle, e il
-    `CREATE TABLE IF NOT EXISTS` non direbbe niente.
+    **Il file e' `sapere.db`, NON `knowledge.db`**: quel nome era occupato
+    su disco da un archivio documentale morto, che oggi l'avvio cancella
+    (`conservazione.RESIDUI_DISMESSI`). Vedi il docstring di `mind/knowledge.py`.
 
     Il seme del repo scrive solo cio' che ancora non c'e': la casa scrive
     sopra, e un riavvio non cancella cio' che ha imparato.
 
     **Se aprire o seminare solleva, l'add-on parte lo stesso** (decisione del
     proprietario, 17/09/2026; spec 2026-09-16 §8): l'errore si logga, l'archivio
-    aperto a meta' si chiude, `app["knowledge"]` resta `None` e l'istantanea
+    aperto a meta' si chiude, `app[KNOWLEDGE_KEY]` resta `None` e l'istantanea
     si costruisce dal solo seme, col `perche` che porta l'errore vero -- e
-    `/api/health` lo mostra. Ogni lettore di `app["knowledge"]` regge `None`:
+    `/api/health` lo mostra. Ogni lettore di `app[KNOWLEDGE_KEY]` regge `None`:
     chi lo legge usa `app.get` o guarda `None` prima di usarlo (la chiave qui
     esiste sempre, quindi anche l'indice stretto del `Watcher` riceve `None`);
     `_on_cleanup` chiude solo un archivio che c'e'; la rotta di scrittura e
@@ -302,7 +301,7 @@ async def keeper_heartbeat_job(app) -> None:
 # nascosta del difetto peggiore trovato dal progetto: fino alla 2.4.1 qui
 # si leggeva `provider_models` UNA volta e lo si passava ai runner come
 # argomento di costruzione, mentre `api/handlers_chat._enqueue_chat_job`
-# rilegge `app["models_config"]` a OGNI turno -- quindi lo stesso valore
+# rilegge `app[MODELS_CONFIG_KEY]` a OGNI turno -- quindi lo stesso valore
 # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la pagina
 # ne dichiarava uno solo (invariante 4: «un valore si applica in un modo
 # solo»). La lettura chiude su `app`, non su un valore: `models_config` è
@@ -441,7 +440,7 @@ async def _on_startup(app: web.Application) -> None:
     # lettura (piu' sotto): l'iscrizione alle integrazioni le consegna le
     # voci appena il websocket si apre, e l'ascoltatore deve esserci prima.
     # Finche' la prima ricostruzione non e' riuscita le tiene solo in
-    # `app["ha_integrations"]` (`HomeSpace.hold_integrations`).
+    # `app[HA_INTEGRATIONS_KEY]` (`HomeSpace.hold_integrations`).
     home_space_store = HomeSpace(data_dir, mirror=entity_cache)
     app[HOME_SPACE_KEY] = home_space_store
     ha_client.add_integration_listener(integration_follower(app))
@@ -500,7 +499,7 @@ async def _on_startup(app: web.Application) -> None:
     # Come si RENDE uno stato di Home Assistant (fetta «lo stato»,
     # 07/09/2026). Costruito vuoto, come il registro dei servizi qui sopra, e
     # **scaldato piu' sotto** (`prime_state_translations`, subito dopo
-    # `app["home_space_store"]`, che e' dove la lingua della casa diventa
+    # `app[HOME_SPACE_KEY]`, che e' dove la lingua della casa diventa
     # leggibile).
     #
     # Fino all'08/09/2026 la prima lettura avveniva «alla prima pagina che ne
@@ -665,7 +664,7 @@ async def _on_startup(app: web.Application) -> None:
     # La riparazione d'avvio: scrive il resoconto degli ultimi due giorni
     # pieni che non ce l'hanno (vedi `_reaggregate_days`).
     #
-    # **QUI, dopo `app["home_space_store"]` e dopo `rebuild`**: la riparazione
+    # **QUI, dopo `app[HOME_SPACE_KEY]` e dopo `rebuild`**: la riparazione
     # chiede all'anagrafe il fuso della casa e i dispositivi di cui cercare le
     # ricette. Chiamata prima lavorerebbe in UTC e su una casa vuota, mentre
     # l'aggregazione notturna (`nightly_aggregation_job`, qui sopra nel modulo) lavora col fuso
@@ -901,7 +900,7 @@ async def _on_startup(app: web.Application) -> None:
     # (la spazzata e l'instradamento). E' USCITA con la versione B, insieme
     # all'opzione che la alimentava -- l'ultimo dei cinque interruttori ancora
     # letto, e l'ultima seconda rappresentazione del prodotto: con lei viva,
-    # `app["bridge_active"]` poteva dire True mentre `ponte.attivo`, cioe' cio'
+    # `app[BRIDGE_ACTIVE_KEY]` poteva dire True mentre `ponte.attivo`, cioe' cio'
     # che la pagina Modelli mostra e scrive, diceva False. Il ponte adesso e'
     # un valore solo (`_bridge_active`, che legge l'archivio), e si accende
     # dalla pagina -- dove c'e' anche il bottone che lo fa in un gesto.
@@ -999,7 +998,7 @@ async def _on_startup(app: web.Application) -> None:
     # task-5-correzioni.md, punto A.1, ne discuteva due perche' il registro
     # di errori non esisteva ancora): un errore letto come lista vuota
     # chiuderebbe ogni condizione aperta, che e' peggio di non saperlo. I
-    # problemi li prende da `app["ha_problems"]`, che `hiris_ha_problems` qui
+    # problemi li prende da `app[HA_PROBLEMS_KEY]`, che `hiris_ha_problems` qui
     # sopra rilegge ogni cinque minuti (A-02).
     scheduler.add_job(
         partial(conditions_job, app, ha_client),
@@ -1214,17 +1213,17 @@ async def _on_startup(app: web.Application) -> None:
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
     # sul ponte -- NON e' piu' qui: e' `_recompute_chain`, l'unica riga del
-    # prodotto che scrive `app["bridge_active"]`, e viene chiamata sia all'avvio
+    # prodotto che scrive `app[BRIDGE_ACTIVE_KEY]`, e viene chiamata sia all'avvio
     # (`reapply_chain`, piu' sotto) sia a ogni salvataggio della pagina
     # Modelli. Doveva spostarsi: il valore viene adesso dall'archivio, che la
     # pagina riscrive, e un cablaggio fatto una volta all'avvio avrebbe
     # riprodotto per il ponte il difetto che il Task 10 ha chiuso per la
     # catena -- salvataggio accettato con 200, effetto solo al riavvio.
     #
-    # `steering._bridge_on` verifica soltanto che `app["reasoning_queue"]`
+    # `steering._bridge_on` verifica soltanto che `app[REASONING_QUEUE_KEY]`
     # sia agganciata -- e in produzione lo e' sempre, perche' la coda si crea
     # incondizionatamente piu' su -- quindi da sola non dice che
-    # qualcuno reclami o spazzi quei job. E' `app["bridge_active"]` a dirlo:
+    # qualcuno reclami o spazzi quei job. E' `app[BRIDGE_ACTIVE_KEY]` a dirlo:
     # tenere il gate li', invece di insegnare l'archivio a `_bridge_on`, lascia
     # ai test la possibilita' di agganciare o sganciare la
     # coda senza toccare la configurazione.
@@ -1346,7 +1345,7 @@ async def _on_startup(app: web.Application) -> None:
     # diventa credenziato NON entra da solo: compare in «Fuori dalla catena»,
     # a un gesto di distanza.
     #
-    # `app["model_chain"]` qui NON si scrive: lo scrive `_recompute_chain`,
+    # `app[MODEL_CHAIN_KEY]` qui NON si scrive: lo scrive `_recompute_chain`,
     # chiamata poche righe sotto, ed e' l'unica scrittura (la Tappa 7 ha tolto
     # quella dell'avvio, che il ricalcolo sovrascriveva prima che qualcuno la
     # leggesse: voce M-30).
@@ -1393,7 +1392,7 @@ async def _on_startup(app: web.Application) -> None:
     # ── Rimettere in vigore, a caldo ──────────────────────────────────────
     # Fuori da entrambi i rami, e con UNA implementazione sola: il ramo `else`
     # (nessun provider configurato) è il PRIMO gesto di chi installa HIRIS, e
-    # senza `app["recompute_chain"]` la prima PUT solleverebbe
+    # senza `app[RECOMPUTE_CHAIN_KEY]` la prima PUT solleverebbe
     # `TypeError: 'NoneType' object is not callable`.
     #
     # Si chiama anche QUI, all'avvio. Non serve a mettere in vigore niente di
@@ -1474,7 +1473,7 @@ async def _on_cleanup(app: web.Application) -> None:
         app[JOURNAL_KEY].close()
     # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
     # dell'officina (`action/construction/revisions.py`), costruito in
-    # `_on_startup` accanto a `app["journal"]`. Stessa disciplina dei due
+    # `_on_startup` accanto a `app[JOURNAL_KEY]`. Stessa disciplina dei due
     # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
     # al riavvio.
     if CONSTRUCTIONS_KEY in app:
@@ -1490,7 +1489,7 @@ async def _on_cleanup(app: web.Application) -> None:
         app[SERVICES_KEY].close()
     # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
     # del cervello (`mind/store.py`), costruito in `_on_startup`
-    # accanto a `app["journal"]`. Stessa disciplina degli archivi qui sopra:
+    # accanto a `app[JOURNAL_KEY]`. Stessa disciplina degli archivi qui sopra:
     # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
     if OBSERVATIONS_KEY in app:
         app[OBSERVATIONS_KEY].close()

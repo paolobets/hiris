@@ -159,7 +159,7 @@ window.HirisDashboard = (function () {
      Quindi un elenco vuoto è prova di «controllato, niente da segnalare»
      SOLO se la lettura corrispondente è avvenuta. Senza questa riga la
      pagina, su una casa mai letta, affermava quattro volte «tutto a posto»
-     accanto a «non ho ancora guardato» -- ed è lo stato che `server.py:723-733`
+     accanto a «non ho ancora guardato» -- ed è lo stato che `startup.py::_on_startup`
      dichiara per iscritto come ATTESO (un Home Assistant non ancora pronto
      all'avvio), non un ramo di difesa.
 

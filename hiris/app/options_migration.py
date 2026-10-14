@@ -178,7 +178,7 @@ def _initial_chain(credentials: dict) -> list[str]:
 def seed_at_startup(app, data_dir: str, credentials: dict) -> None:
     """Le due semine dell'avvio, nell'ordine: la catena, poi il modello del
     piano. Ognuna guarda il SUO segno e si salva da se', e l'archivio in
-    memoria (`app["models_config"]`) si rilegge dopo ciascuna: fondere le due
+    memoria (`app[MODELS_CONFIG_KEY]`) si rilegge dopo ciascuna: fondere le due
     in una scrittura sola le renderebbe una migrazione sola che puo' trovarsi
     a meta', che e' cio' che i segni distinti esistono per evitare.
 

@@ -548,7 +548,7 @@ class _RegistroFinto:
 
 class _RegistroVuoto:
     """Il doppio del registro PRESENTE ma mai caricato da Home Assistant --
-    lo stato reale di `app["service_registry"]` fra l'avvio e la prima
+    lo stato reale di `app[SERVICE_REGISTRY_KEY]` fra l'avvio e la prima
     `ensure_fresh()`. Solo `domains()`: e' l'UNICO metodo che
     `_verify_now` deve poter chiamare su un registro in questo stato, prima
     di rifiutare -- se ne chiamasse un altro (`service()`, `services_for()`)

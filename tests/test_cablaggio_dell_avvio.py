@@ -150,7 +150,7 @@ async def test_knowledge_opens_before_the_entity_cache(startup_steps):
     dichiarato, e si guarda come tale.
 
     Mutazione ESEGUITA: `_open_knowledge(app, data_dir)` spostata sotto
-    `app["entity_cache"] = entity_cache` -- rossa."""
+    `app[ENTITY_CACHE_KEY] = entity_cache` -- rossa."""
     assert _first(startup_steps, "knowledge") < _first(startup_steps, "entity_cache")
 
 
@@ -160,7 +160,7 @@ async def test_conditions_are_rebuilt_before_the_first_round(startup_steps):
     adesso, e l'oggetto «guasto» perderebbe la sua unica informazione utile:
     da quando dura. Quindi PRIMA del primo giro delle condizioni.
 
-    Mutazione ESEGUITA: `app["watcher"].rebuild_conditions()` spostata dopo il
+    Mutazione ESEGUITA: `app[WATCHER_KEY].rebuild_conditions()` spostata dopo il
     primo `watch_system_conditions` -- rossa. Tolta del tutto -- rossa."""
     assert (_first(startup_steps, "rebuild_conditions")
             < _first(startup_steps, "watch_system_conditions"))
@@ -179,7 +179,7 @@ async def test_the_startup_repair_finds_its_collaborators_already_built(startup_
 
     Mutazione ESEGUITA: `_open_knowledge(app, data_dir)` spostata sotto la
     riparazione -- rossa («knowledge» non c'e'). Mutazione ESEGUITA: la
-    riparazione spostata sopra `app["home_space_store"] = ...` -- rossa."""
+    riparazione spostata sopra `app[HOME_SPACE_KEY] = ...` -- rossa."""
     position = _first(startup_steps, "reaggregate")
     assert _first(startup_steps, "rebuild_conditions") < position
     present = startup_steps[position][1]
@@ -193,7 +193,7 @@ async def test_unfinished_constructions_heal_before_the_heartbeat(startup_steps)
     e toccare una riga che `risana()` avrebbe dovuto dichiarare incerta --
     riaprendo lo stato fantasma che il risanamento chiude.
 
-    Mutazione ESEGUITA: il blocco `app["constructions"].risana(...)` spostato
+    Mutazione ESEGUITA: il blocco `app[CONSTRUCTIONS_KEY].risana(...)` spostato
     dopo `scheduler.add_job(_battito, ...)` -- rossa."""
     assert (_first(startup_steps, "constructions_risana")
             < _first(startup_steps, "add_job:hiris_keeper_heartbeat"))
@@ -242,7 +242,7 @@ async def test_the_workshop_holds_the_app_store_journal_and_house(started_app):
     e la cronaca: QUELLI dell'app, non altri. Una cronaca costruita dopo
     l'officina la lascerebbe senza riga di registro, in silenzio.
 
-    Mutazione ESEGUITA: `Workshop(ha_client, app["constructions"],
+    Mutazione ESEGUITA: `Workshop(ha_client, app[CONSTRUCTIONS_KEY],
     Journal(...))` (una cronaca sua) -- rossa."""
     workshop = started_app[WORKSHOP_KEY]
     assert isinstance(workshop, Workshop)
@@ -258,7 +258,7 @@ async def test_the_workshop_does_not_hold_the_service_door(started_app):
     diversi che non devono confondersi. La prova vecchia confrontava il testo
     INTERO della chiamata; questa guarda cio' che l'officina tiene davvero.
 
-    Mutazione ESEGUITA: passato `app["action_actuator"]` all'officina come
+    Mutazione ESEGUITA: passato `app[ACTUATOR_KEY]` all'officina come
     attributo -- rossa."""
     actuator = started_app[ACTUATOR_KEY]
     held = vars(started_app[WORKSHOP_KEY]).values()
@@ -281,7 +281,7 @@ async def test_the_watcher_holds_its_store_and_the_knowledge(started_app):
     attributi tenere (spec §5.4). Nasce dopo tutti e due: se nascesse prima,
     l'avvio prenderebbe `KeyError`.
 
-    Mutazione ESEGUITA: `app["watcher"] = Watcher(...)` spostata sopra
+    Mutazione ESEGUITA: `app[WATCHER_KEY] = Watcher(...)` spostata sopra
     `_open_knowledge(app, data_dir)` -- rossa (l'avvio solleva `KeyError`)."""
     watcher = started_app[WATCHER_KEY]
     assert isinstance(watcher, Watcher)
@@ -297,7 +297,7 @@ async def test_the_service_door_holds_the_state_mirror(started_app):
     azione con «non vedo lo stato di questa casa» (guardia (b) di
     `action/actuator.py`) -- per sempre, e senza che nulla sollevi.
 
-    Mutazione ESEGUITA: la porta costruita sopra `app["entity_cache"] = ...` --
+    Mutazione ESEGUITA: la porta costruita sopra `app[ENTITY_CACHE_KEY] = ...` --
     rossa (`_cache` e' `None`)."""
     actuator = started_app[ACTUATOR_KEY]
     assert isinstance(actuator, ActionActuator)
@@ -309,7 +309,7 @@ async def test_the_service_registry_is_the_one_the_door_uses(started_app):
     """Senza il registro nell'app HIRIS resta cieco su cio' che Home Assistant
     sa fare: deve esserci, ed essere lo stesso che la porta consulta.
 
-    Mutazione ESEGUITA: tolto `app["service_registry"] = ServiceRegistry()` --
+    Mutazione ESEGUITA: tolto `app[SERVICE_REGISTRY_KEY] = ServiceRegistry()` --
     rossa (l'avvio solleva `KeyError`)."""
     registry = started_app[SERVICE_REGISTRY_KEY]
     assert isinstance(registry, ServiceRegistry)
@@ -324,7 +324,7 @@ async def test_backfill_quiet_is_born_at_startup(started_app):
     `test_mind_wiring.py::test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata`;
     qui si prova che l'avvio la crea.
 
-    Mutazione ESEGUITA: tolta `app["backfill_quiet"] = {}` da `_on_startup` --
+    Mutazione ESEGUITA: tolta `app[BACKFILL_QUIET_KEY] = {}` da `_on_startup` --
     rossa."""
     assert isinstance(started_app[BACKFILL_QUIET_KEY], dict)
 
@@ -518,11 +518,11 @@ async def test_the_five_construction_routes_are_registered():
 
 async def test_the_chain_can_be_recomputed_without_any_provider(started_app):
     """Il ramo senza provider e' il PRIMO gesto di chi installa HIRIS: senza
-    `app["recompute_chain"]` la prima PUT della pagina Modelli solleverebbe
+    `app[RECOMPUTE_CHAIN_KEY]` la prima PUT della pagina Modelli solleverebbe
     `TypeError: 'NoneType' object is not callable`. E la catena dev'essere
     vuota: senza backend non risponde nessuno.
 
-    Mutazione ESEGUITA: `app["recompute_chain"] = ...` spostata dentro il ramo
+    Mutazione ESEGUITA: `app[RECOMPUTE_CHAIN_KEY] = ...` spostata dentro il ramo
     con i provider -- rossa (`KeyError`)."""
     assert started_app[LLM_ROUTER_KEY] is None, "la casa sintetica non ha provider"
     started_app[RECOMPUTE_CHAIN_KEY]()
@@ -537,7 +537,7 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
 
     Mutazione ESEGUITA: tolta la chiamata `_rimetti_in_vigore()` dall'avvio --
     rossa (nessun ricalcolo all'avvio). Mutazione ESEGUITA:
-    `app["recompute_chain"] = ...` spostata dentro il ramo `else` -- rossa."""
+    `app[RECOMPUTE_CHAIN_KEY] = ...` spostata dentro il ramo `else` -- rossa."""
     monkeypatch.setenv("CLAUDE_API_KEY", "sk-prova-cablaggio")
     recomputed = []
     real = bridge_governor._recompute_chain
@@ -581,8 +581,8 @@ async def test_every_store_is_closed_after_shutdown(tmp_path):
     guarda, per ogni connessione che l'app tiene comunque sia nata, che non
     si possa piu' usare.
 
-    Mutazione ESEGUITA: tolta `app["observations"].close()` da `_on_cleanup` --
-    rossa. Tolta `app["constructions"].close()` -- rossa."""
+    Mutazione ESEGUITA: tolta `app[OBSERVATIONS_KEY].close()` da `_on_cleanup` --
+    rossa. Tolta `app[CONSTRUCTIONS_KEY].close()` -- rossa."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                         RecordingHouse) as app:
         connections = _connections(app)

@@ -1,7 +1,7 @@
 """La voce di menu di HIRIS e l'opzione che la governa (spec 2026-09-27 §2).
 
 L'opzione `non_admin_access` e' l'unica fonte della scelta: si legge UNA volta
-in `create_app` e da li' in poi vive in `app["non_admin_access"]`. All'avvio
+in `create_app` e da li' in poi vive in `app[ACCESS_FLAG_KEY]`. All'avvio
 HIRIS chiede al Supervisor il proprio slug, scrive in Home Assistant l'override
 della sua voce di menu (`frontend/update_panel`) e rilegge `get_panels` per
 dire nel registro lo stato VERO della voce.
@@ -604,7 +604,7 @@ async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog
 
 
 def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
-    """`start_installation` legge `app["ha_client"]`, che nasce in `_on_startup`:
+    """`start_installation` legge `app[HA_CLIENT_KEY]`, che nasce in `_on_startup`:
     l'ordine dei due e' un fatto, e si pinna."""
     app = server.create_app()
     hooks = list(app.on_startup)

@@ -1017,7 +1017,7 @@ async def test_senza_lo_specchio_la_rotta_risponde_LO_STESSO():
     """L'add-on puo' essere partito a meta'. Un 500 qui toglierebbe anche i
     guasti, che il nome ce l'hanno per conto loro.
 
-    Mutazione ESEGUITA: `app["entity_cache"]` invece di `.get` -- rossa.
+    Mutazione ESEGUITA: `app[ENTITY_CACHE_KEY]` invece di `.get` -- rossa.
     """
     app = {**live_values(),
            OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
@@ -1034,7 +1034,7 @@ async def test_senza_l_istantanea_dei_GIUDIZI_il_primo_piano_porta_solo_il_siste
     episodi delle entita' non si possono giudicare, e le condizioni di sistema
     restano perche' il loro livello lo scrive Home Assistant.
 
-    Mutazione ESEGUITA: `app["type_judgments"]` invece di `.get` -- rossa
+    Mutazione ESEGUITA: `app[TYPE_JUDGMENTS_KEY]` invece di `.get` -- rossa
     (KeyError, e la pagina perde anche i guasti).
     """
     app = {**live_values(),

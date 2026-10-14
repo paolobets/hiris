@@ -216,7 +216,7 @@ def muted_recipes(house, recipes: Mapping[str, dict]) -> dict[str, NotComputable
     questi tre stati e' la parola della fonte del Task 8. La frase dice il
     perche' di ognuna (`silence(...).reason`). Le serie di queste ricette
     non si chiedono: chi chiama le toglie dal giro
-    (`server._report_ingredients`).
+    (`day_report._report_ingredients`).
 
     **Si chiede alla casa, non si legge l'anagrafe**: `House.source` per id."""
     muted = {}
@@ -372,7 +372,7 @@ class Recipe:
 
         Chi deve leggere le serie deve sapere quali prima di cominciare: e'
         cio' che permette **una lettura sola** di rete per tutta la ricetta
-        invece di una per passo: `server._report_ingredients` raccoglie le
+        invece di una per passo: `day_report._report_ingredients` raccoglie le
         entita' di tutte le ricette e chiede le statistiche orarie una volta.
         """
         nomi: set[str] = set()

@@ -330,7 +330,7 @@ def test_is_fixable_assente_non_e_un_no():
 # --------------------------------------------------------------------------
 
 def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
-    """La catena intera: `app["ha_problems"]` -> `compose_briefing` ->
+    """La catena intera: `app[HA_PROBLEMS_KEY]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
     app = {**live_values(), HA_PROBLEMS_KEY: LiveValue({"problemi": [

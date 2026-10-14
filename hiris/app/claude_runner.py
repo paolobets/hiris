@@ -818,7 +818,7 @@ class ClaudeRunner:
         # piu' un valore ricevuto alla costruzione. Era la meta' nascosta del
         # difetto peggiore trovato dal progetto: lo STESSO valore aveva effetto
         # immediato sul ponte (`api/handlers_chat._enqueue_chat_job` rilegge
-        # `app["models_config"]` a ogni turno) e solo al riavvio qui, e la
+        # `app[MODELS_CONFIG_KEY]` a ogni turno) e solo al riavvio qui, e la
         # pagina ne dichiarava uno solo -- sbagliata, non imprecisa
         # (invariante 4: «un valore si applica in un modo solo»).
         # Adesso e' una LETTURA, e la didascalia non serve piu': l'assenza di

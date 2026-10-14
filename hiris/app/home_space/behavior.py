@@ -154,7 +154,7 @@ async def reread(client, mirror, home_space, ha_folder: Path | None) -> None:
     if failure is not None:
         # Uno specchio che non si legge non e' una casa senza automazioni: la
         # rilettura si ferma e la replica resta quella di prima -- chi chiama
-        # (`server.watch_behavior`) lo registra, e la replica lo dice.
+        # (`rounds.behavior_reader`) lo registra, e la replica lo dice.
         home_space.keep_behavior(failure["error"])
         raise RuntimeError(failure["error"])
     behavior_states = [s for s in mirror.all_states()

@@ -129,7 +129,7 @@ class JudgmentNotInEffect(RuntimeError):
 def build_judgments(knowledge, *, unavailable_reason: str | None = None) -> tuple[TypeJudgments,
                                                                                    dict]:
     """`unavailable_reason` vale solo senza sapere: e' l'errore vero con cui
-    l'archivio non si e' aperto (`server._open_knowledge`), e il `perche` lo
+    l'archivio non si e' aperto (`startup._open_knowledge`), e il `perche` lo
     porta invece del solo «non e' disponibile» (Task 7b, 17/09/2026)."""
     if knowledge is None:
         why = "il sapere non e' disponibile"
@@ -334,7 +334,7 @@ def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudg
 def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: str | None,
                    author_name: str, said_by: str, now=_time.time) -> dict:
     """**La porta unica** (spec §4): valida, scrive, ricostruisce l'istantanea e
-    sostituisce INSIEME `app["type_judgments"]` e `app["type_judgments_status"]`
+    sostituisce INSIEME `app[TYPE_JUDGMENTS_KEY]` e `app[TYPE_JUDGMENTS_STATUS_KEY]`
     -- la correzione vale subito (spec §0, decisione 2). Torna `{"riga",
     "istantanea"}`: la riga scritta e lo stato dell'istantanea intero
     (`_status`), lo stesso oggetto di `/api/health`.

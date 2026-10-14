@@ -209,7 +209,7 @@ async def test_da_sapere_subito_compare_in_giudizi_e_la_rotta_lo_scrive(tmp_path
     **`giudizi` viene dall'ARCHIVIO, non dall'istantanea**: `handle_knowledge`
     chiama `judgment_listing(sapere)`, che legge `knowledge.judgment_rows()`
     (`field IN (...)` su `JUDGMENT_FIELD_NAMES`, `knowledge.py:735`) -- non
-    `app["type_judgments"]`. Questa prova non sorveglia la ricostruzione
+    `app[TYPE_JUDGMENTS_KEY]`. Questa prova non sorveglia la ricostruzione
     dell'istantanea (per quella vedi `test_scrivere_giudizio_200_impronta_nuova`
     piu' sopra): sorveglia che (1) il campo passi ancora dal filtro
     dell'archivio come gli altri e (2) che la `POST` scriva davvero

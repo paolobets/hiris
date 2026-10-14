@@ -90,16 +90,16 @@ def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
 # (`tests/_avvio.py::started_with`) su un archivio e su credenziali che la
 # prova prepara, e si guarda la catena che l'avvio CONSEGNA al router
 # (`LLMRouter(model_chain=...)`, registrata da una spia che avvolge la classe
-# vera) e quella che pubblica in `app["model_chain"]`.
+# vera) e quella che pubblica in `app[MODEL_CHAIN_KEY]`.
 #
-# Perche' anche la consegna al router e non solo `app["model_chain"]`: poche
+# Perche' anche la consegna al router e non solo `app[MODEL_CHAIN_KEY]`: poche
 # righe sotto, l'avvio chiama `_rimetti_in_vigore()` -> `_recompute_chain`, che
-# RISCRIVE `app["model_chain"]` e `router._chat_policy` con la stessa regola
-# riletta dal router. Guardando solo `app["model_chain"]`, un difetto del
+# RISCRIVE `app[MODEL_CHAIN_KEY]` e `router._chat_policy` con la stessa regola
+# riletta dal router. Guardando solo `app[MODEL_CHAIN_KEY]`, un difetto del
 # blocco dell'avvio sarebbe coperto dal ricalcolo, e la prova resterebbe verde.
 #
 # E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
-# `app["model_chain"]` aveva DUE scritture, `list(_chain)` dentro il ramo
+# `app[MODEL_CHAIN_KEY]` aveva DUE scritture, `list(_chain)` dentro il ramo
 # dei runner e `[]` nel suo `else`, e la seconda non era coperta da niente.
 # Dalla Tappa 7 T9 (M-30) la scrittura e' una sola, quella di `_recompute_chain`.
 # ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ async def test_l_avvio_lascia_vuota_una_catena_vuota(tmp_path):
 
 @pytest.mark.asyncio
 async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
-    """`app["model_chain"]` e' pubblicata alla pagina; la catena del router e'
+    """`app[MODEL_CHAIN_KEY]` e' pubblicata alla pagina; la catena del router e'
     un'altra lista. Se fossero lo STESSO oggetto, una modifica dell'una
     toccherebbe l'altro -- e la pagina e il router divergerebbero senza che
     nessuno abbia scritto una seconda regola.
@@ -185,8 +185,8 @@ async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
     (`_recompute_chain`), che riscrive la pubblicazione del blocco dell'avvio.
 
     Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
-    `router._chat_policy = list(chain)` -> `= app["model_chain"]` -- rossa.
-    La scrittura di `app["model_chain"]` nel blocco dell'avvio, che il
+    `router._chat_policy = list(chain)` -> `= app[MODEL_CHAIN_KEY]` -- rossa.
+    La scrittura di `app[MODEL_CHAIN_KEY]` nel blocco dell'avvio, che il
     ricalcolo riscriveva poche righe dopo (una mutazione su di lei restava
     verde: in produzione quella copia non arrivava a nessuno), e' uscita alla
     Tappa 7 T9 (voce M-30)."""
@@ -290,7 +290,7 @@ async def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(tmp
 # ---------------------------------------------------------------------------
 # LA SCRITTURA A CALDO (Task 10): `_recompute_chain`
 #
-# Fino alla 2.4.1 `handle_save_models_config` aggiornava `app["models_config"]`
+# Fino alla 2.4.1 `handle_save_models_config` aggiornava `app[MODELS_CONFIG_KEY]`
 # e basta: la catena del router si costruiva all'avvio, quindi un riordino
 # salvato non cambiava il turno successivo e -- peggio -- la pagina, che
 # descrive il RUNTIME perche' e' la sola misura che ha, alla ricarica

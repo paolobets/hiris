@@ -13,7 +13,7 @@ letto (A-02).
 
 Adesso: `HAClient.read_registry(nome)` legge un registro solo, dalla stessa
 tabella `_REGISTRIES`, con la busta d'errore; `read_registries` resta
-all'anagrafe; il giro delle condizioni legge i problemi da `app["ha_problems"]`
+all'anagrafe; il giro delle condizioni legge i problemi da `app[HA_PROBLEMS_KEY]`
 (A-02). Le integrazioni, che il Task 5 faceva leggere al giro e consegnare
 all'anagrafe (A-11), dal Task 7 arrivano per evento: l'iscrizione
 `config_entries/subscribe` (`integration_follower`).
@@ -224,7 +224,7 @@ def test_un_cambio_annunciato_arriva_all_anagrafe_senza_aspettare_un_giro(tmp_pa
     changed = {**synthetic_inputs()["registries"]["integrazioni"][0], "state": "setup_error"}
     integration_follower(app)([{"type": "updated", "entry": changed}])
     # Lo stesso ascoltatore che l'avvio iscrive: il suo stato e' l'anagrafe e
-    # `app["ha_integrations"]`, non una memoria sua. Il secondo ascoltatore
+    # `app[HA_INTEGRATIONS_KEY]`, non una memoria sua. Il secondo ascoltatore
     # qui sopra parte vuoto, e un cambio solo non e' l'elenco intero.
     states = {row["entry_id"]: row["stato"] for row in store.read()["integrazioni"]}
     assert states == {"voce_uno": "setup_error", "voce_due": "loaded"}

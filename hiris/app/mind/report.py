@@ -69,7 +69,7 @@ from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
 
-#: Quando si scrive il resoconto di ieri: l'aggregazione notturna (`server.py`,
+#: Quando si scrive il resoconto di ieri: l'aggregazione notturna (`startup.py`,
 #: lavoro `hiris_mind_aggregation`) gira a quest'ora, nel fuso della casa. Le
 #: 00:20 e non la mezzanotte: aggregare a mezzanotte esatta prenderebbe un
 #: giorno ancora aperto. Scritte qui e non nella chiamata allo schedulatore
@@ -78,13 +78,13 @@ logger = logging.getLogger(__name__)
 NIGHTLY_HOUR = 0
 NIGHTLY_MINUTE = 20
 
-#: Ogni quanto il recupero (`server.backfill_one_report`, lavoro
+#: Ogni quanto il recupero (`day_report.backfill_one_report`, lavoro
 #: `hiris_mind_backfill`) scrive, o rifa', un giorno di resoconto. Anche questa
 #: la dice una pagina: «Cosa ho capito» spiega quanto costa rifare la cronaca,
 #: e la riceve da `GET /api/mind/knowledge`.
 BACKFILL_EVERY_MINUTES = 5
 
-#: Ogni quanto gira l'analista (`server.py`, lavoro `hiris_mind_analyst`). La
+#: Ogni quanto gira l'analista (`startup.py`, lavoro `hiris_mind_analyst`). La
 #: dice la pagina «Cosa fare» quando un giorno non e' ancora analizzato, e la
 #: riceve dal 404 di `GET /api/mind/analysis` (C-11, Chiusura).
 ANALYST_EVERY_MINUTES = 60

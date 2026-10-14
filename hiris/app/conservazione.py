@@ -26,7 +26,7 @@ conversazione bloccata sul 409.
 **I residui** (`RESIDUI_DISMESSI`, `cancella_residui`, `decidi_vault`): gli
 archivi dismessi che l'avvio cancella.
 
-Spostati da `server.py` l'08/10/2026; `server.py` li iscrive allo
+Spostati da `server.py` l'08/10/2026; `startup.py` li iscrive allo
 schedulatore, o li chiama all'avvio, e basta.
 """
 from __future__ import annotations
@@ -287,7 +287,7 @@ def decidi_vault(data_dir: str) -> None:
 async def reasoning_sweep(app) -> None:
     reasoning_queue = app[REASONING_QUEUE_KEY]
     # **Nessun interruttore** (D5, G-11, 08/10/2026). Fino a qui la spazzata
-    # leggeva `app["bridge_active"]` e a ponte spento non faceva niente: i
+    # leggeva `app[BRIDGE_ACTIVE_KEY]` e a ponte spento non faceva niente: i
     # turni rimasti in coda non scadevano, un ripiego schiantato teneva la
     # conversazione sul 409, e la coda non si potava mai. Spazzare cio' che e'
     # gia' in coda non accoda niente: il fail-safe «mai accodare in una coda

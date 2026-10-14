@@ -189,9 +189,9 @@ async def handle_usage(request: web.Request) -> web.Response:
     # sembrerebbe una perdita di dati invece di un cambio di rappresentazione.
     input_tokens = (totals["token_in"] + totals["cache_lettura"]
                 + totals["cache_scrittura"])
-    # Il fuso della casa da `_house_timezone` -- l'aiutante di `server.py`,
-    # importato li' dentro per non chiudere il ciclo (riparazione-impoverisce-
-    # brief.md, appendice punto 6). Prima c'era una quarta copia a mano della
+    # Il fuso della casa da `_house_timezone`, qui sopra, che lo chiede a
+    # `historian.house_timezone` (riparazione-impoverisce-brief.md, appendice
+    # punto 6). Prima c'era una quarta copia a mano della
     # stessa domanda («dov'e' il fuso della casa?»), con in piu' un primo ramo
     # morto (`app["fuso_casa"]`, appendice punto 7): nessun codice di
     # produzione scriveva quella chiave, la riempiva solo la finta di un test

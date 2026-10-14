@@ -33,7 +33,7 @@ stati «non lo so» e le forme dell'assenza di stato
 (`type_vocabulary.unknown_states()`, `type_vocabulary.ABSENT_STATE_FORMS`)
 non sono il riposo di nessuno: dal 06/10/2026 sono le VOCI d'assenza della
 fonte (`_absences`, D5 «raccolte»). L'istantanea arriva come parametro
-`judgments=`: in produzione e' `app["type_judgments"]`, il predefinito
+`judgments=`: in produzione e' `app[TYPE_JUDGMENTS_KEY]`, il predefinito
 `REPO_JUDGMENTS` e' il solo seme.
 
 **Una frase che questo docstring ha portato fino a oggi era falsa**, e vale la
@@ -65,7 +65,7 @@ from .store import READING_RETENTION_S
 # `aggregate_day` e `build_episodes` sono SINCRONE: non fanno nessuna lettura
 # di rete. Cio' che viene da Home Assistant -- le serie delle ricette, i nomi
 # dei dispositivi -- arriva gia' letto dal chiamante
-# (`server.py::_report_ingredients`), una lettura per giro e non una per
+# (`mind/day_report.py::_report_ingredients`), una lettura per giro e non una per
 # episodio. Renderle `async` "per il futuro" sarebbe generalita' speculativa.
 
 #: I cinque prefissi con cui un `protagonista` NON e' un'entita' di Home
@@ -108,7 +108,7 @@ DISCONNECTION_SUBJECT = NOT_ENTITY_PREFIXES[4] + "home_assistant"
 #: all'impronta dei giudizi in `giudizio` (`chronicle_mark`). L'impronta dice
 #: con quali giudizi e' nata una cronaca; questa, con quale codice. Si alza
 #: quando cambia cio' che `build_episodes` scrive a parita' di grezzo e di
-#: giudizi, e il recupero (`server.py::backfill_one_report`) rifa' allora le
+#: giudizi, e il recupero (`mind/day_report.py::backfill_one_report`) rifa' allora le
 #: cronache scritte prima, finche' il loro grezzo c'e' -- lo stesso meccanismo
 #: dell'impronta, nessuno nuovo.
 #:
@@ -278,7 +278,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
     si possa costruire senza le misure (spec 2026-09-16 §1, misura 10).
 
     **Il genere e il riposo vengono da `judgments`** (spec §5): in produzione
-    l'istantanea viva, `app["type_judgments"]`; il predefinito `REPO_JUDGMENTS`
+    l'istantanea viva, `app[TYPE_JUDGMENTS_KEY]`; il predefinito `REPO_JUDGMENTS`
     e' il solo seme del repo. Un episodio di `funzionamento`, `sicurezza` o
     `presenza` e' aperto quando lo stato non e' a riposo per il suo soggetto
     (`_is_on`); un `guasto` apre su qualunque condizione e chiude su `chiuso`.
@@ -974,7 +974,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     (`store.objective_at`), non quello di oggi.
 
     **Sincrona, nessuna lettura di rete**: tutto cio' che viene da Home
-    Assistant l'ha gia' letto il chiamante (`server.py::_report_ingredients`).
+    Assistant l'ha gia' letto il chiamante
+    (`mind/day_report.py::_report_ingredients`).
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Il
     resoconto si costruisce tutto in memoria e si consegna in una scrittura
@@ -983,8 +984,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     meta'. E' esattamente il difetto gemello che il vecchio «costruire» ha gia'
     pagato (accodava invece di sostituire, e le ancore YAML lo nascondevano).
 
-    **In produzione `judgments` e' `app["type_judgments"]`**, l'istantanea viva
-    (`server.py::write_day_report`, l'unica strada del resoconto, D-36); il
+    **In produzione `judgments` e' `app[TYPE_JUDGMENTS_KEY]`**, l'istantanea viva
+    (`mind/day_report.py::write_day_report`, l'unica strada del resoconto, D-36); il
     predefinito `REPO_JUDGMENTS` e' il solo seme, per le prove.
 
     **Il bilancio non entra piu' qui, e non produce un genere `"bilancio"`**
@@ -1084,7 +1085,7 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     resta cosi' anche sotto l'impronta nuova. Le voci che cominciano DENTRO il
     giorno non si tengono mai: per questo il recupero non rifa' un giorno che
     puo' aver perso righe per la potatura -- cioe' che comincia prima del taglio
-    (`server.py::backfill_one_report`), non un giorno che comincia prima della
+    (`mind/day_report.py::backfill_one_report`), non un giorno che comincia prima della
     riga piu' vecchia.
 
     **Il residuo che le due condizioni non coprono: riposo cambiato E riga
@@ -1098,7 +1099,7 @@ def rebuild_chronicle(*, store, day: str, timezone: str | None,
     22 giorni di ritenzione (`mind/store.READING_RETENTION_S`), mai.
 
     **Un giorno senza resoconto non si tocca**: farlo intero, con le misure,
-    e' lavoro del recupero (`server.py::backfill_one_report`), non di questa
+    e' lavoro del recupero (`mind/day_report.py::backfill_one_report`), non di questa
     funzione.
     """
     report = store.report(day)

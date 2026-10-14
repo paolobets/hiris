@@ -20,7 +20,7 @@ from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._runner_finto import RunnerFinto
 
 # Reuse the aiohttp test-app fixture/factory from test_api.py (creates the real
-# app via create_app(), mocks HA + claude_runner, sets app["data_dir"] to a
+# app via create_app(), mocks HA + claude_runner, sets app[DATA_DIR_KEY] to a
 # tmp_path). Importing the fixture makes pytest pick it up in this module too.
 from tests.test_api import client  # noqa: F401
 
@@ -104,7 +104,7 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "ordine_fisso", "preset", "scrivibili",
     }
     # `ponte_attivo` E' USCITO con la versione B, ed era l'ULTIMO residuo
-    # dell'invariante 1 di tutto il payload: `app["bridge_active"]`, cioe'
+    # dell'invariante 1 di tutto il payload: `app[BRIDGE_ACTIVE_KEY]`, cioe'
     # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
     # `ponte["attivo"]`. Non era un doppione esatto -- poteva dire `true` con
     # l'archivio a `false` -- e quindi la pagina riceveva due risposte alla
@@ -270,7 +270,7 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
 async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(client, monkeypatch):
     """Il ponte si accende SCRIVENDO L'ARCHIVIO, non un valore in memoria.
 
-    Fino alla 2.5.0 questo test faceva `client.app["bridge_active"] = True`, e
+    Fino alla 2.5.0 questo test faceva `client.app[BRIDGE_ACTIVE_KEY] = True`, e
     andava bene perche' il payload pubblicava quel valore. Dalla versione B il
     ponte ha una casa sola (`ponte.attivo`), e una prova che accendesse il
     ponte in un posto che il prodotto non ha piu' proverebbe uno stato
@@ -467,7 +467,7 @@ async def test_put_models_config_persists_and_hot_updates(client):
     """fetta E5 Task 7: il soggetto storico di questo test era brain_model
     (uscito -- vedi test_get_models_config_defaults), ma il comportamento che
     verifica -- PUT persiste E il successivo GET riflette l'hot-update di
-    request.app['models_config'] -- e' vivo e non coperto altrove: si sposta
+    request.app[MODELS_CONFIG_KEY] -- e' vivo e non coperto altrove: si sposta
     su chain_order invece di sparire."""
     resp = await client.put("/api/models/config", json={"chain_order": ["claude", "openai"]})
     assert resp.status == 200
@@ -760,7 +760,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
-    """Non «il primo di chain_order»: il primo di `app["model_chain"]`,
+    """Non «il primo di chain_order»: il primo di `app[MODEL_CHAIN_KEY]`,
     cioè la lista che il router prova davvero."""
     client.app[MODEL_CHAIN_KEY].set(["openrouter", "claude"])
     resp = await client.get("/api/models/config")
@@ -850,10 +850,10 @@ async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(claude_con_elenc
 # ---------------------------------------------------------------------------
 # LA PUT RIMETTE IN VIGORE (Task 10)
 #
-# Fino alla 2.4.1 questa rotta aggiornava `app["models_config"]` e basta. La
+# Fino alla 2.4.1 questa rotta aggiornava `app[MODELS_CONFIG_KEY]` e basta. La
 # catena del router si costruiva all'avvio, quindi un riordino salvato non
 # cambiava il turno successivo; e siccome il GET qui sopra descrive il RUNTIME
-# (`app["model_chain"]`, che e' la sola misura che ha), ricaricando la
+# (`app[MODEL_CHAIN_KEY]`, che e' la sola misura che ha), ricaricando la
 # pagina si rivedeva l'ordine di prima e il salvataggio sembrava perso. C'era
 # una riga in pagina che lo confessava: e' uscita con il difetto.
 # ---------------------------------------------------------------------------
@@ -861,7 +861,7 @@ async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(claude_con_elenc
 
 @pytest.mark.asyncio
 async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
-    """L'ordine conta: `ricalcola_catena` rilegge `app["models_config"]`, quindi
+    """L'ordine conta: `ricalcola_catena` rilegge `app[MODELS_CONFIG_KEY]`, quindi
     chiamarla prima dell'aggiornamento rimetterebbe in vigore l'archivio
     VECCHIO -- un salvataggio che si applica con un giro di ritardo, cioe' un
     difetto peggiore di quello che sostituisce."""
@@ -877,7 +877,7 @@ async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
 
 @pytest.mark.asyncio
 async def test_la_put_non_esplode_su_un_installazione_senza_provider(client):
-    """Il primo gesto di chi installa HIRIS. `app["recompute_chain"]` puo'
+    """Il primo gesto di chi installa HIRIS. `app[RECOMPUTE_CHAIN_KEY]` puo'
     mancare (nessun `_on_startup`, o un'app costruita da una fixture), e
     l'assenza del runtime da rimettere in vigore non e' un errore: e' 200."""
     assert "ricalcola_catena" not in client.app
@@ -890,7 +890,7 @@ async def test_la_put_non_esplode_su_un_installazione_senza_provider(client):
 async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     """La promessa dell'utente, dal suo lato: si riordina, si ricarica, e si
     rivede quello che si e' appena fatto. E' la stessa lista che il router usa
-    per il prossimo messaggio -- il GET la legge da `app["model_chain"]`,
+    per il prossimo messaggio -- il GET la legge da `app[MODEL_CHAIN_KEY]`,
     che il ricalcolo riscrive.
 
     Qui si usa la funzione VERA (`bridge_governor._recompute_chain`), non una finta:
@@ -947,7 +947,7 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
 # ---------------------------------------------------------------------------
 # Cio' che il traffico vero ha gia' prodotto (Task 11)
 #
-# La rotta legge `app["occurrence_registry"]`, che nasce in `create_app` e viene
+# La rotta legge `app[OCCURRENCES_KEY]`, che nasce in `create_app` e viene
 # scritto dal ciclo di ripiego del router. Nessuna sonda: la pagina riferisce
 # osservazioni, non ne provoca -- sondare cinque provider a ogni apertura
 # costerebbe denaro e quota (progetto §11.2).
@@ -1076,7 +1076,7 @@ async def test_l_avvio_consegna_al_router_IL_registro_dell_app(tmp_path):
     router tiene lo STESSO registro che l'app pubblica alla pagina -- non
     «un registro», che la vecchia prova avrebbe lasciato passare.
 
-    Mutazione ESEGUITA (03/10/2026): tolto `registry=app["occurrence_registry"]`
+    Mutazione ESEGUITA (03/10/2026): tolto `registry=app[OCCURRENCES_KEY]`
     dalla costruzione del router -- rossa (`None is <OccurrenceRegistry>`)."""
     from tests._avvio import credential_environment, started_with
 

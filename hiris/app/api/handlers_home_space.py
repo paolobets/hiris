@@ -217,7 +217,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         "piani": _tree(house, translations, zone),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
-        # (`server.tree_comparison_round`, verdetto in
+        # (`rounds.tree_comparison_round`, verdetto in
         # `topology.compare_with_home_assistant`).
         #
         # Esce ANCHE da qui, e non solo nel nucleo, per la stessa ragione del
@@ -399,9 +399,9 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
-    # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app["ha_problems"]`,
+    # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app[HA_PROBLEMS_KEY]`,
     # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
-    # `server.reread_ha_problems`, mai una tabella. La ragione e' scritta per
+    # `rounds.reread_ha_problems`, mai una tabella. La ragione e' scritta per
     # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
     # riferimento (vedi `home_space/topology.reference_frame`): un problema e'
     # momentaneo, l'utente lo ripara con un clic in Home Assistant, e un
@@ -415,7 +415,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     # o in una lista vuota affermerebbe che la casa non ha guasti.
     problems = app[HA_PROBLEMS_KEY].value
 
-    # L'esito dell'ultimo giro di verifica dell'albero (`server.tree_comparison_round`).
+    # L'esito dell'ultimo giro di verifica dell'albero (`rounds.tree_comparison_round`).
     #
     # Vive dove vivono i problemi, in RAM e non in archivio, e per la stessa
     # ragione: un confronto e' momentaneo due volte -- la casa cambia, e la

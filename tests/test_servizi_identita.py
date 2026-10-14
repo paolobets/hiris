@@ -338,7 +338,7 @@ async def test_l_avvio_vero_migra_ogni_archivio_del_soggetto(tmp_path):
 
 def test_l_avvio_apre_l_archivio_e_migra_nello_stesso_gesto(tmp_path):
     """L'avvio chiama `open_services` (la chiamata sta fuori da `server.py`,
-    regola del 06/10/2026): apre l'archivio, lo mette in `app["servizi"]` e
+    regola del 06/10/2026): apre l'archivio, lo mette in `app[SERVICES_KEY]` e
     migra i fili. Mutazione ESEGUITA (07/10/2026): togliere
     `migrate_service_threads(app)` da `open_services` -- rossa, il filo resta
     sotto il nome."""
