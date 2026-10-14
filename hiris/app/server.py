@@ -28,7 +28,7 @@ from .api.handlers_settings import (
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
-from .api.shell import _compute_build_stamp, _security_headers, _serve_shell
+from .api.shell import _STATIC_DIR, _compute_build_stamp, _security_headers, _serve_shell
 from .chat_thread import SyncTurnsInFlight
 from .provider_occurrences import OccurrenceRegistry
 from .startup import _on_cleanup, _on_startup
@@ -54,7 +54,7 @@ def create_app() -> web.Application:
     app["non_admin_access"] = parse_access_flag(
         os.environ.get("HIRIS_NON_ADMIN_ACCESS"))
 
-    static_path = os.path.join(os.path.dirname(__file__), "static")
+    static_path = _STATIC_DIR
     # Build stamp: hash del contenuto del frontend, per verificare in UI/health
     # QUALE build gira davvero (diagnostica cache vs container non ricostruito).
     app["build_stamp"] = _compute_build_stamp(static_path)

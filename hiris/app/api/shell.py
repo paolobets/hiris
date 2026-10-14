@@ -4,7 +4,8 @@ intestazioni di sicurezza di ogni risposta.
 Spostato da `server.py` alla Chiusura dello sprint (F8 passo 5, 14/10/2026),
 con un commit di solo spostamento: `server.py` registra e avvia, non ospita.
 L'unica riga adattata e' la cartella `static/`, che da qui sta un livello
-sopra (`os.path.dirname` due volte invece di una).
+sopra (`os.path.dirname` due volte invece di una). Si calcola una volta sola,
+in `_STATIC_DIR`: la leggono le pagine, le impronte e `create_app` (N164-1).
 """
 import hashlib
 import logging
@@ -23,9 +24,8 @@ def _read_static_pages(app) -> None:
     serva qualcosa. Sta fuori dalla coroutine perche' `open()` dentro una
     funzione async e' un difetto anche quando qui non lo e' -- e una regola
     con un'eccezione «tanto lo so io» e' una regola che non vale piu'."""
-    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
-        path = os.path.join(static_dir, fname)
+        path = os.path.join(_STATIC_DIR, fname)
         try:
             with open(path, encoding="utf-8") as f:
                 app[key] = f.read()
