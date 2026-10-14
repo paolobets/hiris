@@ -958,7 +958,7 @@ async def handle_adopt_orphans(request: web.Request) -> web.Response:
     delle conversazioni e gli Impegni --, e una lettura cambiava il
     proprietario di cio' che leggeva. La pagina della chat la chiama una volta
     all'apertura, prima di leggere la cronologia e l'elenco
-    (`chat/agents.js::adoptOrphans`). Per chi non e' il proprietario non fa
+    (`chat/main.js::adoptOrphans`). Per chi non e' il proprietario non fa
     niente, e lo stesso vale quando non resta niente da adottare. `POST
     /api/chat` adotta ancora prima del turno: e' gia' una scrittura."""
     await adopt_if_owner(request.app, request, request_thread(request))
