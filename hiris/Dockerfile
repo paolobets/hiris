@@ -77,6 +77,40 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+# 14 ottobre 2026 — alzata da 2.1.296 a **2.1.299**, nella Chiusura dello
+# sprint (fetta F12): al rilascio della 3.79.0 il cancello dei componenti e'
+# stato scavalcato perche' era uscita la 2.1.299. `npm view` dava 2.1.297 e
+# 2.1.298 mai pubblicate (la 2.1.299 e' del 14/10/2026 alle 00:23 UTC).
+#
+# Letto il CHANGELOG ufficiale della CLI (github.com/anthropics/claude-code,
+# CHANGELOG.md, il 14/10/2026): la 2.1.299 e' l'unica voce dopo la 2.1.296, e
+# nessuna sua riga cambia `-p`, `--output-format stream-json`, l'evento
+# `system/init`, `--tools` o `--mcp-config`. Toccano il ponte solo da
+# vicino, e da guardare nella batteria dopo il rilascio: le chiamate MCP nelle
+# sessioni headless che potevano fallire o partire due volte quando una
+# riconnessione chiudeva la connessione (corretto), le connessioni MCP via
+# HTTP appese 30 secondi su una risposta senza fine (corretto), e le regole
+# `mcp__<server>` che ora valgono solo per il server che nominano: il ponte
+# permette i nomi interi (`mcp__hiris__search`), e il server `hiris` non ha
+# `__` nel nome.
+# Misurato il 14/10/2026 nel contenitore della nuvola, con l'argv di
+# produzione e un'API e un MCP finti in locale, sulla 2.1.296 e sulla 2.1.299:
+# stessa risposta (rc 0, `result` `success`), l'evento `init` con
+# `claude_code_version`, `apiKeySource`, il server `hiris` `connected` e gli
+# stessi dodici strumenti, il prompt di sistema arrivato intero, la domanda
+# letta da stdin, e una chiamata a `mcp__hiris__search` arrivata al server.
+#
+# **Non salita alla 2.1.300** (14/10/2026 alle 14:27 UTC, uscita durante la
+# fetta): il suo CHANGELOG scrive nei transcript locali il prompt di sistema,
+# gli strumenti e i parametri di ogni richiesta, e i transcript del ponte
+# stanno in `/data/claude` (`CLAUDE_CONFIG_DIR`, `run.sh`), uno per turno:
+# misurato con la stessa prova, un turno da una
+# richiesta passa da 72.620 a 113.933 byte con un prompt di 9.168 caratteri
+# (quello vero ne ha circa 150.000). La decide il proprietario.
+#
+# **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
+# (28/09/2026), finche' il passo 4 non legge la 2.1.299 da `GET /api/health`.
+#
 # 13 ottobre 2026 — alzata da 2.1.286 a **2.1.296**, nella Chiusura dello
 # sprint (fetta F5b, decisione D5 del proprietario): entra nel primo rilascio
 # della Chiusura. `npm view` e `scripts/verifica_componenti.py` davano la
@@ -355,7 +389,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.296 \
+    && npm install -g @anthropic-ai/claude-code@2.1.299 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \
