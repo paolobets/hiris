@@ -325,7 +325,7 @@ def _scansione() -> dict[str, str]:
 # 2. i MISTI che la misura ha tenuto fuori apposta (`_normalize_con_mappa`,
 #    `cost_da_listino`; il primo dei quattro, `_accoda_al_bridge`, e' uscito
 #    il 02/09 diventando `_enqueue_to_bridge`; il quarto,
-#    `SUSPENDED_CAP`, e' uscito il 13/10/2026 diventando `SUSPENDED_CAP`);
+#    `CEILING_IN_SOSPESO`, e' uscito il 13/10/2026 diventando `SUSPENDED_CAP`);
 # 3. i TRE falsi positivi noti -- **annotati uno per uno ACCANTO alla
 #    loro voce**, in cima all'elenco, e non qui: una decisione che vive
 #    lontano da cio' che decide non la legge nessuno. Erano sei: `O_CREAT`/
