@@ -39,7 +39,6 @@ from hiris.app.action.construction.stakes import domains_acted_on, impose
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.api import soffitto
 from hiris.app.chat_thread import new_subject
-from hiris.app.home_space import historian
 from hiris.app.keeper import delivery
 from hiris.app.keeper.promise import DELIVERY_TITLE
 from hiris.app.live_value import LiveValue
@@ -48,9 +47,17 @@ from hiris.app.mind.store import ObservationsStore
 from hiris.app.startup import live_values
 from hiris.app.usage.store import UsageStore
 from tests._casa_sintetica import synthetic_inputs
+from tests._oggi_fermo import ferma_oggi
 from tests._runner_finto import RunnerFinto
 
-OGGI = historian.today(historian.house_timezone(None)).isoformat()
+#: Il giorno dell'analisi: lo scrive `_today_frozen` a ogni prova, dallo
+#: stesso istante che legge il giro (`tests/_oggi_fermo.py`).
+OGGI = ""
+
+
+@pytest.fixture(autouse=True)
+def _today_frozen(monkeypatch):
+    ferma_oggi(monkeypatch, __name__)
 
 _SERRATURA = {"gesto": "crea", "dominio": "automation", "alias": "Chiudi la porta di notte",
               "livello": "lieve", "innesco": [],
