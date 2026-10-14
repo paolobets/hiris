@@ -757,7 +757,9 @@ async def test_ripristinare_dalla_chat_si_rifiuta_e_non_propone_niente(banco):
     rifiuta prima di scrivere la proposta: nessuna riga `in_attesa` a
     bruciare un posto del tetto, niente scritto in casa.
 
-    Rossa sul codice di prima (ramo in due tempi): tornava `proposta_id`."""
+    Rossa sul codice di prima (ramo in due tempi): tornava `proposta_id`.
+    Mutazione ESEGUITA (14/10/2026): la frase che torna a dire «pagina
+    Costruzioni» -- rossa."""
     officina, ha, _archivio, _ = banco
     p = await officina.propose(_intento(gesto="modifica", chiave="1771"),
                                actor="chat", exchange="t1", now=ADESSO)
@@ -766,7 +768,9 @@ async def test_ripristinare_dalla_chat_si_rifiuta_e_non_propone_niente(banco):
     for turno in ("t3", None):
         esito = await officina.restore(p["proposta_id"], actor="chat", exchange=turno,
                                        now=ADESSO + 120)
-        assert "errore" in esito and "pagina" in esito["errore"]
+        assert "errore" in esito and "pagina Proposte" in esito["errore"]
+        # C-18 (N156-5, giro 156): la pagina si chiama come nel menu.
+        assert "Costruzioni" not in esito["errore"]
     assert ha.salvate == []
 
 
