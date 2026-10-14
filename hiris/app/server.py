@@ -1625,15 +1625,10 @@ async def analyst_round(app) -> dict | None:
         if turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
-        from .api.handlers_mind import mind_view
-
-        series = analyst.with_deviation(
-            report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                      names=mind_view(app).device_names()))
+        series, previous = _analyst_inputs(app, store, today)
         if not (series.get("serie") or []):
             return None
 
-        previous = _analyst_memory(store, today, series)
         # I problemi della risposta di prima, se e' stata rifiutata (D10):
         # dal registro dei turni, la stessa riga sulle due strade.
         refused = refused_problems(app.get("usage"), ANALYST_SPECIES)
@@ -1679,6 +1674,19 @@ def _analyst_memory(store, today: str, series: dict) -> list[dict]:
     return analyst.previous_observations(
         store.analyses(limit=ANALYST_DAYS), store.proposals(), today=today,
         series=series)
+
+
+def _analyst_inputs(app, store, day: str) -> tuple[dict, list[dict]]:
+    """La serie dell'analista e la sua memoria, composte dall'archivio di
+    adesso: le stesse all'accodamento (`analyst_round`) e alla raccolta
+    (`_collect_analyst_turn`), che fino al 14/10/2026 le componevano ognuna
+    da se', riga per riga (D-34)."""
+    from .api.handlers_mind import mind_view
+
+    series = analyst.with_deviation(
+        report.series_of_measures(store.reports(limit=ANALYST_DAYS),
+                                  names=mind_view(app).device_names()))
+    return series, _analyst_memory(store, day, series)
 
 
 def _was_refused(esito: dict) -> bool:
@@ -1762,7 +1770,6 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     if day != today or store.analysis(day) is not None:
         return None
     from .agent.runner import _bare_tool_name
-    from .api.handlers_mind import mind_view
 
     decision = turn.get("decision") or {}
     reply = turn_answer(turn)
@@ -1771,13 +1778,10 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     # (`runner._bare_tool_name`).
     calls = [{"tool": _bare_tool_name(c.get("tool")), "input": c.get("input")}
              for c in decision.get("tools_called") or [] if isinstance(c, dict)]
-    series = analyst.with_deviation(
-        report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                  names=mind_view(app).device_names()))
+    series, previous = _analyst_inputs(app, store, day)
     # I segnaposto che il modello ha letto sul ponte tornano id dalla stessa
     # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
-    esito = analyst_turn.apply_analysis(series, reply,
-                                        previous=_analyst_memory(store, day, series),
+    esito = analyst_turn.apply_analysis(series, reply, previous=previous,
                                         tool_calls=calls,
                                         presence=_analyst_presence(app))
     if _was_refused(esito):
