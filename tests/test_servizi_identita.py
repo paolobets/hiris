@@ -415,6 +415,6 @@ def test_il_valore_di_fabbrica_delle_reti_fidate_ha_UNA_casa():
              and "__pycache__" not in f.parts]
     assert len(testi) > 50, "la cartella dell'add-on non si e' letta"
     assert (_HIRIS / "run.sh") in testi and (_HIRIS / "config.yaml") in testi
-    copie = sorted(str(f.relative_to(_HIRIS)) for f in testi
+    copie = sorted(f.relative_to(_HIRIS).as_posix() for f in testi
              if ingresso.RETE_PREDEFINITA in f.read_text(encoding="utf-8"))
     assert copie == ["app/api/ingresso.py"], copie
