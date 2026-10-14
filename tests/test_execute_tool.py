@@ -19,7 +19,9 @@ import pytest
 from hiris.app.action.actuator import ACTUATOR_KEY, ActionActuator
 from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.live_value import LiveValue
 from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
+from hiris.app.startup import live_values
 from tests._contracts import assert_stessa_firma
 
 
@@ -113,7 +115,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     actuator = FintaPorta()
-    d = create_tool_dispatcher({ACTUATOR_KEY: actuator}, soffitto=_AMMINISTRATORE)
+    d = create_tool_dispatcher({**live_values(), ACTUATOR_KEY: actuator}, soffitto=_AMMINISTRATORE)
 
     esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
@@ -137,35 +139,29 @@ def test_l_unico_costruttore_del_dispatcher_passa_l_istantanea_dei_giudizi():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     giudizi_finti = object()
-    d = create_tool_dispatcher({TYPE_JUDGMENTS_KEY: giudizi_finti},
+    d = create_tool_dispatcher({**live_values(), TYPE_JUDGMENTS_KEY: LiveValue(giudizi_finti)},
                                soffitto=_AMMINISTRATORE)
     assert d._judgments is giudizi_finti
 
 
-def test_un_app_SENZA_la_chiave_costruisce_il_dispatcher_sul_SOLO_SEME():
+def test_un_app_appena_nata_costruisce_il_dispatcher_sul_SOLO_SEME():
     """Giro di correzioni 1, punto 5: la ricaduta si SCEGLIE e si fissa.
 
-    `create_tool_dispatcher` legge `app.get("type_judgments")`, e
-    `ToolDispatcher.__init__` con `None` ricade su `REPO_JUDGMENTS`: la prova
-    strutturale D3 (`tests/test_judgments_passed_in_production.py`) guarda il
-    **keyword**, non il valore, quindi quella ricaduta non era fissata da
-    nessuna prova. In produzione non scatta mai -- l'avvio scrive sempre la
-    chiave, anche quando il sapere non si apre (`startup._open_knowledge` mette
-    il solo seme, spec §8) -- ma il `.get` esiste perche' le prove costruiscono
-    `app` a mano, e **questa e' la prova che dichiara cosa deve fare**: il solo
-    seme del repo, mai `None`, mai un `KeyError`.
+    Dal 14/10/2026 (X-31) la ricaduta vive in un posto solo: l'app nasce con
+    `TYPE_JUDGMENTS_KEY` che vale il solo seme del repo (`startup.live_values`,
+    chiamata da `create_app`), e l'avvio lo sostituisce con i giudizi del
+    sapere. Fino ad allora la ricaduta stava nel `.get` di
+    `create_tool_dispatcher`, che esisteva solo per le prove che costruivano
+    `app` a mano. Un'app che non ha ancora aperto il sapere costruisce il
+    dispatcher sul solo seme: mai `None`, mai un `KeyError`.
 
-    L'alternativa scartata era `app["type_judgments"]` secco: farebbe esplodere
-    un percorso di prova legittimo per difendersi da un ramo che la produzione
-    non raggiunge.
-
-    Mutazione ESEGUITA: `app["type_judgments"]` al posto del `.get` --
-    rossa (`KeyError: 'type_judgments'`); ripristinato con l'editor.
+    Mutazione ESEGUITA (14/10/2026): `TYPE_JUDGMENTS_KEY` tolta da
+    `live_values` -- rossa (`KeyError`).
     """
     from hiris.app.api.handlers_chat import create_tool_dispatcher
     from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 
-    d = create_tool_dispatcher({}, soffitto=_AMMINISTRATORE)
+    d = create_tool_dispatcher(live_values(), soffitto=_AMMINISTRATORE)
     assert d._judgments is REPO_JUDGMENTS
 
 

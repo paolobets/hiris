@@ -28,6 +28,7 @@ from hiris.app.chat_settings import CHAT_SETTINGS_KEY
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import CLAUDE
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.storage import DATA_DIR_KEY
 
@@ -115,9 +116,10 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         )
 
         app = web.Application()
-        app[CHAT_SETTINGS_KEY] = impostazioni
+        app.update(live_values())
+        app[CHAT_SETTINGS_KEY].set(impostazioni)
         app[DATA_DIR_KEY] = data_dir
-        app[BRIDGE_ACTIVE_KEY] = True
+        app[BRIDGE_ACTIVE_KEY].set(True)
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
         app[REASONING_QUEUE_KEY] = q
         # LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su
@@ -125,10 +127,10 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         # nuova porta `opus`. Metterli uguali renderebbe questo test incapace
         # di distinguere le due implementazioni -- cioe' incapace di fallire,
         # che e' il difetto n.1 di questo prodotto.
-        app[MODELS_CONFIG_KEY] = {
+        app[MODELS_CONFIG_KEY].set({
             "provider_models": {"claude": "claude-haiku-4-5-20251001"},
             "ponte": {"modello": "opus"},
-        }
+        })
         app.router.add_post("/api/chat", handle_chat)
 
         async with TestClient(TestServer(app)) as client:

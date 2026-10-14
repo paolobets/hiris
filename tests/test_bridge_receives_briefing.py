@@ -56,6 +56,7 @@ from hiris.app.claude_runner import (
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY, SPECIES, compose_base
 from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
@@ -737,11 +738,12 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     runner_mock = RunnerFinto("sync reply")
 
     app = web.Application()
+    app.update(live_values())
     app[LLM_ROUTER_KEY] = runner_mock
     app[CLAUDE_RUNNER_KEY] = runner_mock
-    app[CHAT_SETTINGS_KEY] = impostazioni
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
     app[DATA_DIR_KEY] = data_dir
-    app[BRIDGE_ACTIVE_KEY] = True
+    app[BRIDGE_ACTIVE_KEY].set(True)
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app[REASONING_QUEUE_KEY] = q
     app.router.add_post("/api/chat", handle_chat)

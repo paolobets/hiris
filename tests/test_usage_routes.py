@@ -21,7 +21,9 @@ from hiris.app.api.handlers_usage import (
     handle_usage_history,
 )
 from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._anagrafe_finta import AnagrafeFinta
@@ -70,7 +72,7 @@ def app(tmp_path):
     archivio.log("openrouter", "un/modello", token_in=50, token_out=5,
                       cost_usd=None, cost_state="non_noto", now=T22)
     try:
-        yield {USAGE_KEY: archivio, LLM_ROUTER_KEY: object(),
+        yield {**live_values(), USAGE_KEY: archivio, LLM_ROUTER_KEY: object(),
               HOME_SPACE_KEY: _archivio_casa(ROMA)}
     finally:
         archivio.close()
@@ -158,7 +160,7 @@ def test_senza_provider_e_senza_righe_si_dichiara_che_non_si_misura(tmp_path):
     si misura, e ha una sezione sua."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {USAGE_KEY: empty}))
+        corpo = _corpo(_chiama(handle_usage, {**live_values(), USAGE_KEY: empty}))
         assert corpo["measured"] is False
         assert corpo["reason"] == "nessun_provider"
         assert "provider" in corpo["message"].lower()
@@ -173,7 +175,9 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
     un'assenza di misura."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {USAGE_KEY: empty, BRIDGE_ACTIVE_KEY: True}))
+        corpo = _corpo(_chiama(handle_usage,
+                               {**live_values(),
+                                USAGE_KEY: empty, BRIDGE_ACTIVE_KEY: LiveValue(True)}))
         assert corpo["measured"] is True
         assert corpo["total_requests"] == 0
     finally:
@@ -245,7 +249,7 @@ def test_senza_fuso_noto_la_storia_conta_in_UTC_e_non_inventa(tmp_path, monkeypa
     try:
         just_after_midnight = 1787351400.0
         archivio.log("claude", "m", cost_state="misurato", now=just_after_midnight)
-        app = {USAGE_KEY: archivio}
+        app = {**live_values(), USAGE_KEY: archivio}
         monkeypatch.setattr(handlers_usage.time, "time", lambda: just_after_midnight)
 
         corpo = _corpo(_chiama(handle_usage_history, app))
@@ -275,7 +279,7 @@ def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
     sempre un'ancora da spostare."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        assert _chiama(handle_reset_usage, {USAGE_KEY: empty}).status == 200
+        assert _chiama(handle_reset_usage, {**live_values(), USAGE_KEY: empty}).status == 200
     finally:
         empty.close()
 
@@ -312,7 +316,7 @@ def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path)
                  cost_state="non_noto", now=T21)
     archivio.log("claude", "claude-sonnet-4-6", token_in=1, cost_usd=0.1,
                  cost_state="misurato", now=T22)
-    app = {USAGE_KEY: archivio, HOME_SPACE_KEY: _archivio_casa(ROMA)}
+    app = {**live_values(), USAGE_KEY: archivio, HOME_SPACE_KEY: _archivio_casa(ROMA)}
     try:
         corpo = _corpo(_chiama(handle_usage_history, app,
                                {"from": "2026-08-21", "to": "2026-08-22"}))

@@ -70,7 +70,7 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
 
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
         run_retention = app[SCHEDULER_KEY].get_job("hiris_retention").func
-        app[CHAT_SETTINGS_KEY] = ChatSettings(retention_days=5)
+        app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=5))
         await run_retention()
         assert load_history(data_dir, thread=T) == [], (
             "5 giorni: il messaggio di 10 giorni fa doveva sparire")
@@ -86,7 +86,7 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
             (vecchio_ts2, "recente"),
         )
         store2._conn.commit()
-        app[CHAT_SETTINGS_KEY] = ChatSettings(retention_days=0)
+        app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=0))
         await run_retention()
         assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
             "0: la potatura non deve aver toccato niente"

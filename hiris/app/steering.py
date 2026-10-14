@@ -54,6 +54,7 @@ from aiohttp import web
 from .answer_reasons import NO_ANSWER_REASON
 from .claude_runner import CLAUDE_RUNNER_KEY
 from .home_space.reader import HOME_SPACE_KEY
+from .live_value import LiveValue
 from .llm_router import LLM_ROUTER_KEY
 from .models_store import _STORE_DEFAULTS, MODELS_CONFIG_KEY, bridge_deadline_min
 from .provider_occurrences import OCCURRENCES_KEY
@@ -63,8 +64,8 @@ from .usage.store import USAGE_KEY
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
-BRIDGE_ACTIVE_KEY = web.AppKey("bridge_active")
-MODEL_CHAIN_KEY = web.AppKey("model_chain")
+BRIDGE_ACTIVE_KEY = web.AppKey("bridge_active", LiveValue)
+MODEL_CHAIN_KEY = web.AppKey("model_chain", LiveValue)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     if not subscription_has_token():
         return False, "manca il token"
     cap = int(
-        (app.get(MODELS_CONFIG_KEY) or {})
+        app[MODELS_CONFIG_KEY].value
         .get("ponte", {})
         .get("tetto_giornaliero",
              _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
@@ -1019,7 +1020,7 @@ def who_answered(app) -> str:
     registry = app.get(OCCURRENCES_KEY)
     if registry is None:
         return ""
-    for name in (app.get(MODEL_CHAIN_KEY) or []):
+    for name in app[MODEL_CHAIN_KEY].value:
         occurrence = registry.occurrence(name)
         if occurrence and occurrence["tipo"] == "risposto":
             return name
@@ -1038,7 +1039,7 @@ def bridge_model(app) -> str:
     valeva per meta' dei turni del piano. Il predefinito e' quello di
     `_STORE_DEFAULTS`, l'unico: non se ne scrive un secondo qui.
     """
-    return ((app.get(MODELS_CONFIG_KEY) or {}).get("ponte", {}).get("modello")
+    return (app[MODELS_CONFIG_KEY].value.get("ponte", {}).get("modello")
             or _STORE_DEFAULTS["ponte"]["modello"])
 
 
@@ -1047,7 +1048,7 @@ def bridge_in_play(app) -> bool:
     quando il piano, adesso, non puo' rispondere -- e' la domanda che la chat
     si fa prima di partire, per non mandare un secondo turno mentre il ponte
     ne ha uno in volo (D-06, Chiusura 13/10/2026)."""
-    return bool(app.get(BRIDGE_ACTIVE_KEY) and _bridge_on(app))
+    return bool(app[BRIDGE_ACTIVE_KEY].value and _bridge_on(app))
 
 
 def who_answers(app) -> tuple[str, str]:
@@ -1156,7 +1157,7 @@ def enqueue_turn(app, species: str, wake: dict, context: dict, *,
     06/10/2026: la ragione di D4, «la chat passa avanti», e' chi aspetta).
     """
     declared = SPECIES[species]
-    deadline_min = bridge_deadline_min(app.get(MODELS_CONFIG_KEY))
+    deadline_min = bridge_deadline_min(app[MODELS_CONFIG_KEY].value)
     now = _time.time() if now is None else now
     job_id = app[REASONING_QUEUE_KEY].enqueue(
         declared.kind, wake, {**context, "model": bridge_model(app)},

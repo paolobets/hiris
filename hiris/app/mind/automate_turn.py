@@ -39,6 +39,7 @@ from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..background import spawn
 from ..home_space.reader import HOME_SPACE_KEY
+from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY
 from ..steering import (
@@ -67,7 +68,7 @@ AUTOMATE_TURN_KIND = SPECIES[AUTOMATE_SPECIES].kind
 #: La chiave di `app` che dice quale proposta ha un turno sulla catena in
 #: corso. Sul ponte lo sa la coda; sulla catena il turno vive in questo
 #: processo, e muore con lui: un riavvio lo perde insieme alla chiave.
-IN_FLIGHT = web.AppKey("automazione_in_volo")
+IN_FLIGHT = web.AppKey("automazione_in_volo", LiveValue)
 
 #: Il tetto della risposta, dichiarato: lo stesso del proponente, per la
 #: stessa ragione e con la stessa avvertenza (non misurato: lo sceglie la
@@ -133,7 +134,7 @@ async def guard(app, exchange: str | None = None) -> AutomateDispatcher:
 
 def preparing(app) -> str | None:
     """L'id della proposta che ha un turno in corso, o `None`."""
-    on_chain = app.get(IN_FLIGHT)
+    on_chain = app[IN_FLIGHT].value
     if on_chain:
         return on_chain
     if not turn_in_flight(app, AUTOMATE_TURN_KIND):
@@ -219,7 +220,7 @@ def begin(app, row: dict) -> str | None:
         return None
     if runner is None:
         return "nessun modello collegato: non posso prepararla adesso."
-    app[IN_FLIGHT] = row["id"]
+    app[IN_FLIGHT].set(row["id"])
     # Un compito senza padrone: `spawn` gli tiene il riferimento forte.
     spawn(_chain(app, row, runner), name="automazione")
     return None
@@ -245,7 +246,7 @@ async def _chain(app, row: dict, runner) -> None:
         logger.warning("automazione: turno fallito per %s (%s: %s)",
                        row.get("id"), type(error).__name__, error)
     finally:
-        app[IN_FLIGHT] = None
+        app[IN_FLIGHT].set(None)
 
 
 def settle(app, ident: str, exchange: str | None, answer, *,

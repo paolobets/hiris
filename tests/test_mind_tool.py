@@ -41,6 +41,7 @@ from hiris.app.mind.store import ATTEMPT_DONE, ATTEMPT_FAILED, ObservationsStore
 #: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
 #: qui si prova altro, non il permesso.
 _AMMINISTRATORE = consente(None, ruolo="amministratore")
+from hiris.app.startup import live_values
 from tests.test_home_space_energy import PREFS, _cache, _house, _store
 
 DAY = "2026-10-04"
@@ -70,7 +71,7 @@ def _app(tmp_path) -> dict:
     # riceveva grezzi, la rotta letti).
     for outcome in (ATTEMPT_DONE, ATTEMPT_FAILED):
         store.record_attempt(when_ts=1787000000.0, outcome=outcome)
-    return {OBSERVATIONS_KEY: store, WATCHER_KEY: _Osservatore()}
+    return {**live_values(), OBSERVATIONS_KEY: store, WATCHER_KEY: _Osservatore()}
 
 
 class _Richiesta:

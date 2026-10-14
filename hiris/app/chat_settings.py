@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from aiohttp import web
 
+from .live_value import LiveValue
 from .storage import write_json_atomic
 
 logger = logging.getLogger(__name__)
@@ -224,4 +225,4 @@ class ChatSettings:
         })
 
 
-CHAT_SETTINGS_KEY = web.AppKey("chat_settings", ChatSettings)
+CHAT_SETTINGS_KEY = web.AppKey("chat_settings", LiveValue)

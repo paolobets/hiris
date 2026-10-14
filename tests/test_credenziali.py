@@ -26,6 +26,7 @@ import pytest
 
 from hiris.app.api import credenziali
 from hiris.app.api.credenziali import BRIDGE_CREDENTIAL_KEY, CREDENTIALS_KEY
+from hiris.app.live_value import LiveValue
 from hiris.app.models_store import MODELS_CONFIG_KEY
 
 
@@ -144,7 +145,7 @@ def test_la_credenziale_del_ponte_copre_il_turno_piu_lungo_ammesso(scadenza_min)
     cambia."""
     turno_s = scadenza_min * 60
     app = {CREDENTIALS_KEY: {}, BRIDGE_CREDENTIAL_KEY: {},
-           MODELS_CONFIG_KEY: {"ponte": {"scadenza_min": scadenza_min}}}
+           MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": scadenza_min}})}
     for adesso in range(0, 6 * turno_s, 37):
         segreto = credenziali.credenziale_ponte_viva(app, adesso=float(adesso))
         riga = credenziali.riconosci(app[CREDENTIALS_KEY], segreto, adesso=float(adesso))

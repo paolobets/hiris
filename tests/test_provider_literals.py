@@ -156,7 +156,7 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
                        model_chain=["claude"])
     app[LLM_ROUTER_KEY] = router
     app[RECOMPUTE_CHAIN_KEY] = lambda: _recompute_chain(app)
-    app[MODEL_CHAIN_KEY] = ["claude"]
+    app[MODEL_CHAIN_KEY].set(["claude"])
 
     body = await (await client.get("/api/models/config")).json()
     assert body["ordine_fisso"][-1] == "sesto"

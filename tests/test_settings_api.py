@@ -41,7 +41,7 @@ async def client(aiohttp_client, tmp_path):
     (`internal_auth_middleware`, `csrf_middleware`), e un test che le
     scavalcasse non direbbe niente su cio' che accade in produzione."""
     app = create_app()
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[DATA_DIR_KEY] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -97,7 +97,7 @@ async def test_get_mostra_cio_che_la_chat_sta_usando_non_il_disco(client):
     """`app["chat_settings"]` e' l'oggetto che `handlers_chat.py` rilegge a
     ogni turno: la pagina legge quello, quindi non puo' mostrare qualcosa di
     diverso da cio' che e' in vigore."""
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(name="Solo in memoria")
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(name="Solo in memoria"))
     body = await (await client.get(ROTTA)).json()
     assert body["name"] == "Solo in memoria"
 
@@ -124,7 +124,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
 
     # (a) hot-update: senza questo, il salvataggio riesce e la chat continua a
     # usare i valori vecchi fino al riavvio dell'add-on.
-    in_memoria = client.app[CHAT_SETTINGS_KEY]
+    in_memoria = client.app[CHAT_SETTINGS_KEY].value
     assert in_memoria.name == "Casa"
     assert in_memoria.system_prompt == "Sei utile e conciso."
     assert in_memoria.response_mode == "compact"
@@ -160,7 +160,7 @@ async def test_put_sopravvive_al_riavvio(client, tmp_path):
     dopo_riavvio = ChatSettings.load(str(tmp_path))
     assert dopo_riavvio.name == "Dopo il riavvio"
     assert dopo_riavvio.max_chat_turns == 7
-    assert dopo_riavvio == client.app[CHAT_SETTINGS_KEY]
+    assert dopo_riavvio == client.app[CHAT_SETTINGS_KEY].value
 
 
 @pytest.mark.asyncio
@@ -186,7 +186,7 @@ async def test_put_scrive_in_modo_atomico_e_non_lascia_il_temporaneo(client):
 async def test_put_di_un_solo_campo_non_azzera_gli_altri(client):
     await client.put(ROTTA, json={"name": "Primo", "max_chat_turns": 9})
     await client.put(ROTTA, json={"name": "Secondo"})
-    corrente = client.app[CHAT_SETTINGS_KEY]
+    corrente = client.app[CHAT_SETTINGS_KEY].value
     assert corrente.name == "Secondo"
     assert corrente.max_chat_turns == 9, "un campo assente conserva il valore corrente"
 
@@ -198,18 +198,18 @@ async def test_put_giorni_conservazione_a_zero_e_valido_non_un_rifiuto(client):
     nella tabella `CORPI_RIFIUTATI` sotto."""
     resp = await client.put(ROTTA, json={"retention_days": 0})
     assert resp.status == 200
-    assert client.app[CHAT_SETTINGS_KEY].retention_days == 0
+    assert client.app[CHAT_SETTINGS_KEY].value.retention_days == 0
     assert (await resp.json())["retention_days"] == 0
 
 
 @pytest.mark.asyncio
 async def test_put_con_system_prompt_vuoto_ripristina_il_default(client):
     await client.put(ROTTA, json={"system_prompt": "Un prompt personale."})
-    assert client.app[CHAT_SETTINGS_KEY].system_prompt == "Un prompt personale."
+    assert client.app[CHAT_SETTINGS_KEY].value.system_prompt == "Un prompt personale."
 
     resp = await client.put(ROTTA, json={"system_prompt": "   "})
     assert resp.status == 200
-    assert client.app[CHAT_SETTINGS_KEY].system_prompt == DEFAULT_SYSTEM_PROMPT
+    assert client.app[CHAT_SETTINGS_KEY].value.system_prompt == DEFAULT_SYSTEM_PROMPT
     assert (await resp.json())["system_prompt"] == DEFAULT_SYSTEM_PROMPT
 
 
@@ -250,7 +250,7 @@ async def test_put_con_x_requested_with_passa_anche_a_csrf_stretto(client, csrf_
     resp = await client.put(ROTTA, json={"name": "Dalla pagina"},
                             headers={"X-Requested-With": "fetch"})
     assert resp.status == 200
-    assert client.app[CHAT_SETTINGS_KEY].name == "Dalla pagina"
+    assert client.app[CHAT_SETTINGS_KEY].value.name == "Dalla pagina"
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ async def test_put_malformato_e_400_parlante_e_non_tocca_il_file(
     assert campo in body["error"], "il messaggio deve nominare il campo"
 
     assert _su_disco(client) == prima, "un corpo rifiutato non deve toccare il file"
-    assert client.app[CHAT_SETTINGS_KEY].name == "Valore precedente"
+    assert client.app[CHAT_SETTINGS_KEY].value.name == "Valore precedente"
 
 
 @pytest.mark.asyncio
@@ -327,7 +327,7 @@ async def test_un_errore_di_scrittura_non_dice_salvato(client, monkeypatch):
     resp = await client.put(ROTTA, json={"name": "Non arrivera' mai"})
     assert resp.status == 500
     assert "non è stato possibile" in (await resp.json())["error"].lower()
-    assert client.app[CHAT_SETTINGS_KEY].name == "HIRIS"
+    assert client.app[CHAT_SETTINGS_KEY].value.name == "HIRIS"
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +359,7 @@ async def test_client_diretto_senza_token_resta_negato(tmp_path, monkeypatch):
     rifiuto-per-default di `internal_auth_middleware` come tutte le altre."""
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "")
     app = create_app()
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[DATA_DIR_KEY] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -401,7 +401,7 @@ async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo
     assert "posizione 1" in body["error"]
 
     assert _su_disco(client) == prima, "un corpo rifiutato non deve toccare il file"
-    assert client.app[CHAT_SETTINGS_KEY].name == "Valore precedente"
+    assert client.app[CHAT_SETTINGS_KEY].value.name == "Valore precedente"
 
 
 @pytest.mark.asyncio

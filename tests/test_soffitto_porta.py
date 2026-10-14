@@ -84,7 +84,7 @@ class _Archivio:
 async def _cliente(aiohttp_client, tmp_path, house: CasaFinta):
     app = create_app()
     app[HA_CLIENT_KEY] = house
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)

@@ -97,7 +97,7 @@ def _compose(tmp_path, *, access=None, **casa):
     utenti = [dict(riga) for riga in _UTENTI]
     app["_utenti_ha"] = utenti
     app[HA_CLIENT_KEY] = _house(utenti, **casa)
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
@@ -713,6 +713,7 @@ def test_lo_statico_e_ammesso_solo_come_RISORSA_STATICA():
     Mutazione ESEGUITA: togliere il controllo `isinstance(..., StaticResource)`
     -- rossa."""
     app = web.Application()
+    app.update(live_values())
 
     async def finta(request):
         return web.Response()
@@ -755,8 +756,8 @@ async def test_le_SEI_rotte_della_spec_sono_chiuse_e_non_scrivono(aperta, tmp_pa
     osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
     app[OBSERVATIONS_KEY] = osservazioni
     obiettivo = osservazioni.objective()
-    impostazioni = app[CHAT_SETTINGS_KEY]
-    catena = app.get(MODELS_CONFIG_KEY)
+    impostazioni = app[CHAT_SETTINGS_KEY].value
+    catena = app[MODELS_CONFIG_KEY].value
     store = app[MEMORY_STORE_KEY]
     ident = store.remember("il cane dorme in cucina", said_by="persona:u-admin")
     marta = _persona("u-marta")
@@ -775,8 +776,8 @@ async def test_le_SEI_rotte_della_spec_sono_chiuse_e_non_scrivono(aperta, tmp_pa
     ]
 
     assert esiti == [True] * 6
-    assert app[CHAT_SETTINGS_KEY] is impostazioni
-    assert app.get(MODELS_CONFIG_KEY) is catena
+    assert app[CHAT_SETTINGS_KEY].value is impostazioni
+    assert app[MODELS_CONFIG_KEY].value is catena
     assert osservazioni.objective() == obiettivo
     assert store.get(ident)["testo"] == "il cane dorme in cucina"
     osservazioni.close()
@@ -1170,6 +1171,7 @@ async def test_lo_SVILUPPO_non_si_restringe_per_ruolo(monkeypatch):
 # --- fix round 1 del Task 2 -------------------------------------------------
 
 from hiris.app.api.soffitto import ADMIN_SERVICES_REFUSAL, denies
+from hiris.app.startup import live_values
 
 
 @pytest.mark.asyncio
@@ -1269,7 +1271,7 @@ async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
     ha = CasaFinta(synthetic_inputs(),
                    answers={"config/auth/list": lambda extra: [dict(r) for r in _UTENTI]},
                    delay={"config/auth/list": entrata})
-    app = {HA_CLIENT_KEY: ha}
+    app = {**live_values(), HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     letture = [asyncio.ensure_future(_ha_users(app)) for _ in range(8)]
     await asyncio.sleep(0)
@@ -1374,7 +1376,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
     from hiris.app.keeper.exchange import interpreta_promise
 
     ha, runner = _house(), _runner_lettore()
-    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
+    app = {**live_values(), LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "fra un'ora guarda il registro",
                 "domanda": "ci sono errori?", "istantanea": [],
@@ -1394,7 +1396,7 @@ async def test_la_promessa_dell_amministratore_legge_come_prima():
     from hiris.app.keeper.exchange import interpreta_promise
 
     ha, runner = _house(), _runner_lettore()
-    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
+    app = {**live_values(), LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
                 "istantanea": [], "thread": ChatThread("persona:u-admin", "pannello")}
@@ -1577,7 +1579,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
 
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
     ha, runner = _house(), _runner_lettore()
-    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
+    app = {**live_values(), LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
                 "istantanea": [], "thread": ChatThread("sviluppo:-", "sviluppo")}
@@ -1589,7 +1591,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
 
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     ha2, runner2 = _house(), _runner_lettore()
-    app2 = {LLM_ROUTER_KEY: runner2, HA_CLIENT_KEY: ha2}
+    app2 = {**live_values(), LLM_ROUTER_KEY: runner2, HA_CLIENT_KEY: ha2}
     prepara_ruoli(app2)
     await interpreta_promise(app2, promessa)
     assert "system_log/list" in _asked(ha2), "con l'interruttore acceso, come ieri"
@@ -1608,7 +1610,7 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
     from hiris.app.keeper.sweeper import Sweeper
 
     ha, runner = _house(), _runner_lettore()
-    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
+    app = {**live_values(), LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     agenda = AgendaStore(str(tmp_path / "promesse.db"))
     adesso = time.time()

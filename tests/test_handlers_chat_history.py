@@ -9,6 +9,7 @@ from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
+from hiris.app.live_value import LiveValue
 from hiris.app.storage import DATA_DIR_KEY
 
 # Fetta «le chat divise»: l'handler legge il filo di chi
@@ -32,7 +33,7 @@ def _make_app(data_dir: str) -> MagicMock:
     # Task 12: handle_get_chat_history legge anche app["chat_settings"]
     # (giorni_conservazione) -- senza questa chiave il MagicMock tornerebbe
     # None e `.giorni_conservazione` esploderebbe con AttributeError.
-    valori = {DATA_DIR_KEY: data_dir, CHAT_SETTINGS_KEY: ChatSettings()}
+    valori = {DATA_DIR_KEY: data_dir, CHAT_SETTINGS_KEY: LiveValue(ChatSettings())}
     app = MagicMock()
     app.__getitem__ = MagicMock(side_effect=lambda k: valori.get(k))
     return app

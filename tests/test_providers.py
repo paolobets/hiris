@@ -20,9 +20,11 @@ from unittest import mock
 
 import pytest
 
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import providers_in_chain
+from hiris.app.startup import live_values
 from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._avvio import STARTUP_LOGGER, UNREACHABLE_OLLAMA
 
@@ -145,7 +147,7 @@ async def test_l_avvio_costruisce_la_catena_dall_archivio_e_dalle_credenziali(tm
     async with _started(tmp_path, ["openrouter", "claude", "ollama"],
                         credentials=("openrouter", "claude")) as (app, chains):
         assert _the_chain(chains) == ["openrouter", "claude"]
-        assert app[MODEL_CHAIN_KEY] == ["openrouter", "claude"]
+        assert app[MODEL_CHAIN_KEY].value == ["openrouter", "claude"]
 
 
 @pytest.mark.asyncio
@@ -159,7 +161,7 @@ async def test_l_avvio_non_accoda_un_credenziato_che_nessuno_ha_messo_in_catena(
     async with _started(tmp_path, ["claude"],
                         credentials=("claude", "openrouter", "openai")) as (app, chains):
         assert _the_chain(chains) == ["claude"]
-        assert app[MODEL_CHAIN_KEY] == ["claude"]
+        assert app[MODEL_CHAIN_KEY].value == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -169,7 +171,7 @@ async def test_l_avvio_lascia_vuota_una_catena_vuota(tmp_path):
     async with _started(tmp_path, [],
                         credentials=("claude", "openrouter")) as (app, chains):
         assert _the_chain(chains) == []
-        assert app[MODEL_CHAIN_KEY] == []
+        assert app[MODEL_CHAIN_KEY].value == []
 
 
 @pytest.mark.asyncio
@@ -189,13 +191,13 @@ async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
     verde: in produzione quella copia non arrivava a nessuno), e' uscita alla
     Tappa 7 T9 (voce M-30)."""
     async with _started(tmp_path, ["claude"], credentials=("claude",)) as (app, _chains):
-        published = app[MODEL_CHAIN_KEY]
+        published = app[MODEL_CHAIN_KEY].value
         assert published == ["claude"]
         assert published is not app[LLM_ROUTER_KEY]._chat_policy
-        assert published is not app[MODELS_CONFIG_KEY]["chain_order"]
+        assert published is not app[MODELS_CONFIG_KEY].value["chain_order"]
         published.append("openrouter")
         assert app[LLM_ROUTER_KEY]._chat_policy == ["claude"]
-        assert app[MODELS_CONFIG_KEY]["chain_order"] == ["claude"]
+        assert app[MODELS_CONFIG_KEY].value["chain_order"] == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -321,9 +323,9 @@ def _router(**backends):
 
 
 def _app(chain_order, *, ollama_modello="", timeout_s=120, router=None):
-    return {MODELS_CONFIG_KEY: {"chain_order": list(chain_order),
+    return {**live_values(), MODELS_CONFIG_KEY: LiveValue({"chain_order": list(chain_order),
                               "ollama": {"modello": ollama_modello,
-                                         "timeout_s": timeout_s}},
+                                         "timeout_s": timeout_s}}),
             LLM_ROUTER_KEY: router}
 
 
@@ -337,7 +339,7 @@ def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
                 catena=["openrouter", "claude"])
     app = _app(["claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == ["claude", "openrouter"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude", "openrouter"]
     assert r._chat_policy == ["claude", "openrouter"], (
         "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
         "cioe' la pagina torna a mentire"
@@ -354,8 +356,8 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == r._chat_policy
-    assert app[MODEL_CHAIN_KEY] is not r._chat_policy
+    assert app[MODEL_CHAIN_KEY].value == r._chat_policy
+    assert app[MODEL_CHAIN_KEY].value is not r._chat_policy
 
 
 def test_una_catena_svuotata_svuota_ANCHE_il_router():
@@ -368,7 +370,7 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == []
+    assert app[MODEL_CHAIN_KEY].value == []
     assert r._chat_policy == []
     assert _runners(r) == []
 
@@ -382,7 +384,7 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == ["claude"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude"]
     assert r._chat_policy == ["claude"]
 
 
@@ -395,7 +397,7 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
 def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
@@ -410,7 +412,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == ["claude", "ollama"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude", "ollama"]
     assert _runners(r)[-1] is locale
 
 
@@ -437,15 +439,15 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
 
     app = _app(["claude", "openrouter"], router=None)
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
-def test_il_ricalcolo_regge_un_archivio_assente():
+def test_il_ricalcolo_regge_un_archivio_vuoto():
     from hiris.app.agent.bridge_governor import _recompute_chain
 
-    app: dict = {}
+    app = live_values()
     _recompute_chain(app)
-    assert app[MODEL_CHAIN_KEY] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
 @pytest.mark.asyncio
@@ -476,8 +478,8 @@ async def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_model
             assert local is not None, "con l'indirizzo il runner locale c'e'"
             assert local._local is True
             assert local._chosen_model() == ""
-            app[MODELS_CONFIG_KEY] = {**app[MODELS_CONFIG_KEY],
-                                    "ollama": {"modello": "qwen2.5:7b"}}
+            app[MODELS_CONFIG_KEY].set({**app[MODELS_CONFIG_KEY].value,
+                                    "ollama": {"modello": "qwen2.5:7b"}})
             assert local._chosen_model() == "qwen2.5:7b", (
                 "il modello del runner locale si legge dall'archivio, a ogni uso"
             )

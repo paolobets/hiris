@@ -44,6 +44,8 @@ from hiris.app.storage import DATA_DIR_KEY
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from hiris.app.startup import live_values
+
 # ── L'avvio vero, con gli `add_job` registrati ─────────────────────────────
 #
 # Fino al 03/10/2026 i blocchi dell'avvio (costruzione di cronaca, promesse e
@@ -188,7 +190,7 @@ async def test_il_cleanup_chiude_promesse_e_cronaca():
     davvero, senza estrazioni."""
     promesse_finte = MagicMock()
     cronaca_finta = MagicMock()
-    app = {
+    app = {**live_values(),
         HA_CLIENT_KEY: CasaFinta({}),
         AGENDA_KEY: promesse_finte,
         JOURNAL_KEY: cronaca_finta,
@@ -206,7 +208,7 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     costruiscono l'app a mano, vedi `tests/test_api.py::client`) non deve
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
     `archivio_memoria` qui sotto."""
-    app = {HA_CLIENT_KEY: CasaFinta({})}
+    app = {**live_values(), HA_CLIENT_KEY: CasaFinta({})}
     await startup._on_cleanup(app)  # non deve sollevare
 
 
@@ -224,7 +226,7 @@ async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
     (`AttributeError`, la finta non ha quel metodo)."""
     archivio_casa_finto = create_autospec(HomeSpace, instance=True)
     archivio_memoria_finto = create_autospec(MemoryStore, instance=True)
-    app = {
+    app = {**live_values(),
         HA_CLIENT_KEY: CasaFinta({}),
         HOME_SPACE_KEY: archivio_casa_finto,
         MEMORY_STORE_KEY: archivio_memoria_finto,
@@ -245,7 +247,8 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     (`app["service_registry"]`), non una seconda costruzione."""
     registro_sentinella = object()
     promesse_sentinella = object()
-    app = {SERVICE_REGISTRY_KEY: registro_sentinella, AGENDA_KEY: promesse_sentinella}
+    app = {**live_values(),
+           SERVICE_REGISTRY_KEY: registro_sentinella, AGENDA_KEY: promesse_sentinella}
 
     dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
 
@@ -262,7 +265,7 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
     from hiris.app.chat_store import close_all_stores, load_history
 
     paolo = ChatThread("persona:paolo", "pannello")
-    app = {DATA_DIR_KEY: str(tmp_path), HA_CLIENT_KEY: None, SERVICES_KEY: None,
+    app = {**live_values(), DATA_DIR_KEY: str(tmp_path), HA_CLIENT_KEY: None, SERVICES_KEY: None,
            ROLES_KEY: {"quando": 0.0, "per_id": {}}}
     try:
         collaboratori = sweeper._promise_delivery(app)

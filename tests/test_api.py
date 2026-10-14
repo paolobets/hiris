@@ -53,7 +53,7 @@ async def client(aiohttp_client, tmp_path):
     mock_runner = RunnerFinto("Test response")
 
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = mock_runner
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
@@ -117,7 +117,7 @@ async def test_chat_no_runner(aiohttp_client, tmp_path):
     app = create_app()
     app[DATA_DIR_KEY] = str(tmp_path)  # lo scrive l'avvio, che qui non gira
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -169,9 +169,9 @@ async def test_chat_no_runner(aiohttp_client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(
         name="Energia", system_prompt="Sei un esperto di energia.",
-    )
+    ))
     runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "risposta energia"
 
@@ -188,7 +188,7 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
 
 @pytest.mark.asyncio
 async def test_chat_senza_chatbot_id_usa_comunque_le_impostazioni(client):
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Prompt di default HIRIS.")
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="Prompt di default HIRIS."))
     runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "risposta default"
 
@@ -204,7 +204,7 @@ async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
     sul default (fallback). Ora non c'e' nessuna ricerca da far fallire: un
     id qualsiasi -- esistito o mai esistito -- non cambia il comportamento,
     perche' non seleziona piu' niente."""
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Fallback prompt.")
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="Fallback prompt."))
     runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "fallback"
 
@@ -238,7 +238,7 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
         mock_runner = RunnerFinto("stessa risposta")
         app = create_app()
         app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-        app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Prompt fisso.")
+        app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="Prompt fisso."))
         app[CLAUDE_RUNNER_KEY] = mock_runner
         app[THEME_KEY] = "auto"
         app[DATA_DIR_KEY] = str(tmp_path / data_dir_name)
@@ -292,9 +292,9 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
     il turno chiede sempre `auto`. Il test non è stato cancellato perché dava
     fastidio: il suo soggetto è cambiato di segno, e questo è l'unico posto
     che lo verifica sull'app VERA (`create_app`), non su un'app di prova."""
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(
         name="Haiku", system_prompt="Chat test", restrict_to_home=False,
-    )
+    ))
     runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "ok"
 
@@ -312,7 +312,7 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
 @pytest.mark.asyncio
 async def test_chat_max_turns_blocks_when_limit_reached(client):
     from hiris.app.chat_store import append_messages
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(max_chat_turns=2)
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(max_chat_turns=2))
     data_dir = client.app[DATA_DIR_KEY]
     # Pre-fill 2 user turns nella cronologia del filo di chi scrive.
     append_messages([
@@ -357,7 +357,7 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     from hiris.app.chat_store import _get_store
 
     data_dir = client.app[DATA_DIR_KEY]
-    client.app[CHAT_SETTINGS_KEY] = ChatSettings(retention_days=5)
+    client.app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=5))
     runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "ok"
 

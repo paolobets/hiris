@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import pytest
 
 from hiris.app import conservazione, server, storage
+from hiris.app.live_value import LiveValue
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from hiris.app.startup import SCHEDULER_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
@@ -201,7 +202,7 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     queue.sweep_expired(now=born + 120)
     assert queue.get("vecchio")["status"] == "expired"
 
-    with mock.patch.dict(started_app, {BRIDGE_ACTIVE_KEY: False}):
+    with mock.patch.dict(started_app, {BRIDGE_ACTIVE_KEY: LiveValue(False)}):
         await started_app[SCHEDULER_KEY].get_job("hiris_retention").func()
 
     # Riletta da una seconda connessione: una cancellazione non committata si

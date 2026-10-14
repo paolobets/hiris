@@ -19,6 +19,7 @@ import pytest
 
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import recipe_round
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
@@ -1001,7 +1002,7 @@ def test_sul_PONTE_la_riparazione_arriva_fino_alla_raccolta(sapere, tmp_path):
     _scrivi(sapere, casa, "dev1", _ricetta("sensor.prodotta", "sensor.vecchia"))
     rotte = rt.recipes_to_repair(sapere, casa, with_series=SERIE_VIVE)
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
-    app = {REASONING_QUEUE_KEY: coda, MODELS_CONFIG_KEY: {"ponte": {"scadenza_min": 10}}}
+    app = {REASONING_QUEUE_KEY: coda, MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
 
     recipe_round._enqueue_recipe_turn(app, casa, "dev1", objective="risparmiare",
                                 with_series=SERIE_VIVE, repair=rotte["dev1"])
@@ -1033,7 +1034,7 @@ def test_sul_PONTE_un_turno_FALLITO_non_scrive_un_non_capito(sapere, tmp_path):
 
     casa = _casa_viva()
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
-    app = {REASONING_QUEUE_KEY: coda, MODELS_CONFIG_KEY: {"ponte": {"scadenza_min": 10}}}
+    app = {REASONING_QUEUE_KEY: coda, MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
     recipe_round._enqueue_recipe_turn(app, casa, "dev1", objective="risparmiare",
                                 with_series=SERIE_VIVE)
     preso = coda.claim(time.time())

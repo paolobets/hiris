@@ -73,7 +73,7 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
             mock.patch.object(AsyncIOScheduler, "start", start), \
             mock.patch.object(ChatSettings, "load", classmethod(load)):
         async with started_with(tmp_path) as app:
-            assert isinstance(app[CHAT_SETTINGS_KEY], ChatSettings)
+            assert isinstance(app[CHAT_SETTINGS_KEY].value, ChatSettings)
             assert isinstance(app[SCHEDULER_KEY], AsyncIOScheduler)
 
     # Il punto del pin: il websocket parte UNA volta, e PRIMA di qualunque

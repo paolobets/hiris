@@ -61,7 +61,7 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # Si passa `retention_days` esplicitamente: senza, `load_history`
     # ricadrebbe in silenzio sul default del suo parametro, qualunque cosa
     # l'utente abbia scelto in «Impostazioni chat».
-    giorni = request.app[CHAT_SETTINGS_KEY].retention_days
+    giorni = request.app[CHAT_SETTINGS_KEY].value.retention_days
     # collaudo 3.22, C4: `include_timestamp=True` SOLO qui -- questa e' la
     # rotta che disegna le bolle, e disegnarle con `new Date()` "al momento
     # del disegno" (il client, prima di questa correzione) affermava un'ora
@@ -87,7 +87,7 @@ async def handle_list_conversations(request: web.Request) -> web.Response:
     # rispondono come per un id che non esiste.
     await adopt_if_owner(request.app, request, thread)
     rows = list_conversations(request.app[DATA_DIR_KEY], thread=thread,
-                              days=request.app[CHAT_SETTINGS_KEY].retention_days)
+                              days=request.app[CHAT_SETTINGS_KEY].value.retention_days)
     return web.json_response({"conversations": rows})
 
 
@@ -107,7 +107,7 @@ async def handle_resume_conversation(request: web.Request) -> web.Response:
         return busy
     if not resume_conversation(request.app[DATA_DIR_KEY], thread=thread,
                                session_id=request.match_info["id"],
-                               days=request.app[CHAT_SETTINGS_KEY].retention_days):
+                               days=request.app[CHAT_SETTINGS_KEY].value.retention_days):
         return error_response(404, _CONVERSATION_NOT_FOUND)
     return web.json_response({"ok": True})
 

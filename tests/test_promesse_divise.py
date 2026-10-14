@@ -55,6 +55,7 @@ from hiris.app.home_space.tools import PROMISE_TOOL_DEF, ToolDispatcher
 from hiris.app.keeper import promise as promise_module
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON
 from hiris.app.keeper.store import AgendaStore
+from hiris.app.live_value import LiveValue
 from tests._casa_sintetica import INSTANT, synthetic_inputs
 from tests.test_mcp_chat_thread import rotta as rotta_chat  # noqa: F401
 
@@ -433,7 +434,7 @@ async def rotte(aiohttp_client, tmp_path):
     app[JOURNAL_KEY] = Journal(os.path.join(str(tmp_path), "azioni.db"))
     app[CONSTRUCTIONS_KEY] = _CostruzioniVuote()
     app[DATA_DIR_KEY] = data_dir
-    app[CHAT_SETTINGS_KEY] = ChatSettings(name="t", system_prompt="Sei HIRIS.")
+    app[CHAT_SETTINGS_KEY] = LiveValue(ChatSettings(name="t", system_prompt="Sei HIRIS."))
     app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list":
                                               lambda extra: _HOUSE_USERS})
     app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}
@@ -654,8 +655,9 @@ async def test_il_job_del_ponte_di_una_promessa_porta_il_filo(tmp_path, col_toke
     coda = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
     try:
         ident = _crea(archivio, PAOLO)
-        app = {BRIDGE_ACTIVE_KEY: True, REASONING_QUEUE_KEY: coda,
-               MODELS_CONFIG_KEY: {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}}
+        app = {BRIDGE_ACTIVE_KEY: LiveValue(True), REASONING_QUEUE_KEY: coda,
+               MODELS_CONFIG_KEY: LiveValue(
+                   {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}})}
         esito = await interpreta_promise(app, archivio.read(ident))
         assert esito == {"accodata": True}
 

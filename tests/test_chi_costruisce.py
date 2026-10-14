@@ -87,7 +87,7 @@ def _app(tmp_path, house: CasaFinta):
     # confine (`api/admission.py`).
     app[ACCESS_FLAG_KEY] = True
     app[HA_CLIENT_KEY] = house
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
@@ -98,7 +98,9 @@ def _app(tmp_path, house: CasaFinta):
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
     sapere.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
     app[KNOWLEDGE_KEY] = sapere
-    app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = build_judgments(sapere)
+    giudizi, stato = build_judgments(sapere)
+    app[TYPE_JUDGMENTS_KEY].set(giudizi)
+    app[TYPE_JUDGMENTS_STATUS_KEY].set(stato)
     app.on_startup.clear()
     app.on_cleanup.clear()
     return app

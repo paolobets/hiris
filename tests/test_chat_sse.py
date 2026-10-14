@@ -43,7 +43,7 @@ async def client(aiohttp_client, tmp_path):
     app = create_app()
     mock_runner = RunnerFinto("risposta di prova")
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = mock_runner
     app[LLM_ROUTER_KEY] = mock_runner
     app[THEME_KEY] = "auto"

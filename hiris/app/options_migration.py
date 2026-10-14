@@ -210,7 +210,7 @@ def seed_at_startup(app, data_dir: str, credentials: dict) -> None:
             log=logger),
     )
     for seed in seeds:
-        store, to_save = seed(dict(app[MODELS_CONFIG_KEY]))
+        store, to_save = seed(dict(app[MODELS_CONFIG_KEY].value))
         if to_save:
             save_models_config(data_dir, store, flags=True)
-            app[MODELS_CONFIG_KEY] = load_models_config(data_dir)
+            app[MODELS_CONFIG_KEY].set(load_models_config(data_dir))

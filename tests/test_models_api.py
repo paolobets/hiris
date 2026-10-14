@@ -176,7 +176,7 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
     l'interruttore grezzo."""
     monkeypatch.setenv("PROVIDER_OPENROUTER", "true")
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = []
+    client.app[MODEL_CHAIN_KEY].set([])
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -199,7 +199,7 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
 @pytest.mark.asyncio
 async def test_in_catena_segue_la_catena_del_runtime(client):
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = ["openrouter"]
+    client.app[MODEL_CHAIN_KEY].set(["openrouter"])
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -228,7 +228,7 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     il backend smette di far dedurre qualcosa alla pagina: e' l'invariante 2
     che si stringe, non che si allenta."""
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = ["openrouter"]
+    client.app[MODEL_CHAIN_KEY].set(["openrouter"])
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -260,7 +260,7 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
     difetto in miniatura: la frase dice chi risponde, le due liste dicono in che
     ordine, e devono venire dalla stessa misura."""
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = ["openrouter", "claude"]
+    client.app[MODEL_CHAIN_KEY].set(["openrouter", "claude"])
 
     body = await (await client.get("/api/models/config")).json()
     assert body["adesso"]["chi"] == body["catena"][0]["id"]
@@ -276,7 +276,7 @@ async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(cli
     ponte in un posto che il prodotto non ha piu' proverebbe uno stato
     irraggiungibile."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app[MODEL_CHAIN_KEY] = []
+    client.app[MODEL_CHAIN_KEY].set([])
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -384,7 +384,7 @@ async def test_il_connettore_dichiara_il_tempo_CHE_IL_TURNO_SUBISCE(client, monk
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
     await client.put("/api/models/config",
                      json={"ponte": {"attivo": True, "scadenza_min": 9}})
-    client.app[MODEL_CHAIN_KEY] = []
+    client.app[MODEL_CHAIN_KEY].set([])
 
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"][0]["id"] == "subscription"
@@ -398,7 +398,7 @@ async def test_una_catena_vuota_non_ha_una_fine(client):
     """`fine_catena` e' la frase che chiude la sequenza: senza sequenza non c'e'
     niente da chiudere, e una riga «se non risponde, la chat da' errore» sotto
     una catena vuota parlerebbe di un anello che non esiste."""
-    client.app[MODEL_CHAIN_KEY] = []
+    client.app[MODEL_CHAIN_KEY].set([])
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"] == []
     assert body["fine_catena"] == ""
@@ -418,7 +418,7 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", fake_claude_key)
     client.app[OPENAI_CREDENTIAL_KEY] = fake_openai_key
     client.app[OPENROUTER_CREDENTIAL_KEY] = fake_openrouter_key
-    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter", "openai"]
+    client.app[MODEL_CHAIN_KEY].set(["claude", "openrouter", "openai"])
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -721,7 +721,7 @@ async def test_accendere_il_ponte_dalla_pagina_mette_il_piano_in_testa(client, m
     si rilegge. Se `ponte.attivo` tornasse a venire dall'ambiente, la seconda
     lettura mostrerebbe il piano ancora fuori."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app[MODEL_CHAIN_KEY] = ["claude"]
+    client.app[MODEL_CHAIN_KEY].set(["claude"])
 
     prima = await (await client.get("/api/models/config")).json()
     assert "subscription" in {r["id"] for r in prima["fuori_catena"]}
@@ -748,7 +748,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
     di spegnere il ponte. Un interruttore che si accende e non si spegne è
     peggio di nessun interruttore."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app[MODEL_CHAIN_KEY] = ["claude"]
+    client.app[MODEL_CHAIN_KEY].set(["claude"])
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -762,7 +762,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
 async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
     """Non «il primo di chain_order»: il primo di `app["model_chain"]`,
     cioè la lista che il router prova davvero."""
-    client.app[MODEL_CHAIN_KEY] = ["openrouter", "claude"]
+    client.app[MODEL_CHAIN_KEY].set(["openrouter", "claude"])
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] == "openrouter"
@@ -867,7 +867,7 @@ async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
     difetto peggiore di quello che sostituisce."""
     visto = []
     client.app[RECOMPUTE_CHAIN_KEY] = lambda: visto.append(
-        list(client.app[MODELS_CONFIG_KEY]["chain_order"]))
+        list(client.app[MODELS_CONFIG_KEY].value["chain_order"]))
 
     resp = await client.put("/api/models/config",
                             json={"chain_order": ["openrouter", "claude"]})
@@ -906,8 +906,8 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
                        model_chain=["claude", "openrouter"])
     client.app[LLM_ROUTER_KEY] = router
     client.app[RECOMPUTE_CHAIN_KEY] = lambda: _recompute_chain(client.app)
-    client.app[MODELS_CONFIG_KEY] = {"chain_order": ["claude", "openrouter"]}
-    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
+    client.app[MODELS_CONFIG_KEY].set({"chain_order": ["claude", "openrouter"]})
+    client.app[MODEL_CHAIN_KEY].set(["claude", "openrouter"])
     # Le due credenziali che il GET misura per disegnare le righe: senza,
     # `compose_topology` sposterebbe OpenRouter fra chi sta fuori e la prova
     # guarderebbe un'altra cosa.
@@ -937,7 +937,7 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
     await client.put("/api/models/config", json={
         "chain_order": ["ollama"],
         "ollama": {"modello": "llama3.1:8b", "timeout_s": 300}})
-    client.app[MODEL_CHAIN_KEY] = ["ollama"]
+    client.app[MODEL_CHAIN_KEY].set(["ollama"])
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["ollama"]
@@ -975,7 +975,7 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     riceve le due frasi gia' fatte."""
     _with_claude_key(client)
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
+    client.app[MODEL_CHAIN_KEY].set(["claude", "openrouter"])
     registro = client.app[OCCURRENCES_KEY]
     for _ in range(40):
         registro.fallimento("claude", family="altro", code=400,
@@ -997,7 +997,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     lo dice invece di regalare un successo che nessuno ha misurato. E' anche
     la prova che il registro non nasce popolato."""
     _with_claude_key(client)
-    client.app[MODEL_CHAIN_KEY] = ["claude"]
+    client.app[MODEL_CHAIN_KEY].set(["claude"])
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
@@ -1016,7 +1016,7 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
     _with_claude_key(client)
     import hiris.app.api.handlers_models as modulo
 
-    client.app[MODEL_CHAIN_KEY] = ["claude"]
+    client.app[MODEL_CHAIN_KEY].set(["claude"])
     orologio = [5_000.0]
     # Il registro dell'app usa `time.time` vero: gli si scrive dentro un esito
     # con una data esplicita, cosi' l'unica variabile del test e' l'orologio
@@ -1056,7 +1056,7 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     await router.chat(model="auto")
 
     client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
-    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
+    client.app[MODEL_CHAIN_KEY].set(["claude", "openrouter"])
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"]}
     assert righe["claude"]["stato_testo"].startswith("il modello non esiste più (404), ")

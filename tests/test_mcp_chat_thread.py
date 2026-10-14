@@ -77,7 +77,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
          "system_generated": False, "group_ids": ["system-users"]},
     ]})
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]

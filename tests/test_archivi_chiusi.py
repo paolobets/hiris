@@ -173,7 +173,8 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     nomi = sorted(archivi_aperti(), key=str)
     for mancante in nomi:
         presenti = {nome: MagicMock() for nome in nomi if nome != mancante}
-        await startup._on_cleanup({**presenti, HA_CLIENT_KEY: CasaFinta({})})
+        await startup._on_cleanup({**startup.live_values(), **presenti,
+                                   HA_CLIENT_KEY: CasaFinta({})})
         aperti = [nome for nome, archivio in presenti.items()
                   if not archivio.close.called]
         assert not aperti, (

@@ -50,6 +50,7 @@ from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
@@ -109,17 +110,18 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
         runner = RunnerFinto("sync reply")
 
     app = web.Application()
+    app.update(live_values())
     app[LLM_ROUTER_KEY] = runner
     app[CLAUDE_RUNNER_KEY] = runner
-    app[CHAT_SETTINGS_KEY] = impostazioni
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
     app[DATA_DIR_KEY] = data_dir
-    app[BRIDGE_ACTIVE_KEY] = ponte_attivo
+    app[BRIDGE_ACTIVE_KEY].set(ponte_attivo)
     # Task 14: il tetto giornaliero del ponte si legge dall'ARCHIVIO
     # (`ponte.tetto_giornaliero`), dove l'utente lo cambia dalla pagina
     # Modelli, e non piu' da `app["chat_daily_cap"]` -- una copia di
     # `CHAT_DAILY_CAP` presa all'avvio, che nessun salvataggio aggiornava.
     if tetto_giornaliero is not None:
-        app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": tetto_giornaliero}}
+        app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": tetto_giornaliero}})
 
     q = None
     if with_queue:

@@ -54,7 +54,7 @@ SETTINGS = ChatSettings(name="Casa", system_prompt="sii breve", max_chat_turns=7
 async def casa(aiohttp_client, tmp_path):
     """L'opzione accesa, con gli archivi che `/api/pending` legge."""
     app = _compose(tmp_path, access=True)
-    app[CHAT_SETTINGS_KEY] = SETTINGS
+    app[CHAT_SETTINGS_KEY].set(SETTINGS)
     app[AGENDA_KEY] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     app[CONSTRUCTIONS_KEY] = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     client = await aiohttp_client(app)

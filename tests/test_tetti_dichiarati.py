@@ -25,10 +25,12 @@ from conftest import SCADENZA_LONTANA
 from hiris.app import steering
 from hiris.app.agent import runner as ponte
 from hiris.app.keeper import exchange
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import analyst_round, observer_round, proposer_round, recipe_round
 from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import live_values
 from tests.test_agent_runner_inaddon import _ProcFelice
 from tests.test_mind_analyst_turn import _serie
 from tests.test_mind_observer import _casa
@@ -106,8 +108,8 @@ class _Coda:
 
 
 def _app(tmp_path, modello="opus"):
-    return {REASONING_QUEUE_KEY: _Coda(),
-            MODELS_CONFIG_KEY: {"ponte": {"modello": modello, "scadenza_min": 5}},
+    return {**live_values(), REASONING_QUEUE_KEY: _Coda(),
+            MODELS_CONFIG_KEY: LiveValue({"ponte": {"modello": modello, "scadenza_min": 5}}),
             OBSERVATIONS_KEY: ObservationsStore(str(tmp_path / "oss.db"))}
 
 
@@ -169,9 +171,9 @@ def test_il_modello_del_ponte_si_legge_in_UN_posto():
     scrive un secondo."""
     from hiris.app.models_store import _STORE_DEFAULTS
 
-    assert steering.bridge_model({}) == _STORE_DEFAULTS["ponte"]["modello"]
+    assert steering.bridge_model(live_values()) == _STORE_DEFAULTS["ponte"]["modello"]
     assert steering.bridge_model(
-        {MODELS_CONFIG_KEY: {"ponte": {"modello": "haiku"}}}) == "haiku"
+        {**live_values(), MODELS_CONFIG_KEY: LiveValue({"ponte": {"modello": "haiku"}})}) == "haiku"
 
 
 def _job(kind="osservatore", **context):

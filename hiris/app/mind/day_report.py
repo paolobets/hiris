@@ -18,6 +18,7 @@ from ..home_space.historian import day_boundaries, home_space_zone, house_timezo
 from ..home_space.house import House
 from ..home_space.house_history import read_bands, statistic_ids_for_round
 from ..home_space.reader import HOME_SPACE_KEY
+from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import recipe_turn
 from .facts import aggregate_day, chronicle_is_stale, rebuild_chronicle
@@ -30,7 +31,7 @@ from .store import OBSERVATIONS_KEY, READING_RETENTION_S
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
 BACKFILL_QUIET_KEY = web.AppKey("backfill_quiet")
-LAST_REPAIR_KEY = web.AppKey("ultima_riparazione")
+LAST_REPAIR_KEY = web.AppKey("ultima_riparazione", LiveValue)
 
 logger = logging.getLogger(__name__)
 
@@ -184,12 +185,12 @@ async def backfill_one_report(app, ha_client, *,
             app[BACKFILL_QUIET_KEY].pop(as_text, None)
             logger.info("cervello: recuperato il resoconto di %s", as_text)
             return as_text
-        if (chronicle_is_stale(written, app[TYPE_JUDGMENTS_KEY])
+        if (chronicle_is_stale(written, app[TYPE_JUDGMENTS_KEY].value)
                 and day_boundaries(as_text, timezone)[0] >= oldest_intact_ts):
             started = time.monotonic()
             try:
                 rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
-                                  judgments=app[TYPE_JUDGMENTS_KEY],
+                                  judgments=app[TYPE_JUDGMENTS_KEY].value,
                                   house=House.read(app.get(HOME_SPACE_KEY),
                                                    app.get(ENTITY_CACHE_KEY)),
                                   when_ts=now(UTC).timestamp())
@@ -204,7 +205,7 @@ async def backfill_one_report(app, ha_client, *,
             app[BACKFILL_QUIET_KEY].pop(as_text, None)
             logger.info(
                 "cervello: rifatta la cronaca di %s col giudizio %s in %.2f s",
-                as_text, app[TYPE_JUDGMENTS_KEY].chronicle_fingerprint(),
+                as_text, app[TYPE_JUDGMENTS_KEY].value.chronicle_fingerprint(),
                 time.monotonic() - started)
             return as_text
         day += timedelta(days=1)
@@ -270,10 +271,10 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     try:
         await _reaggregate_days(app, ha_client, now=now)
     except Exception as error:
-        app[LAST_REPAIR_KEY] = {
+        app[LAST_REPAIR_KEY].set({
             "stato": REPAIR_RAISED,
             "perche": f"{type(error).__name__}: {error}",
-            "giorni": [], "resoconti_scritti": []}
+            "giorni": [], "resoconti_scritti": []})
         raise
 
 
@@ -302,8 +303,8 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
     written = await _write_missing_reports(app, ha_client, days, timezone,
                                            when_ts=now(UTC).timestamp())
-    app[LAST_REPAIR_KEY] = {"stato": REPAIR_DONE, "perche": None,
-                                 "giorni": days, "resoconti_scritti": written}
+    app[LAST_REPAIR_KEY].set({"stato": REPAIR_DONE, "perche": None,
+                              "giorni": days, "resoconti_scritti": written})
     if written:
         logger.info("cervello: resoconti scritti all'avvio per %s",
                     ", ".join(written))
@@ -468,6 +469,6 @@ async def write_day_report(app, ha_client, *, day: str, timezone: str | None,
         store=app[OBSERVATIONS_KEY], day=day, timezone=timezone,
         recipes=ricette, series=serie, names=nomi,
         silent=silent, muted=mute,
-        judgments=app[TYPE_JUDGMENTS_KEY],
+        judgments=app[TYPE_JUDGMENTS_KEY].value,
         house=House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY)),
         when_ts=when_ts)

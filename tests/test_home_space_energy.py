@@ -41,7 +41,9 @@ from hiris.app.home_space import energy
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import live_mirror
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import recipe_round, recipe_turn
+from hiris.app.startup import live_values
 from tests._runner_finto import RunnerFinto
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -453,7 +455,7 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
                 {"statistic_id": "sensor.inverter_prelievo"}]})
         # Il modello finto risponde «niente da misurare».
         runner = RunnerFinto('{"why": "prova", "steps": []}')
-        app = {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+        app = {**live_values(), OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
                HOME_SPACE_KEY: _store(tmp_path), HA_CLIENT_KEY: house,
                ENTITY_CACHE_KEY: _cache(), LLM_ROUTER_KEY: runner}
 
@@ -643,7 +645,7 @@ def _round_app(tmp_path, runner, sapere, archivio):
     house = CasaFinta({"energy_prefs": PREFS}, answers={
         "recorder/list_statistic_ids": lambda extra: [
             {"statistic_id": s} for s in sorted(SERIES)]})
-    return {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+    return {**live_values(), OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
             HOME_SPACE_KEY: _store(tmp_path), HA_CLIENT_KEY: house,
             ENTITY_CACHE_KEY: _cache(), LLM_ROUTER_KEY: runner}
 
@@ -704,8 +706,8 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
         _write(sapere, casa)
         back = recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
                                              energy=dashboard)
-        app = {REASONING_QUEUE_KEY: coda,
-               MODELS_CONFIG_KEY: {"ponte": {"scadenza_min": 10}}}
+        app = {**live_values(), REASONING_QUEUE_KEY: coda,
+               MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
 
         recipe_round._enqueue_recipe_turn(app, casa, "inv", objective="risparmiare",
                                     with_series=SERIES, energy=dashboard,

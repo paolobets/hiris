@@ -16,6 +16,7 @@ from ..home_space.energy import energy_dashboard
 from ..home_space.house import House
 from ..home_space.house_history import statistic_ids_for_round
 from ..home_space.reader import HOME_SPACE_KEY
+from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..proxy.ha_client import HA_CLIENT_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
@@ -27,7 +28,7 @@ from .store import OBSERVATIONS_KEY
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
-RECIPE_CURSOR_KEY = web.AppKey("recipe_turn_cursor")
+RECIPE_CURSOR_KEY = web.AppKey("recipe_turn_cursor", LiveValue)
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +141,9 @@ async def recipe_round(app) -> dict | None:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde
         # affama tutti gli altri (vedi `recipe_turn.who_to_ask`).
-        device_id, app[RECIPE_CURSOR_KEY] = recipe_turn.who_to_ask(
-            to_ask, int(app.get(RECIPE_CURSOR_KEY) or 0))
+        device_id, cursor = recipe_turn.who_to_ask(
+            to_ask, app[RECIPE_CURSOR_KEY].value)
+        app[RECIPE_CURSOR_KEY].set(cursor)
         if device_id is None:
             return None
         repair = to_repair.get(device_id)

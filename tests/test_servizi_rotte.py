@@ -83,7 +83,7 @@ def _chiave() -> str:
 async def cliente(aiohttp_client, tmp_path):
     app = create_app()
     app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: _UTENTI})
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)

@@ -33,6 +33,7 @@ from hiris.app.api.handlers_constructions import (
 )
 from hiris.app.chat_thread import ChatThread
 from hiris.app.server import create_app
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests.test_construction_workshop import WorkshopHouse
@@ -124,6 +125,7 @@ def _admin_house() -> CasaFinta:
 
 def _app(archivio=None, officina=None):
     app = web.Application()
+    app.update(live_values())
     if archivio is not None:
         app[CONSTRUCTIONS_KEY] = archivio
     if officina is not None:

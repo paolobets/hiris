@@ -612,7 +612,7 @@ async def real_client(aiohttp_client, tmp_path, monkeypatch):
 
     app = create_app()
     app[DATA_DIR_KEY] = str(tmp_path)
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[REASONING_QUEUE_KEY] = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()

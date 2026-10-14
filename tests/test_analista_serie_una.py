@@ -26,9 +26,11 @@ import pytest
 
 from hiris.app import steering
 from hiris.app.home_space import historian
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import analyst_round, analyst_turn
 from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests.test_mind_analyst_memory import _osservazione
@@ -62,7 +64,8 @@ def app(tmp_path):
     # Senza, la memoria e' `[]` sulle due strade e il confronto non la vede.
     store.replace_analysis("2026-09-16", {"osservazioni": [_osservazione()]})
     try:
-        yield {OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: False}
+        yield {**live_values(),
+               OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(False)}
     finally:
         store.close()
         usage.close()

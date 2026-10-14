@@ -94,7 +94,7 @@ def _probes(house: CasaFinta) -> int:
 
 
 def _app(archivio, anagrafe, modello):
-    return {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: anagrafe,
+    return {**live_values(), OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: anagrafe,
             LLM_ROUTER_KEY: modello}
 
 
@@ -227,9 +227,10 @@ async def test_senza_modello_o_senza_archivio_il_giro_non_solleva(archivio):
     fermerebbe lo schedulatore, non solo questo giro."""
     anagrafe = _anagrafe([_entita("climate.x")])
 
-    assert await reconsideration_round({OBSERVATIONS_KEY: archivio,
+    assert await reconsideration_round({**live_values(), OBSERVATIONS_KEY: archivio,
                                         HOME_SPACE_KEY: anagrafe}, _house()) is None
-    assert await reconsideration_round({LLM_ROUTER_KEY: _modello()}, _house()) is None
+    assert await reconsideration_round({**live_values(),
+                                        LLM_ROUTER_KEY: _modello()}, _house()) is None
     assert await reconsideration_round({}, None) is None
 
 
@@ -278,6 +279,7 @@ async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio, faul
 
 from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.startup import live_values
 
 
 @pytest.fixture
@@ -296,8 +298,8 @@ def piano_acceso(monkeypatch):
 def _app_ponte_acceso(archivio, anagrafe, modello, coda):
     app = _app(archivio, anagrafe, modello)
     app[REASONING_QUEUE_KEY] = coda
-    app[BRIDGE_ACTIVE_KEY] = True
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}
+    app[BRIDGE_ACTIVE_KEY].set(True)
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}})
     return app
 
 
@@ -653,7 +655,7 @@ async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
 
     Mutazione che la uccide: tornare `None` senza annotare.
     """
-    app = {OBSERVATIONS_KEY: archivio,
+    app = {**live_values(), OBSERVATIONS_KEY: archivio,
            HOME_SPACE_KEY: _anagrafe([_entita("climate.x")])}
 
     esito = await reconsideration_round(app, _house())

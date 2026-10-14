@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 from casa_finta import CasaFinta
 
+from hiris.app.startup import live_values
+
 
 @pytest.mark.asyncio
 async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
@@ -38,6 +40,7 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
         "integrazioni": [{"domain": "mqtt", "titolo": "MQTT", "state": "loaded"}],
     })
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
@@ -57,6 +60,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     """L'anagrafe puo' essere vuota se HA non era pronto all'avvio: 200 e vuota,
     non 500 -- chi guarda deve poter distinguere «vuota» da «rotta»."""
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
@@ -96,6 +100,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
         unread_bodies={"automation.a_mano": "configurazione non letta da Home Assistant"},
     )
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
@@ -128,6 +133,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
         {"percorso": "cucina", "titolo": "Cucina"},
     ])
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
@@ -164,6 +170,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     archivio_memoria.remember("d'inverno la sala la preferisco fra 19 e 20 gradi",
                               detto_da="paolo")
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio_casa
     app[MEMORY_STORE_KEY] = archivio_memoria
     app[ENTITY_CACHE_KEY] = SpecchioFinto([raw_state("light.cucina", "on")])
@@ -192,6 +199,7 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     dichiarare "non ho potuto guardare" -- MAI un nucleo vuoto spacciato per
     una casa vuota. 200 comunque: e' una lacuna dichiarata, non un guasto."""
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = None
     app[MEMORY_STORE_KEY] = None
     app[ENTITY_CACHE_KEY] = None
@@ -223,6 +231,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
         "etichette": [], "categorie": [], "integrazioni": [],
     }, unavailable=["aree"])
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio_casa
     app[MEMORY_STORE_KEY] = None
     app[ENTITY_CACHE_KEY] = None
@@ -260,6 +269,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
         archivio_memoria.remember(f"ricordo numero {i}: qualcosa che qualcuno ha detto",
                                   detto_da="paolo")
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio_casa
     app[MEMORY_STORE_KEY] = archivio_memoria
     app[ENTITY_CACHE_KEY] = None
@@ -305,6 +315,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_corpi_non_letti_del_comportament
         unread_bodies={"script.muto": "configurazione non letta da Home Assistant"},
     )
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio_casa
     app[MEMORY_STORE_KEY] = None
     app[ENTITY_CACHE_KEY] = None
@@ -338,6 +349,7 @@ async def test_pagina_e_nucleo_contano_gli_stessi_corpi_mancanti(aiohttp_client,
         unread_bodies={"script.muto": "configurazione non letta da Home Assistant"},
     )
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio_casa
     app[MEMORY_STORE_KEY] = None
     app[ENTITY_CACHE_KEY] = None
@@ -372,6 +384,7 @@ async def test_le_etichette_escono_col_nome_sull_entita_non_in_una_mappa(aiohttp
                     "platform": "hue", "translation_key": "ceiling"}],
     }, [])
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = casa
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
@@ -411,6 +424,7 @@ async def test_l_albero_non_porta_gli_attributi_dello_stato(tmp_path):
         "entita": [{"entity_id": "person.inquilino", "area_id": "ingresso"}],
     }, [])
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = casa
     app[ENTITY_CACHE_KEY] = specchio
     risposta = await handle_get_home_space(
@@ -467,6 +481,7 @@ def _app_with_behavior(tmp_path, soggetto):
         return await handler(request)
 
     app = web.Application(middlewares=[confine])
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     return app
@@ -521,6 +536,7 @@ async def test_la_replica_conservata_esce_dalle_due_porte_nella_stessa_forma(
     archivio.keep_behavior("Home Assistant non le ha ancora caricate")
     archivio.keep_dashboards("nessuna plancia leggibile", unavailable=["principale"])
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app[MEMORY_STORE_KEY] = None
     app[ENTITY_CACHE_KEY] = None
@@ -560,6 +576,7 @@ async def test_api_casa_una_classe_che_non_c_e_non_si_scrive_null(aiohttp_client
                    {"entity_id": "sensor.frigo", "name": "Frigo", "area_id": "cucina"}],
     })
     app = web.Application()
+    app.update(live_values())
     app[HOME_SPACE_KEY] = archivio
     app[ENTITY_CACHE_KEY] = SpecchioFinto([
         raw_state("light.cucina", "on", "Faretti"),

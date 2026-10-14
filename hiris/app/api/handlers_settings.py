@@ -309,7 +309,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
     chat leggera'. Si prendono da `app["chat_settings"]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
-    settings = request.app.get(CHAT_SETTINGS_KEY) or ChatSettings()
+    settings = request.app[CHAT_SETTINGS_KEY].value
     payload = _payload(settings)
     if restricted_person(request):
         payload = {field: payload[field] for field in CHAT_PAGE_FIELDS}
@@ -319,7 +319,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
 async def handle_save_settings(request: web.Request) -> web.Response:
     body = await json_object(request, field="")
 
-    current = request.app.get(CHAT_SETTINGS_KEY) or ChatSettings()
+    current = request.app[CHAT_SETTINGS_KEY].value
     try:
         updated = validate(current, body)
     except Rejection as rejection:
@@ -347,5 +347,5 @@ async def handle_save_settings(request: web.Request) -> web.Response:
     # Hot-update: vedi la docstring in cima al file. Senza questa riga il
     # salvataggio riesce e la chat continua a usare i valori vecchi fino al
     # riavvio.
-    request.app[CHAT_SETTINGS_KEY] = updated
+    request.app[CHAT_SETTINGS_KEY].set(updated)
     return web.json_response({"ok": True, **_payload(updated)})

@@ -324,7 +324,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # (`tests/test_execute_tool.py`), e `ToolDispatcher.__init__` ricade
         # gia' sul solo seme se riceve `None` -- in una vera richiesta questo
         # ramo non degrada mai, perche' l'avvio scrive sempre la chiave.
-        judgments=app.get(TYPE_JUDGMENTS_KEY),
+        judgments=app[TYPE_JUDGMENTS_KEY].value,
         # Il filo di chi ha aperto il turno -- vedi il docstring qui sopra
         # per chi lo calcola e per la guardia che lo usa.
         thread=thread,
@@ -955,7 +955,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             413, f"Il messaggio è troppo lungo: al massimo {MESSAGE_CAP} caratteri.")
 
     data_dir = request.app[DATA_DIR_KEY]
-    settings = request.app[CHAT_SETTINGS_KEY]
+    settings = request.app[CHAT_SETTINGS_KEY].value
     # Fetta «le chat divise»: il filo di chi scrive, calcolato UNA volta qui e
     # passato a tutto cio' che segue -- cronologia, riassunti, limite dei
     # turni, 409, scrittura, job. Ricalcolarlo in ogni punto sarebbe cinque

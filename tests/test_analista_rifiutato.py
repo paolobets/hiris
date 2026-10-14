@@ -17,11 +17,13 @@ import pytest
 from hiris.app import steering
 from hiris.app.home_space import historian
 from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import analyst_round
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
@@ -55,7 +57,8 @@ def casa(tmp_path):
     usage = UsageStore(str(tmp_path / "consumi.db"))
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
-    app = {OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: False}
+    app = {**live_values(),
+           OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(False)}
     try:
         yield app
     finally:

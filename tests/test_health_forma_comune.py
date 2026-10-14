@@ -25,6 +25,7 @@ import pytest
 from hiris.app.agent import runner
 from hiris.app.mind import day_report, judgments
 from hiris.app.mind.day_report import LAST_REPAIR_KEY
+from hiris.app.startup import live_values
 
 
 def _forma(oggetto: dict, vocabolario: tuple[str, ...]) -> None:
@@ -59,19 +60,19 @@ async def test_la_riparazione_fatta_e_sollevata(monkeypatch):
     async def _sollevata(app, ha_client, *, now):
         raise RuntimeError("ricetta rotta")
 
-    app: dict = {}
+    app = live_values()
     with monkeypatch.context() as patch:
         patch.setattr(day_report, "_reaggregate_days", _sollevata)
         with pytest.raises(RuntimeError):
             await day_report.reaggregate_last_two_days(app, None)
-    _forma(app[LAST_REPAIR_KEY], day_report.REPAIR_STATES)
+    _forma(app[LAST_REPAIR_KEY].value, day_report.REPAIR_STATES)
     # La parola esatta di ogni caso, non solo una del vocabolario (N162-2):
     # due casi scambiati restano nel vocabolario e la forma non li vede.
-    assert app[LAST_REPAIR_KEY]["stato"] == day_report.REPAIR_RAISED
-    assert app[LAST_REPAIR_KEY]["perche"] == "RuntimeError: ricetta rotta"
+    assert app[LAST_REPAIR_KEY].value["stato"] == day_report.REPAIR_RAISED
+    assert app[LAST_REPAIR_KEY].value["perche"] == "RuntimeError: ricetta rotta"
 
     monkeypatch.setattr(day_report, "_write_missing_reports", _nessun_resoconto)
     await day_report.reaggregate_last_two_days(app, None)
-    _forma(app[LAST_REPAIR_KEY], day_report.REPAIR_STATES)
-    assert app[LAST_REPAIR_KEY]["stato"] == day_report.REPAIR_DONE
-    assert app[LAST_REPAIR_KEY]["perche"] is None
+    _forma(app[LAST_REPAIR_KEY].value, day_report.REPAIR_STATES)
+    assert app[LAST_REPAIR_KEY].value["stato"] == day_report.REPAIR_DONE
+    assert app[LAST_REPAIR_KEY].value["perche"] is None

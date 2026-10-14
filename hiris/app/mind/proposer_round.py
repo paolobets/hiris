@@ -26,6 +26,7 @@ from ..action.construction.stakes import HIGH
 from ..home_space import historian
 from ..home_space.reader import HOME_SPACE_KEY
 from ..keeper.delivery import notify_admins
+from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..states import SUPERSEDED
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 #: La chiave di `app` che dice che un giro e' in corso. Lo schedulatore ha
 #: mezz'ora di `misfire_grace_time`: due giri possono partire insieme dopo una
 #: sosta dell'add-on, e senza questa guardia si pagherebbero due turni.
-IN_FLIGHT = web.AppKey("proponente_in_volo")
+IN_FLIGHT = web.AppKey("proponente_in_volo", LiveValue)
 
 #: La chiave della sveglia che fa di un turno del proponente un turno del
 #: GIRO: la porta ogni accodamento di `_enqueue`. Nella stessa specie stanno
@@ -90,9 +91,9 @@ async def proposer_round(app) -> dict | None:
     osservazioni ancora aperte. Torna il resoconto, o `None` se non c'era da
     farlo."""
     store = app.get(OBSERVATIONS_KEY)
-    if store is None or app.get(IN_FLIGHT):
+    if store is None or app[IN_FLIGHT].value:
         return None
-    app[IN_FLIGHT] = True
+    app[IN_FLIGHT].set(True)
     try:
         # Prima di tutto gli avvisi che non sono arrivati: si ritentano a ogni
         # battito, anche nei giorni senza analisi (D14, «Ritenta»).
@@ -128,7 +129,7 @@ async def proposer_round(app) -> dict | None:
                        "giro dopo", type(error).__name__, error)
         return None
     finally:
-        app[IN_FLIGHT] = False
+        app[IN_FLIGHT].set(False)
 
 
 async def _chain(app, store, day: str, pending, refused, runner) -> dict:

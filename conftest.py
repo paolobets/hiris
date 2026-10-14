@@ -106,7 +106,7 @@ async def ponte_produzione(aiohttp_client, tmp_path, monkeypatch):
     finto_ha.add_state_listener = MagicMock()
     finto_ha.start_websocket = AsyncMock()
     app[HA_CLIENT_KEY] = finto_ha
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     # La sorgente del client di test e' un loopback, che NON sta nella rete del

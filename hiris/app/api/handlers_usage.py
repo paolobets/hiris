@@ -99,7 +99,7 @@ def _can_respond(app) -> bool:
     ancora consumato niente» -- e non un'assenza di misura. E' la distinzione
     che rende `measured: false` un caso raro invece che la normalita'.
     """
-    return bool(chain_runner(app) or app.get(BRIDGE_ACTIVE_KEY))
+    return bool(chain_runner(app) or app[BRIDGE_ACTIVE_KEY].value)
 
 
 def _unmeasured() -> dict:

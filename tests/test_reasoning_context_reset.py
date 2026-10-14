@@ -177,6 +177,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
+from hiris.app.startup import live_values
 
 
 @pytest.fixture(autouse=True)
@@ -207,10 +208,11 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     impostazioni = ChatSettings(name="test-agent", system_prompt="Sei HIRIS.")
 
     app = web.Application()
+    app.update(live_values())
     app[REASONING_QUEUE_KEY] = reasoning_queue
-    app[CHAT_SETTINGS_KEY] = impostazioni
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
     app[DATA_DIR_KEY] = data_dir
-    app[BRIDGE_ACTIVE_KEY] = True
+    app[BRIDGE_ACTIVE_KEY].set(True)
 
     archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({

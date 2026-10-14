@@ -60,7 +60,7 @@ def _make_app(tmp_path, cidrs=None):
     # il client vero da `config/auth/list`.
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs(), answers={
         "config/auth/list": lambda extra: [ADMIN_ROW]})
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)

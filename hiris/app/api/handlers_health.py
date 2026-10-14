@@ -53,6 +53,6 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get(BUILD_STAMP_KEY, ""),
                               "ponte": last_bridge_init(),
-                              "riparazione": request.app.get(LAST_REPAIR_KEY),
-                              "istantanea": request.app.get(TYPE_JUDGMENTS_STATUS_KEY),
+                              "riparazione": request.app[LAST_REPAIR_KEY].value,
+                              "istantanea": request.app[TYPE_JUDGMENTS_STATUS_KEY].value,
                               "conservazione": declarations(request.app)})

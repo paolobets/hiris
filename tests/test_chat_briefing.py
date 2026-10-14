@@ -106,7 +106,7 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     mock_runner = RunnerFinto("ok")
 
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-    app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="base prompt")
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="base prompt"))
     app[CLAUDE_RUNNER_KEY] = mock_runner
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
@@ -398,7 +398,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
         runner = ClaudeRunner(api_key="test-key")
 
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
-    app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="base prompt")
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="base prompt"))
     app[CLAUDE_RUNNER_KEY] = runner
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)

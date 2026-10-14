@@ -53,11 +53,11 @@ async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
     legge (`app["bridge_active"]`, `app["models_config"]["ponte"]`), come le
     lascerebbero `_recompute_chain` e la pagina Modelli."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        app[BRIDGE_ACTIVE_KEY] = bridge_active
+        app[BRIDGE_ACTIVE_KEY].set(bridge_active)
         if deadline_min is not None:
-            config = dict(app.get(MODELS_CONFIG_KEY) or {})
+            config = dict(app[MODELS_CONFIG_KEY].value or {})
             config["ponte"] = {**(config.get("ponte") or {}), "scadenza_min": deadline_min}
-            app[MODELS_CONFIG_KEY] = config
+            app[MODELS_CONFIG_KEY].set(config)
         sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
         yield sweep, app[REASONING_QUEUE_KEY], app
 
@@ -242,8 +242,8 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
         # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano. La
         # stessa app, la stessa spazzata: cambia solo cio' che la pagina
         # Modelli scriverebbe.
-        app[MODELS_CONFIG_KEY] = {**app[MODELS_CONFIG_KEY],
-                                "ponte": {**app[MODELS_CONFIG_KEY]["ponte"], "scadenza_min": 5}}
+        prima = app[MODELS_CONFIG_KEY].value
+        app[MODELS_CONFIG_KEY].set({**prima, "ponte": {**prima["ponte"], "scadenza_min": 5}})
         await sweep()
         assert q.get("j")["status"] == "failed"
 

@@ -29,6 +29,7 @@ from hiris.app.api.handlers_proposals import (
     handle_proposal_reject,
 )
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
 
@@ -83,7 +84,7 @@ def casa(tmp_path):
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, stakes=None, now_ts=100.0)
     try:
-        yield ({OBSERVATIONS_KEY: store, HA_CLIENT_KEY: CasaFinta(
+        yield ({**live_values(), OBSERVATIONS_KEY: store, HA_CLIENT_KEY: CasaFinta(
                    synthetic_inputs(), answers={"config/auth/list": lambda extra: [_ADMIN]}),
                 ROLES_KEY: {"quando": 0.0, "per_id": {}}}, store, ident)
     finally:

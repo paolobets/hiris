@@ -294,7 +294,7 @@ async def _start(tmp_path):
     from tests._avvio import started_with
 
     async with started_with(tmp_path) as app:
-        return app[CHAT_SETTINGS_KEY]
+        return app[CHAT_SETTINGS_KEY].value
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY
 from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
 from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.startup import live_values
 from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
 
@@ -35,9 +36,10 @@ def _make_app_with_runner(runner):
     from hiris.app.chat_settings import ChatSettings
 
     app = web.Application(middlewares=[_security_headers])
+    app.update(live_values())
     app[LLM_ROUTER_KEY] = runner
     app[CLAUDE_RUNNER_KEY] = runner
-    app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="test")
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="test"))
     app[DATA_DIR_KEY] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)
@@ -226,6 +228,7 @@ def _make_csrf_app():
     """Mini app wired with CSRF middleware to verify behavior in isolation."""
     from hiris.app.api.middleware_csrf import csrf_middleware
     app = web.Application(middlewares=[csrf_middleware])
+    app.update(live_values())
     app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
     app.router.add_get("/api/x", lambda r: web.json_response({"ok": True}))
     app.router.add_delete("/api/x", lambda r: web.json_response({"ok": True}))

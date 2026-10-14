@@ -83,7 +83,8 @@ def _app_seminata(tmp_path):
     s = KnowledgeStore(str(tmp_path / "sapere.db"))
     s.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
     j, stato = build_judgments(s)
-    return s, {KNOWLEDGE_KEY: s, TYPE_JUDGMENTS_KEY: j, TYPE_JUDGMENTS_STATUS_KEY: stato}
+    return s, {KNOWLEDGE_KEY: s, TYPE_JUDGMENTS_KEY: LiveValue(j),
+               TYPE_JUDGMENTS_STATUS_KEY: LiveValue(stato)}
 
 
 @pytest.mark.asyncio
@@ -94,14 +95,14 @@ async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
     rossa (`chi` vale il nome del confine, non quello di HA)."""
     s, app = _app_seminata(tmp_path)
     try:
-        prima = app[TYPE_JUDGMENTS_STATUS_KEY]["impronta"]
+        prima = app[TYPE_JUDGMENTS_STATUS_KEY].value["impronta"]
         r = await handle_set_judgment(_richiesta(app, {
             "soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",
             "campo": "genere", "valore": "presenza"}))
         assert r.status == 200
         corpo = json.loads(r.text)
         assert corpo["istantanea"]["impronta"] != prima
-        assert corpo["istantanea"] == app[TYPE_JUDGMENTS_STATUS_KEY]
+        assert corpo["istantanea"] == app[TYPE_JUDGMENTS_STATUS_KEY].value
         assert corpo["istantanea"]["stato"] == "sapere"
         assert corpo["riga"]["valore"] == "presenza"
         assert corpo["riga"]["chi"] == HA_NAME
@@ -122,7 +123,7 @@ async def test_valore_null_torna_seme(tmp_path):
                 "soggetto_genere": "tipo", "soggetto": "light",
                 "campo": "genere", "valore": valore}))
             assert r.status == 200, r.text
-            assert (app[TYPE_JUDGMENTS_KEY].rows() == tv.REPO_JUDGMENTS.rows()) is seminata
+            assert (app[TYPE_JUDGMENTS_KEY].value.rows() == tv.REPO_JUDGMENTS.rows()) is seminata
     finally:
         s.close()
 
@@ -368,6 +369,7 @@ async def test_archivio_che_SOLLEVA_scrivendo_e_503_non_500(tmp_path):
 # `test_agenda_api.py`, da cui si riusa la fixture `csrf_stretto` invece di
 # scriverne una seconda identica.
 
+from hiris.app.live_value import LiveValue
 from tests.test_settings_api import csrf_stretto  # noqa: F401
 
 

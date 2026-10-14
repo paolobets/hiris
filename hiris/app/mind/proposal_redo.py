@@ -75,7 +75,7 @@ DISCARDED = "scartato"
 #: I rifacimenti in corso sulla catena, per id di proposta. Sulla catena il
 #: turno non passa dalla coda, e due pressioni ravvicinate pagherebbero due
 #: turni: questo insieme vive solo finche' la richiesta e' aperta.
-CHAIN_IN_FLIGHT = web.AppKey("rifalla_in_volo")
+CHAIN_IN_FLIGHT = web.AppKey("rifalla_in_volo", set)
 
 #: La regola del rifacimento, davanti al contratto degli esiti. Era la meta'
 #: di `_REDO_SYSTEM`; l'altra meta' -- chi sei, cosa sai fare -- e' il
@@ -200,7 +200,7 @@ async def redo(app, store, proposal: dict, request: str, *,
     # rifacimento scartato da un'automazione arrivata prima.
     if redoing(app, proposal) or automate_turn.preparing(app) == ident:
         raise InFlight(ident)
-    in_flight = app.setdefault(CHAIN_IN_FLIGHT, set())
+    in_flight = app[CHAIN_IN_FLIGHT]
     route, downgrade, runner = start(app, PROPOSER_SPECIES)
     observation = observation_of(store, proposal)
     if route == "ponte":

@@ -24,6 +24,7 @@ import pytest
 from hiris.app import steering
 from hiris.app.claude_runner import BASE_TOOL_RULES, CLAUDE_RUNNER_KEY, ClaudeRunner
 from hiris.app.home_space.tools import TOOLS
+from hiris.app.live_value import LiveValue
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from tests._runner_finto import RunnerFinto
@@ -224,7 +225,7 @@ def test_l_accodamento_prende_tutto_dalla_dichiarazione(species):
     """Il `kind`, la precedenza, il modello e la scadenza: nessun mestiere
     li scrive piu' a mano."""
     app = {REASONING_QUEUE_KEY: _Coda(),
-           MODELS_CONFIG_KEY: {"ponte": {"modello": "opus", "scadenza_min": 7}}}
+           MODELS_CONFIG_KEY: LiveValue({"ponte": {"modello": "opus", "scadenza_min": 7}})}
     job_id, minuti = steering.enqueue_turn(app, species, {"w": 1}, {"c": 2},
                                            thread="filo", now=1000.0)
     (job,) = app[REASONING_QUEUE_KEY].accodati

@@ -71,7 +71,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
 
     app = server.create_app()
     app[HA_CLIENT_KEY] = CasaFinta({})
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     # La sorgente del client di test e' un loopback, che NON e' nella CIDR del

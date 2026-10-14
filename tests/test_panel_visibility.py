@@ -55,6 +55,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from casa_finta import SILENT, CasaFinta, Refused
 
+from hiris.app.startup import live_values
+
 HOUSE_SLUG = "6354e165_hiris"   # lo slug vero sulla casa, 27/09/2026
 LOGGER = "hiris.app.action.installation"
 #: La domanda dello slug, come la casa finta la registra (`own_slug`).
@@ -151,6 +153,7 @@ async def test_own_slug_chiede_al_supervisor_col_suo_gettone(aiohttp_server, mon
         return web.json_response({"result": "ok", "data": {"slug": HOUSE_SLUG}})
 
     app = web.Application()
+    app.update(live_values())
     app.router.add_get("/addons/self/info", info)
     srv = await aiohttp_server(app)
     monkeypatch.setattr(ha_client, "SUPERVISOR_URL", str(srv.make_url("")).rstrip("/"))
@@ -176,6 +179,7 @@ async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, mo
         return web.json_response({"result": "error"}, status=403)
 
     app = web.Application()
+    app.update(live_values())
     app.router.add_get("/addons/self/info", info)
     srv = await aiohttp_server(app)
     supervisore = str(srv.make_url("")).rstrip("/")
@@ -190,7 +194,7 @@ async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, mo
     assert esito["codice"] == 403
 
 def _app(accesso: bool, ha):
-    return {ACCESS_FLAG_KEY: accesso, HA_CLIENT_KEY: ha}
+    return {**live_values(), ACCESS_FLAG_KEY: accesso, HA_CLIENT_KEY: ha}
 
 
 # ── L'opzione: una lettura, rigida, chiusa nel dubbio ────────────────────────
@@ -465,7 +469,7 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     app.on_startup.remove(startup._on_startup)
     ha = _filo_appeso("frontend/update_panel")
     app[HA_CLIENT_KEY] = ha
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = RunnerFinto()
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)

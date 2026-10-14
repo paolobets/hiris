@@ -33,6 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
+from hiris.app.live_value import LiveValue
+from hiris.app.startup import live_values
+
 #: Cio' che Home Assistant potrebbe mandare al posto della lista: un
 #: dizionario, niente, una stringa.
 ANSWERS = {"dizionario": {}, "niente": None, "stringa": "x"}
@@ -46,7 +49,8 @@ def _house(name: str) -> CasaFinta:
 @pytest.mark.parametrize("name", sorted(ANSWERS))
 def test_il_giro_delle_condizioni_si_salta(name, caplog):
     osservatore = _OsservatoreFinto()
-    app = _announced({WATCHER_KEY: osservatore, HA_PROBLEMS_KEY: {"problemi": []}}, [])
+    app = _announced({**live_values(),
+                      WATCHER_KEY: osservatore, HA_PROBLEMS_KEY: LiveValue({"problemi": []})}, [])
     with caplog.at_level(logging.WARNING):
         esito = asyncio.run(watch_system_conditions(app, _house(name)))
     assert esito is None

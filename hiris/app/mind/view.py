@@ -392,4 +392,4 @@ def mind_view(app) -> MindView:
     parte all'avvio, a meta')."""
     return MindView(store=app.get(OBSERVATIONS_KEY), watcher=app.get(WATCHER_KEY),
                     home_space=app.get(HOME_SPACE_KEY), cache=app.get(ENTITY_CACHE_KEY),
-                    judgments=app.get(TYPE_JUDGMENTS_KEY))
+                    judgments=app[TYPE_JUDGMENTS_KEY].value)

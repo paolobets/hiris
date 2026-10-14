@@ -41,10 +41,14 @@ from .conservazione import cancella_residui, decidi_vault, nightly, reasoning_sw
 from .home_space import historian
 from .home_space.behavior import reread_dashboards
 from .home_space.historian import house_timezone
+from .home_space.house_history import STATISTIC_IDS_HELD_KEY, STATISTIC_IDS_LOCK_KEY
 from .home_space.reader import HOME_SPACE_KEY, HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.registry_follower import schedule_registry_rebuild
 from .home_space.rounds import (
+    HA_INTEGRATIONS_KEY,
+    HA_PROBLEMS_KEY,
+    TREE_COMPARISON_KEY,
     behavior_reader,
     integration_follower,
     reload_entity_inventory,
@@ -54,20 +58,25 @@ from .home_space.rounds import (
     tree_comparison_round,
 )
 from .home_space.topology import rebuild
+from .home_space.type_vocabulary import REPO_JUDGMENTS
 from .keeper.exchange import interpreta_promise
 from .keeper.store import AGENDA_KEY, AgendaStore
 from .keeper.sweeper import SWEEPER_KEY, Sweeper, _promise_delivery
+from .live_value import LiveValue
 from .llm_router import LLM_ROUTER_KEY
 from .memory.store import MEMORY_STORE_KEY, MemoryStore
-from .mind import report
+from .mind import automate_turn, proposer_round, report
 from .mind.analyst_round import analyst_round
 from .mind.conditions_round import (
+    TRACE_CURSORS_KEY,
+    TRACE_UNRESOLVED_KEY,
     TRACES_BOOT_TS_KEY,
     watch_automation_outcomes,
     watch_system_conditions,
 )
 from .mind.day_report import (
     BACKFILL_QUIET_KEY,
+    LAST_REPAIR_KEY,
     backfill_one_report,
     reaggregate_last_two_days,
     write_day_report,
@@ -75,9 +84,10 @@ from .mind.day_report import (
 from .mind.judgments import TYPE_JUDGMENTS_KEY, TYPE_JUDGMENTS_STATUS_KEY, build_judgments
 from .mind.knowledge import KNOWLEDGE_KEY, KnowledgeStore
 from .mind.observer_round import hold_watcher_statistic_ids, reconsideration_round
+from .mind.proposal_redo import CHAIN_IN_FLIGHT
 from .mind.proposer_round import proposer_beat
 from .mind.realignment import disconnection_recorder, mirror_reload_listener
-from .mind.recipe_round import recipe_round
+from .mind.recipe_round import RECIPE_CURSOR_KEY, recipe_round
 from .mind.reconciliation import after_rebuild
 from .mind.seed import REPO_PRIORITY, attribute_seed, judgment_seed, meaning_seed
 from .mind.state_words import prime_state_translations
@@ -105,7 +115,7 @@ from .proxy.ha_client import HA_CLIENT_KEY, HAClient
 from .proxy.state_translations import STATE_TRANSLATIONS_KEY, StateTranslations
 from .reasoning.consegna import SUBMIT_CHAT_REPLY_KEY, _chat_reply_submitter
 from .reasoning.queue import REASONING_QUEUE_KEY
-from .steering import BRIDGE_ACTIVE_KEY
+from .steering import BRIDGE_ACTIVE_KEY, MODEL_CHAIN_KEY
 from .storage import DATA_DIR_KEY
 from .usage.store import USAGE_KEY
 
@@ -158,13 +168,16 @@ def _open_knowledge(app, data_dir: str) -> None:
                 logger.warning("sapere: chiusura dopo il guasto non riuscita (%s: %s)",
                                type(close_error).__name__, close_error)
         app[KNOWLEDGE_KEY] = None
-        app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = build_judgments(
-            None, unavailable_reason=reason)
+        judgments, status = build_judgments(None, unavailable_reason=reason)
+        app[TYPE_JUDGMENTS_KEY].set(judgments)
+        app[TYPE_JUDGMENTS_STATUS_KEY].set(status)
         return
     if seeded:
         logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')", seeded)
     app[KNOWLEDGE_KEY] = knowledge
-    app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = build_judgments(knowledge)
+    judgments, status = build_judgments(knowledge)
+    app[TYPE_JUDGMENTS_KEY].set(judgments)
+    app[TYPE_JUDGMENTS_STATUS_KEY].set(status)
 
 
 #: Quanto l'avvio aspetta che Home Assistant confermi l'iscrizione prima di
@@ -293,13 +306,13 @@ async def keeper_heartbeat_job(app) -> None:
 # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la pagina
 # ne dichiarava uno solo (invariante 4: «un valore si applica in un modo
 # solo»). La lettura chiude su `app`, non su un valore: `models_config` è
-# RIASSEGNATO a ogni PUT (`handle_save_models_config`), quindi la lettura
-# vede sempre l'ultimo archivio, e la sostituzione del dizionario intero
-# è ciò che rende la lettura atomica -- un turno non può mai vedere metà
-# di un salvataggio.
+# SOSTITUITO a ogni PUT (`handle_save_models_config`, col `set` del suo
+# `LiveValue`), quindi la lettura vede sempre l'ultimo archivio, e la
+# sostituzione del dizionario intero è ciò che rende la lettura atomica --
+# un turno non può mai vedere metà di un salvataggio.
 def model_reader(app, provider: str):
     def read() -> str:
-        return ((app.get(MODELS_CONFIG_KEY) or {})
+        return (app[MODELS_CONFIG_KEY].value
                 .get("provider_models", {}).get(provider, ""))
     return read
 
@@ -308,11 +321,38 @@ def local_model(app) -> str:
     """Il modello di Ollama non vive in `provider_models` (è un fantasma
     lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
     sua unica casa è `models_config["ollama"]["modello"]`."""
-    return (app.get(MODELS_CONFIG_KEY) or {}).get(OLLAMA.id, {}).get("modello", "")
+    return app[MODELS_CONFIG_KEY].value.get(OLLAMA.id, {}).get("modello", "")
 
 
 def reapply_chain(app) -> None:
     _recompute_chain(app)
+
+
+def live_values() -> dict:
+    """Cio' che le rotte, i giri e il ponte cambiano dopo l'avvio, appena nato:
+    `create_app` lo mette nell'app mentre si compone (X-31, Chiusura dello
+    sprint).
+
+    aiohttp congela l'app quando l'avvio finisce, e da li' scrivere in
+    `app[...]` e' deprecato (un errore in aiohttp 4). Fino al 14/10/2026
+    queste chiavi si riscrivevano a richiesta servita o a giro gia' partito:
+    adesso l'app porta dall'inizio un `LiveValue` (o il contenitore che si
+    modifica sul posto), e chi le cambia chiama `set` -- anche l'avvio, che
+    ci mette i valori letti da disco. Il valore iniziale e' quello che i
+    lettori davano all'assenza della chiave. Ogni chiamata ne fa di nuovi:
+    due app non condividono mai un contenitore."""
+    values = {key: LiveValue(initial) for key, initial in (
+        (MODELS_CONFIG_KEY, {}), (CHAT_SETTINGS_KEY, ChatSettings()),
+        (TYPE_JUDGMENTS_KEY, REPO_JUDGMENTS), (TYPE_JUDGMENTS_STATUS_KEY, None),
+        (BRIDGE_ACTIVE_KEY, False), (MODEL_CHAIN_KEY, []), (AGENT_WORKER_TASK_KEY, None),
+        (HA_PROBLEMS_KEY, None), (HA_INTEGRATIONS_KEY, None), (TREE_COMPARISON_KEY, None),
+        (automate_turn.IN_FLIGHT, None), (proposer_round.IN_FLIGHT, False),
+        (RECIPE_CURSOR_KEY, 0), (LAST_REPAIR_KEY, None), (STATISTIC_IDS_HELD_KEY, None))}
+    values[STATISTIC_IDS_LOCK_KEY] = asyncio.Lock()
+    values[TRACE_CURSORS_KEY] = {}
+    values[TRACE_UNRESOLVED_KEY] = set()
+    values[CHAIN_IN_FLIGHT] = set()
+    return values
 
 
 async def _on_startup(app: web.Application) -> None:
@@ -600,7 +640,7 @@ async def _on_startup(app: web.Application) -> None:
     # copia e' avvenuta da tempo (misurato il 02/10/2026: `seminato` vero).
     # L'archivio e' la sola fonte, e i campi che non ha partono dai
     # predefiniti di `load_models_config`.
-    app[MODELS_CONFIG_KEY] = load_models_config(data_dir)
+    app[MODELS_CONFIG_KEY].set(load_models_config(data_dir))
 
     # Task 5 SDD casa: l'anagrafe (nata piu' sopra, prima del websocket) si
     # costruisce all'avvio e si rifa' quando la casa cambia. La costruzione
@@ -750,11 +790,11 @@ async def _on_startup(app: web.Application) -> None:
     # Le impostazioni della chat: un bot solo, senza id, coi default nel codice
     # (vedi `chat_settings.py`).
     chat_settings = ChatSettings.load(data_dir)
-    app[CHAT_SETTINGS_KEY] = chat_settings
+    app[CHAT_SETTINGS_KEY].set(chat_settings)
     # L'archivio della chat, come gli altri (D-27): la finestra la legge dalle
     # impostazioni a ogni potatura, perche' la pagina la cambia a caldo.
     app[CHAT_STORE_KEY] = open_chat_store(
-        data_dir, read_retention_days=lambda: app[CHAT_SETTINGS_KEY].retention_days)
+        data_dir, read_retention_days=lambda: app[CHAT_SETTINGS_KEY].value.retention_days)
 
     # `giorni_conservazione` arriva al disco al primo avvio. `load()` da' il
     # default quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
@@ -1196,8 +1236,8 @@ async def _on_startup(app: web.Application) -> None:
     # (`_PROVIDER_MODEL_KEYS` non lo contiene, `_clean_provider_models` lo
     # scarta in lettura E in scrittura -- e resta così: NON è un doppione da
     # far rivivere).
-    _ollama_model = (app[MODELS_CONFIG_KEY].get(OLLAMA.id) or {}).get("modello", "")
-    _risponde = can_answer_at_startup(_credentials, app[MODELS_CONFIG_KEY])
+    _ollama_model = (app[MODELS_CONFIG_KEY].value.get(OLLAMA.id) or {}).get("modello", "")
+    _risponde = can_answer_at_startup(_credentials, app[MODELS_CONFIG_KEY].value)
 
     claude_runner = None
     if api_key and _credentials[CLAUDE.id]:
@@ -1249,7 +1289,7 @@ async def _on_startup(app: web.Application) -> None:
             # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
-            timeout_s=(app[MODELS_CONFIG_KEY].get(OLLAMA.id) or {}).get(
+            timeout_s=(app[MODELS_CONFIG_KEY].value.get(OLLAMA.id) or {}).get(
                 "timeout_s", OLLAMA.reply_timeout_s),
             read_model=partial(local_model, app),
             log_usage=app[USAGE_KEY].log,
@@ -1317,7 +1357,7 @@ async def _on_startup(app: web.Application) -> None:
     # numerato, col suo connettore, e nessun messaggio ci sarebbe mai passato.
     # Un anello a schermo che non risponde mai e' esattamente la bugia che
     # questa fetta ritira, e la differenza fra i due dizionari e' UNA riga.
-    _chain = providers_in_chain(app[MODELS_CONFIG_KEY].get("chain_order") or [], _risponde)
+    _chain = providers_in_chain(app[MODELS_CONFIG_KEY].value.get("chain_order") or [], _risponde)
     # Nessuna perdita in silenzio: chi ha una credenziale e NON sta in catena
     # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
     # cambio di comportamento si dichiara nel registro, dove un operatore lo
@@ -1391,7 +1431,7 @@ async def _on_startup(app: web.Application) -> None:
     # ponte. Sono l'ultima cosa dell'avvio perche' sono le prime che un
     # operatore cerca in coda al registro quando la chat costa piu' del
     # previsto.
-    for _notice in _bridge_notices(bool(app.get(BRIDGE_ACTIVE_KEY)),
+    for _notice in _bridge_notices(bool(app[BRIDGE_ACTIVE_KEY].value),
                                    _credentials[SUBSCRIPTION.id]):
         logger.warning(_notice)
 
@@ -1409,7 +1449,7 @@ async def _on_cleanup(app: web.Application) -> None:
     # that wait; on timeout we give up on a clean join and move on rather
     # than hang shutdown, and TimeoutError is suppressed same as
     # CancelledError since either outcome means "stop waiting, proceed".
-    aw = app.get(AGENT_WORKER_TASK_KEY)
+    aw = app[AGENT_WORKER_TASK_KEY].value
     if aw is not None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):

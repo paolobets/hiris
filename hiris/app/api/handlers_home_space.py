@@ -233,7 +233,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
-        "confronto": request.app.get(TREE_COMPARISON_KEY),
+        "confronto": request.app[TREE_COMPARISON_KEY].value,
         "comportamento": {
             "letto_il": store.behavior_loaded_at(),
             "conteggi": behavior_counts,
@@ -413,7 +413,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
     # o in una lista vuota affermerebbe che la casa non ha guasti.
-    problems = app.get(HA_PROBLEMS_KEY)
+    problems = app[HA_PROBLEMS_KEY].value
 
     # L'esito dell'ultimo giro di verifica dell'albero (`server.tree_comparison_round`).
     #
@@ -428,7 +428,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
     # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «guardato e combacia».
-    comparison = app.get(TREE_COMPARISON_KEY)
+    comparison = app[TREE_COMPARISON_KEY].value
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle

@@ -144,7 +144,7 @@ def durata_ponte_s(app) -> float:
     copre."""
     from ..models_store import bridge_deadline_min
 
-    return 2 * 60.0 * bridge_deadline_min(app.get(MODELS_CONFIG_KEY))
+    return 2 * 60.0 * bridge_deadline_min(app[MODELS_CONFIG_KEY].value)
 
 
 def credenziale_ponte_viva(app, *, adesso: float) -> str:

@@ -15,6 +15,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY, start
 from hiris.app.usage.store import USAGE_KEY
@@ -39,7 +40,7 @@ def test_un_motivo_gia_noto_non_chiede_a_who_answers():
     catena anche col ponte acceso e il piano che, adesso, potrebbe
     rispondere."""
     usage = MagicMock()
-    app = {LLM_ROUTER_KEY: object(), USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: True}
+    app = {LLM_ROUTER_KEY: object(), USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(True)}
     route, downgrade, runner = start(app, "chat", downgrade="scadenza")
     assert (route, downgrade) == ("catena", "scadenza")
     assert runner is app[LLM_ROUTER_KEY]

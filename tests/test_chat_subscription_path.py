@@ -126,11 +126,12 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
         runner = RunnerFinto("sync reply")
 
     app = web.Application()
+    app.update(live_values())
     app[LLM_ROUTER_KEY] = runner
     app[CLAUDE_RUNNER_KEY] = runner
-    app[CHAT_SETTINGS_KEY] = impostazioni
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
     app[DATA_DIR_KEY] = data_dir
-    app[BRIDGE_ACTIVE_KEY] = ponte_attivo
+    app[BRIDGE_ACTIVE_KEY].set(ponte_attivo)
 
     q = None
     if with_queue:
@@ -757,10 +758,10 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
 
     deciso = object()
     with mock.patch.object(bridge_governor, "_bridge_active", return_value=deciso) as combinatore:
-        app: dict = {MODELS_CONFIG_KEY: {"ponte": {"attivo": True}}}
+        app: dict = {**live_values(), MODELS_CONFIG_KEY: LiveValue({"ponte": {"attivo": True}})}
         bridge_governor._recompute_chain(app)
-    combinatore.assert_called_once_with(app[MODELS_CONFIG_KEY])
-    assert app[BRIDGE_ACTIVE_KEY] is deciso, (
+    combinatore.assert_called_once_with(app[MODELS_CONFIG_KEY].value)
+    assert app[BRIDGE_ACTIVE_KEY].value is deciso, (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
         "booleana e' stata riscritta a mano nel punto di assegnazione"
     )
@@ -792,10 +793,10 @@ async def test_il_ponte_segue_l_archivio_all_avvio_e_dopo(tmp_path):
 
     _models_config_with_bridge(tmp_path, True)
     async with started_with(tmp_path, credential_environment(())) as app:
-        assert app[BRIDGE_ACTIVE_KEY] is True
-        app[MODELS_CONFIG_KEY] = {**app[MODELS_CONFIG_KEY], "ponte": {"attivo": False}}
+        assert app[BRIDGE_ACTIVE_KEY].value is True
+        app[MODELS_CONFIG_KEY].set({**app[MODELS_CONFIG_KEY].value, "ponte": {"attivo": False}})
         app[RECOMPUTE_CHAIN_KEY]()
-        assert app[BRIDGE_ACTIVE_KEY] is False
+        assert app[BRIDGE_ACTIVE_KEY].value is False
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -818,10 +819,10 @@ async def test_la_spazzata_non_obbedisce_al_ponte(started_app):
     sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
     queue = app[REASONING_QUEUE_KEY]
     for slot, archivio in ((True, True), (True, False), (False, True), (False, False)):
-        with mock.patch.dict(app, {
-                BRIDGE_ACTIVE_KEY: slot,
-                MODELS_CONFIG_KEY: {**app[MODELS_CONFIG_KEY],
-                                  "ponte": {"attivo": archivio}}}), \
+        with mock.patch.dict(app, {**live_values(),
+                BRIDGE_ACTIVE_KEY: LiveValue(slot),
+                MODELS_CONFIG_KEY: LiveValue({**app[MODELS_CONFIG_KEY].value,
+                                  "ponte": {"attivo": archivio}})}), \
                 mock.patch.object(queue, "sweep_expired", return_value=[]) as expired:
             await sweep()
         assert expired.called, (
@@ -905,6 +906,8 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
 # ---------------------------------------------------------------------------
 
 from hiris.app.agent.bridge_governor import _bridge_notices
+from hiris.app.live_value import LiveValue
+from hiris.app.startup import live_values
 
 
 def test_il_ponte_acceso_senza_token_si_sente_dire_all_avvio():
@@ -1066,10 +1069,10 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     risultava salvata e non faceva niente, in silenzio."""
     app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
-    app[CHAT_SETTINGS_KEY] = ChatSettings(
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(
         name="test-agent", system_prompt="You are a helpful assistant.",
         thinking_budget=8000,
-    )
+    ))
     with caplog.at_level("WARNING"):
         async with TestClient(TestServer(app)) as client:
             resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -1127,10 +1130,10 @@ async def test_il_ponte_prende_il_modello_dal_campo_del_piano_e_non_da_claude_ap
     Con la regola vecchia il job porterebbe `haiku`. Metterli uguali renderebbe
     questo test incapace di distinguere le due implementazioni."""
     app, q, _runner, _impostazioni, _data_dir = _make_app(tmp_path, ponte_attivo=True)
-    app[MODELS_CONFIG_KEY] = {
+    app[MODELS_CONFIG_KEY].set({
         "provider_models": {"claude": "claude-haiku-4-5-20251001"},
         "ponte": {"modello": "opus"},
-    }
+    })
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 202
@@ -1156,7 +1159,7 @@ async def test_la_scadenza_del_turno_viene_dall_archivio_non_dall_ambiente(
         tmp_path, monkeypatch):
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
     app, q, _runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    app[MODELS_CONFIG_KEY] = {"ponte": {"scadenza_min": 9}}
+    app[MODELS_CONFIG_KEY].set({"ponte": {"scadenza_min": 9}})
 
     prima = time.time()
     async with TestClient(TestServer(app)) as client:
@@ -1173,12 +1176,13 @@ async def test_la_scadenza_del_turno_viene_dall_archivio_non_dall_ambiente(
 
 
 @pytest.mark.asyncio
-async def test_senza_archivio_la_scadenza_resta_il_predefinito_di_sempre(tmp_path):
+async def test_con_l_archivio_vuoto_la_scadenza_resta_il_predefinito_di_sempre(tmp_path):
     """`_on_startup` puo' non essere girato (ogni fixture lo azzera) e un turno
-    puo' comunque arrivare: cinque minuti, come il predefinito dell'archivio e
-    dell'opzione da cui e' stato seminato."""
+    puo' comunque arrivare: l'archivio e' quello con cui l'app nasce, vuoto
+    (X-31), e la scadenza e' cinque minuti, come il predefinito dell'archivio
+    e dell'opzione da cui e' stato seminato."""
     app, q, _runner, _imp, _dd = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    assert MODELS_CONFIG_KEY not in app
+    assert app[MODELS_CONFIG_KEY].value == {}
 
     prima = time.time()
     async with TestClient(TestServer(app)) as client:
@@ -1232,7 +1236,7 @@ async def test_senza_token_il_turno_scende_alla_catena_invece_di_scadere(tmp_pat
 @pytest.mark.asyncio
 async def test_col_tetto_pieno_il_turno_scende_alla_catena_invece_di_dare_429(tmp_path):
     app, _q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 0}})
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
@@ -1247,7 +1251,7 @@ async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
     col tetto pieno il ripiego partirebbe verso la catena mentre il ponte ha
     ancora un turno in volo che si scrivera' in cronologia da solo."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 0}})
     q.enqueue("chat", {}, {}, time.time() + 300, now=time.time(), thread=THREAD_TEST)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -1275,11 +1279,11 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     assert puo is False and motivo in _DOWNGRADE_REASONS, motivo
 
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 0}})
     puo, motivo = _subscription_can_answer(app)
     assert puo is False and motivo in _DOWNGRADE_REASONS, motivo
 
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 50}}
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 50}})
     assert _subscription_can_answer(app) == (True, "")
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
@@ -1301,7 +1305,7 @@ def _con_registro(app, *, catena, chi_ha_risposto=None):
 
     registro = OccurrenceRegistry(clock=lambda: 1000.0)
     app[OCCURRENCES_KEY] = registro
-    app[MODEL_CHAIN_KEY] = list(catena)
+    app[MODEL_CHAIN_KEY].set(list(catena))
     if chi_ha_risposto:
         registro.successo(chi_ha_risposto)
     return registro
@@ -1352,7 +1356,7 @@ async def test_senza_sapere_chi_ha_risposto_la_nota_non_si_scrive(tmp_path, monk
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app[OCCURRENCES_KEY] = None
-    app[MODEL_CHAIN_KEY] = []
+    app[MODEL_CHAIN_KEY].set([])
     async with TestClient(TestServer(app)) as client:
         body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
     assert "nota" not in body

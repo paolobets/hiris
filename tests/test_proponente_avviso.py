@@ -42,8 +42,10 @@ from hiris.app.chat_thread import new_subject
 from hiris.app.home_space import historian
 from hiris.app.keeper import delivery
 from hiris.app.keeper.promise import DELIVERY_TITLE
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import proposer_round as pr
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from hiris.app.usage.store import UsageStore
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
@@ -158,8 +160,9 @@ def casa(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     usage = UsageStore(str(tmp_path / "consumi.db"))
     costruzioni = ConstructionStore(str(tmp_path / "costruzioni.db"))
-    app = {OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
-           WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: False,
+    app = {**live_values(),
+           OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
+           WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: LiveValue(False),
            HA_CLIENT_KEY: _casa_ha(), SERVICE_REGISTRY_KEY: ServiceRegistry(),
            ACTUATOR_KEY: _Porta()}
     soffitto.prepara_ruoli(app)

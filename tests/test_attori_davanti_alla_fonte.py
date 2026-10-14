@@ -70,6 +70,7 @@ from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from hiris.app.startup import live_values
 from tests._anagrafe_finta import AnagrafeFinta
 
 OBSERVER = "observer"
@@ -143,7 +144,7 @@ def _mirror_cache():
 async def test_la_rotta_della_pagina_porta_la_fonte(store):
     """`GET /api/mind/watching` apre la casa del momento (`House.read`) e la
     passa a `watching`: la pagina e la batteria leggono la marca da li'."""
-    app = {WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
            HOME_SPACE_KEY: AnagrafeFinta(_registries()),
            ENTITY_CACHE_KEY: _mirror_cache()}
 
@@ -167,7 +168,7 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
 
     Mutazione ESEGUITA: `_left_out` che torna a comporre la riga senza la
     casa -- rossa (`fonte` assente)."""
-    app = {WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
            HOME_SPACE_KEY: AnagrafeFinta(_registries()),
            ENTITY_CACHE_KEY: _mirror_cache()}
 
@@ -187,7 +188,7 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
                          ids=["senza archivio", "anagrafe mai letta"])
 @pytest.mark.asyncio
 async def test_senza_anagrafe_la_rotta_non_inventa_fonti(store, home_space_store):
-    app = {WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
            HOME_SPACE_KEY: home_space_store, ENTITY_CACHE_KEY: _mirror_cache()}
 
     class _Request:
@@ -332,7 +333,7 @@ def test_il_resoconto_porta_una_riga_per_il_dispositivo_muto():
 
 
 async def _ingredients(recipes):
-    app = {KNOWLEDGE_KEY: object(),
+    app = {**live_values(), KNOWLEDGE_KEY: object(),
            HOME_SPACE_KEY: AnagrafeFinta(_registries({"id": d, "name": d} for d in recipes)),
            ENTITY_CACHE_KEY: _mirror_cache()}
     asked: list[list[str]] = []

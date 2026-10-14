@@ -11,6 +11,7 @@ import pytest
 from hiris.app.api.handlers_home_space import BRIEFING_FAILED, compose_briefing
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.startup import live_values
 from tests._runner_finto import RunnerFinto
 
 
@@ -25,7 +26,7 @@ class _MemoriaGuasta:
 
 
 def _app_guasta() -> dict:
-    return {MEMORY_STORE_KEY: _MemoriaGuasta()}
+    return {**live_values(), MEMORY_STORE_KEY: _MemoriaGuasta()}
 
 
 def test_il_compositore_dichiara_il_guasto_invece_di_sollevare():
@@ -48,6 +49,7 @@ async def test_la_rotta_del_nucleo_mostra_il_guasto_invece_di_un_500(aiohttp_cli
     from hiris.app.api.handlers_home_space import handle_get_briefing
 
     app = web.Application()
+    app.update(live_values())
     app[MEMORY_STORE_KEY] = _MemoriaGuasta()
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)

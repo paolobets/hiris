@@ -21,6 +21,7 @@ from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
 from hiris.app.action.construction.workshop import WORKSHOP_KEY
 from hiris.app.api.handlers_constructions import _both_queues
 from hiris.app.api.handlers_proposals import handle_proposal_automate
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import automate_turn as at
 from hiris.app.mind import proposal_redo
@@ -28,6 +29,7 @@ from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
@@ -63,8 +65,9 @@ def casa(tmp_path, banco):
         text="Spegni lo scaldabagno di notte", perche="il prelievo notturno e' salito",
         fingerprint="dev1|prelievo|None|1", prova={"base": 19}, stakes=None,
         now_ts=100.0)
-    app = {OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
-           WORKSHOP_KEY: officina, BRIDGE_ACTIVE_KEY: False}
+    app = {**live_values(),
+           OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
+           WORKSHOP_KEY: officina, BRIDGE_ACTIVE_KEY: LiveValue(False)}
     try:
         yield app, store, ident
     finally:
@@ -106,7 +109,7 @@ async def test_NASCE_l_automazione_e_la_proposta_a_mano_si_chiude_col_legame(cas
     righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     costruzione = next(r for r in righe if r["id"] == nata)
     assert costruzione["nata_da"] == {"id": ident, "testo": riga["testo"]}
-    assert app.get(at.IN_FLIGHT) is None
+    assert app[at.IN_FLIGHT].value is None
 
 
 @pytest.mark.asyncio
@@ -203,8 +206,8 @@ async def test_sul_PONTE_si_accoda_e_la_consegna_chiude_col_legame(casa, tmp_pat
     il ramo di `consegna` tolto -- rossa."""
     app, store, ident = casa
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
-    app.update({REASONING_QUEUE_KEY: coda, BRIDGE_ACTIVE_KEY: True,
-                MODELS_CONFIG_KEY: {}})
+    app.update({**live_values(), REASONING_QUEUE_KEY: coda, BRIDGE_ACTIVE_KEY: LiveValue(True),
+                MODELS_CONFIG_KEY: LiveValue({})})
     try:
         from unittest.mock import patch
 
@@ -372,7 +375,7 @@ async def test_UNA_ALLA_VOLTA_un_altra_in_preparazione_ferma_il_comando(casa):
     seconda = store.add_proposal(text="Spegni il portico", perche="x",
                                  fingerprint="dev2|x|None|1", prova={},
                                  stakes=None, now_ts=200.0)
-    app[at.IN_FLIGHT] = prima
+    app[at.IN_FLIGHT].set(prima)
     app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     risposta = await handle_proposal_automate(_richiesta(app, {"id": seconda}))
@@ -412,7 +415,7 @@ async def test_mentre_si_prepara_l_automazione_RIFALLA_non_parte(casa):
     Mutazione ESEGUITA (06/10/2026): `redo` senza il controllo di
     `automate_turn.preparing` -- rossa."""
     app, store, prima = casa
-    app[at.IN_FLIGHT] = prima
+    app[at.IN_FLIGHT].set(prima)
     app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     with pytest.raises(proposal_redo.InFlight):

@@ -40,6 +40,7 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import day_report, recipe_round, recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
@@ -91,7 +92,7 @@ def _house() -> CasaFinta:
 
 def _app(stores, house):
     sapere, archivio = stores
-    return {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+    return {**live_values(), OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
             HOME_SPACE_KEY: AnagrafeFinta(CASA), HA_CLIENT_KEY: house}
 
 
@@ -160,7 +161,7 @@ async def test_un_guasto_non_si_ricorda(stores):
     -- rossa: la seconda lettura rende la busta ricordata invece
     dell'elenco (`assert isinstance(second, set)`)."""
     house = CasaFinta(synthetic_inputs(), silence={_LIST})
-    app = {}
+    app = live_values()
 
     first = await day_report.statistic_ids_for_round(app, house)
     house.unmute(_LIST)
@@ -178,7 +179,7 @@ async def test_la_memoria_scade(stores):
     Mutazione (verificata eseguendola): `<=` al posto di `<` nel confronto
     dell'eta' -- rossa sul bordo."""
     house = _house()
-    app = {}
+    app = live_values()
     memory = house_history.STATISTIC_IDS_MEMORY_S
 
     await day_report.statistic_ids_for_round(app, house, now=1000.0)
@@ -287,7 +288,7 @@ async def test_due_giri_che_partono_insieme_a_memoria_vuota_leggono_una_volta():
     house = CasaFinta(synthetic_inputs(), answers={
         _LIST: lambda extra: [{"statistic_id": "sensor.prodotta"}]},
         delay={_LIST: trattieni})
-    app = {}
+    app = live_values()
 
     async def _lascia():
         for _ in range(5):

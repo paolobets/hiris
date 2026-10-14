@@ -93,7 +93,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
         {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
          "system_generated": False, "group_ids": ["system-admin"]}]})
-    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]

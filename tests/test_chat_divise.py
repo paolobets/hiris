@@ -38,6 +38,7 @@ from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.consegna import _chat_reply_submitter, consegna
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
 
@@ -86,12 +87,13 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     runner = RunnerFinto("risposta sincrona")
 
     app = web.Application(middlewares=[_finto_confine])
+    app.update(live_values())
     app[LLM_ROUTER_KEY] = runner
     app[CLAUDE_RUNNER_KEY] = runner
-    app[CHAT_SETTINGS_KEY] = ChatSettings(
-        name="t", system_prompt="Sei HIRIS.", max_chat_turns=max_chat_turns)
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(
+        name="t", system_prompt="Sei HIRIS.", max_chat_turns=max_chat_turns))
     app[DATA_DIR_KEY] = data_dir
-    app[BRIDGE_ACTIVE_KEY] = ponte_attivo
+    app[BRIDGE_ACTIVE_KEY].set(ponte_attivo)
     app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs(),
                                  answers={"config/auth/list": lambda extra: _UTENTI})
     app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}

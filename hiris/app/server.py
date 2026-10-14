@@ -39,7 +39,7 @@ from .api.shell import (
 )
 from .chat_thread import SYNC_TURNS_KEY, SyncTurnsInFlight
 from .provider_occurrences import OCCURRENCES_KEY, OccurrenceRegistry
-from .startup import _on_cleanup, _on_startup
+from .startup import _on_cleanup, _on_startup, live_values
 
 
 def create_app() -> web.Application:
@@ -85,6 +85,9 @@ def create_app() -> web.Application:
     # conversazioni per il 409. Nasce qui per la stessa ragione del registro
     # sopra: non dipende da niente, e dopo l'avvio l'app non si scrive piu'.
     app[SYNC_TURNS_KEY] = SyncTurnsInFlight()
+    # I valori che cambiano dopo l'avvio (X-31): nascono qui per la stessa
+    # ragione dei due contenitori sopra.
+    app.update(live_values())
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_shell(HTML_INDEX_KEY))

@@ -204,7 +204,7 @@ async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
 def ponte(casa, tmp_path, monkeypatch):
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
     casa[REASONING_QUEUE_KEY] = coda
-    casa[MODELS_CONFIG_KEY] = {}
+    casa[MODELS_CONFIG_KEY].set({})
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     monkeypatch.setattr("hiris.app.mind.proposal_redo.start",
                         lambda app, species: steering.Start("ponte", "", None))

@@ -90,7 +90,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # scrittura a caldo, invariante 4, che il Task 10 chiude. Finché quel
     # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
-    _chain = list(request.app.get(MODEL_CHAIN_KEY) or [])
+    _chain = list(request.app[MODEL_CHAIN_KEY].value)
     # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
     # RUNTIME -- che dal Task 10 è l'ARCHIVIO, non l'ambiente. Fino alla 2.4.1
     # venivano da `BRIDGE_DEADLINE_MIN` e `OLLAMA_REQUEST_TIMEOUT` perché era
@@ -163,7 +163,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     body = await json_object(request)
     data_dir = request.app[DATA_DIR_KEY]
     clean = save_models_config(data_dir, body)
-    request.app[MODELS_CONFIG_KEY] = clean   # hot-update per la sessione corrente
+    request.app[MODELS_CONFIG_KEY].set(clean)   # hot-update per la sessione corrente
     # E poi si RIMETTE IN VIGORE. Aggiornare solo il dizionario cambiava la
     # PAGINA e non il RUNTIME: la catena del router e il timeout del backend
     # locale si costruivano all'avvio, quindi un riordino salvato non toccava

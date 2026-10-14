@@ -354,7 +354,7 @@ async def reasoning_sweep(app) -> None:
     # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
     # scadenza: il margine e' il tempo che la catena ha per rispondere.
     reasoning_queue.fail_stuck_downgrades(
-        time.time() - 2 * 60 * bridge_deadline_min(app.get(MODELS_CONFIG_KEY)))
+        time.time() - 2 * 60 * bridge_deadline_min(app[MODELS_CONFIG_KEY].value))
     # **Le risposte consegnate si dimenticano** (reperto C-6,
     # 23/09/2026). La domanda si azzera alla consegna da sempre
     # (`submit`); la risposta restava fino alla potatura a sette giorni,

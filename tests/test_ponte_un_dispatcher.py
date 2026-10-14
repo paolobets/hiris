@@ -98,7 +98,7 @@ async def test_il_dispatcher_esce_quando_il_turno_scade(rotta, conti):
     await _chiama_cerca(client, 1, intestazioni)
     turno = client.app[handlers_mcp.ROUNDS_PER_EXCHANGE_KEY]["turno-vecchio"]
     assert turno.dispatcher is not None
-    minuti = handlers_mcp.bridge_deadline_min(client.app.get(MODELS_CONFIG_KEY))
+    minuti = handlers_mcp.bridge_deadline_min(client.app[MODELS_CONFIG_KEY].value)
     turno.since -= minuti * 60 + 1
 
     # Un altro turno chiama: il vecchio viene lasciato andare.

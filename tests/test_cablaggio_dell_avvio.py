@@ -526,7 +526,7 @@ async def test_the_chain_can_be_recomputed_without_any_provider(started_app):
     con i provider -- rossa (`KeyError`)."""
     assert started_app[LLM_ROUTER_KEY] is None, "la casa sintetica non ha provider"
     started_app[RECOMPUTE_CHAIN_KEY]()
-    assert started_app[MODEL_CHAIN_KEY] == []
+    assert started_app[MODEL_CHAIN_KEY].value == []
 
 
 async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):

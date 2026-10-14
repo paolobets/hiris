@@ -18,8 +18,8 @@ from .watcher import WATCHER_KEY
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
-TRACE_CURSORS_KEY = web.AppKey("automation_trace_cursors")
-TRACE_UNRESOLVED_KEY = web.AppKey("automation_trace_unresolved")
+TRACE_CURSORS_KEY = web.AppKey("automation_trace_cursors", dict)
+TRACE_UNRESOLVED_KEY = web.AppKey("automation_trace_unresolved", set)
 TRACES_BOOT_TS_KEY = web.AppKey("automation_traces_boot_ts")
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     watcher = app.get(WATCHER_KEY)
     if watcher is None:
         return None
-    problems_report = app.get(HA_PROBLEMS_KEY)
+    problems_report = app[HA_PROBLEMS_KEY].value
     if problems_report is None:
         problems_report = await reread_ha_problems(app, ha_client)
     if not isinstance(problems_report, dict) or "errore" in problems_report:
@@ -89,7 +89,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             problems_report.get("errore") if isinstance(problems_report, dict)
             else "nessun lettore")
         return None
-    integrations = app.get(HA_INTEGRATIONS_KEY)
+    integrations = app[HA_INTEGRATIONS_KEY].value
     if integrations is None:
         logger.warning(
             "cervello: condizioni di sistema non lette, l'elenco delle "
@@ -258,9 +258,9 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     if watcher is None:
         return None
     boot_ts = app.get(TRACES_BOOT_TS_KEY, 0.0)
-    cursors = app.setdefault(TRACE_CURSORS_KEY, {})
+    cursors = app[TRACE_CURSORS_KEY]
     cache = app.get(ENTITY_CACHE_KEY)
-    unresolved = app.setdefault(TRACE_UNRESOLVED_KEY, set())
+    unresolved = app[TRACE_UNRESOLVED_KEY]
     written = 0
     # Prima si risolvono tutte, poi si chiede UNA volta (A-21, Tappa 2, Task
     # 8): fino al 04/10/2026 ogni automazione segnata era una lettura sua,

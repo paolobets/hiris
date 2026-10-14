@@ -23,6 +23,7 @@ scende alla catena:
 """
 import pytest
 
+from hiris.app.live_value import LiveValue
 from hiris.app.model_resolution import _DOWNGRADE_REASONS
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
@@ -42,9 +43,9 @@ class _CodaFinta:
 
 def _app(*, ponte=True, coda=None, tetto=150):
     return {
-        BRIDGE_ACTIVE_KEY: ponte,
+        BRIDGE_ACTIVE_KEY: LiveValue(ponte),
         REASONING_QUEUE_KEY: coda if coda is not None else _CodaFinta(),
-        MODELS_CONFIG_KEY: {"ponte": {"tetto_giornaliero": tetto}},
+        MODELS_CONFIG_KEY: LiveValue({"ponte": {"tetto_giornaliero": tetto}}),
     }
 
 

@@ -266,6 +266,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── chat_store.py · chat_thread.py · chat_settings.py
     ├── options_migration.py
     ├── config.py · storage.py · version.py
+    ├── live_value.py     # LiveValue: il valore di `app` che cambia dopo l'avvio (X-31)
     ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
     │                   servizi, credenziali: chi entra e cosa puo'
     ├── home_space/     l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre

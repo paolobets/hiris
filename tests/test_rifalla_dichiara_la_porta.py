@@ -31,8 +31,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_proposals import handle_proposal_redo
+from hiris.app.live_value import LiveValue
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.startup import live_values
 from tests._runner_finto import RunnerFinto
 
 
@@ -121,14 +123,14 @@ def casa(tmp_path):
         perche="il prelievo si concentra la mattina",
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, stakes=None, now_ts=100.0)
-    app = {
+    app = {**live_values(),
         OBSERVATIONS_KEY: store,
         LLM_ROUTER_KEY: _modello(),
         OCCURRENCES_KEY: _Registro("claude"),
-        MODEL_CHAIN_KEY: ["claude"],
+        MODEL_CHAIN_KEY: LiveValue(["claude"]),
         REASONING_QUEUE_KEY: _Coda(),
-        MODELS_CONFIG_KEY: {"ponte": {"tetto_giornaliero": 50}},
-        BRIDGE_ACTIVE_KEY: False,
+        MODELS_CONFIG_KEY: LiveValue({"ponte": {"tetto_giornaliero": 50}}),
+        BRIDGE_ACTIVE_KEY: LiveValue(False),
         # La casa che non serve niente (Tappa 2, Task 12): «Rifalla» non legge
         # Home Assistant -- il ruolo e' quello che il confine ha lasciato nella
         # richiesta. Prima qui c'era una finta di `users()` che nessuno
@@ -160,7 +162,7 @@ async def test_col_piano_ACCESO_il_giro_va_sul_PONTE_e_non_preleva(
     alla catena -- rossa (503: sul ponte la partenza unica non da' un runner
     della catena, e il giro non si accoda)."""
     app, store, ident = casa
-    app[BRIDGE_ACTIVE_KEY] = True
+    app[BRIDGE_ACTIVE_KEY].set(True)
     _piano_acceso(monkeypatch)
     accodati = []
 
@@ -188,8 +190,8 @@ async def test_col_piano_che_NON_PUO_rispondere_si_usano_le_parole_del_ripiego(
     Mutazione ESEGUITA: usare la frase della porta sincrona anche qui --
     rossa."""
     app, _store, ident = casa
-    app[BRIDGE_ACTIVE_KEY] = True
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
+    app[BRIDGE_ACTIVE_KEY].set(True)
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 0}})
     _piano_acceso(monkeypatch)
 
     _risposta, corpo = await _rifai(app, ident)
@@ -220,8 +222,8 @@ async def test_col_ripiego_la_proposta_si_riscrive_comunque(casa, monkeypatch):
 
     Mutazione ESEGUITA: rifiutare col ripiego -- rossa."""
     app, store, ident = casa
-    app[BRIDGE_ACTIVE_KEY] = True
-    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
+    app[BRIDGE_ACTIVE_KEY].set(True)
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 0}})
     _piano_acceso(monkeypatch)
 
     _risposta, _corpo = await _rifai(app, ident)

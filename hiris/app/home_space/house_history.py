@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 
 from aiohttp import web
 
+from ..live_value import LiveValue
 from ..proxy._sanitize import sanitize_structure, sanitize_traceback, truncate_with_marker
 from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
 from ..proxy.ha_client import SHAPE, _failure
@@ -69,8 +70,8 @@ from .type_vocabulary import REPO_JUDGMENTS
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
-STATISTIC_IDS_HELD_KEY = web.AppKey("statistic_ids_held")
-STATISTIC_IDS_LOCK_KEY = web.AppKey("statistic_ids_lock")
+STATISTIC_IDS_HELD_KEY = web.AppKey("statistic_ids_held", LiveValue)
+STATISTIC_IDS_LOCK_KEY = web.AppKey("statistic_ids_lock", asyncio.Lock)
 
 if TYPE_CHECKING:
     from .house import House
@@ -1700,25 +1701,23 @@ async def statistic_ids_for_round(app, ha_client, *,
     `server.py` fino al 06/10/2026 (attori, Task 3.6): la chiede anche il
     guardiano dell'analista, che il ponte costruisce in `/api/mcp`, e la porta
     della storia e' la casa che entrambi possono importare. La lettura buona
-    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
+    si tiene in `app[STATISTIC_IDS_HELD_KEY]` per `STATISTIC_IDS_MEMORY_S`;
     **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
     giro dopo richiede.
 
-    **Col lucchetto** (`app["statistic_ids_lock"]`, S-30, Tappa 8): la
+    **Col lucchetto** (`app[STATISTIC_IDS_LOCK_KEY]`, S-30, Tappa 8; nasce
+    all'avvio, non alla prima lettura: X-31, Chiusura dello sprint): la
     lettura cede il controllo mentre aspetta Home Assistant, e senza
     lucchetto due giri che partono insieme a memoria vuota leggevano tutti e
     due. Il secondo aspetta il primo, e trova la sua lettura (o, dopo un
     guasto, richiede).
     """
-    lock = app.get(STATISTIC_IDS_LOCK_KEY)
-    if lock is None:
-        lock = app[STATISTIC_IDS_LOCK_KEY] = asyncio.Lock()
-    async with lock:
+    async with app[STATISTIC_IDS_LOCK_KEY]:
         moment = time.monotonic() if now is None else now
-        held = app.get(STATISTIC_IDS_HELD_KEY)
+        held = app[STATISTIC_IDS_HELD_KEY].value
         if held is not None and moment - held[0] < STATISTIC_IDS_MEMORY_S:
             return held[1]
         reading = await ha_client.statistic_ids()
         if not isinstance(reading, dict):
-            app[STATISTIC_IDS_HELD_KEY] = (moment, reading)
+            app[STATISTIC_IDS_HELD_KEY].set((moment, reading))
         return reading

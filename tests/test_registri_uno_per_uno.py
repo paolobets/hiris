@@ -42,6 +42,7 @@ from hiris.app.home_space.topology import rebuild
 from hiris.app.keeper.recipient import recipients_for
 from hiris.app.mind.conditions_round import watch_system_conditions
 from hiris.app.proxy.ha_client import HAClient
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 
 
@@ -142,9 +143,9 @@ def _conditions_app(tmp_path, house, *, problems=None, rebuilt=True, followed=Tr
         _run(rebuild(house, store))
     house.calls.clear()
     house.connections.clear()
-    app = {WATCHER_KEY: _Observer(), HOME_SPACE_KEY: store}
+    app = {**live_values(), WATCHER_KEY: _Observer(), HOME_SPACE_KEY: store}
     if problems is not None:
-        app[HA_PROBLEMS_KEY] = problems
+        app[HA_PROBLEMS_KEY].set(problems)
     if followed:
         integration_follower(app)(_snapshot(synthetic_inputs()["registries"]["integrazioni"]))
     return app
@@ -182,7 +183,7 @@ def test_senza_problemi_in_memoria_li_legge_una_volta_e_li_lascia_li(tmp_path):
     _run(watch_system_conditions(app, house))
 
     assert _commands(house).count("repairs/list_issues") == 1
-    assert app[HA_PROBLEMS_KEY] == {"problemi": []}
+    assert app[HA_PROBLEMS_KEY].value == {"problemi": []}
 
 
 def test_i_problemi_in_memoria_non_letti_saltano_il_giro(tmp_path):
@@ -242,7 +243,7 @@ def test_l_elenco_iniziale_sostituisce_quello_di_prima(tmp_path):
 
     follow(_snapshot(rows[1:]))
 
-    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY]] == ["voce_due"]
+    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY].value] == ["voce_due"]
     assert [row["entry_id"] for row in app[HOME_SPACE_KEY].read()["integrazioni"]] == \
         ["voce_due"]
 
@@ -258,7 +259,7 @@ def test_una_voce_tolta_esce_e_una_aggiunta_entra(tmp_path):
     follow([{"type": "removed", "entry": rows[0]}])
     follow([{"type": "added", "entry": added}])
 
-    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY]] == ["voce_due", "voce_tre"]
+    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY].value] == ["voce_due", "voce_tre"]
 
 
 def test_un_elenco_iniziale_vuoto_e_una_casa_senza_integrazioni(tmp_path):
@@ -267,7 +268,7 @@ def test_un_elenco_iniziale_vuoto_e_una_casa_senza_integrazioni(tmp_path):
 
     integration_follower(app)([])
 
-    assert app[HA_INTEGRATIONS_KEY] == []
+    assert app[HA_INTEGRATIONS_KEY].value == []
     assert app[HOME_SPACE_KEY].read()["integrazioni"] == []
 
 
@@ -314,7 +315,7 @@ def test_dal_websocket_all_anagrafe(tmp_path):
         house._ws_task.cancel()
 
     _run(asyncio.wait_for(scenario(), 2))
-    assert len(app[HA_INTEGRATIONS_KEY]) == 2
+    assert len(app[HA_INTEGRATIONS_KEY].value) == 2
 
 
 # ── i due chiamanti che non usavano gli alias (A-01, A-06) ───────────────────

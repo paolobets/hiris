@@ -29,11 +29,13 @@ from hiris.app import steering
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import _TRUNCATION_NOTICE, ClaudeRunner
 from hiris.app.home_space import historian
+from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY, LLMRouter
 from hiris.app.mind import analyst_round, analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from hiris.app.usage.store import UsageStore
 from tests._runner_finto import RunnerFinto
@@ -301,7 +303,8 @@ async def test_l_analista_troncato_non_scrive_l_analisi(tmp_path):
         for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
             store.replace_report(giorno, _resoconto(giorno))
         runner = _troncato(json.dumps({"osservazioni": []}))
-        app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: runner, BRIDGE_ACTIVE_KEY: False}
+        app = {**live_values(),
+               OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: runner, BRIDGE_ACTIVE_KEY: LiveValue(False)}
 
         esito = await analyst_round.analyst_round(app)
 

@@ -497,7 +497,7 @@ def _release_expired(app, now: float) -> None:
     **Il contatore dei giri resta**: se ripartisse, il tetto si aggirerebbe
     durando. Se un turno scaduto chiama ancora, si costruisce un dispatcher
     nuovo, come si faceva per ogni chiamata fino al 06/10/2026."""
-    window = bridge_deadline_min(app.get(MODELS_CONFIG_KEY)) * 60
+    window = bridge_deadline_min(app[MODELS_CONFIG_KEY].value) * 60
     for turn in app[ROUNDS_PER_EXCHANGE_KEY].values():
         if turn.dispatcher is not None and now - turn.since > window:
             turn.dispatcher = None
