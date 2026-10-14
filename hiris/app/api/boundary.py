@@ -51,12 +51,19 @@ def occurrence_out(occurrence: dict) -> dict:
             for k, v in occurrence.items()}
 
 
+def house_timezone_of(app) -> str | None:
+    """Il nome del fuso della casa per le rotte, letto dall'anagrafe
+    dell'applicazione con `historian.house_timezone`: `None` se l'anagrafe non
+    c'e' ancora o non lo sa. Una lettura sola per tutte le rotte di `api/`
+    (N169-2): prima ognuna chiedeva l'anagrafe all'app per conto suo."""
+    return house_timezone(app.get(HOME_SPACE_KEY))
+
+
 def house_clock_of(app) -> dict:
     """L'orologio della casa che una risposta porta a chi mostra un istante a
-    una persona (C-17, `historian.house_clock`), col fuso letto dall'anagrafe
-    dell'applicazione. Una funzione sola per tutte le rotte che lo mandano:
-    il fuso si legge sempre dallo stesso posto."""
-    return house_clock(house_timezone(app.get(HOME_SPACE_KEY)))
+    una persona (C-17, `historian.house_clock`), col fuso di
+    `house_timezone_of`."""
+    return house_clock(house_timezone_of(app))
 
 
 def error_body(text: str, **fields) -> dict:

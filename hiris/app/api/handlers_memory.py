@@ -38,7 +38,7 @@ from __future__ import annotations
 from aiohttp import web
 
 from ..chat_thread import subject_key_for
-from ..home_space.historian import home_space_zone, house_clock, house_timezone
+from ..home_space.historian import home_space_zone, house_clock
 from ..home_space.house import House
 from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.render import render_memory
@@ -46,7 +46,7 @@ from ..memory.interpretation import deduci_unit, validate
 from ..memory.store import MEMORY_STORE_KEY
 from ..proxy._sanitize import sanitize_ha_value
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
-from .boundary import error_response, json_object
+from .boundary import error_response, house_timezone_of, json_object
 from .soffitto import restricted_person
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
@@ -79,7 +79,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     # un'anagrafe mai letta, o un registro caduto, lasciano `esiste` a `None`.
     house = House.read(request.app.get(HOME_SPACE_KEY), request.app.get(ENTITY_CACHE_KEY))
     # `detto_il` nell'ora della casa, come da ogni porta (`render_memory`).
-    timezone = house_timezone(request.app.get(HOME_SPACE_KEY))
+    timezone = house_timezone_of(request.app)
     zone = home_space_zone(timezone)
 
     # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi

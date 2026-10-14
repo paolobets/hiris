@@ -34,7 +34,7 @@ from ..chat_thread import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._mcp_server_name` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..home_space.historian import house_timezone, local_date
+from ..home_space.historian import local_date
 from ..home_space.house import House
 from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
@@ -66,7 +66,7 @@ from ..steering import (
 )
 from ..storage import DATA_DIR_KEY
 from ..usage.store import USAGE_KEY
-from .boundary import error_body, error_response, house_clock_of, json_object
+from .boundary import error_body, error_response, house_clock_of, house_timezone_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
@@ -480,7 +480,7 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
         # L'archivio restituisce `started_at` in epoca (G-14, Tappa 8); un
         # istante che non si leggeva arriva `None`, e la riga esce senza data:
         # meglio nessuna data che una spostata.
-        timezone = house_timezone(app.get(HOME_SPACE_KEY))
+        timezone = house_timezone_of(app)
         lines = ["Sessioni precedenti (memory):"]
         for s in past:
             epoch = s["started_at"]

@@ -40,14 +40,13 @@ from ..config import EUR_RATE as _EUR_RATE
 from ..home_space.historian import (
     home_space_zone,
     house_clock,
-    house_timezone,
     instant_out,
     local_date,
 )
-from ..home_space.reader import HOME_SPACE_KEY
 from ..providers import SUBSCRIPTION
 from ..steering import BRIDGE_ACTIVE_KEY, chain_runner
 from ..usage.store import USAGE_KEY
+from .boundary import house_timezone_of
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
@@ -94,7 +93,7 @@ def _house_timezone(app) -> str:
     calcolare l'intervallo predefinito). Il fuso lo legge
     `historian.house_timezone`, l'unico lettore.
     """
-    return house_timezone(app.get(HOME_SPACE_KEY)) or ""
+    return house_timezone_of(app) or ""
 
 
 def _can_respond(app) -> bool:

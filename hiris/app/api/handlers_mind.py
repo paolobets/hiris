@@ -34,7 +34,6 @@ from ..chat_thread import subject_key_for
 from ..home_space import historian
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
-from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, DECLINED_FIELD, MEANING_FIELD
 from ..mind import analyst, recipe_turn
 from ..mind.judgments import (
@@ -49,7 +48,7 @@ from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
 from ..mind.store import OBSERVATIONS_KEY, READING_RETENTION_S
 from ..mind.view import mind_view
-from .boundary import error_response, house_clock_of, json_object
+from .boundary import error_response, house_clock_of, house_timezone_of, json_object
 from .soffitto import subject_name
 
 
@@ -59,7 +58,7 @@ def _asked_day(request) -> str:
     dice quale giorno e' (`giorno`)."""
     return historian.resolve_day(
         request.query.get("day"),
-        historian.house_timezone(request.app.get(HOME_SPACE_KEY)))
+        house_timezone_of(request.app))
 
 
 async def handle_watching(request: web.Request) -> web.Response:
@@ -367,7 +366,7 @@ async def handle_knowledge(request) -> web.Response:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()
     listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
-    zone = historian.home_space_zone(historian.house_timezone(request.app.get(HOME_SPACE_KEY)))
+    zone = historian.home_space_zone(house_timezone_of(request.app))
     # Ogni `quando_ts` nell'ora della casa (C-17), come le letture di
     # `MindView`; e l'orologio, con cui la pagina dice «oggi».
     return web.json_response({"orologio": house_clock_of(request.app)} | historian.instants_out({

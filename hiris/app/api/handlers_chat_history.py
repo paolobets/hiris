@@ -10,11 +10,10 @@ from ..chat_store import (
     resume_conversation,
 )
 from ..chat_thread import SYNC_TURNS_KEY, adopt_if_owner, request_thread, unknown_id_text
-from ..home_space.historian import home_space_zone, house_timezone, instant_out
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.historian import home_space_zone, instant_out
 from ..reasoning.queue import REASONING_QUEUE_KEY
 from ..storage import DATA_DIR_KEY
-from .boundary import error_response, house_clock_of
+from .boundary import error_response, house_clock_of, house_timezone_of
 from .handlers_chat import PENDING_REPLY_ERROR
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET /api/chat/history`
@@ -38,7 +37,7 @@ _CONVERSATION_NOT_FOUND = unknown_id_text("nessuna conversazione")
 
 def _house_zone(request: web.Request):
     """Il fuso della casa, in cui escono gli istanti della chat (C-17)."""
-    return home_space_zone(house_timezone(request.app.get(HOME_SPACE_KEY)))
+    return home_space_zone(house_timezone_of(request.app))
 
 
 def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
