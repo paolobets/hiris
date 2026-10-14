@@ -14,10 +14,9 @@ import logging
 import time
 
 from ..home_space import historian
-from ..home_space.historian import house_timezone
 from ..home_space.house import House
 from ..home_space.privacy import PresenceMask
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..steering import (
@@ -122,7 +121,7 @@ async def analyst_round(app) -> dict | None:
     if store is None:
         return None
     try:
-        timezone = house_timezone(app.get(HOME_SPACE_KEY))
+        timezone = house_timezone_of(app)
         today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)

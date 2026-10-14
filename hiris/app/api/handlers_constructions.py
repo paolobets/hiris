@@ -42,10 +42,11 @@ from ..action.journal import JOURNAL_KEY
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..home_space.historian import home_space_zone, instant_out
+from ..home_space.reader import house_timezone_of
 from ..mind import automate_turn
 from ..mind.store import OBSERVATIONS_KEY
 from ..states import PENDING, SUSPENDED
-from .boundary import error_response, house_timezone_of, occurrence_out
+from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi

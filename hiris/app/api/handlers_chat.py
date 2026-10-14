@@ -36,7 +36,7 @@ from ..chat_thread import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.historian import local_date
 from ..home_space.house import House
-from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.store import AGENDA_KEY
 from ..memory.store import MEMORY_STORE_KEY
@@ -66,7 +66,7 @@ from ..steering import (
 )
 from ..storage import DATA_DIR_KEY
 from ..usage.store import USAGE_KEY
-from .boundary import error_body, error_response, house_clock_of, house_timezone_of, json_object
+from .boundary import error_body, error_response, house_clock_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto

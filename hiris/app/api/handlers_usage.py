@@ -43,10 +43,10 @@ from ..home_space.historian import (
     instant_out,
     local_date,
 )
+from ..home_space.reader import house_timezone_of
 from ..providers import SUBSCRIPTION
 from ..steering import BRIDGE_ACTIVE_KEY, chain_runner
 from ..usage.store import USAGE_KEY
-from .boundary import house_timezone_of
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "

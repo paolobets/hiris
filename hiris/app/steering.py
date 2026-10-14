@@ -53,7 +53,7 @@ from aiohttp import web
 
 from .answer_reasons import NO_ANSWER_REASON
 from .claude_runner import CLAUDE_RUNNER_KEY
-from .home_space.reader import HOME_SPACE_KEY
+from .home_space.reader import house_timezone_of
 from .live_value import LiveValue
 from .llm_router import LLM_ROUTER_KEY
 from .models_store import _STORE_DEFAULTS, MODELS_CONFIG_KEY, bridge_deadline_min
@@ -517,14 +517,13 @@ def house_hour(app, now: float | None = None) -> str:
 
     Esce dal nucleo e va nel messaggio del turno: il nucleo resta uguale da
     un turno all'altro, e la cache del prompt riusa lui e la cronologia che
-    lo segue. Il fuso lo legge `historian.house_timezone`, l'unico lettore;
+    lo segue. Il fuso lo legge `reader.house_timezone_of`, l'unica lettura;
     un archivio che non risponde non ferma il turno -- l'ora si dice in UTC,
     scritto (`briefing.now_line`)."""
     from .home_space.briefing import now_line
-    from .home_space.historian import house_timezone
 
     try:
-        zone = house_timezone(app.get(HOME_SPACE_KEY))
+        zone = house_timezone_of(app)
     except Exception as exc:
         logger.warning("fuso della casa non leggibile (%s: %s): l'ora si dice "
                        "in UTC", type(exc).__name__, exc)
