@@ -1784,11 +1784,12 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
                 "giorno": giorno, "misure": [], "forme": [], "cronaca": [],
                 "giudizio": {"impronta": "vecchia"}})
 
-        def _rotta(*, store, day, timezone, judgments, house=None):
+        def _rotta(*, store, day, timezone, judgments, house=None, when_ts=None):
             if day == "2026-08-23":
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments, house=house)
+                                           judgments=judgments, house=house,
+                                           when_ts=when_ts)
 
         monkeypatch.setattr(server, "rebuild_chronicle", _rotta)
         app = {"home_space_store": None, "observations": archivio,
@@ -1871,7 +1872,7 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
             "giudizio": chronicle_mark(REPO_JUDGMENTS)})
 
-        def _broken(*, store, day, timezone, judgments, house=None):
+        def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError(f"un difetto locale del {day}")
 
         monkeypatch.setattr(server, "rebuild_chronicle", _broken)
@@ -1935,11 +1936,12 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
         start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
         failing = {"2026-08-23"}
 
-        def _chronicle(*, store, day, timezone, judgments, house=None):
+        def _chronicle(*, store, day, timezone, judgments, house=None, when_ts=None):
             if day in failing:
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments, house=house)
+                                           judgments=judgments, house=house,
+                                           when_ts=when_ts)
 
         monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
         app = {"home_space_store": None, "observations": archivio,
@@ -2000,7 +2002,7 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
                 raise ConnectionError("Home Assistant non risponde")
             return await real_ingredients(app, ha_client, giorno=giorno, timezone=timezone)
 
-        def _chronicle(*, store, day, timezone, judgments, house=None):
+        def _chronicle(*, store, day, timezone, judgments, house=None, when_ts=None):
             if broken["chronicle"]:
                 raise ValueError("un difetto locale")
             return real_chronicle(store=store, day=day, timezone=timezone, judgments=judgments)
@@ -2064,7 +2066,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
 
     archivio = _one_stale_day(tmp_path)
     try:
-        def _broken(*, store, day, timezone, judgments, house=None):
+        def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError("un difetto locale")
 
         monkeypatch.setattr(server, "rebuild_chronicle", _broken)

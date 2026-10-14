@@ -1007,7 +1007,8 @@ async def backfill_one_report(app, ha_client, *,
         written = archivio.report(as_text)
         if written is None:
             try:
-                await write_day_report(app, ha_client, day=as_text, timezone=timezone)
+                await write_day_report(app, ha_client, day=as_text, timezone=timezone,
+                                       when_ts=now(UTC).timestamp())
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1025,7 +1026,8 @@ async def backfill_one_report(app, ha_client, *,
                 rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
                                   judgments=app["type_judgments"],
                                   house=House.read(app.get("home_space_store"),
-                                                   app.get("entity_cache")))
+                                                   app.get("entity_cache")),
+                                  when_ts=now(UTC).timestamp())
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
                     logger.warning(
@@ -1044,7 +1046,8 @@ async def backfill_one_report(app, ha_client, *,
     return None
 
 
-async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
+async def _write_missing_reports(app, ha_client, days, timezone, *,
+                                 when_ts: float) -> list[str]:
     """Il resoconto dei giorni che **non ne hanno uno**, e solo quelli.
 
     La riparazione d'avvio ha quattro uscite anticipate, tutte per la regola
@@ -1075,7 +1078,8 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            await write_day_report(app, ha_client, day=day, timezone=timezone)
+            await write_day_report(app, ha_client, day=day, timezone=timezone,
+                                   when_ts=when_ts)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1140,7 +1144,8 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     timezone = house_timezone(app.get("home_space_store"))
     today = local_date(now(UTC).timestamp(), timezone)
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
-    written = await _write_missing_reports(app, ha_client, days, timezone)
+    written = await _write_missing_reports(app, ha_client, days, timezone,
+                                           when_ts=now(UTC).timestamp())
     app["ultima_riparazione"] = {"stato": REPAIR_DONE, "perche": None,
                                  "giorni": days, "resoconti_scritti": written}
     if written:
@@ -1503,7 +1508,8 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     return ricette, serie, nomi, {**ferme, **silent}, mute
 
 
-async def write_day_report(app, ha_client, *, day: str, timezone: str | None) -> int:
+async def write_day_report(app, ha_client, *, day: str, timezone: str | None,
+                           when_ts: float) -> int:
     """Scrive il resoconto di `day` e torna quante voci di cronaca porta.
 
     **L'unica strada del resoconto di un giorno** (D-36, 06/10/2026): gli
@@ -1520,6 +1526,10 @@ async def write_day_report(app, ha_client, *, day: str, timezone: str | None) ->
     scritto si possa rifare lo decide chi chiama, e cosi' la politica sugli
     errori -- la notte li logga, il recupero li silenzia per giorno, la
     riparazione li conta giorno per giorno. Qui si solleva.
+
+    `when_ts` e' l'istante della scrittura, dall'orologio di chi chiama (G-14):
+    il recupero e la riparazione passano il loro `now`, la notte l'ora del
+    lavoro.
     """
     ricette, serie, nomi, silent, mute = await _report_ingredients(
         app, ha_client, giorno=day, timezone=timezone)
@@ -1528,7 +1538,8 @@ async def write_day_report(app, ha_client, *, day: str, timezone: str | None) ->
         recipes=ricette, series=serie, names=nomi,
         silent=silent, muted=mute,
         judgments=app["type_judgments"],
-        house=House.read(app.get("home_space_store"), app.get("entity_cache")))
+        house=House.read(app.get("home_space_store"), app.get("entity_cache")),
+        when_ts=when_ts)
 
 
 async def hold_watcher_statistic_ids(app, ha_client) -> None:
@@ -3478,7 +3489,8 @@ async def _on_startup(app: web.Application) -> None:
             ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
             # **IL RESOCONTO** (spec §9), per la strada unica: la notte
             # rifa' ieri anche se c'e' gia'.
-            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone)
+            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone,
+                                           when_ts=time.time())
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",

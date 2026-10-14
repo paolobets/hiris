@@ -47,7 +47,7 @@ def test_l_istantanea_dal_sapere_e_dal_solo_seme():
 
 @pytest.mark.asyncio
 async def test_la_riparazione_fatta_e_sollevata(monkeypatch):
-    async def _nessun_resoconto(app, ha_client, days, timezone):
+    async def _nessun_resoconto(app, ha_client, days, timezone, *, when_ts):
         return []
 
     async def _sollevata(app, ha_client, *, now):
