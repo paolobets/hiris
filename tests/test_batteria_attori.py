@@ -369,7 +369,20 @@ def test_la_batteria_intera_su_una_casa_finta(monkeypatch, capsys):
 
     import casa
 
-    today = datetime.now().astimezone().date().isoformat()
+    # Un istante solo, per la prova e per la batteria: se ognuna leggesse
+    # l'orologio da se', a cavallo della mezzanotte l'analisi di «oggi»
+    # cadrebbe fuori dalla finestra di `--giorni 1`: rossa il 14/10/2026 con
+    # l'orologio portato a 23:59:59.999 all'inizio della prova. Mutazione
+    # ESEGUITA: la finestra della batteria spostata a domani -- rossa (0 == 1).
+    adesso = datetime.now().astimezone()
+
+    class _Orologio(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return adesso if tz is None else adesso.astimezone(tz)
+
+    monkeypatch.setattr(batteria_attori, "datetime", _Orologio)
+    today = adesso.date().isoformat()
     turn = dict(_turn(ANALYST, 900), id="t1", ts=1.0)
     answers = {
         "/api/misure?giorni=1": {"turni": [turn], "carichi": {"t1": [_load(30000)]}},
