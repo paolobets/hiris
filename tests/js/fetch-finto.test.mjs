@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
+import { fintoFetch, risposta, maiRisposta, svuotaSconosciuti } from './helpers/fetch.mjs';
 
 /* Il finto `fetch` condiviso (T-03): le sue regole, e il cancello che lo
    rende l'unico. */
@@ -19,6 +19,21 @@ test('una rotta e\' un percorso: combacia con la query e coi sotto-percorsi, non
   assert.equal((await (await window.fetch('api/chat?x=1')).json()).chi, 'chat');
   assert.equal((await (await window.fetch('api/chat/reply/7')).json()).chi, 'chat');
   assert.equal((await (await window.fetch('api/chat-settings')).json()).chi, 'impostazioni');
+});
+
+/* Il vicino di nome NON e' la rotta (N160-1, revisione giro 160): con la
+   sola `api/chat` mappata, `api/chat-settings` si rifiuta come sconosciuto.
+   Nella prova sopra le due rotte sono mappate entrambe, e vince la piu'
+   lunga: li' un confronto per prefisso di stringa restava verde. Mutazione
+   ESEGUITA (14/10/2026): `combacia` ridotto a `p.startsWith(rotta)` -- rossa
+   qui, e solo qui. Si svuota a mano l'elenco degli sconosciuti (con
+   `svuotaSconosciuti`), perche' qui lo sconosciuto e' voluto. */
+test('una rotta non risponde al vicino di nome: con la sola api/chat, api/chat-settings e\' sconosciuto', async () => {
+  const window = {};
+  fintoFetch(window, { 'api/chat': { chi: 'chat' } });
+
+  await assert.rejects(window.fetch('api/chat-settings'), /indirizzo sconosciuto GET api\/chat-settings/);
+  assert.deepEqual(svuotaSconosciuti(), ['GET api/chat-settings']);
 });
 
 test('vince la rotta piu\' lunga, e quella col metodo su quella senza', async () => {
