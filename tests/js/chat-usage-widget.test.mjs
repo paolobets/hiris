@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadScripts } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* Sprint coerenza, lotto A, task 5 (A9): il widget "Utilizzo" della chat
    (static/index.html) mostra richieste/token/costo ma non diceva MAI da
@@ -42,16 +43,12 @@ function fixtureHtml(withLastReset) {
   </body>`;
 }
 
-function jsonResponse(body) {
-  return { ok: true, status: 200, json: async () => body };
-}
-
 test('con tutti gli elementi presenti, loadUsage popola anche la data di azzeramento', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(true) });
-  window.fetch = async () => jsonResponse({
+  fintoFetch(window, { 'api/usage': risposta({
     total_requests: 42, input_tokens: 1200, output_tokens: 800,
     cost_eur: 0.1234, last_reset: '2026-07-01T00:00:00Z',
-  });
+  }) });
 
   await globalThis.loadUsage();
 
@@ -69,10 +66,10 @@ test('con tutti gli elementi presenti, loadUsage popola anche la data di azzeram
 
 test('senza #usage-last-reset in pagina, gli altri contatori si popolano comunque (caratterizzazione -- gia\' vera prima di bee3ab1, vedi commento in cima al file)', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(false) });
-  window.fetch = async () => jsonResponse({
+  fintoFetch(window, { 'api/usage': risposta({
     total_requests: 7, input_tokens: 500, output_tokens: 300,
     cost_eur: 0.02, last_reset: '2026-07-01T00:00:00Z',
-  });
+  }) });
 
   // NON e' una regressione di bee3ab1 (i quattro assegnamenti precedono
   // usage-last-reset in loadUsage(), quindi giravano gia'): resta come test
@@ -105,7 +102,7 @@ test('static/index.html contiene #usage-last-reset (senza, il div si puo\' cance
 
 test('un fallimento di rete non lascia il guasto invisibile: console.error registra qualcosa', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(true) });
-  window.fetch = async () => { throw new Error('offline'); };
+  fintoFetch(window, { 'api/usage': () => { throw new Error('offline'); } });
 
   const realError = console.error;
   const logged = [];
@@ -134,11 +131,11 @@ test('un fallimento di rete non lascia il guasto invisibile: console.error regis
 
 test('collaudo 3.22 (C5): con il solo abbonamento, il riquadro dice «In abbonamento», mai «€ 0,00»', async () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(true) });
-  window.fetch = async () => jsonResponse({
+  fintoFetch(window, { 'api/usage': risposta({
     total_requests: 99, input_tokens: 7200000, output_tokens: 500000,
     cost_eur: 0, partial_cost: false, last_reset: '2026-07-01T00:00:00Z',
     sections: [{ provider: 'subscription', cost_usd: null, cost_included: true }],
-  });
+  }) });
 
   await globalThis.loadUsage();
 
@@ -152,12 +149,12 @@ test('collaudo 3.22 (C5): con ANCHE un provider a consumo, uno zero vero resta �
   // ogni sezione a costo compreso presente in `sections` -- solo quando è l'UNICA,
   // cioè non c'è nessun provider misurabile che possa aver speso qualcosa.
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml(true) });
-  window.fetch = async () => jsonResponse({
+  fintoFetch(window, { 'api/usage': risposta({
     total_requests: 3, input_tokens: 100, output_tokens: 50,
     cost_eur: 0, partial_cost: false, last_reset: '2026-07-01T00:00:00Z',
     sections: [{ provider: 'subscription', cost_usd: null, cost_included: true },
                { provider: 'claude', cost_usd: 0, cost_included: false }],
-  });
+  }) });
 
   await globalThis.loadUsage();
 

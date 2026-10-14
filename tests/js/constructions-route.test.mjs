@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conFrase, etichetta } from './helpers/stati.mjs';
 import { conParole } from './helpers/costruzioni.mjs';
+import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Una risposta della rotta come la manda il server: ogni riga con la frase
    del suo stato (`stato_leggibile`, C-10 della Tappa 8) e le parole del suo
@@ -47,16 +48,17 @@ afterEach(() => {
   global.clearInterval = TIMER_VERI.clearInterval;
 });
 
-function montaCon(risposta) {
+function montaCon(elenco) {
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
-  const chiamate = [];
-  dom.window.fetch = async (url, opzioni) => {
-    chiamate.push([url, opzioni]);
-    return { ok: true, status: 200, json: async () => conFrasi(risposta) };
-  };
-  global.fetch = dom.window.fetch;
+  /* Le proposte a mano hanno la loro porta (`api/proposals/<id>/<verbo>`):
+     le prove che le premono guardano la chiamata partita, non cio' che
+     segue, quindi la risposta non arriva mai. */
+  const chiamate = fintoFetch(global, {
+    'GET api/constructions': () => conFrasi(elenco),
+    'POST api/proposals': maiRisposta,
+  });
   new dom.window.Function(SORGENTE)();
   return { dom, chiamate };
 }
@@ -336,20 +338,19 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   // Rilievo della review: il backend regge un doppio clic (la UPDATE e'
   // atomica), ma restava un'incoerenza visibile -- premuto Approva, Rifiuta
   // rimaneva cliccabile mentre la richiesta girava ancora. La `fetch` per la
-  // conferma qui NON si risolve mai (`new Promise(() => {})`): e' l'unico
-  // modo di osservare lo stato "in volo", non quello dopo -- lo stub di
-  // `montaCon`, che risponde subito, non lo permetterebbe.
+  // conferma qui NON si risolve mai (`maiRisposta`): e' l'unico modo di
+  // osservare lo stato "in volo", non quello dopo -- e `montaCon` la conferma
+  // dell'officina non la conosce nemmeno.
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
-  dom.window.fetch = async (url, _opzioni) => {
-    if (String(url).indexOf('/confirm') !== -1) return new Promise(() => {});
-    return { ok: true, status: 200, json: async () => ({ constructions: [
+  fintoFetch(global, {
+    'POST api/constructions/p1/confirm': maiRisposta,
+    'GET api/constructions': { constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
         chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 },
-    ] }) };
-  };
-  global.fetch = dom.window.fetch;
+    ] },
+  });
   new dom.window.Function(SORGENTE)();
 
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -431,7 +432,7 @@ test('«l’ho fatta io» chiama la rotta delle proposte, non quella dell’offi
   fatta.click();
   await new Promise((r) => setTimeout(r, 0));
 
-  const indirizzi = chiamate.map((c) => String(c[0]));
+  const indirizzi = chiamate.map((c) => c.url);
   assert.ok(indirizzi.some((u) => /api\/proposals\/m1\/done/.test(u)),
     'chiamate: ' + JSON.stringify(indirizzi));
 });
@@ -455,9 +456,9 @@ test('«Rifalla» apre un campo di testo, e manda quello che scrivi', async () =
   manda.click();
   await new Promise((r) => setTimeout(r, 0));
 
-  const chiamata = chiamate.filter((c) => /redo/.test(String(c[0])))[0];
+  const chiamata = chiamate.filter((c) => /redo/.test(c.url))[0];
   assert.ok(chiamata, 'la richiesta non e\' partita');
-  assert.match(String(chiamata[1].body), /troppo presto/);
+  assert.match(String(chiamata.corpo), /troppo presto/);
 });
 
 test('il filo dei giri si legge sotto la proposta', async () => {
@@ -543,14 +544,11 @@ test('«Rifalla» mostra la nota del backend su dove è passato il giro', async 
   /* Due risposte DIVERSE, una per rotta: la nota esiste solo sulla risposta
      del redo, ed è l'unico modo di distinguere «la pagina legge il corpo del
      redo» da «la pagina pesca un campo che c'era già nell'elenco». */
-  dom.window.fetch = async (url) => ({
-    ok: true, status: 200,
-    json: async () => (/redo/.test(String(url))
-      ? { proposta: {}, esito: 'a_mano',
-          nota: 'Il Piano Claude Max ha raggiunto il tetto di oggi: ha risposto Claude API.' }
-      : conFrasi({ constructions: [propostaAMano()] })),
+  fintoFetch(global, {
+    'POST api/proposals/m1/redo': { proposta: {}, esito: 'a_mano',
+      nota: 'Il Piano Claude Max ha raggiunto il tetto di oggi: ha risposto Claude API.' },
+    'GET api/constructions': () => conFrasi({ constructions: [propostaAMano()] }),
   });
-  global.fetch = dom.window.fetch;
   new dom.window.Function(SORGENTE)();
 
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -604,8 +602,7 @@ test('chi arriva per indirizzo senza poter costruire legge il motivo del server'
   global.window = dom.window;
   global.document = dom.window.document;
   const motivo = 'scrivere automazioni è riservato agli amministratori <img src=x onerror=1>';
-  dom.window.fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: motivo }) });
-  global.fetch = dom.window.fetch;
+  fintoFetch(global, { 'GET api/constructions': risposta({ error: motivo }, 403) });
   new dom.window.Function(SORGENTE)();
 
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
@@ -621,15 +618,12 @@ test('un’azione negata dal cancello mostra il motivo del server, non «Errore 
   const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
-  dom.window.fetch = async (url, opzioni) => {
-    if (opzioni && opzioni.method === 'POST') {
-      return { ok: false, status: 403, json: async () => ({ error: 'non sei amministratore' }) };
-    }
-    return { ok: true, status: 200, json: async () => ({ constructions: [
+  fintoFetch(global, {
+    'POST api/constructions/p1/reject': risposta({ error: 'non sei amministratore' }, 403),
+    'GET api/constructions': { constructions: [
       { id: 'p1', stato: 'in_attesa', sospesa: true, gesto: 'crea', dominio: 'automation',
-        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 }] }) };
-  };
-  global.fetch = dom.window.fetch;
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 }] },
+  });
   new dom.window.Function(SORGENTE)();
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
 
@@ -701,8 +695,8 @@ test('«Rendila automatica» chiama la sua rotta, senza chiedere conferma', asyn
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   dom.window.document.querySelector('[data-azione="proposta-automate"]').click();
   await new Promise((r) => setTimeout(r, 0));
-  assert.ok(chiamate.some((c) => /api\/proposals\/m1\/automate/.test(String(c[0]))
-    && c[1] && c[1].method === 'POST'), JSON.stringify(chiamate.map((c) => c[0])));
+  assert.ok(chiamate.some((c) => /api\/proposals\/m1\/automate/.test(c.url)
+    && c.metodo === 'POST'), JSON.stringify(chiamate.map((c) => c.url)));
 });
 
 test('mentre si prepara: il segno, la frase, e resta solo «Rifiuta»', async () => {
@@ -824,18 +818,16 @@ function montaConLetture(letture, redo) {
   const giri = [];
   global.setInterval = (fn) => { giri.push(fn); return giri.length; };
   global.clearInterval = () => {};
-  const chiamate = [];
   let n = 0;
-  dom.window.fetch = async (url, opzioni) => {
-    chiamate.push([url, opzioni]);
-    if (/redo/.test(String(url))) {
-      return { ok: redo.ok !== false, status: redo.status || 202, json: async () => redo.corpo || {} };
-    }
-    const risposta = letture[Math.min(n, letture.length - 1)];
-    n += 1;
-    return { ok: true, status: 200, json: async () => conFrasi(risposta) };
-  };
-  global.fetch = dom.window.fetch;
+  const chiamate = fintoFetch(global, {
+    /* `ok` lo deduce lo stato, come nel `fetch` vero: 202 se non detto. */
+    'POST api/proposals/m1/redo': () => risposta(redo.corpo || {}, redo.status || 202),
+    'GET api/constructions': () => {
+      const lettura = letture[Math.min(n, letture.length - 1)];
+      n += 1;
+      return conFrasi(lettura);
+    },
+  });
   new dom.window.Function(SORGENTE)();
   return { dom, giri, chiamate };
 }
@@ -914,7 +906,7 @@ test('un rifacimento che non riesce lascia la richiesta scritta', async () => {
      server si legge alla lettera. Mutazione ESEGUITA: `sendRedo` senza
      `lasciate` -- rossa, il campo si riapre vuoto. */
   const { dom } = montaConLetture([{ constructions: [propostaAMano()] }],
-    { ok: false, status: 503, corpo: { error: 'il modello non ha risposto: riprova.' } });
+    { status: 503, corpo: { error: 'il modello non ha risposto: riprova.' } });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const bottone = (re) => [...dom.window.document.querySelectorAll('button')]
     .filter((b) => re.test(b.textContent))[0];

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La pagina «Servizi» (config/services-route.js), fetta «l'accoppiamento»
    (spec 2026-09-21 §7, rifatta il 22/09/2026).
@@ -15,10 +16,6 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 const SCRIPTS = ['common.js', 'config/services-route.js'];
-
-function risposta(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
 
 /* Come li manda il server (`handlers_servizi.roles`/`species`, C-10): gia'
    nell'ordine della scelta, con le loro frasi. */
@@ -79,38 +76,36 @@ function monta(opts = {}) {
   const battito = { fn: null, spenti: [] };
   ctx.window.setInterval = (fn) => { battito.fn = fn; return 7; };
   ctx.window.clearInterval = (id) => { battito.spenti.push(id); battito.fn = null; };
-  const chiamate = [];
   let corpo = opts.stato || stato();
-  ctx.window.fetch = async (url, options) => {
-    const u = String(url);
-    chiamate.push({ url: u, opts: options || {}, corpo: (options || {}).body });
-    if (opts.rotto) return risposta({ error: 'no' }, 403);
-    if (u.endsWith('/window/open')) {
+  /* `rotto` vale per ogni rotta: il server rifiuta tutto con un 403. */
+  const servita = (fn) => (url, options) => (opts.rotto ? risposta({ error: 'no' }, 403) : fn(url, options));
+  const chiamate = fintoFetch(ctx.window, {
+    'GET api/services': servita(() => vista(corpo)),
+    'POST api/services/window/open': servita(() => {
       corpo.finestra = { aperta: true, resta_s: 600 };
-      return risposta({ aperta: true, resta_s: 600 });
-    }
-    if (u.endsWith('/window/close')) {
+      return { aperta: true, resta_s: 600 };
+    }),
+    'POST api/services/window/close': servita(() => {
       corpo.finestra = { aperta: false, resta_s: 0 };
-      return risposta({ aperta: false, resta_s: 0 });
-    }
-    if (u.endsWith('/approve')) {
+      return { aperta: false, resta_s: 0 };
+    }),
+    'POST api/services/approve': servita((url, options) => {
       if (opts.approveStatus) return risposta({ error: 'il ruolo non esiste' }, opts.approveStatus);
-      const d = JSON.parse((options || {}).body || '{}');
+      const d = JSON.parse(options.body || '{}');
       corpo.righe = corpo.righe.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'autorizzato', ruolo: d.ruolo, specie: d.specie,
                                  deciso_ts: 1758500500 })
         : r));
-      return risposta({ servizi: sezioni(corpo.righe) });
-    }
-    if (u.endsWith('/revoke')) {
-      const d = JSON.parse((options || {}).body || '{}');
+      return { servizi: sezioni(corpo.righe) };
+    }),
+    'POST api/services/revoke': servita((url, options) => {
+      const d = JSON.parse(options.body || '{}');
       corpo.righe = corpo.righe.map((r) => (r.chiave === d.chiave
         ? Object.assign({}, r, { stato: 'revocato', deciso_ts: 1758500600 })
         : r));
-      return risposta({ servizi: sezioni(corpo.righe) });
-    }
-    return risposta(vista(corpo));
-  };
+      return { servizi: sezioni(corpo.righe) };
+    }),
+  });
   return Object.assign(ctx, { chiamate, battito, statoServer: () => corpo });
 }
 

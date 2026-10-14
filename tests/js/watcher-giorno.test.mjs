@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La scheda «Il giorno» (config/watcher-giorno.js): il resoconto di UN
    giorno, col suo selettore.
@@ -20,10 +21,6 @@ const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
-}
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
 function resoconto(extra) {
@@ -60,28 +57,22 @@ function nonCalcolabile(nome, perche) {
 }
 
 /* Il finto server della SOLA scheda «Il giorno»: una rotta,
-   `api/mind/report`. Un altro indirizzo solleva -- se aprendo questa scheda la
+   `api/mind/report`. Un altro indirizzo fa fallire la prova -- se aprendo questa scheda la
    pagina chiedesse gli 86 KB dell'osservatore, il carico pigro sarebbe rotto e
    si vedrebbe qui. La chiave `resoconto` e' quella vera di
    `handlers_mind.handle_report`, ed e' PINNATA: se una delle due parti la
    rinomina, queste prove cadono. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  const corpiInviati = [];
-  ctx.window.fetch = async (url, init) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (init && init.body) corpiInviati.push(String(init.body));
-    if (u.indexOf('api/mind/report') === 0) {
+  const elenco = fintoFetch(ctx.window, {
+    'api/mind/report': () => {
       if (opts.resocontoRotto) throw new Error('rete giu\'');
-      return jsonResponse(
+      return risposta(
         opts.resoconto !== undefined ? opts.resoconto : { resoconto: resoconto() },
         opts.resocontoStatus);
-    }
-    throw new Error('url inatteso: ' + u);
-  };
-  return Object.assign(ctx, { chiamate, corpiInviati });
+    },
+  });
+  return Object.defineProperty(ctx, 'chiamate', { get: () => elenco.map((c) => c.url) });
 }
 
 // -- date locali, chieste alla pagina (`HirisWatcherShared.isoData`, la stessa

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadScripts, staticSnapshotDir } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta, risposta } from './helpers/fetch.mjs';
 
 /* Il cassetto della barra laterale (static/chat/sidebar.js). Pinnato PRIMA
    della fetta «il seguito delle chat divise» (spec 2026-09-26 §4), che mette
@@ -111,25 +112,16 @@ function fixtureChat() {
 const MODULI_CHAT = ['common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
   'chat/conversations.js', 'chat/send.js', 'chat/sidebar.js', 'pending-badge.js'];
 
-function risposta(status, body) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
-}
+/* Il server finto e' quello condiviso (helpers/fetch.mjs, T-03): `rotte` e'
+   un oggetto `'METODO percorso' -> funzione o corpo`; ogni chiamata si
+   registra con url, metodo e opzioni (le intestazioni stanno in
+   `opts.headers`), per asserirne la forma. Un indirizzo che la prova non
+   dichiara la fa fallire. */
+const server = fintoFetch;
 
-/* Un server finto con un comportamento per (metodo, percorso). `rotte` e' un
-   oggetto `'METODO percorso' -> funzione o corpo`; ogni chiamata si registra
-   con percorso, metodo e intestazioni, per asserirne la forma. */
-function server(window, rotte) {
-  const chiamate = [];
-  window.fetch = async (url, opts = {}) => {
-    const metodo = opts.method || 'GET';
-    const percorso = String(url);
-    chiamate.push({ metodo, percorso, headers: opts.headers || {} });
-    const voce = rotte[metodo + ' ' + percorso];
-    if (voce === undefined) return risposta(200, {});
-    return typeof voce === 'function' ? voce() : risposta(200, voce);
-  };
-  return chiamate;
-}
+/* La rete giu', detta rotta per rotta: la funzione solleva come il `fetch`
+   vero quando il server non si raggiunge. */
+const reteGiu = () => { throw new Error('rete giu'); };
 
 function avviaChat(t) {
   const ctx = loadScripts(MODULI_CHAT, { html: fixtureChat() });
@@ -253,12 +245,12 @@ test('«Nuova conversazione» fa la POST, svuota la vista, rilegge storia ed ele
 
   const post = chiamate.find((c) => c.metodo === 'POST');
   assert.ok(post, 'la POST deve partire');
-  assert.equal(post.percorso, 'api/chat/conversations');
-  assert.equal(post.headers['X-Requested-With'], 'fetch', '7.2');
+  assert.equal(post.url, 'api/chat/conversations');
+  assert.equal(post.opts.headers['X-Requested-With'], 'fetch', '7.2');
   assert.equal(document.querySelectorAll('.msg-row').length, 0, 'la vista e\' vuota');
   assert.notEqual(document.getElementById('welcome').style.display, 'none');
   assert.equal(window.HirisChatState.turnCount, 0);
-  const dopo = chiamate.slice(chiamate.indexOf(post) + 1).map((c) => c.metodo + ' ' + c.percorso);
+  const dopo = chiamate.slice(chiamate.indexOf(post) + 1).map((c) => c.metodo + ' ' + c.url);
   assert.deepEqual(dopo, ['GET api/chat/history', 'GET api/chat/conversations']);
   assert.equal(document.activeElement, document.getElementById('input'));
 });
@@ -283,10 +275,10 @@ test('toccare una voce: resume, storia ricaricata senza parametri, fuoco a #inpu
   await window.HirisChatConversations.idle();
 
   const resume = chiamate.find((c) => c.metodo === 'POST');
-  assert.equal(resume.percorso, 'api/chat/conversations/c1/resume');
-  assert.equal(resume.headers['X-Requested-With'], 'fetch');
-  const storia = chiamate.filter((c) => c.percorso.includes('history'));
-  assert.deepEqual(storia.map((c) => c.metodo + ' ' + c.percorso), ['GET api/chat/history'], '7.8');
+  assert.equal(resume.url, 'api/chat/conversations/c1/resume');
+  assert.equal(resume.opts.headers['X-Requested-With'], 'fetch');
+  const storia = chiamate.filter((c) => c.url.includes('history'));
+  assert.deepEqual(storia.map((c) => c.metodo + ' ' + c.url), ['GET api/chat/history'], '7.8');
   const bolle = [...document.querySelectorAll('.msg-row .bubble')].map((b) => b.textContent);
   assert.deepEqual(bolle, ['Che tempo fa domani?', 'Sereno.'],
     'la vista mostra la conversazione ripresa, non quella di prima');
@@ -314,6 +306,7 @@ test('dopo una ripresa il limite viene dalla storia del server, non da un conteg
       { role: 'user', content: 'uno' }, { role: 'assistant', content: 'a' },
       { role: 'user', content: 'due' }, { role: 'assistant', content: 'b' }],
       turni: 2 },
+    'POST api/chat/conversations/c1/resume': {},
   });
   await window.HirisChatConversations.refresh();
 
@@ -328,24 +321,31 @@ test('dopo una ripresa il limite viene dalla storia del server, non da un conteg
 
 test("l'id va nel percorso codificato e senza barra iniziale (7.3)", async (t) => {
   const { window } = avviaChat(t);
-  const chiamate = server(window, {});
+  /* Anche le due riletture che seguono ogni gesto riuscito (storia ed
+     elenco) partono, e anche loro non devono avere la barra iniziale. */
+  const chiamate = server(window, {
+    'POST api/chat/conversations/a%2Fb%3Fc%23d/resume': {},
+    'DELETE api/chat/conversations/a%2Fb%3Fc%23d': {},
+    'GET api/chat/history': {},
+    'GET api/chat/conversations': {},
+  });
   await window.HirisChatConversations.resume('a/b?c#d');
   await window.HirisChatConversations.remove('a/b?c#d');
 
   const scritture = chiamate.filter((c) => c.metodo !== 'GET');
-  assert.deepEqual(scritture.map((c) => c.metodo + ' ' + c.percorso), [
+  assert.deepEqual(scritture.map((c) => c.metodo + ' ' + c.url), [
     'POST api/chat/conversations/a%2Fb%3Fc%23d/resume',
     'DELETE api/chat/conversations/a%2Fb%3Fc%23d',
   ]);
-  for (const c of chiamate) assert.equal(c.percorso.startsWith('/'), false, c.percorso);
-  for (const c of scritture) assert.equal(c.headers['X-Requested-With'], 'fetch');
+  for (const c of chiamate) assert.equal(c.url.startsWith('/'), false, c.url);
+  for (const c of scritture) assert.equal(c.opts.headers['X-Requested-With'], 'fetch');
 });
 
 test('409: si mostra il testo del server, la vista resta, nessun nuovo tentativo (7.5)', async (t) => {
   const { window, document } = avviaChat(t);
   const chiamate = server(window, {
     'GET api/chat/conversations': { conversations: DUE },
-    'POST api/chat/conversations/c1/resume': () => risposta(409, { error: IN_ARRIVO }),
+    'POST api/chat/conversations/c1/resume': () => risposta({ error: IN_ARRIVO }, 409),
   });
   await window.HirisChatConversations.refresh();
   window.HirisChatMessages.appendMsg('user', 'resta qui');
@@ -358,13 +358,15 @@ test('409: si mostra il testo del server, la vista resta, nessun nuovo tentativo
   assert.equal(avviso.textContent, IN_ARRIVO);
   assert.equal(document.querySelectorAll('.msg-row.user').length, 1, 'la vista non si tocca');
   assert.equal(chiamate.filter((c) => c.metodo === 'POST').length, 1, 'nessun nuovo tentativo');
-  assert.equal(chiamate.filter((c) => c.percorso.includes('history')).length, 0);
+  assert.equal(chiamate.filter((c) => c.url.includes('history')).length, 0);
 });
 
 test("il testo d'errore del server e' testo, non markup", async (t) => {
   const { window, document } = avviaChat(t);
   server(window, {
-    'POST api/chat/conversations': () => risposta(409, { error: '<img src=x onerror=alert(1)>' }),
+    'POST api/chat/conversations': () => risposta({ error: '<img src=x onerror=alert(1)>' }, 409),
+    /* un rifiuto rilegge comunque l'elenco (un 404 vuol dire voce sparita) */
+    'GET api/chat/conversations': {},
   });
   await window.HirisChatConversations.startNew();
   const avviso = document.getElementById('conv-notice');
@@ -376,8 +378,9 @@ test('una conversazione riuscita spegne l\'avviso rimasto da un tentativo fallit
   const { window, document } = avviaChat(t);
   let occupato = true;
   server(window, {
-    'POST api/chat/conversations': () => (occupato ? risposta(409, { error: IN_ARRIVO }) : risposta(200, { ok: true })),
+    'POST api/chat/conversations': () => (occupato ? risposta({ error: IN_ARRIVO }, 409) : risposta({ ok: true })),
     'GET api/chat/history': { messages: [] },
+    'GET api/chat/conversations': {},
   });
   await window.HirisChatConversations.startNew();
   assert.equal(document.getElementById('conv-notice').hidden, false);
@@ -404,9 +407,9 @@ test('il cestino chiede la conferma col testo esatto di spec §4 e cancella QUEL
   assert.deepEqual(domande, [CONFERMA]);
   const del = chiamate.filter((c) => c.metodo === 'DELETE');
   assert.equal(del.length, 1);
-  assert.equal(del[0].percorso, 'api/chat/conversations/c2');
-  assert.equal(del[0].headers['X-Requested-With'], 'fetch');
-  assert.equal(chiamate.some((c) => c.percorso === 'api/chat/history' && c.metodo === 'DELETE'), false,
+  assert.equal(del[0].url, 'api/chat/conversations/c2');
+  assert.equal(del[0].opts.headers['X-Requested-With'], 'fetch');
+  assert.equal(chiamate.some((c) => c.url === 'api/chat/history' && c.metodo === 'DELETE'), false,
     'la rotta che cancellava tutta la cronologia non esiste piu\'');
   assert.equal(document.querySelectorAll('.msg-row').length, 0);
 });
@@ -428,7 +431,7 @@ test('il cestino fallito: la vista resta e lo si dice (7.4)', async (t) => {
   const { window, document } = avviaChat(t);
   server(window, {
     'GET api/chat/conversations': { conversations: DUE },
-    'DELETE api/chat/conversations/c2': () => risposta(500, {}),
+    'DELETE api/chat/conversations/c2': () => risposta({}, 500),
   });
   await window.HirisChatConversations.refresh();
   window.HirisChatMessages.appendMsg('user', 'messaggio importante');
@@ -448,7 +451,7 @@ test('il cestino senza rete: la vista resta e lo si dice', async (t) => {
   await window.HirisChatConversations.refresh();
   window.HirisChatMessages.appendMsg('user', 'messaggio importante');
   window.confirm = () => true;
-  window.fetch = async () => { throw new Error('rete giu'); };
+  server(window, { 'DELETE api/chat/conversations/c2': reteGiu });
 
   await window.HirisChatAgents.clearConversation();
 
@@ -462,6 +465,8 @@ test("finito un turno l'elenco si rilegge: la conversazione nata scrivendo diven
     'POST api/chat': { response: 'ok' },
     'GET api/chat/conversations': { conversations: [
       { id: 'c3', titolo: 'ciao', ultimo_messaggio: 1790416800, attiva: true }] },
+    /* il distintivo degli Impegni si rilegge a fine turno: qui non si guarda */
+    'GET api/pending': maiRisposta,
   });
   assert.equal(window.HirisChatConversations.activeId(), null);
 
@@ -513,7 +518,8 @@ test('mentre HIRIS risponde «Nuova conversazione» e le voci sono spente; dopo,
   let rispondi;
   const chiamate = server(window, {
     'GET api/chat/conversations': { conversations: DUE },
-    'POST api/chat': () => new Promise((r) => { rispondi = () => r(risposta(200, { response: 'ok' })); }),
+    'POST api/chat': () => new Promise((r) => { rispondi = () => r(risposta({ response: 'ok' })); }),
+    'GET api/pending': maiRisposta,
   });
   await window.HirisChatConversations.refresh();
   const comandi = () => [document.getElementById('new-conv-btn'),
@@ -529,7 +535,7 @@ test('mentre HIRIS risponde «Nuova conversazione» e le voci sono spente; dopo,
   await invio;
   await window.HirisChatConversations.idle();
   assert.ok(comandi().every((b) => !b.disabled), 'dopo il turno: tutto riacceso');
-  assert.equal(chiamate.filter((c) => c.metodo === 'POST' && c.percorso !== 'api/chat').length, 0);
+  assert.equal(chiamate.filter((c) => c.metodo === 'POST' && c.url !== 'api/chat').length, 0);
 });
 
 test('un doppio tocco su una voce fa partire UNA ripresa sola', async (t) => {
@@ -553,7 +559,7 @@ test('gesto riuscito ma storia non arrivata: lo si dice, niente vista vuota muta
   const { window, document } = avviaChat(t);
   server(window, {
     'POST api/chat/conversations/c1/resume': { ok: true },
-    'GET api/chat/history': () => risposta(500, {}),
+    'GET api/chat/history': () => risposta({}, 500),
     'GET api/chat/conversations': { conversations: DUE },
   });
 
@@ -568,7 +574,10 @@ test('gesto riuscito ma storia non arrivata: lo si dice, niente vista vuota muta
 
 test('senza rete la frase e\' quella della chat, con una casa sola', async (t) => {
   const { window, document } = avviaChat(t);
-  window.fetch = async () => { throw new Error('rete giu'); };
+  server(window, {
+    'POST api/chat/conversations': reteGiu,
+    'POST api/chat': reteGiu,
+  });
   await window.HirisChatConversations.startNew();
   assert.equal(document.getElementById('conv-notice').textContent,
     window.HirisChatState.NETWORK_ERROR_TEXT);

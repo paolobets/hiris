@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* La scheda «Cosa fare» (config/watcher-cosa-fare.js): le osservazioni
    dell'analista, l'unica cosa della pagina che chiede un'AZIONE.
@@ -20,27 +21,19 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
-
 /* Il finto server della SOLA scheda «Cosa fare»: una rotta,
-   `api/mind/analysis`. Un altro indirizzo solleva. */
+   `api/mind/analysis`. Un altro indirizzo fa fallire la prova (helpers/fetch.mjs). */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  ctx.window.fetch = async (url) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (u.indexOf('api/mind/analysis') === 0) {
+  fintoFetch(ctx.window, {
+    'api/mind/analysis': () => {
       if (opts.analisiRotta) throw new Error('rete interrotta');
-      return jsonResponse(
+      return risposta(
         opts.analisi !== undefined ? opts.analisi : { analisi: { osservazioni: [] } },
         opts.analisiStatus);
-    }
-    throw new Error('url inatteso: ' + u);
-  };
-  return Object.assign(ctx, { chiamate });
+    },
+  });
+  return ctx;
 }
 
 function rendiAnalisi(payload) {

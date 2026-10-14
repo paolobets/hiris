@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './helpers/dom.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 /* Collaudo 3.22, C4 ("la chat inventa l'ora dei messaggi"): misurato dal
    vivo il 07/09/2026 -- alle 08:28 tutte le bolle mostravano «08:28»,
@@ -54,15 +55,9 @@ test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ric
   const { window, document } = setup(t);
   // In epoca, come ogni istante degli archivi (G-14): 2020-01-01T03:15:00Z.
   const timestampFisso = 1577848500;
-  window.fetch = async (url) => {
-    if (String(url).includes('api/chat/history')) {
-      return {
-        ok: true, status: 200,
-        json: async () => ({ messages: [{ role: 'user', content: 'ciao', timestamp: timestampFisso }] }),
-      };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, {
+    'api/chat/history': { messages: [{ role: 'user', content: 'ciao', timestamp: timestampFisso }] },
+  });
 
   await window.HirisChatAgents.restore();
 
@@ -84,15 +79,9 @@ test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ric
 
 test("un messaggio ripristinato SENZA timestamp non mostra un'ora inventata (difesa, minimo accettabile)", async (t) => {
   const { window, document } = setup(t);
-  window.fetch = async (url) => {
-    if (String(url).includes('api/chat/history')) {
-      return {
-        ok: true, status: 200,
-        json: async () => ({ messages: [{ role: 'user', content: 'ciao senza orario' }] }),
-      };
-    }
-    return { ok: true, status: 200, json: async () => ({}) };
-  };
+  fintoFetch(window, {
+    'api/chat/history': { messages: [{ role: 'user', content: 'ciao senza orario' }] },
+  });
 
   await window.HirisChatAgents.restore();
 

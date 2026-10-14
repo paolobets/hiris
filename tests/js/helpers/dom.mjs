@@ -3,6 +3,7 @@ import { readFileSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fintoFetch, maiRisposta } from './fetch.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const STATIC = join(ROOT, 'hiris', 'app', 'static');
@@ -176,7 +177,8 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   // consumatore specifico: a differenza di `customElements`, non promette
   // niente su cosa esiste nel prodotto.
   define('HTMLElement', rawWindow.HTMLElement);
-  // `fetch` è normalmente sovrascritto per-test da stubFetch(window, ...);
+  // `fetch` è normalmente sovrascritto per-test da fintoFetch(window, ...)
+  // (`helpers/fetch.mjs`);
   // la getter/setter lo tiene agganciato dinamicamente a window.fetch così
   // gli script (che lo chiamano non qualificato, come farebbero nel browser)
   // vedono sempre lo stub corrente.
@@ -192,7 +194,7 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   }
 
   // `previousMirroredKeys` punta allo stesso Set restituito da `mirroredKeys`:
-  // eventuali chiavi aggiunte DOPO il return (es. `stubFetch(window, ...)`
+  // eventuali chiavi aggiunte DOPO il return (es. `fintoFetch(window, ...)`
   // che fa `window.fetch = ...`) restano tracciate, perché il Set è lo
   // stesso oggetto, non una copia.
   previousMirroredKeys = mirroredKeys;
@@ -204,18 +206,6 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
   };
 
   return { dom, window: windowProxy, document: rawWindow.document, dispose };
-}
-
-/** fetch finto: mappa url-substring -> payload JSON. */
-export function stubFetch(window, routes) {
-  const calls = [];
-  window.fetch = (url, opts) => {
-    calls.push({ url: String(url), opts });
-    const hit = Object.entries(routes).find(([frag]) => String(url).includes(frag));
-    const body = hit ? hit[1] : {};
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
-  };
-  return calls;
 }
 
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -231,7 +221,7 @@ export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 export function asAdministrator(window) {
   window.localStorage.setItem('hiris.can_configure', '1');
   const fetchBefore = window.fetch;
-  window.fetch = () => new Promise(() => {});
+  fintoFetch(window, { 'api/pending': maiRisposta });
   window.HirisPendingBadge.mount();
   window.fetch = fetchBefore;
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, stubFetch } from './helpers/dom.mjs';
+import { loadScripts } from './helpers/dom.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 /* Gli indirizzi DI PRIMA -- la tabella di `config/router.js` che manda un
    hash italiano sulla pagina che oggi ha un nome inglese.
@@ -59,7 +60,7 @@ const SEGNAPOSTO = {
 
 function avvia() {
   const ctx = loadScripts(SCRIPTS, { html: HTML });
-  stubFetch(ctx.window, {});
+  fintoFetch(ctx.window, { 'api/config': maiRisposta, 'api/health': maiRisposta });
   return ctx;
 }
 

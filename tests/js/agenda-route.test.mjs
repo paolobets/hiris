@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conLetturaPromessa, etichetta } from './helpers/stati.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
@@ -26,10 +27,6 @@ function fixtureHtml() {
 }
 
 const SCRIPTS = ['common.js', 'config/agenda-route.js'];
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
 
 const PROMESSE = [
   {
@@ -73,43 +70,36 @@ function esecuzione(campi) {
    montaConServer() in memory-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
   let getCount = 0;
-  let esecuzioneCount = 0;
-  ctx.window.fetch = async (url, options) => {
-    const u = String(url);
-    const method = (options || {}).method || 'GET';
-    chiamate.push({ url: u, method, opts: options || {} });
-    if (method === 'GET' && u.indexOf('api/executions/') === 0) {
-      esecuzioneCount += 1;
+  const chiamate = fintoFetch(ctx.window, {
+    'GET api/executions': () => {
       if (opts.esecuzioneRotta) throw new Error('rete giu\'');
       if (opts.esecuzione404) {
-        return jsonResponse({ error: 'non ho nessuna esecuzione con quell\'identificatore.' }, 404);
+        return risposta({ error: 'non ho nessuna esecuzione con quell\'identificatore.' }, 404);
       }
-      return jsonResponse(opts.execution !== undefined ? opts.execution : { execution: esecuzione() });
-    }
-    if (method === 'GET') {
+      return risposta(opts.execution !== undefined ? opts.execution : { execution: esecuzione() });
+    },
+    'GET api/agenda': () => {
       getCount += 1;
       if (opts.getRotto) throw new Error('rete giu\'');
-      if (opts.get503) return jsonResponse({ agenda: [], error: 'archivio non disponibile' }, 503);
+      if (opts.get503) return risposta({ agenda: [], error: 'archivio non disponibile' }, 503);
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
       const scelto = corpo !== undefined ? corpo : { agenda: PROMESSE };
-      return jsonResponse(scelto && Array.isArray(scelto.agenda)
+      return risposta(scelto && Array.isArray(scelto.agenda)
         ? { ...scelto, agenda: scelto.agenda.map(conLetturaPromessa) } : scelto);
-    }
-    if (method === 'POST' && u.indexOf('api/agenda/read') === 0) {
+    },
+    'POST api/agenda/read': (url, options) => {
       if (opts.readRotto) throw new Error('rete giu');
-      return jsonResponse({ marked: JSON.parse((options || {}).body || '{}').ids.length });
-    }
-    if (method === 'DELETE') {
+      return risposta({ marked: JSON.parse(options.body || '{}').ids.length });
+    },
+    'DELETE api/agenda': () => {
       if (opts.deleteRotto) throw new Error('rete giu\'');
-      return jsonResponse(
+      return risposta(
         opts.deleteBody !== undefined ? opts.deleteBody
           : { promessa: conLetturaPromessa({ ...PROMESSE[0], stato: 'disdetta' }) },
         opts.deleteStatus !== undefined ? opts.deleteStatus : 200);
-    }
-    throw new Error('metodo inatteso: ' + method);
-  };
+    },
+  });
   return Object.assign(ctx, { chiamate });
 }
 
@@ -306,7 +296,7 @@ test('«Disdici» non chiede conferma: manda subito la DELETE', async () => {
   await tick(20);
 
   assert.equal(confirmChiamato, false, 'nessun window.confirm() per disdire');
-  const del = chiamate.find((c) => c.method === 'DELETE');
+  const del = chiamate.find((c) => c.metodo === 'DELETE');
   assert.ok(del, 'il click deve mandare subito la DELETE');
   assert.equal(del.url, 'api/agenda/p1');
   assert.equal(del.opts.headers['X-Requested-With'], 'fetch',
@@ -347,7 +337,7 @@ test('la DELETE 404 mostra il testo esatto del server, poi ricarica comunque', a
   // Il titolo del test promette "poi ricarica comunque" (review Task 9, minor):
   // senza questa riga l'asserzione non provava il ricaricamento, solo il
   // messaggio. Una seconda GET dopo la DELETE 404 e' il ricaricamento.
-  assert.equal(chiamate.filter((c) => c.method === 'GET').length, 2,
+  assert.equal(chiamate.filter((c) => c.metodo === 'GET').length, 2,
     'un 404 non deve fermare il ricaricamento: la lista si aggiorna comunque');
 });
 
@@ -402,7 +392,7 @@ const FAI_MANTENUTA = {
 };
 
 function contaGetEsecuzioni(chiamate) {
-  return chiamate.filter((c) => c.method === 'GET' && c.url.indexOf('api/executions/') === 0).length;
+  return chiamate.filter((c) => c.metodo === 'GET' && c.url.indexOf('api/executions/') === 0).length;
 }
 
 test('il bottone "Cosa è cambiato" compare SOLO su un fai mantenuta con esecuzione_id', async () => {
@@ -594,7 +584,7 @@ test('senza esiti nuovi la sezione non c\'e\' proprio: non e\' una sezione vuota
 test('dopo averli mostrati, segna letti ESATTAMENTE quelli mostrati', async () => {
   const { chiamate } = await monta({});
 
-  const post = chiamate.find((c) => c.method === 'POST');
+  const post = chiamate.find((c) => c.metodo === 'POST');
   assert.ok(post, 'la pagina deve dichiarare cio\' che ha mostrato');
   assert.match(post.url, /api\/agenda\/read/);
   assert.deepEqual(JSON.parse(post.opts.body).ids, ['p2']);
@@ -606,7 +596,7 @@ test('senza esiti nuovi non parte nessuna POST', async () => {
   const lette = PROMESSE.map((p) => ({ ...p, esito_letto_ts: p.stato === 'in_attesa' ? null : 1755400900 }));
   const { chiamate } = await monta({ get: { agenda: lette } });
 
-  assert.equal(chiamate.filter((c) => c.method === 'POST').length, 0);
+  assert.equal(chiamate.filter((c) => c.metodo === 'POST').length, 0);
 });
 
 test('se il segno di lettura fallisce, la pagina resta usabile', async () => {

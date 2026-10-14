@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadScripts, STATIC_VIVO, tick } from './helpers/dom.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 /* Collaudo usabilita' 3.22.3, rilievo C: tre parole nostre erano visibili
  * al proprietario -- misurate in
@@ -30,10 +31,7 @@ test('dashboard.js: "nucleo" non compare piu\' in nessuna stringa visibile', asy
     comportamento: { letto_il: null, conteggi: {}, senza_corpo: 0, problemi: [], corpi_non_letti: {}, voci: [] },
     plance: { lette_il: null, non_disponibili: null, voci: [] },
   };
-  ctx.window.fetch = (url) => Promise.resolve({
-    ok: true, status: 200,
-    json: () => Promise.resolve(String(url).indexOf('api/briefing') !== -1 ? NUCLEO_VUOTO : CASA_VUOTA),
-  });
+  fintoFetch(ctx.window, { 'api/briefing': NUCLEO_VUOTO, 'api/home-space': CASA_VUOTA });
 
   await ctx.window.HirisDashboard.mount();
   await tick(0);

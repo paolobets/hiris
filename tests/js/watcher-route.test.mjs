@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 
 /* Il GUSCIO della pagina «L'osservatore» (config/watcher-route.js): le quattro
    schede, il carico pigro, gli indirizzi, la freschezza.
@@ -38,21 +39,20 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
-}
-
 /* Il finto server del guscio: risponde a TUTTE e quattro le rotte delle
    schede, perche' qui si monta la cornice e non una scheda sola. `monta()`
-   conta le chiamate: e' con quel conto che si misura il carico pigro. */
-function monta(opts = {}) {
+   conta le chiamate: e' con quel conto che si misura il carico pigro. Ogni
+   rotta risponde un corpo vuoto: qui conta QUALE scheda chiede, non cosa
+   rende. `chiamate` e' l'elenco vivo degli indirizzi chiesti. */
+function monta() {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  ctx.window.fetch = async (url) => {
-    chiamate.push(String(url));
-    return jsonResponse(opts.corpo || {});
-  };
-  return Object.assign(ctx, { chiamate });
+  const elenco = fintoFetch(ctx.window, {
+    'api/mind/report': {},
+    'api/mind/knowledge': {},
+    'api/mind/analysis': {},
+    'api/mind/watching': {},
+  });
+  return Object.defineProperty(ctx, 'chiamate', { get: () => elenco.map((c) => c.url) });
 }
 
 // Le date locali («oggi», «ieri», calcolate come le calcola la pagina) sono
@@ -481,10 +481,10 @@ test('la cornice: «#/watcher» nudo si riscrive su «giorno» SENZA aggiungere 
 
 test('la cornice: un errore in una scheda resta dentro la sua scheda', async () => {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  ctx.window.fetch = async (url) => {
-    if (String(url).indexOf('api/mind/report') === 0) return jsonResponse({ error: 'x' }, 503);
-    return jsonResponse({ conteggi: { righe: [] }, non_capito: [], giudizi: [], domande_aperte: [] });
-  };
+  fintoFetch(ctx.window, {
+    'api/mind/report': risposta({ error: 'x' }, 503),
+    'api/mind/knowledge': { conteggi: { righe: [] }, non_capito: [], giudizi: [], domande_aperte: [] },
+  });
   ctx.window.HirisWatcherRoute.mount('giorno');
   await tick(0);
   ctx.window.HirisWatcherRoute.mount('sapere');

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Il pallino delle due voci esecutive.
  *
@@ -27,15 +28,11 @@ const HTML = '<!doctype html><body>'
   + '<a id="v-cost" data-badge="constructions" data-builder-only hidden><span>Proposte</span></a>'
   + '</body>';
 
-function rispostaCon(corpo) {
-  return () => Promise.resolve({
-    ok: true, status: 200, json: () => Promise.resolve(corpo),
-  });
-}
-
-async function monta(fetchFinto) {
+/* `pending` e' cio' che risponde `GET /api/pending`, l'unico indirizzo che
+   il pallino chiede: il corpo di un 200, una `risposta(...)` o una funzione. */
+async function monta(pending) {
   const ctx = loadScripts(['pending-badge.js'], { html: HTML });
-  ctx.window.fetch = fetchFinto;
+  fintoFetch(ctx.window, { 'api/pending': pending });
   await ctx.window.HirisPendingBadge.mount();
   await tick(0);
   return ctx;
@@ -47,14 +44,14 @@ function pallino(ctx, voce) {
 }
 
 test('dipinge i due numeri sulle due voci', async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 2, constructions_pending: 4 }));
+  const ctx = await monta({ agenda_unread: 2, constructions_pending: 4 });
 
   assert.equal(pallino(ctx, 'agenda').textContent, '2');
   assert.equal(pallino(ctx, 'constructions').textContent, '4');
 });
 
 test('il numero ha un nome: sotto i 1024px le etichette spariscono', async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 3, constructions_pending: 1 }));
+  const ctx = await monta({ agenda_unread: 3, constructions_pending: 1 });
 
   /* La side-nav si stringe a 64px e resta la sola icona: un numero nudo, li',
      non si capirebbe ne' col mouse ne' con uno screen reader. */
@@ -64,23 +61,21 @@ test('il numero ha un nome: sotto i 1024px le etichette spariscono', async () =>
 });
 
 test("su 503 il pallino non compare -- «non lo so» non e' «non c'e' niente»", async () => {
-  const ctx = await monta(() => Promise.resolve({
-    ok: false, status: 503, json: () => Promise.resolve({ error: 'archivio non disponibile' }),
-  }));
+  const ctx = await monta(risposta({ error: 'archivio non disponibile' }, 503));
 
   assert.equal(pallino(ctx, 'agenda'), null);
   assert.equal(pallino(ctx, 'constructions'), null);
 });
 
 test('su errore di rete il pallino non compare', async () => {
-  const ctx = await monta(() => Promise.reject(new Error('rete giu')));
+  const ctx = await monta(() => { throw new Error('rete giu'); });
 
   assert.equal(pallino(ctx, 'agenda'), null);
   assert.equal(pallino(ctx, 'constructions'), null);
 });
 
 test("zero non compare: zero non e' una notizia", async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 0, constructions_pending: 0 }));
+  const ctx = await monta({ agenda_unread: 0, constructions_pending: 0 });
 
   assert.equal(pallino(ctx, 'agenda'), null);
   assert.equal(pallino(ctx, 'constructions'), null);
@@ -102,7 +97,7 @@ test('una chiave che manca si comporta come un errore, non come uno zero', async
   const warnVero = console.warn;
   console.warn = function () { avvisi.push([].slice.call(arguments)); };
   try {
-    const ctx = await monta(rispostaCon({ constructions_pending: 4 }));
+    const ctx = await monta({ constructions_pending: 4 });
 
     assert.equal(pallino(ctx, 'agenda'), null);
     assert.equal(pallino(ctx, 'constructions'), null,
@@ -124,8 +119,7 @@ test('un secondo giro fallito SPEGNE il numero acceso prima', async () => {
   const ctx = await monta(() => {
     giro += 1;
     return giro === 1
-      ? Promise.resolve({ ok: true, status: 200,
-                          json: () => Promise.resolve({ agenda_unread: 7, constructions_pending: 1 }) })
+      ? risposta({ agenda_unread: 7, constructions_pending: 1 })
       : Promise.reject(new Error('rete giu'));
   });
   assert.equal(pallino(ctx, 'agenda').textContent, '7');
@@ -138,7 +132,7 @@ test('un secondo giro fallito SPEGNE il numero acceso prima', async () => {
 });
 
 test('due giri di seguito non lasciano due pallini sulla stessa voce', async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 2, constructions_pending: 1 }));
+  const ctx = await monta({ agenda_unread: 2, constructions_pending: 1 });
   await ctx.window.HirisPendingBadge.refresh();
   await tick(0);
 
@@ -151,7 +145,7 @@ test('PIN: una terza chiave nella risposta non fa scattare il controllo stretto'
      `refresh` e' stretto su cio' che MANCA, e una chiave in piu' -- quella
      che dice se chi guarda puo' costruire, fetta «il seguito delle chat
      divise» -- non deve spegnere i pallini come se fosse un guasto. */
-  const ctx = await monta(rispostaCon({ agenda_unread: 2, constructions_pending: 4, can_build: true }));
+  const ctx = await monta({ agenda_unread: 2, constructions_pending: 4, can_build: true });
 
   assert.equal(pallino(ctx, 'agenda').textContent, '2');
   assert.equal(pallino(ctx, 'constructions').textContent, '4');
@@ -162,8 +156,7 @@ test('can_configure accanto ai numeri non spegne i pallini e non tocca la voce �
      booleano. Il controllo stretto guarda solo le chiavi NUMERICHE dei
      pallini: una chiave booleana in piu' non e' un guasto. E la voce
      «Proposte» resta di `can_build`, non di questa chiave. */
-  const ctx = await monta(rispostaCon(
-    { agenda_unread: 2, constructions_pending: 4, can_build: true, can_configure: false }));
+  const ctx = await monta({ agenda_unread: 2, constructions_pending: 4, can_build: true, can_configure: false });
 
   assert.equal(pallino(ctx, 'agenda').textContent, '2');
   assert.equal(pallino(ctx, 'constructions').textContent, '4');
@@ -183,7 +176,7 @@ function voceProposte(ctx) {
 }
 
 test('chi non costruisce non vede la voce «Proposte»', async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 1, constructions_pending: 0, can_build: false }));
+  const ctx = await monta({ agenda_unread: 1, constructions_pending: 0, can_build: false });
 
   assert.equal(voceProposte(ctx).hidden, true);
   assert.equal(pallino(ctx, 'agenda').textContent, '1', 'gli Impegni restano di tutti');
@@ -193,8 +186,8 @@ test('la voce si decide a OGNI risposta, non una volta sola', async () => {
   let giro = 0;
   const ctx = await monta(() => {
     giro += 1;
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
-      { agenda_unread: 0, constructions_pending: giro === 1 ? 3 : 0, can_build: giro === 1 }) });
+    return risposta(
+      { agenda_unread: 0, constructions_pending: giro === 1 ? 3 : 0, can_build: giro === 1 });
   });
   assert.equal(voceProposte(ctx).hidden, false, 'al primo giro chi guarda costruisce');
 
@@ -205,7 +198,7 @@ test('la voce si decide a OGNI risposta, non una volta sola', async () => {
 });
 
 test('una risposta che non dice can_build non e\' un permesso', async () => {
-  const ctx = await monta(rispostaCon({ agenda_unread: 0, constructions_pending: 2 }));
+  const ctx = await monta({ agenda_unread: 0, constructions_pending: 2 });
 
   assert.equal(voceProposte(ctx).hidden, true);
 });
@@ -215,8 +208,7 @@ test('un errore non tocca la voce: non e\' una risposta', async () => {
   const ctx = await monta(() => {
     giro += 1;
     return giro === 1
-      ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
-        { agenda_unread: 0, constructions_pending: 1, can_build: true }) })
+      ? risposta({ agenda_unread: 0, constructions_pending: 1, can_build: true })
       : Promise.reject(new Error('rete giu'));
   });
 
@@ -239,7 +231,7 @@ test('un errore non tocca la voce: non e\' una risposta', async () => {
 function montaSenzaRisposta(prima) {
   const ctx = loadScripts(['pending-badge.js'], { html: HTML });
   if (prima) prima(ctx);
-  ctx.window.fetch = () => new Promise(() => {});
+  fintoFetch(ctx.window, { 'api/pending': maiRisposta });
   ctx.window.HirisPendingBadge.mount();
   return ctx;
 }
@@ -253,7 +245,7 @@ test('un «può costruire» ricordato mostra la voce SUBITO, prima della rispost
 test('la risposta del server vince sul ricordo, e diventa il ricordo', async () => {
   const ctx = loadScripts(['pending-badge.js'], { html: HTML });
   ctx.window.localStorage.setItem('hiris.can_build', '1');
-  ctx.window.fetch = rispostaCon({ agenda_unread: 0, constructions_pending: 0, can_build: false });
+  fintoFetch(ctx.window, { 'api/pending': { agenda_unread: 0, constructions_pending: 0, can_build: false } });
   await ctx.window.HirisPendingBadge.mount();
   await tick(0);
 
@@ -266,7 +258,7 @@ test('uno storage che solleva non rompe niente: si parte nascosti e la risposta 
   Object.defineProperty(ctx.window, 'localStorage', {
     configurable: true, get() { throw new Error('SecurityError'); },
   });
-  ctx.window.fetch = rispostaCon({ agenda_unread: 0, constructions_pending: 2, can_build: true });
+  fintoFetch(ctx.window, { 'api/pending': { agenda_unread: 0, constructions_pending: 2, can_build: true } });
   const montaggio = ctx.window.HirisPendingBadge.mount();
   assert.equal(voceProposte(ctx).hidden, true, 'senza ricordo si parte nascosti');
   await montaggio;

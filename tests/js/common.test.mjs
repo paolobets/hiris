@@ -18,6 +18,7 @@ import vm from 'node:vm';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 import { loadScripts, STATIC_VIVO } from './helpers/dom.mjs';
+import { fintoFetch } from './helpers/fetch.mjs';
 
 const COMMON = 'common.js';
 
@@ -203,9 +204,8 @@ test('stateLabel: la frase della rotta; senza, la parola grezza senza trattino b
 });
 
 test('api: Content-Type JSON e l\'intestazione anti-CSRF, quelle di chi chiama vincono', async () => {
-  loadScripts([COMMON], { html: HTML });
-  const calls = [];
-  globalThis.fetch = (url, opts) => { calls.push({ url, opts }); return Promise.resolve({ ok: true }); };
+  const { window } = loadScripts([COMMON], { html: HTML });
+  const calls = fintoFetch(window, { 'api/x': {}, 'api/y': {} });
   await api('api/x', { method: 'POST', headers: { 'Content-Type': 'text/plain' } });
   assert.equal(calls[0].url, 'api/x');
   assert.equal(calls[0].opts.method, 'POST');
@@ -255,22 +255,21 @@ function withStorage(storage) {
 }
 
 test('il tema: la scelta salvata vince sul server, e non si chiede la rete', async () => {
-  loadScripts([COMMON], { html: HTML });
+  const { window } = loadScripts([COMMON], { html: HTML });
   withStorage(stubStorage({ 'hiris-theme': 'dark' }));
-  let chiamate = 0;
-  globalThis.fetch = () => { chiamate += 1; return Promise.resolve({ json: () => ({ theme: 'light' }) }); };
+  const chiamate = fintoFetch(window, { 'api/config': { theme: 'light' } });
   globalThis.paintSavedTheme();
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dark');
   await applyTheme();
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dark');
-  assert.equal(chiamate, 0);
+  assert.equal(chiamate.length, 0);
 });
 
 test('il tema: senza scelta salvata vale quello del server, e non si salva', async () => {
-  loadScripts([COMMON], { html: HTML });
+  const { window } = loadScripts([COMMON], { html: HTML });
   const storage = stubStorage({});
   withStorage(storage);
-  globalThis.fetch = () => Promise.resolve({ json: () => ({ theme: 'dark' }) });
+  fintoFetch(window, { 'api/config': { theme: 'dark' } });
   globalThis.paintSavedTheme();
   assert.equal(document.documentElement.getAttribute('data-theme'), null);
   await applyTheme();

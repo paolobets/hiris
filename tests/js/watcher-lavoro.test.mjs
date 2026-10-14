@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
+import { fintoFetch, risposta } from './helpers/fetch.mjs';
 import { conLettura, esito } from './helpers/tentativo.mjs';
 
 /* La scheda «L'osservatore» (config/watcher-lavoro.js): cosa si guarda, da
@@ -21,10 +22,6 @@ const SCRIPTS = ['common.js', 'config/watcher-shared.js', 'config/watcher-giorno
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
-}
-
-function jsonResponse(body, status) {
-  return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
 /* Il payload nuovo di `GET /api/mind/watching` (fetta «i tre attori»,
@@ -56,38 +53,37 @@ function condizione(soggetto) {
 }
 
 /* Il finto server della SOLA scheda «L'osservatore»: la sua lettura
-   (`api/mind/watching`) e la sua scrittura (`api/mind/objective`). Un altro
-   indirizzo solleva -- se un giorno questa scheda si mettesse a chiedere il
+   (`api/mind/watching`) e le sue scritture (`api/mind/objective`,
+   `api/mind/scope`). Un altro indirizzo fa fallire la prova -- se un giorno questa scheda si mettesse a chiedere il
    resoconto o il sapere, il carico pigro sarebbe rotto e si vedrebbe qui. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const chiamate = [];
-  const corpiInviati = [];
-  ctx.window.fetch = async (url, init) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (init && init.body) corpiInviati.push(String(init.body));
-    if (u.indexOf('api/mind/objective') === 0) {
+  const elenco = fintoFetch(ctx.window, {
+    'api/mind/objective': () => {
       if (opts.obiettivoRotto) throw new Error('rete giu\'');
-      return jsonResponse(
+      return risposta(
         opts.obiettivo !== undefined ? opts.obiettivo
           : { obiettivo: OBIETTIVO_DI_PROVA, scritto: true },
         opts.obiettivoStatus);
-    }
-    if (u.indexOf('api/mind/scope') === 0) {
+    },
+    'api/mind/scope': () => {
       if (opts.scopeRotto) throw new Error('rete giu\'');
-      return jsonResponse(opts.scope !== undefined ? opts.scope : { decisione: {} },
+      return risposta(opts.scope !== undefined ? opts.scope : { decisione: {} },
         opts.scopeStatus);
-    }
-    if (u.indexOf('api/mind/watching') === 0) {
+    },
+    'api/mind/watching': () => {
       if (opts.osservateRotto) throw new Error('rete giu\'');
-      return jsonResponse(
+      return risposta(
         opts.watching !== undefined ? opts.watching : paginaScope(),
         opts.osservateStatus);
-    }
-    throw new Error('url inatteso: ' + u);
-  };
-  return Object.assign(ctx, { chiamate, corpiInviati });
+    },
+  });
+  /* Due viste vive dell'elenco delle chiamate: gli indirizzi, e i corpi
+     inviati (solo le richieste che ne hanno uno). */
+  return Object.defineProperties(ctx, {
+    chiamate: { get: () => elenco.map((c) => c.url) },
+    corpiInviati: { get: () => elenco.filter((c) => c.corpo).map((c) => String(c.corpo)) },
+  });
 }
 
 function bottone(document, testo, entro) {
@@ -500,17 +496,18 @@ test('un errore nel leggere "cosa sto guardando" (503) offre Riprova, e il testo
 });
 
 test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rilancia la richiesta', async () => {
-  const { window, document, chiamate } = montaConServer({ osservateRotto: true });
+  const ctx = montaConServer({ osservateRotto: true });
+  const { window, document } = ctx;
   window.HirisWatcherRoute.mount('lavoro');
   await tick(20);
 
-  const primaDelClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
+  const primaDelClick = ctx.chiamate.filter((u) => u.indexOf('watching') !== -1).length;
   const retry = bottone(document, 'Riprova');
   assert.ok(retry, 'deve esserci un modo di riprovare');
   retry.dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
 
-  const dopoIlClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
+  const dopoIlClick = ctx.chiamate.filter((u) => u.indexOf('watching') !== -1).length;
   assert.equal(dopoIlClick, primaDelClick + 1, 'il bottone deve rilanciare la stessa richiesta');
 });
 
