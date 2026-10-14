@@ -6,17 +6,18 @@ from hiris.app.home_space.render import BODY_UNKNOWN
 from hiris.app.home_space.topology import Mirror
 
 
-def compose(home_space, behavior, memories, state, *, unavailable=(), house=None, **other):
+def compose(home_space, behavior, memories, state, *, unavailable=(), attributes=None,
+            house=None, **other):
     """`briefing.compose` su un'anagrafe scritta a mano: la casa del turno la
-    costruisce qui la prova, dalla stessa anagrafe e dagli stessi registri
-    caduti, con lo specchio vuoto (il nucleo non lo legge dalla casa: lo
-    stato arriva come argomento). In produzione la casa la compone solo
-    `House.read` (`test_casa_per_turno`); il nucleo la riceve obbligatoria
-    dal 14/10/2026 (A-16, F11 della Chiusura)."""
+    costruisce qui la prova, dalla stessa anagrafe, dagli stessi registri
+    caduti e da uno specchio con lo stato e gli attributi dati. In produzione
+    la casa la compone solo `House.read` (`test_casa_per_turno`); il nucleo
+    la riceve obbligatoria dal 14/10/2026 (A-16, F11 della Chiusura), e da
+    lei legge anagrafe, registri caduti, stato e attributi (N158-2)."""
     if house is None:
-        house = House(home_space, Mirror(), unavailable)
-    return briefing.compose(home_space, behavior, memories, state,
-                            unavailable=unavailable, house=house, **other)
+        house = House(home_space, Mirror(state=state, attributes=attributes or {}),
+                      unavailable)
+    return briefing.compose(behavior, memories, house=house, **other)
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],

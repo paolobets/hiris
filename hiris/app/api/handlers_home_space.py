@@ -435,8 +435,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     reliable_state = home_space_store is not None and mirror.readable
 
     return compose(
-        house.home_space, behavior, memories, mirror.state,
-        unavailable=house.unavailable,
+        behavior, memories,
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,
@@ -444,7 +443,6 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
         reference_frame=reference_frame,
         problems=problems,
         comparison=comparison,
-        attributes=mirror.attributes,
         house=house,
     )
 
