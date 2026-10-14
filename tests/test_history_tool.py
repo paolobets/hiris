@@ -39,7 +39,15 @@ from casa_finta import CasaFinta
 
 _RIFIUTI = ("carta", "vetro", "plastica", "organico", "indifferenziato")
 _PERSONA = {"specie": "persona", "id": "u-marta"}
+#: L'istante delle serie finte: `_now_per_test` lo rilegge a ogni prova.
+#: Letto solo al caricamento del modulo, le serie «di un'ora fa» invecchiavano
+#: con la raccolta (rosse il 14/10/2026 con le prove un giorno dopo la raccolta).
 _ADESSO = datetime.now(UTC)
+
+
+@pytest.fixture(autouse=True)
+def _now_per_test(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_ADESSO", datetime.now(UTC))
 
 
 def _voce(eid, nome, area=None, **altro):
