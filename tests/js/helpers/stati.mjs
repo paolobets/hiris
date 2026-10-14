@@ -58,10 +58,25 @@ const PROMESSA = readFileSync(
 const SOSPESI = tupla('SUSPENDED');
 const ESITI = tupla('STATES_ESITO', PROMESSA);
 
+/* Le domande «e' questo stato?» di `serializza` (C-10, 14/10/2026:
+   `disdicibile`, `mantenuta`, `fallita`, `disdetta`), lette dalle sue righe
+   `"chiave": row["stato"] == NOME,`. NOME e' una costante di states.py, o
+   una di promise.py che ne nomina una (`CANCELLABLE = PENDING`). */
+const UGUALI = {};
+for (const m of PROMESSA.matchAll(/^\s+"(\w+)": row\["stato"\] == ([A-Z_]+),$/gm)) {
+  const alias = PROMESSA.match(new RegExp('^' + m[2] + ' = ([A-Z_]+)$', 'm'));
+  const nome = alias ? alias[1] : m[2];
+  assert.ok(nome in PAROLE, 'serializza: «' + m[2] + '» non e\' una costante di states.py');
+  UGUALI[m[1]] = PAROLE[nome];
+}
+assert.ok(Object.keys(UGUALI).length >= 4, 'serializza: troppo poche domande sullo stato lette');
+
 export function conLetturaPromessa(riga) {
   const r = conFrase(riga);
   if (!r || typeof r.stato !== 'string' || 'sospesa' in r) return r;
-  return resaPromessa({ ...r, sospesa: SOSPESI.includes(r.stato), esito: ESITI.includes(r.stato) });
+  const uguali = {};
+  for (const [chiave, stato] of Object.entries(UGUALI)) uguali[chiave] = r.stato === stato;
+  return resaPromessa({ ...r, sospesa: SOSPESI.includes(r.stato), esito: ESITI.includes(r.stato), ...uguali });
 }
 
 /* Gli istanti di una promessa come li manda la resa
