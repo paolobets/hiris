@@ -30,6 +30,7 @@ from .api.handlers_chat_history import (
 )
 from .api.handlers_config import handle_config
 from .api.handlers_health import handle_health
+from .api.handlers_mind import mind_view
 from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
     handle_get_models_config,
@@ -90,9 +91,9 @@ from .keeper.exchange import interpreta_promise
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
-from .mind import analyst, analyst_turn, recipe_turn, report
+from .mind import analyst_turn, recipe_turn, report
 from .mind import store as mind_store
-from .mind.analyst_round import ANALYST_DAYS, write_analysis
+from .mind.analyst_round import ANALYST_DAYS, analyst_inputs, write_analysis
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     aggregate_day,
@@ -1625,7 +1626,8 @@ async def analyst_round(app) -> dict | None:
         if turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
-        series, previous = _analyst_inputs(app, store, today)
+        series, previous = analyst_inputs(store, today,
+                                          device_names=mind_view(app).device_names())
         if not (series.get("serie") or []):
             return None
 
@@ -1666,27 +1668,6 @@ async def analyst_round(app) -> dict | None:
         logger.warning("analista: giro fallito (%s: %s) -- si riprova al giro "
                        "dopo", type(error).__name__, error)
         return None
-
-
-def _analyst_memory(store, today: str, series: dict) -> list[dict]:
-    """Cio' che l'analista ha gia' detto nella sua finestra, dagli archivi
-    (D4 del piano degli attori, `analyst.previous_observations`)."""
-    return analyst.previous_observations(
-        store.analyses(limit=ANALYST_DAYS), store.proposals(), today=today,
-        series=series)
-
-
-def _analyst_inputs(app, store, day: str) -> tuple[dict, list[dict]]:
-    """La serie dell'analista e la sua memoria, composte dall'archivio di
-    adesso: le stesse all'accodamento (`analyst_round`) e alla raccolta
-    (`_collect_analyst_turn`), che fino al 14/10/2026 le componevano ognuna
-    da se', riga per riga (D-34)."""
-    from .api.handlers_mind import mind_view
-
-    series = analyst.with_deviation(
-        report.series_of_measures(store.reports(limit=ANALYST_DAYS),
-                                  names=mind_view(app).device_names()))
-    return series, _analyst_memory(store, day, series)
 
 
 def _was_refused(esito: dict) -> bool:
@@ -1778,7 +1759,8 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     # (`runner._bare_tool_name`).
     calls = [{"tool": _bare_tool_name(c.get("tool")), "input": c.get("input")}
              for c in decision.get("tools_called") or [] if isinstance(c, dict)]
-    series, previous = _analyst_inputs(app, store, day)
+    series, previous = analyst_inputs(store, day,
+                                      device_names=mind_view(app).device_names())
     # I segnaposto che il modello ha letto sul ponte tornano id dalla stessa
     # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
     esito = analyst_turn.apply_analysis(series, reply, previous=previous,

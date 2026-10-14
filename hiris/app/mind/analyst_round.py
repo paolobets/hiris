@@ -14,7 +14,7 @@ import logging
 import time
 
 from ..home_space.house import House
-from . import analyst, analyst_turn
+from . import analyst, analyst_turn, report
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,22 @@ logger = logging.getLogger(__name__)
 #: della spec §9 -- «trenta giorni di misure stanno in un prompt» -- e
 #: misurato sulla casa vera sono ~35.000 token.
 ANALYST_DAYS = 30
+
+
+def analyst_inputs(store, day: str, *, device_names: dict) -> tuple[dict, list[dict]]:
+    """La serie dell'analista e la sua memoria, composte dall'archivio di
+    adesso: le stesse all'accodamento (`analyst_round`) e alla raccolta
+    (`_collect_analyst_turn`), che fino al 14/10/2026 le componevano ognuna
+    da se', riga per riga (D-34).
+
+    I nomi dei dispositivi li porta chi chiama (`MindView.device_names`, il
+    loro posto solo): cosi' `mind/` non importa una rotta (N161-1).
+    La memoria e' cio' che l'analista ha gia' detto nella sua finestra, dagli
+    archivi (D4 del piano degli attori, `analyst.previous_observations`)."""
+    series = analyst.with_deviation(
+        report.series_of_measures(store.reports(limit=ANALYST_DAYS), names=device_names))
+    return series, analyst.previous_observations(
+        store.analyses(limit=ANALYST_DAYS), store.proposals(), today=day, series=series)
 
 
 def write_analysis(app, store, day: str, occurrence: dict) -> None:

@@ -4,7 +4,7 @@ Sul ponte la domanda parte all'accodamento (`analyst_round`) e la risposta si
 applica minuti dopo, alla raccolta (`_collect_analyst_turn`): tutte e due
 hanno bisogno della serie e della memoria dell'analista. Fino al 14/10/2026
 ognuna le componeva da se', riga per riga; ora le chiedono a
-`server._analyst_inputs`. Qui si prova la proprieta': sugli stessi archivi
+`mind/analyst_round.analyst_inputs`. Qui si prova la proprieta': sugli stessi archivi
 le due strade vedono la stessa serie e la stessa memoria.
 
 Mutazione ESEGUITA (14/10/2026): la raccolta rimessa a comporre la serie da
