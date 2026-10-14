@@ -846,6 +846,57 @@ def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
         "invece di lasciarlo dentro un'eccezione a grana di file")
 
 
+# I file usciti da `server.py` con la Chiusura (F8) e i loro nomi della
+# radice, misurati con `rinomina.applica` su una copia il 14/10/2026. Il
+# rilievo N163-1 (giro 161 del revisore): l'eccezione a grana di file in
+# `_SORVEGLIATI` lasciava passare `wait -> finestra` dentro
+# `observer_round.py`, e questa prova esiste per vederlo.
+_RESIDUI_SPOSTATI_DA_SERVER = {
+    ("mind", "analyst_round.py"): {("casa", "home_space"), ("esito", "occurrence")},
+    ("mind", "observer_round.py"): {("annota", "record"), ("letto", "loaded"),
+                                    ("porta", "actuator"), ("versione", "version")},
+    ("mind", "recipe_round.py"): {("campo", "field"), ("esito", "occurrence")},
+    ("mind", "day_report.py"): {
+        ("adesso", "now"), ("archivio", "store"), ("casa", "home_space"),
+        ("entita", "entity"), ("finestra", "window"), ("giorno", "day"),
+        ("gruppi", "groups"), ("punti", "points"), ("serie", "series")},
+    ("agent", "bridge_governor.py"): {("quante", "count")},
+    ("usage", "bridge_loads.py"): {("adesso", "now"), ("archivio", "store"),
+                                   ("registra", "log"), ("soggetto", "subject")},
+}
+
+
+@pytest.mark.parametrize("ambito,nome", sorted(_RESIDUI_SPOSTATI_DA_SERVER))
+def test_il_residuo_dei_file_usciti_da_server_e_esatto(tmp_path, ambito, nome):
+    """Il gemello fine delle righe `mind`, `agent` e `usage` di
+    `_SORVEGLIATI`: per ognuno dei file spostati da `server.py` l'insieme
+    delle sostituzioni e' ESATTO. Un nome italiano nato dopo lo spostamento
+    fa arrossire questa prova invece di nascondersi nell'eccezione del file."""
+    import shutil
+
+    from _comune import ROOT
+    copia = tmp_path / nome
+    shutil.copy(ROOT / "hiris" / "app" / ambito / nome, copia)
+    prima = copia.read_text(encoding="utf-8")
+    rinomina.applica(copia, ambito, scrivi=True)
+    sostituzioni = _sostituzioni_di_identificatori(
+        prima, copia.read_text(encoding="utf-8"))
+    attese = _RESIDUI_SPOSTATI_DA_SERVER[(ambito, nome)]
+    assert sostituzioni == attese, (
+        f"{ambito}/{nome} diverge su {sorted(sostituzioni)}, atteso "
+        f"{sorted(attese)} -- un nome nuovo e' comparso: decidilo davvero "
+        "invece di lasciarlo dentro un'eccezione a grana di file")
+
+
+def test_i_file_usciti_da_server_sono_quelli_dichiarati_in_sorveglianza():
+    """La prova fine e l'eccezione a grana di file guardano gli STESSI file:
+    un file aggiunto a una sola delle due lascerebbe l'altro cieco."""
+    dichiarati = {(amb, Path(nome)) for amb, nome in _RESIDUI_SPOSTATI_DA_SERVER}
+    in_sorveglianza = {(amb, f) for perc, amb, residui in _SORVEGLIATI
+                       if perc in {"mind", "agent", "usage"} for f in residui}
+    assert dichiarati == in_sorveglianza
+
+
 def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     """Un quarto residuo, di una specie diversa dai tre sopra: qui lo
     strumento non ha NIENTE da applicare, quindi non c'e' un `prima`/`dopo`
