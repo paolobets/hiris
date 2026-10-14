@@ -71,12 +71,12 @@ Periodic work *does* run — the scheduler registers **sixteen** APScheduler job
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Most are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
-reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
+reload every 2 minutes (`startup.py::reload_inventory_job`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
-(`server.py::_reread_problems`), the tree-vs-Home-Assistant comparison
-sample every 15 minutes (`server.py::tree_comparison_round`), the reread of
+(`startup.py::reread_problems_job`), the tree-vs-Home-Assistant comparison
+sample every 15 minutes (`home_space/rounds.py::tree_comparison_round`), the reread of
 automation and script bodies straight from Home Assistant every 5 minutes
-(`server.py::behavior_reader`), the nightly retention at 03:00
+(`home_space/rounds.py::behavior_reader`), the nightly retention at 03:00
 (`conservazione.py::nightly`) — one job for every archive: each one declares,
 next to its schema, how long it keeps every table and why, and `/api/health`
 lists those declarations; until 08/10/2026 there were two jobs at 03:00 and
@@ -86,12 +86,12 @@ on, and three more added by the "the
 observer" slice (`hiris/app/mind/`) and its follow-up, "the traces and the
 log": the system-conditions read — the same diagnosed issues plus the
 integrations Home Assistant has not loaded, folded into the observer's
-fault objects — every 10 minutes (`server.py::_watch_conditions`) and the
+fault objects — every 10 minutes (`startup.py::conditions_job`) and the
 nightly aggregation of the previous day's raw state changes into objects
-at 00:20 (`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`)
+at 00:20 (`startup.py::nightly_aggregation_job` → `mind/facts.py::aggregate_day`)
 belong to "the observer"; the
 automation-outcome trace read every 2 minutes
-(`server.py::_watch_automation_traces` →
+(`startup.py::automation_traces_job` →
 `mind/watcher.py::Watcher.watch_automation_outcome`) belongs to "the
 traces and the log" instead — it rereads the recent execution traces of
 every automation that has fired at least once since startup
@@ -103,7 +103,7 @@ the document integration and the knowledge archive they fed.
 
 One more was added by "the tables" slice: the reread of the state
 translations Home Assistant publishes, every 5 minutes
-(`server.py::_reread_state_translations` →
+(`startup.py::reread_state_translations_job` →
 `proxy/state_translations.py`). It is not there because that table changes —
 it almost never does, and the read costs nothing while the house keeps the
 same version and language — but because the *first* read can fail against a
@@ -112,7 +112,7 @@ translation tables were deleted those words are what HIRIS renders a state
 with.
 
 Another was added by "the three actors" slice: the observer's loop,
-every minute (`server.py::reconsideration_round`; it was ten minutes until
+every minute (`mind/observer_round.py::reconsideration_round`; it was ten minutes until
 11/09/2026). One minute is not the reconsideration cadence — that one is
 *measured*, and on the owner's house it is 84 hours, half of the seven days
 Home Assistant's recorder still remembers. One minute is how often HIRIS
@@ -128,7 +128,7 @@ page it feeds says both what it decided and what that costs per day.
 
 The one that is not housekeeping is the promise
 scheduler's heartbeat, every 15 seconds
-(`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
+(`startup.py::keeper_heartbeat_job` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its
 service call, or its comparison, is verified at that moment, the same way
@@ -147,11 +147,11 @@ The fourteenth and fifteenth were added by "the knowledge and the recipes" and
 "the daily report" slices. The fourteenth asks the model, every 10 minutes, how
 **one** device that weighs is measured, and then stops for that device: a recipe
 written, or a refusal recorded, is never asked again
-(`server.py::recipe_round`). One at a time is not generic caution — thirty
+(`mind/recipe_round.py::recipe_round`). One at a time is not generic caution — thirty
 devices asked together would empty the plan's daily ceiling on their own, and
 from there every turn, chat included, would fall through to the paid providers.
 The fifteenth takes care of **one** day every 5 minutes, oldest first
-(`server.py::backfill_one_report`). It exists because of a measurement taken on
+(`mind/day_report.py::backfill_one_report`). It exists because of a measurement taken on
 the owner's house on 14/09/2026: the reports for the 12th and the 13th existed
 and nothing else did, while the 7th through the 11th had raw state changes and
 objects and no report — neither writer reaches backwards, and for the analyst
@@ -167,7 +167,7 @@ while its raw still exists.
 
 
 The sixteenth is the analyst (spec §10), every hour
-(`server.py::analyst_round`). It reads the measures of many days — pivoted so
+(`mind/analyst_round.py::analyst_round`). It reads the measures of many days — pivoted so
 that one line is one measure across thirty days — and says **what could be
 done**: what it saw, which of the three triggers it is, whether it is already
 explained, and what would change against the objective. It is the third of the
@@ -218,7 +218,7 @@ entities, labels, categories, config entries — and rebuilds the house from the
 (`hiris/app/home_space/topology.py::rebuild`,
 `hiris/app/proxy/ha_client.py::HAClient.read_registries`; the registry-update
 subscriptions are `TOPOLOGY_EVENTS` in the same file, the debounced rebuild is
-`hiris/app/server.py::schedule_registry_rebuild`). The meaning is never guessed:
+`hiris/app/home_space/registry_follower.py::schedule_registry_rebuild`). The meaning is never guessed:
 it is whatever you already declared in Home Assistant.
 
 If a registry fails to answer, HIRIS keeps the previous copy and records the
@@ -355,7 +355,7 @@ a queue, to a runner that lives inside the add-on and drives the Claude CLI with
 your subscription, instead of being answered through the chain.
 
 It is active if and only if the bridge is switched on on the Models page
-(`ponte.attivo` in `/data/models_config.json`; `hiris/app/server.py::_bridge_active`).
+(`ponte.attivo` in `/data/models_config.json`; `hiris/app/agent/bridge_governor.py::_bridge_active`).
 When it is on, the subscription answers; when it cannot (no token, the daily
 cap reached, the deadline passed) the turn falls back to the chain, and the reply
 says so every time.
