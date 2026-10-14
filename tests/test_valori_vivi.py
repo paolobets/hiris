@@ -21,6 +21,10 @@ funzioni omonime in moduli diversi si confondono (misurato il 14/10/2026:
 nessuna fra quelle ammesse). Un'app con un altro nome (`casa`, `ctx`) non e'
 vista, come in `tests/test_chiavi_app.py`. La scrittura in un `LiveValue`
 (`app[K].set(...)`) non e' una scrittura in `app`, ed e' il punto.
+Una funzione passata allo schedulatore come `partial(fn, app, ...)` non e'
+una chiamata per nome: se una funzione ammessa vi finisse, girerebbe ad app
+congelata senza che `_chiamati` la veda richiamata altrove (giro 162 del
+revisore). Oggi nessuna delle ammesse e' un lavoro dello schedulatore.
 """
 import ast
 import pathlib
@@ -144,3 +148,17 @@ def test_nessuna_scrittura_in_app_dopo_l_avvio():
     assert {"create_app", "_on_startup"} <= scrittori & ammesse, sorted(scrittori)
     assert len(scrittori) >= 8, sorted(scrittori)
     assert not difetti(moduli), "\n".join(difetti(moduli))
+
+
+def test_un_live_value_non_si_legge_come_booleano():
+    """`if app[K]:` leggerebbe il contenitore, sempre vero (N165-2): solleva.
+
+    Mutazione ESEGUITA (14/10/2026): tolto `__bool__` da `LiveValue` -- rossa
+    (`DID NOT RAISE`)."""
+    import pytest
+
+    from hiris.app.live_value import LiveValue
+
+    with pytest.raises(TypeError, match=r"\.value"):
+        bool(LiveValue(False))
+    assert LiveValue(False).value is False

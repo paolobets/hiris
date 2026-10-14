@@ -42,7 +42,7 @@ _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
 class _Richiesta(dict):
     """Una richiesta finta, quanto basta al middleware."""
 
-    def __init__(self, *, headers, remote, token=""):
+    def __init__(self, *, headers, remote):
         super().__init__()
         self.headers = headers
         self.remote = remote
@@ -54,8 +54,7 @@ class _Richiesta(dict):
         # rotta e' una richiesta a un indirizzo che non esiste, e il cancello
         # al confine la tratta cosi'.
         self.match_info = None
-        self.app = {"internal_token": token,
-                    # **L'indirizzo ESATTO del proxy**, che in produzione
+        self.app = {# **L'indirizzo ESATTO del proxy**, che in produzione
                     # `reti_di_fiducia` risolve dal nome «supervisor». La rete
                     # `/23` di prima comprendeva ogni add-on installato: era
                     # il reperto A-2, e una finta che la tenesse proverebbe un
@@ -202,9 +201,9 @@ async def test_il_soggetto_dice_sempre_di_che_SPECIE_e(archivio):
 class _Firmata(_Richiesta):
     """Come `_Richiesta`, ma con un corpo: la firma lo copre."""
 
-    def __init__(self, *, headers, remote, token="", corpo=b"",
+    def __init__(self, *, headers, remote, corpo=b"",
                  metodo="GET", percorso="/api/health", servizi=None):
-        super().__init__(headers=headers, remote=remote, token=token)
+        super().__init__(headers=headers, remote=remote)
         self._corpo = corpo
         self.method = metodo
         self.path = percorso
@@ -251,7 +250,7 @@ def _richiesta_firmata(privata, pubblica, archivio, *, metodo="GET",
         headers={"X-HIRIS-Servizio": pubblica,
                  "X-HIRIS-Momento": str(int(momento)),
                  "X-HIRIS-Unico": unico, "X-HIRIS-Firma": firma},
-        remote="192.168.1.31", token="s3greto", corpo=corpo,
+        remote="192.168.1.31", corpo=corpo,
         metodo=metodo, percorso=percorso, servizi=archivio)
 
 
@@ -361,10 +360,15 @@ async def test_il_SEGRETO_CONDIVISO_non_apre_piu_niente(confine_vero):
     Un segreto condiviso non e' un'identita': e' una parola d'ordine, e chi la
     sente una volta e' tutti. Adesso non e' piu' niente.
 
-    Mutazione ESEGUITA: rimesso il ramo del token nel confine -- rossa."""
+    Mutazione ESEGUITA: rimesso il ramo del token nel confine -- rossa.
+    Dal 14/10/2026 l'app finta non porta piu' `"internal_token"` (N165-3): il
+    prodotto non lo legge da nessuna parte, e un ramo che tornasse a leggerlo
+    da `app` con la chiave stringa lo ferma `tests/test_chiavi_app.py` (X-32;
+    mutazione ESEGUITA: `request.app.get("internal_token")` nel confine --
+    rossa, col file e la riga)."""
     esito, visto = await _passa(_Richiesta(
         headers={"X-HIRIS-Internal-Token": "s3greto"},
-        remote="192.168.1.31", token="s3greto"))
+        remote="192.168.1.31"))
 
     assert esito != "ok", "il segreto condiviso apre ancora"
     assert visto.get("auth_via") != "token"
@@ -379,7 +383,7 @@ async def test_e_chi_lo_manda_riceve_un_rifiuto_che_dice_COSA_FARE(confine_vero)
     Mutazione: rifiutare con «unauthorized» e basta -- rossa."""
     esito, _ = await _passa(_Richiesta(
         headers={"X-HIRIS-Internal-Token": "s3greto"},
-        remote="192.168.1.31", token="s3greto"))
+        remote="192.168.1.31"))
 
     corpo = esito.text or ""
     assert "accoppia" in corpo.lower() or "servizi" in corpo.lower(), (

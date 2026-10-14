@@ -35,5 +35,11 @@ class LiveValue(Generic[T]):
     def set(self, value: T) -> None:
         self._value = value
 
+    def __bool__(self) -> bool:
+        # `if app[K]:` leggerebbe il contenitore, sempre vero, invece del
+        # valore: e' la forma del difetto che `LiveValue` rende facile, e
+        # nessuno strumento la ferma (N165-2). Si legge `.value`.
+        raise TypeError("un LiveValue non e' un booleano: si legge `.value`")
+
     def __repr__(self) -> str:
         return f"LiveValue({self._value!r})"
