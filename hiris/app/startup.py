@@ -164,6 +164,122 @@ async def _open_websocket(ha_client) -> bool:
     return False
 
 
+def mark_triggered_automation(app, event_data: dict) -> None:
+    if not isinstance(event_data, dict):
+        return
+    entity_id = event_data.get("entity_id")
+    if isinstance(entity_id, str):
+        app["watcher"].mark_automation(entity_id)
+
+
+async def reload_inventory_job(app, ha_client) -> None:
+    await reload_entity_inventory(app.get("entity_cache"), ha_client)
+
+
+async def reread_problems_job(app, ha_client) -> None:
+    await reread_ha_problems(app, ha_client)
+
+
+async def reread_state_translations_job(app) -> None:
+    await prime_state_translations(app)
+
+
+async def conditions_job(app, ha_client) -> None:
+    try:
+        await watch_system_conditions(app, ha_client)
+        await hold_watcher_statistic_ids(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: giro delle condizioni di sistema fallito (%s: %s)",
+            type(exc).__name__, exc)
+
+
+async def automation_traces_job(app, ha_client) -> None:
+    try:
+        await watch_automation_outcomes(app, ha_client)
+    except Exception as exc:
+        logger.warning(
+            "cervello: giro delle tracce di automazione fallito (%s: %s)",
+            type(exc).__name__, exc)
+
+
+async def reconsideration_job(app, ha_client) -> None:
+    await reconsideration_round(app, ha_client)
+
+
+async def recipes_job(app) -> None:
+    await recipe_round(app)
+
+
+async def report_backfill_job(app, ha_client) -> None:
+    try:
+        await backfill_one_report(app, ha_client)
+    except Exception as error:
+        logger.warning(
+            "cervello: recupero dei resoconti fallito (%s: %s) -- "
+            "si riprova al giro dopo", type(error).__name__, error)
+
+
+async def analyst_job(app) -> None:
+    await analyst_round(app)
+
+
+async def nightly_aggregation_job(app, ha_client) -> None:
+    try:
+        # `timezone`/`ieri` DENTRO il try: se il loro calcolo sollevasse
+        # FUORI da qui il warning contestualizzato non partirebbe --
+        # l'eccezione finirebbe nel registro di apscheduler senza il
+        # prefisso «cervello:», e la notte salterebbe in silenzio.
+        timezone = house_timezone(app.get("home_space_store"))
+        ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
+        # **IL RESOCONTO** (spec §9), per la strada unica: la notte
+        # rifa' ieri anche se c'e' gia'.
+        count = await write_day_report(app, ha_client, day=ieri, timezone=timezone,
+                                       when_ts=time.time())
+        logger.info("cervello: %s voci di cronaca per %s", count, ieri)
+    except Exception as error:
+        logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
+                       type(error).__name__, error)
+
+
+async def sweeper_interpret(app, promise: dict) -> dict:
+    return await interpreta_promise(app, promise)
+
+
+async def keeper_heartbeat_job(app) -> None:
+    await app["sweeper"].batti(time.time())
+
+
+# Il modello per provider, come LETTURA e non come valore. È la metà
+# nascosta del difetto peggiore trovato dal progetto: fino alla 2.4.1 qui
+# si leggeva `provider_models` UNA volta e lo si passava ai runner come
+# argomento di costruzione, mentre `api/handlers_chat._enqueue_chat_job`
+# rilegge `app["models_config"]` a OGNI turno -- quindi lo stesso valore
+# aveva effetto immediato sul ponte e solo al riavvio sull'API, e la pagina
+# ne dichiarava uno solo (invariante 4: «un valore si applica in un modo
+# solo»). La lettura chiude su `app`, non su un valore: `models_config` è
+# RIASSEGNATO a ogni PUT (`handle_save_models_config`), quindi la lettura
+# vede sempre l'ultimo archivio, e la sostituzione del dizionario intero
+# è ciò che rende la lettura atomica -- un turno non può mai vedere metà
+# di un salvataggio.
+def model_reader(app, provider: str):
+    def read() -> str:
+        return ((app.get("models_config") or {})
+                .get("provider_models", {}).get(provider, ""))
+    return read
+
+
+def local_model(app) -> str:
+    """Il modello di Ollama non vive in `provider_models` (è un fantasma
+    lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
+    sua unica casa è `models_config["ollama"]["modello"]`."""
+    return (app.get("models_config") or {}).get(OLLAMA.id, {}).get("modello", "")
+
+
+def reapply_chain(app) -> None:
+    _recompute_chain(app)
+
+
 async def _on_startup(app: web.Application) -> None:
     from .claude_runner import ClaudeRunner
     from .llm_router import LLMRouter
@@ -383,13 +499,7 @@ async def _on_startup(app: web.Application) -> None:
     # -- estrarre `entity_id` dal dizionario grezzo dell'evento e' cablaggio
     # di questo file, non un giudizio dell'osservatore. Il nome che l'evento
     # porta non si tiene (A-18): lo dice la casa all'esito.
-    def _mark_triggered_automation(event_data: dict) -> None:
-        if not isinstance(event_data, dict):
-            return
-        entity_id = event_data.get("entity_id")
-        if isinstance(entity_id, str):
-            app["watcher"].mark_automation(entity_id)
-    ha_client.add_automation_listener(_mark_triggered_automation)
+    ha_client.add_automation_listener(partial(mark_triggered_automation, app))
 
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
@@ -483,7 +593,7 @@ async def _on_startup(app: web.Application) -> None:
     # **QUI, dopo `app["home_space_store"]` e dopo `rebuild`**: la riparazione
     # chiede all'anagrafe il fuso della casa e i dispositivi di cui cercare le
     # ricette. Chiamata prima lavorerebbe in UTC e su una casa vuota, mentre
-    # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto) lavora col fuso
+    # l'aggregazione notturna (`nightly_aggregation_job`, qui sopra nel modulo) lavora col fuso
     # vero: le due porte, sullo stesso grezzo, darebbero resoconti diversi.
     # L'ordine lo sorveglia, eseguendo questo blocco,
     # `test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito`
@@ -740,11 +850,8 @@ async def _on_startup(app: web.Application) -> None:
     # due minuti -- meno della ronda della sentinella -- e appena la lettura
     # riesce il lavoro torna a essere il controllo di una bandiera, senza
     # toccare piu' Home Assistant.
-    async def _reload_inventory() -> None:
-        await reload_entity_inventory(app.get("entity_cache"), ha_client)
-
     scheduler.add_job(
-        _reload_inventory,
+        partial(reload_inventory_job, app, ha_client),
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
         misfire_grace_time=120,
@@ -757,11 +864,8 @@ async def _on_startup(app: web.Application) -> None:
     # Serve soprattutto al verso opposto -- un problema RIPARATO dall'utente
     # deve sparire dal nucleo da solo, o HIRIS continuerebbe ad annunciare un
     # guasto che non c'e' piu' fino al riavvio dell'add-on.
-    async def _reread_problems() -> None:
-        await reread_ha_problems(app, ha_client)
-
     scheduler.add_job(
-        _reread_problems,
+        partial(reread_problems_job, app, ha_client),
         trigger="interval", minutes=5,
         id="hiris_ha_problems", replace_existing=True,
         misfire_grace_time=300,
@@ -775,11 +879,8 @@ async def _on_startup(app: web.Application) -> None:
     # nucleo dice «traduzioni non lette» a ogni turno finche' qualcuno non
     # riprova, e nessun altro lo farebbe. Cinque minuti e' quanto si accetta
     # che duri.
-    async def _reread_state_translations() -> None:
-        await prime_state_translations(app)
-
     scheduler.add_job(
-        _reread_state_translations,
+        partial(reread_state_translations_job, app),
         trigger="interval", minutes=5,
         id="hiris_state_translations", replace_existing=True,
         misfire_grace_time=300,
@@ -825,17 +926,8 @@ async def _on_startup(app: web.Application) -> None:
     # chiuderebbe ogni condizione aperta, che e' peggio di non saperlo. I
     # problemi li prende da `app["ha_problems"]`, che `hiris_ha_problems` qui
     # sopra rilegge ogni cinque minuti (A-02).
-    async def _watch_conditions() -> None:
-        try:
-            await watch_system_conditions(app, ha_client)
-            await hold_watcher_statistic_ids(app, ha_client)
-        except Exception as exc:
-            logger.warning(
-                "cervello: giro delle condizioni di sistema fallito (%s: %s)",
-                type(exc).__name__, exc)
-
     scheduler.add_job(
-        _watch_conditions,
+        partial(conditions_job, app, ha_client),
         trigger="interval", minutes=10,
         id="hiris_mind_conditions", replace_existing=True,
         misfire_grace_time=600,
@@ -859,16 +951,8 @@ async def _on_startup(app: web.Application) -> None:
     # giro le legga, non la media. Due minuti e' la cadenza piu'
     # corta che non aggiunge un carico apprezzabile (un comando WebSocket per
     # automazione segnata, non per la casa intera).
-    async def _watch_automation_traces() -> None:
-        try:
-            await watch_automation_outcomes(app, ha_client)
-        except Exception as exc:
-            logger.warning(
-                "cervello: giro delle tracce di automazione fallito (%s: %s)",
-                type(exc).__name__, exc)
-
     scheduler.add_job(
-        _watch_automation_traces,
+        partial(automation_traces_job, app, ha_client),
         trigger="interval", minutes=2,
         id="hiris_mind_automation_traces", replace_existing=True,
         misfire_grace_time=120,
@@ -892,11 +976,8 @@ async def _on_startup(app: web.Application) -> None:
     # E migliora anche l'innesco che non puo' aspettare: un'entita' installata
     # stamattina passa da dieci minuti d'attesa a uno, e cio' che non e'
     # osservato non esiste piu'.
-    async def _reconsider() -> None:
-        await reconsideration_round(app, ha_client)
-
     scheduler.add_job(
-        _reconsider,
+        partial(reconsideration_job, app, ha_client),
         trigger="interval", minutes=1,
         id="hiris_mind_reconsideration", replace_existing=True,
         misfire_grace_time=600,
@@ -913,48 +994,20 @@ async def _on_startup(app: web.Application) -> None:
     # compresa) passerebbe ai provider a pagamento. Uno ogni dieci minuti
     # copre trenta dispositivi in cinque ore, e poi **smette**: una ricetta
     # scritta -- o un rifiuto registrato -- non si richiede mai piu'.
-    async def _anello_ricette() -> None:
-        await recipe_round(app)
-
     scheduler.add_job(
-        _anello_ricette,
+        partial(recipes_job, app),
         trigger="interval", minutes=10,
         id="hiris_mind_recipes", replace_existing=True,
         misfire_grace_time=600,
     )
-
-    # Il recupero dei resoconti: un giorno per giro, dal piu' vecchio.
-    # Nasce da una misura del 14/09/2026 -- sulla casa vera esistevano i
-    # resoconti del 12 e del 13 e basta, mentre cinque giorni prima avevano
-    # oggetti e grezzo e nessun resoconto: nessuno dei due scrittori (la
-    # riparazione d'avvio, due giorni; la notturna, ieri) arriva indietro.
-    # Dal 17/09/2026 lo stesso giro rifa' anche la sola cronaca dei giorni nati
-    # con un altro giudizio (spec 2026-09-16 §6, vedi `backfill_one_report`).
-    #
-    # Ogni cinque minuti perche' e' un lavoro che non ha nessuna fretta, e un
-    # giorno mancante costa una richiesta di statistiche (rifare la sola
-    # cronaca non ne costa nessuna, solo l'archivio): ventidue giorni si coprono in
-    # meno di due ore, e finito il recupero il giro non fa piu' niente e non
-    # lo dice -- un lavoro che stampa «niente da fare» per sempre e' rumore
-    # sano che seppellisce cio' che e' rotto.
-    async def _recupero_resoconti() -> None:
-        try:
-            await backfill_one_report(app, ha_client)
-        except Exception as error:
-            logger.warning(
-                "cervello: recupero dei resoconti fallito (%s: %s) -- "
-                "si riprova al giro dopo", type(error).__name__, error)
 
     # L'anello dell'analista: legge le misure di molti giorni e dice cosa si
     # potrebbe fare (spec §10). Ogni ora, non ogni dieci minuti: la domanda
     # pesa ~35.000 token -- misurato sulla casa vera il 15/09/2026, venti
     # giorni e 146 serie -- e un giorno ha UNA analisi sola. Quando ce l'ha,
     # il giro non fa niente e non lo dice.
-    async def _anello_analista() -> None:
-        await analyst_round(app)
-
     scheduler.add_job(
-        _anello_analista,
+        partial(analyst_job, app),
         trigger="interval", minutes=report.ANALYST_EVERY_MINUTES,
         id="hiris_mind_analyst", replace_existing=True,
         misfire_grace_time=1800,
@@ -971,8 +1024,22 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=1800,
     )
 
+    # Il recupero dei resoconti: un giorno per giro, dal piu' vecchio.
+    # Nasce da una misura del 14/09/2026 -- sulla casa vera esistevano i
+    # resoconti del 12 e del 13 e basta, mentre cinque giorni prima avevano
+    # oggetti e grezzo e nessun resoconto: nessuno dei due scrittori (la
+    # riparazione d'avvio, due giorni; la notturna, ieri) arriva indietro.
+    # Dal 17/09/2026 lo stesso giro rifa' anche la sola cronaca dei giorni nati
+    # con un altro giudizio (spec 2026-09-16 §6, vedi `backfill_one_report`).
+    #
+    # Ogni cinque minuti perche' e' un lavoro che non ha nessuna fretta, e un
+    # giorno mancante costa una richiesta di statistiche (rifare la sola
+    # cronaca non ne costa nessuna, solo l'archivio): ventidue giorni si coprono in
+    # meno di due ore, e finito il recupero il giro non fa piu' niente e non
+    # lo dice -- un lavoro che stampa «niente da fare» per sempre e' rumore
+    # sano che seppellisce cio' che e' rotto.
     scheduler.add_job(
-        _recupero_resoconti,
+        partial(report_backfill_job, app, ha_client),
         trigger="interval", minutes=report.BACKFILL_EVERY_MINUTES,
         id="hiris_mind_backfill", replace_existing=True,
         misfire_grace_time=300,
@@ -984,25 +1051,8 @@ async def _on_startup(app: web.Application) -> None:
     # aperto, e venti minuti bastano perche' gli ultimi eventi della sera
     # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
     # oggetto nasce mai.
-    async def _aggrega_ieri() -> None:
-        try:
-            # `timezone`/`ieri` DENTRO il try: se il loro calcolo sollevasse
-            # FUORI da qui il warning contestualizzato non partirebbe --
-            # l'eccezione finirebbe nel registro di apscheduler senza il
-            # prefisso «cervello:», e la notte salterebbe in silenzio.
-            timezone = house_timezone(app.get("home_space_store"))
-            ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
-            # **IL RESOCONTO** (spec §9), per la strada unica: la notte
-            # rifa' ieri anche se c'e' gia'.
-            count = await write_day_report(app, ha_client, day=ieri, timezone=timezone,
-                                           when_ts=time.time())
-            logger.info("cervello: %s voci di cronaca per %s", count, ieri)
-        except Exception as error:
-            logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
-                           type(error).__name__, error)
-
     scheduler.add_job(
-        _aggrega_ieri,
+        partial(nightly_aggregation_job, app, ha_client),
         trigger="cron", hour=report.NIGHTLY_HOUR, minute=report.NIGHTLY_MINUTE,
         id="hiris_mind_aggregation", replace_existing=True,
         misfire_grace_time=3600,
@@ -1045,23 +1095,17 @@ async def _on_startup(app: web.Application) -> None:
     # modello, riceve solo `execute` (la porta unica, costruita sopra) e
     # `interpreta` (il turno di `chiedi`, `keeper/exchange.py`).
     # `interpreta_promise` prende DUE argomenti (`app`, `promessa`); l'orologio
-    # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
-    # quel secondo argomento, catturato.
-    async def _interpreta(promise: dict) -> dict:
-        return await interpreta_promise(app, promise)
-
+    # chiama `interpreta(promessa)` con uno solo -- `partial(sweeper_interpret,
+    # app)` gli lega il primo.
     # Fetta «il seguito delle chat divise» (spec 2026-09-26 §2.4): l'esito
     # torna a chi l'ha chiesta -- il recapito, la riga nel filo e il soffitto
     # riletto al risveglio (`_promise_delivery`, qui sopra nel modulo).
     app["sweeper"] = Sweeper(
         app["agenda"],
         execute=app["action_actuator"].execute,
-        interpreta=_interpreta,
+        interpreta=partial(sweeper_interpret, app),
         **_promise_delivery(app),
     )
-
-    async def _battito() -> None:
-        await app["sweeper"].batti(time.time())
 
     # Quindici secondi, battito FISSO: la verita' e' la tabella, non un timer
     # per promessa. Un battito fisso non si perde se l'ora di sistema salta
@@ -1069,7 +1113,7 @@ async def _on_startup(app: web.Application) -> None:
     # lo rimpiazza quello dopo: e' la tolleranza dello SCHEDULATORE (120 s,
     # spec §7, `TOLLERANZA_S`) a decidere cosa e' troppo tardi, non APScheduler.
     scheduler.add_job(
-        _battito,
+        partial(keeper_heartbeat_job, app),
         trigger="interval", seconds=15,
         id="hiris_keeper_heartbeat", replace_existing=True,
         misfire_grace_time=30,
@@ -1096,7 +1140,7 @@ async def _on_startup(app: web.Application) -> None:
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
     # sul ponte -- NON e' piu' qui: e' `_recompute_chain`, l'unica riga del
     # prodotto che scrive `app["bridge_active"]`, e viene chiamata sia all'avvio
-    # (`_rimetti_in_vigore`, piu' sotto) sia a ogni salvataggio della pagina
+    # (`reapply_chain`, piu' sotto) sia a ogni salvataggio della pagina
     # Modelli. Doveva spostarsi: il valore viene adesso dall'archivio, che la
     # pagina riscrive, e un cablaggio fatto una volta all'avvio avrebbe
     # riprodotto per il ponte il difetto che il Task 10 ha chiuso per la
@@ -1109,30 +1153,6 @@ async def _on_startup(app: web.Application) -> None:
     # tenere il gate li', invece di insegnare l'archivio a `_bridge_on`, lascia
     # ai test la possibilita' di agganciare o sganciare la
     # coda senza toccare la configurazione.
-
-    # Il modello per provider, come LETTURA e non come valore. È la metà
-    # nascosta del difetto peggiore trovato dal progetto: fino alla 2.4.1 qui
-    # si leggeva `provider_models` UNA volta e lo si passava ai runner come
-    # argomento di costruzione, mentre `api/handlers_chat._enqueue_chat_job`
-    # rilegge `app["models_config"]` a OGNI turno -- quindi lo stesso valore
-    # aveva effetto immediato sul ponte e solo al riavvio sull'API, e la pagina
-    # ne dichiarava uno solo (invariante 4: «un valore si applica in un modo
-    # solo»). La chiusura chiude su `app`, non su un valore: `models_config` è
-    # RIASSEGNATO a ogni PUT (`handle_save_models_config`), quindi la lettura
-    # vede sempre l'ultimo archivio, e la sostituzione del dizionario intero
-    # è ciò che rende la lettura atomica -- un turno non può mai vedere metà
-    # di un salvataggio.
-    def _model_of(provider: str):
-        def read() -> str:
-            return ((app.get("models_config") or {})
-                    .get("provider_models", {}).get(provider, ""))
-        return read
-
-    def _local_model() -> str:
-        """Il modello di Ollama non vive in `provider_models` (è un fantasma
-        lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
-        sua unica casa è `models_config["ollama"]["modello"]`."""
-        return (app.get("models_config") or {}).get(OLLAMA.id, {}).get("modello", "")
 
     # Il modello di Ollama, dalla SUA UNICA CASA. Fino alla 2.4.1 veniva da
     # `LOCAL_MODEL_NAME`, cioè da un'opzione dell'add-on: era il modello messo
@@ -1148,7 +1168,7 @@ async def _on_startup(app: web.Application) -> None:
     if api_key and _credentials[CLAUDE.id]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
-            read_model=_model_of(CLAUDE.id),
+            read_model=model_reader(app, CLAUDE.id),
             log_usage=app["usage"].log,
         )
 
@@ -1172,7 +1192,7 @@ async def _on_startup(app: web.Application) -> None:
         openai_runner = OpenAICompatRunner(
             base_url=OPENAI.api_base,
             api_key=openai_api_key,
-            read_model=_model_of(OPENAI.id),
+            read_model=model_reader(app, OPENAI.id),
             log_usage=app["usage"].log,
         )
 
@@ -1196,7 +1216,7 @@ async def _on_startup(app: web.Application) -> None:
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get(OLLAMA.id) or {}).get(
                 "timeout_s", OLLAMA.reply_timeout_s),
-            read_model=_local_model,
+            read_model=partial(local_model, app),
             log_usage=app["usage"].log,
         )
     if _risponde[OLLAMA.id]:
@@ -1230,7 +1250,7 @@ async def _on_startup(app: web.Application) -> None:
     if openrouter_api_key and _credentials[OPENROUTER.id]:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
-            read_model=_model_of(OPENROUTER.id),
+            read_model=model_reader(app, OPENROUTER.id),
             log_usage=app["usage"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
@@ -1306,11 +1326,8 @@ async def _on_startup(app: web.Application) -> None:
     # che rimette in vigore sia la STESSA che mette in vigore la prima volta:
     # se le due derivazioni potessero divergere, divergerebbero all'avvio,
     # dove ogni prova le guarda, invece che al primo salvataggio di un utente.
-    def _rimetti_in_vigore() -> None:
-        _recompute_chain(app)
-
-    app["recompute_chain"] = _rimetti_in_vigore
-    _rimetti_in_vigore()
+    app["recompute_chain"] = partial(reapply_chain, app)
+    reapply_chain(app)
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
     # Polls the internal reasoning queue and reasons via `claude -p` under the
@@ -1326,7 +1343,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # QUI c'era il `if should_start_agent_worker():` che lo avviava una volta
     # sola. Vive adesso in `_govern_bridge_worker`, che
-    # `_rimetti_in_vigore()` ha gia' chiamato poche righe sopra: l'avvio e il
+    # `reapply_chain(app)` ha gia' chiamato poche righe sopra: l'avvio e il
     # salvataggio dalla pagina Modelli passano dalla STESSA strada, che e' la
     # disciplina del Task 10 (la catena) applicata al ponte. Se fosse rimasto
     # qui, accendere il ponte dalla pagina instraderebbe la chat su una coda

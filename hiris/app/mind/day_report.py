@@ -437,7 +437,7 @@ async def write_day_report(app, ha_client, *, day: str, timezone: str | None,
     `facts.aggregate_day` con l'istantanea viva dei giudizi e la casa di
     adesso -- che serve a chiudere gli episodi di cio' che Home Assistant non
     nomina piu' (`facts.build_episodes`). Fino a quel giorno la stessa coppia
-    era scritta tre volte: la notte (`_aggrega_ieri`), il recupero
+    era scritta tre volte: la notte (`startup.nightly_aggregation_job`), il recupero
     (`backfill_one_report`) e la riparazione d'avvio
     (`_write_missing_reports`). Lo difende
     `tests/test_fonte_unica.py::test_d36_il_resoconto_di_un_giorno_ha_una_strada_sola`.
