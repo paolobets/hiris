@@ -95,6 +95,8 @@ import asyncio
 import logging
 import time
 
+from aiohttp import web
+
 from ..home_space.house import House
 from ..home_space.topology import clean_text
 from ..proxy.entity_cache import (
@@ -899,3 +901,6 @@ class ActionActuator:
                     f"attesi fino a {_seconds(pending)}s" if listening
                     else "nessun ascolto disponibile, attesa zero")
         return self._succeeded(occurrence, actor=actor, subject=subject)
+
+
+ACTUATOR_KEY = web.AppKey("action_actuator", ActionActuator)

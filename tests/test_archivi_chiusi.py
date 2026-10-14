@@ -16,17 +16,23 @@ il suo autore si era ricordato di nominare.
 in cui nasce, non il giorno in cui qualcuno si ricorda di aggiungerlo.
 
 **Cosa questo cancello NON copre, dichiarato.** Vede le costruzioni della forma
-`app["nome"] = QualcosaStore(...)`. Un contenitore aperto da una funzione di
-fabbrica (`app["journal"] = apri_cronaca(...)`) non si distingue staticamente da
+`app[NOME_KEY] = QualcosaStore(...)`, con la chiave dichiarata come `web.AppKey`.
+Un contenitore aperto da una funzione di fabbrica
+(`app[JOURNAL_KEY] = apri_cronaca(...)`) non si distingue staticamente da
 una qualunque altra chiamata: quelli hanno le prove accanto, scritte a mano, e
 questo cancello non finge di sostituirle. Il criterio resta quello piu' stretto
 che si possa verificare senza indovinare.
 """
 import ast
+import functools
+import importlib
 import pathlib
 import sys
 
 import pytest
+
+from hiris.app import startup
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -35,8 +41,25 @@ RADICE = pathlib.Path(__file__).resolve().parents[1]
 _APP = RADICE / "hiris" / "app"
 
 
-def archivi_aperti() -> dict[str, str]:
-    """`{«nome in app», «classe»}` per ogni archivio che il PRODOTTO costruisce.
+@functools.cache
+def _chiavi() -> dict:
+    """`{nome della costante: web.AppKey}` per ogni chiave di `app` che il
+    prodotto dichiara (X-32): chiesto ai moduli, non elencato qui."""
+    from aiohttp import web
+
+    trovate = {}
+    for percorso in sorted(_APP.rglob("*.py")):
+        if "__pycache__" in percorso.parts:
+            continue
+        modulo = importlib.import_module(
+            ".".join(percorso.relative_to(RADICE).with_suffix("").parts))
+        trovate.update({nome: valore for nome, valore in vars(modulo).items()
+                        if isinstance(valore, web.AppKey)})
+    return trovate
+
+
+def archivi_aperti() -> dict:
+    """`{«chiave di app», «classe»}` per ogni archivio che il PRODOTTO costruisce.
 
     Si guarda tutto `hiris/app`, non il solo `server.py` (Tappa 1 dello
     sprint «Una fonte sola di verita'»): quando il cablaggio esce da
@@ -62,8 +85,8 @@ def _archivi_in(albero: ast.AST, trovati: dict[str, str]) -> None:
             if (isinstance(bersaglio, ast.Subscript)
                     and isinstance(bersaglio.value, ast.Name)
                     and bersaglio.value.id == "app"
-                    and isinstance(bersaglio.slice, ast.Constant)):
-                trovati[bersaglio.slice.value] = classe
+                    and isinstance(bersaglio.slice, ast.Name)):
+                trovati[_chiavi()[bersaglio.slice.id]] = classe
 
 
 def test_la_derivazione_trova_davvero_qualcosa():
@@ -74,7 +97,7 @@ def test_la_derivazione_trova_davvero_qualcosa():
     aperti = archivi_aperti()
 
     assert len(aperti) >= 4, (
-        f"ne ho derivati solo {len(aperti)}: {sorted(aperti)}. La derivazione "
+        f"ne ho derivati solo {len(aperti)}: {sorted(map(str, aperti))}. La derivazione "
         "si è rotta, e un cancello che deriva male passa senza guardare")
 
 
@@ -115,7 +138,7 @@ async def test_ogni_archivio_aperto_viene_anche_CHIUSO(tmp_path):
         async with started_with(tmp_path) as app:
             assenti = [nome for nome in archivi_aperti() if app.get(nome) is None]
             assert not assenti, (
-                f"archivi derivati che l'avvio non ha aperto: {sorted(assenti)} -- "
+                f"archivi derivati che l'avvio non ha aperto: {sorted(map(str, assenti))} -- "
                 "la prova non saprebbe dire se si chiudono")
             for nome in archivi_aperti():
                 stack.enter_context(mock.patch.object(
@@ -123,7 +146,7 @@ async def test_ogni_archivio_aperto_viene_anche_CHIUSO(tmp_path):
 
     scordati = [nome for nome in archivi_aperti() if nome not in chiusi]
     assert not scordati, (
-        f"archivi aperti e mai chiusi: {sorted(scordati)}. Il file sqlite "
+        f"archivi aperti e mai chiusi: {sorted(map(str, scordati))}. Il file sqlite "
         "resta bloccato e il difetto compare al riavvio successivo — aggiungi "
         "la chiusura a `_on_cleanup`, guardata sulla presenza della chiave "
         "come le altre")
@@ -135,7 +158,7 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     che non c'è farebbe cadere la pulizia, e con lei le chiusure che seguono.
 
     Fino al 03/10/2026 si cercava `if "nome" in app:` nel testo; adesso si
-    CHIAMA lo spegnimento vero (`server._on_cleanup`) su un'app a cui manca
+    CHIAMA lo spegnimento vero (`startup._on_cleanup`) su un'app a cui manca
     un archivio alla volta. Lo spegnimento non deve cadere, e deve chiudere
     tutti gli altri. (Il sapere puo' anche esserci e valere `None`: quel
     caso ha la sua guardia, `app.get(...) is not None`, e la sua prova in
@@ -146,12 +169,12 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     `_on_cleanup` -- rossa (`KeyError: 'usage'`)."""
     from unittest.mock import MagicMock
 
-    from hiris.app import server
 
-    nomi = sorted(archivi_aperti())
+    nomi = sorted(archivi_aperti(), key=str)
     for mancante in nomi:
         presenti = {nome: MagicMock() for nome in nomi if nome != mancante}
-        await server._on_cleanup({**presenti, "ha_client": CasaFinta({})})
+        await startup._on_cleanup({**startup.live_values(), **presenti,
+                                   HA_CLIENT_KEY: CasaFinta({})})
         aperti = [nome for nome, archivio in presenti.items()
                   if not archivio.close.called]
         assert not aperti, (

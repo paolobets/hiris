@@ -37,6 +37,7 @@ import time
 
 from aiohttp import web
 
+from ..action.journal import JOURNAL_KEY
 from ..chat_thread import (
     adopt_if_owner,
     request_thread,
@@ -45,6 +46,7 @@ from ..chat_thread import (
     without_thread,
 )
 from ..home_space.render import render_promise
+from ..keeper.store import AGENDA_KEY
 from ..states import CANCELLED, FAILED, KEPT
 from .boundary import error_response, house_clock_of, json_object, occurrence_out
 from .soffitto import restricted_person
@@ -67,7 +69,7 @@ PAGE_STATES = {"KEPT": KEPT, "FAILED": FAILED, "CANCELLED": CANCELLED}
 
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
-    store = request.app.get("agenda")
+    store = request.app.get(AGENDA_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     thread = request_thread(request)
@@ -89,7 +91,7 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
-    store = request.app.get("agenda")
+    store = request.app.get(AGENDA_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     ident = request.match_info["id"]
@@ -117,7 +119,7 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     dice quante righe ha toccato davvero, che e' l'unica risposta onesta a
     una richiesta di questa forma.
     """
-    store = request.app.get("agenda")
+    store = request.app.get(AGENDA_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     body = await json_object(request)
@@ -152,14 +154,14 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     -- risponde lo stesso 404 di un id inesistente. Un'esecuzione che nessuna
     promessa ha prodotto resta com'era: la spec tocca solo le promesse.
     """
-    journal = request.app.get("journal")
+    journal = request.app.get(JOURNAL_KEY)
     if journal is None:
         return error_response(503, "cronaca non disponibile")
     ident = request.match_info["id"]
     row = journal.read(ident)
     if row is None:
         return error_response(404, _EXECUTION_NOT_FOUND)
-    agenda = request.app.get("agenda")
+    agenda = request.app.get(AGENDA_KEY)
     if agenda is None:
         # Senza l'archivio delle promesse non si sa di chi sia: nel dubbio non
         # si mostra, come le altre rotte di questo file senza archivio.

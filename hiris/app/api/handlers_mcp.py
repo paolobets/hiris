@@ -94,7 +94,9 @@ from aiohttp import web
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
 from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, keep_concluded
-from ..models_store import bridge_deadline_min
+from ..keeper.store import AGENDA_KEY
+from ..models_store import MODELS_CONFIG_KEY, bridge_deadline_min
+from ..reasoning.queue import REASONING_QUEUE_KEY
 from ..states import TAKEN
 from ..steering import JOB_SPECIES, SPECIES
 from ..usage.bridge_loads import BRIDGE_LOADS_KEY, MAX_TRACKED
@@ -207,7 +209,7 @@ MAX_TOOL_ROUNDS = 50
 # La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
 # stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
 # (`_count_round`) devono per forza nominare la stessa cosa.
-ROUNDS_PER_EXCHANGE_KEY = "mcp_rounds_per_exchange"
+ROUNDS_PER_EXCHANGE_KEY = web.AppKey("mcp_rounds_per_exchange")
 
 
 @dataclass
@@ -312,7 +314,7 @@ def _exchange_promise_id(request: web.Request) -> str:
     ident = (request.headers.get("X-HIRIS-Promessa") or "").strip()
     if not ident:
         return ""
-    store = request.app.get("agenda")
+    store = request.app.get(AGENDA_KEY)
     if store is None:
         return ""
     row = store.read(ident)
@@ -340,7 +342,7 @@ def _exchange_chat_job(request: web.Request) -> tuple[bool, dict | None]:
     ident = (request.headers.get("X-HIRIS-Chat") or "").strip()
     if not ident:
         return False, None
-    queue = request.app.get("reasoning_queue")
+    queue = request.app.get(REASONING_QUEUE_KEY)
     job = queue.claimed_chat(ident) if queue is not None else None
     if job is None:
         logger.warning(
@@ -360,7 +362,7 @@ def _exchange_species(request: web.Request) -> tuple[bool, str | None]:
     ident = (request.headers.get("X-HIRIS-Lavoro") or "").strip()
     if not ident:
         return False, None
-    queue = request.app.get("reasoning_queue")
+    queue = request.app.get(REASONING_QUEUE_KEY)
     job = queue.claimed(ident) if queue is not None else None
     species = SPECIES.get(JOB_SPECIES.get((job or {}).get("kind")))
     if species is None or species.guard is None:
@@ -495,7 +497,7 @@ def _release_expired(app, now: float) -> None:
     **Il contatore dei giri resta**: se ripartisse, il tetto si aggirerebbe
     durando. Se un turno scaduto chiama ancora, si costruisce un dispatcher
     nuovo, come si faceva per ogni chiamata fino al 06/10/2026."""
-    window = bridge_deadline_min(app.get("models_config")) * 60
+    window = bridge_deadline_min(app[MODELS_CONFIG_KEY].value) * 60
     for turn in app[ROUNDS_PER_EXCHANGE_KEY].values():
         if turn.dispatcher is not None and now - turn.since > window:
             turn.dispatcher = None
@@ -577,7 +579,7 @@ async def _build_dispatcher(request: web.Request, exchange_id: str | None,
         # il ramo sincrono (`keeper/exchange.promise_ceiling`, fix round 1 del
         # Task 2, H-1): senza, il ponte leggerebbe per lei cio' che Home
         # Assistant le nega.
-        agenda = request.app.get("agenda")
+        agenda = request.app.get(AGENDA_KEY)
         subject, ceiling = await promise_ceiling(
             request.app, agenda.read(promise_id) if agenda is not None else None)
         return create_tool_dispatcher(request.app, exchange=exchange_id,
@@ -782,7 +784,8 @@ async def handle_mcp(request: web.Request) -> web.Response:
     Supervisor, un canale firmato, la credenziale di un turno del ponte, e
     (nella sola suite di test) la valvola `HIRIS_ALLOW_NO_TOKEN`. Questa rotta
     ne accetta **una sola**: `turno`, la credenziale effimera che il worker del
-    ponte manda (la conia `server.py::_intestazioni_ponte`). Fino al 22/09/2026 era il
+    ponte manda (la conia `agent/bridge_governor.py::_intestazioni_ponte`). Fino al
+    22/09/2026 era il
     segreto condiviso (`auth_via == "token"`), che da quel giorno il middleware
     non assegna piu'. Il controllo e' su `request["auth_via"]`,
     che il middleware scrive: non si ricopia qui un secondo confronto di segreti

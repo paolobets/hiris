@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts } from './helpers/dom.mjs';
 
-/* Task B8: `build-check.js` e' la meta' che mancava a `app["build_stamp"]`
+/* Task B8: `build-check.js` e' la meta' che mancava a `app[BUILD_STAMP_KEY]`
    (server.py) -- il guscio dichiara da quale build e' nato con una
-   `<meta name="hiris-build">` (server._inject_version), e questo modulo la
+   `<meta name="hiris-build">` (shell._inject_version), e questo modulo la
    confronta col `build` che GET api/health restituisce (gia' mostrato a
    schermo da chat/main.js, mai confrontato con niente prima di questo task).
 

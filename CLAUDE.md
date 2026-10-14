@@ -258,13 +258,15 @@ invecchiano da soli, non fatti che questo file possa custodire (ci ha già prova
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # registrazione rotte, giri del cervello E gran parte del wiring
+    ├── server.py         # create_app: registra le rotte, aggancia avvio e chiusura
+    ├── startup.py        # l'avvio e la chiusura: i pezzi d'avvio e i lavori dello schedulatore
     ├── claude_runner.py · llm_router.py   # la catena: loop agentico Claude, instradamento
     ├── steering.py       # chi risponde a questo turno: il ponte, o la catena (e il registro dei turni)
     ├── model_resolution.py · model_activation.py · provider_occurrences.py
     ├── chat_store.py · chat_thread.py · chat_settings.py
     ├── options_migration.py
     ├── config.py · storage.py · version.py
+    ├── live_value.py     # LiveValue: il valore di `app` che cambia dopo l'avvio (X-31)
     ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
     │                   servizi, credenziali: chi entra e cosa puo'
     ├── home_space/     l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre

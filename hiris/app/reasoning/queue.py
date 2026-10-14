@@ -5,6 +5,8 @@ import secrets
 import threading
 import time
 
+from aiohttp import web
+
 from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
 from ..storage import (
@@ -248,8 +250,8 @@ class ReasoningQueue:
                     after_sql=_IDX_THREAD_SQL)
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
-        # gia' usato per UsageStore (server.py, costruzione di
-        # `app["usage"]`).
+        # gia' usato per UsageStore (startup.py, costruzione di
+        # `app[USAGE_KEY]`).
         self._read_timezone = read_timezone or (lambda: None)
         # Chi aspetta un turno nuovo (A-23, 06/10/2026): il lavoratore del
         # ponte non interroga piu' la coda a intervalli, si fa svegliare da
@@ -332,7 +334,7 @@ class ReasoningQueue:
     # per intero -- aree, dispositivi, entita', "cio' che le persone hanno
     # detto" (`home_space/briefing.py::compose`) -- e senza questo azzeramento resterebbe
     # nel file `reasoning.db` fino alla potatura a 7 giorni (`prune()`,
-    # chiamata da `server.py` con `before_ts = now - 7*86400`), ben oltre il
+    # chiamata da `conservazione.nightly`), ben oltre il
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
     # lettore lo riapre dopo la risoluzione: `handle_chat_reply_poll` legge
     # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
@@ -414,7 +416,7 @@ class ReasoningQueue:
     # cancella 'decided', 'expired' e 'failed', mai lui. Un ripiego che si
     # schianta a meta' (processo caduto durante la chiamata al modello) resta
     # quindi in volo per sempre, ed e' `fail_stuck_downgrades` -- chiamata
-    # dallo sweep di `server.py` -- a raccoglierlo.
+    # dallo sweep (`conservazione.reasoning_sweep`) -- a raccoglierlo.
 
     def reclaim_expired(self, job_id: str, now: float) -> dict | None:
         """Prende in carico un job di chat scaduto, per ripiegarlo sulla catena.
@@ -588,7 +590,7 @@ class ReasoningQueue:
         Task 5 fix (Task 3 review, MEDIUM; preservato): un job il cui
         deadline_ts e' gia' passato e' escluso anche se lo status e' ancora
         'pending'/'claimed' -- altrimenti un job scaduto e mai spazzato (lo
-        sweep di server.py spento o non ancora girato) darebbe 409 per
+        sweep di conservazione.py spento o non ancora girato) darebbe 409 per
         sempre, senza modo di liberarsi. `now` esplicito come ogni altro
         metodo di questa classe, time.time() solo quando il chiamante di
         produzione non lo passa.
@@ -722,3 +724,6 @@ class ReasoningQueue:
         """Applica `CONSERVAZIONE`; torna i turni tolti."""
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now)
+
+
+REASONING_QUEUE_KEY = web.AppKey("reasoning_queue", ReasoningQueue)

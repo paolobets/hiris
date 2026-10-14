@@ -8,12 +8,23 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
+from aiohttp import web
+
 from .chat_settings import DEFAULT_RETENTION_DAYS
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .home_space.historian import instant_epoch
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
 from .storage import Retention, add_missing_columns, archive_name, connect, init_schema, rekey
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+#:
+#: Nessuno la legge per nome, e non e' una chiave morta: la potatura delle
+#: 03:00 trova gli archivi scorrendo i valori dell'app
+#: (`conservazione.archives`), e senza questa chiave la chat non si pota piu'.
+#: Misurato il 14/10/2026: tolta, `tests/test_nightly_pruning.py` arrossisce.
+CHAT_STORE_KEY = web.AppKey("chat_store")
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +53,7 @@ logger = logging.getLogger(__name__)
 #    di difetto che questa fetta ha gia' pagato quattro volte.
 #    Tutti e cinque sono la stessa specie della #2 --
 #    testo sintetico che non e' una risposta -- ma arrivano dall'altro capo,
-#    via `server._submit_chat_reply`, e non erano in nessun insieme qui: la
+#    via `consegna._chat_reply_submitter`, e non erano in nessun insieme qui: la
 #    review ha trovato due `[errore runner rc=3221226505]` gia' dentro
 #    chat_history.db, che ogni turno successivo rileggeva e rimandava al
 #    modello. Corretto QUI e non nel ramo di `_submit_chat_reply` per due
@@ -810,7 +821,7 @@ def _get_store(data_dir: str) -> ChatStore:
 
 def open_store(data_dir: str, *, read_retention_days) -> ChatStore:
     """L'archivio della chat dell'app, aperto all'avvio come gli altri
-    (`app["chat_store"]`, D-27 della Tappa 8), con la finestra letta dalle
+    (`app[CHAT_STORE_KEY]`, D-27 della Tappa 8), con la finestra letta dalle
     impostazioni della chat.
 
     E' la stessa istanza che le funzioni di modulo qui sotto trovano per

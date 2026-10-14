@@ -20,6 +20,16 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.action.actuator import ACTUATOR_KEY
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -32,8 +42,10 @@ from hiris.app.chat_thread import new_subject
 from hiris.app.home_space import historian
 from hiris.app.keeper import delivery
 from hiris.app.keeper.promise import DELIVERY_TITLE
+from hiris.app.live_value import LiveValue
 from hiris.app.mind import proposer_round as pr
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from hiris.app.usage.store import UsageStore
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
@@ -148,10 +160,11 @@ def casa(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     usage = UsageStore(str(tmp_path / "consumi.db"))
     costruzioni = ConstructionStore(str(tmp_path / "costruzioni.db"))
-    app = {"observations": store, "usage": usage, "constructions": costruzioni,
-           "workshop": _Officina(costruzioni), "bridge_active": False,
-           "ha_client": _casa_ha(), "service_registry": ServiceRegistry(),
-           "action_actuator": _Porta()}
+    app = {**live_values(),
+           OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
+           WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: LiveValue(False),
+           HA_CLIENT_KEY: _casa_ha(), SERVICE_REGISTRY_KEY: ServiceRegistry(),
+           ACTUATOR_KEY: _Porta()}
     soffitto.prepara_ruoli(app)
     try:
         yield app
@@ -162,7 +175,7 @@ def casa(tmp_path):
 
 
 def _analisi(app, quante):
-    app["observations"].replace_analysis(
+    app[OBSERVATIONS_KEY].replace_analysis(
         OGGI, {"osservazioni": _osservazioni(quante),
                "fondamento": {"giorni": 3, "impronta": "aaa"}})
 
@@ -176,11 +189,11 @@ async def test_una_proposta_su_una_SERRATURA_esce_alto_anche_se_il_modello_dice_
     Mutazione ESEGUITA (06/10/2026): `lock` tolto da `HIGH_STAKES_DOMAINS` --
     rossa, «'lieve' == 'alto'»."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_SERRATURA)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
 
-    (riga,) = casa["constructions"].list(now=time.time())
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
     assert riga["livello"] == "alto"
 
 
@@ -193,11 +206,11 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
     `_alert_high` che salta `notify_admins` -- rossa; `_alert_high` che chiede
     le proposte `medio` invece delle `alto` -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_SERRATURA)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
 
-    (chiamata,) = casa["action_actuator"].chiamate
+    (chiamata,) = casa[ACTUATOR_KEY].chiamate
     assert chiamata["call"]["servizio"] == "notify.mobile_app_iphone_bet"
     assert chiamata["call"]["bersaglio"] == {}
     assert chiamata["call"]["dati"]["title"] == DELIVERY_TITLE
@@ -214,23 +227,23 @@ async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
     Mutazione ESEGUITA (06/10/2026): `to_alert` senza il filtro sul livello
     -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_LUCE)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
 
     await pr.proposer_round(casa)
 
-    (riga,) = casa["constructions"].list(now=time.time())
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
     assert riga["livello"] == "medio"
-    assert casa["action_actuator"].chiamate == []
+    assert casa[ACTUATOR_KEY].chiamate == []
 
 
 @pytest.mark.asyncio
 async def test_un_turno_con_una_ALTO_e_una_MEDIO_avvisa_una_volta(casa):
     _analisi(casa, 2)
-    casa["llm_router"] = _modello(_LUCE, _SERRATURA)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE, _SERRATURA)
 
     await pr.proposer_round(casa)
 
-    assert len(casa["action_actuator"].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -242,12 +255,12 @@ async def test_un_avviso_ARRIVATO_non_si_ripete_al_battito_dopo(casa):
     Mutazione ESEGUITA (06/10/2026): `mark_alerted` che non scrive -- rossa
     (due push)."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_SERRATURA)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
     await pr.proposer_round(casa)
 
-    assert len(casa["action_actuator"].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -259,8 +272,8 @@ async def test_un_avviso_che_NON_PARTE_si_ritenta_finche_arriva(casa):
     proposta anche quando nessuna push e' arrivata -- rossa (una push sola);
     il giro senza il ritentativo in testa -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_SERRATURA)
-    porta = casa["action_actuator"]
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+    porta = casa[ACTUATOR_KEY]
     porta.arriva = False
 
     await pr.proposer_round(casa)
@@ -281,13 +294,13 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
     Mutazione ESEGUITA (06/10/2026): `to_alert` senza `stato='in_attesa'` --
     rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_SERRATURA)
-    porta = casa["action_actuator"]
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+    porta = casa[ACTUATOR_KEY]
     porta.arriva = False
     await pr.proposer_round(casa)
-    (riga,) = casa["constructions"].list(now=time.time())
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
 
-    casa["constructions"].mark_failed(riga["id"], now=riga["creata_ts"] + 1,
+    casa[CONSTRUCTIONS_KEY].mark_failed(riga["id"], now=riga["creata_ts"] + 1,
                                         execution_id=None)
     await pr.proposer_round(casa)
 
@@ -341,13 +354,13 @@ async def test_una_ALTO_che_il_modello_non_cita_si_avvisa_lo_stesso(casa):
     async def _propone_dimentica(runner, **kwargs):
         await kwargs["dispatcher"].dispatch("propose", _SERRATURA)
 
-    casa["llm_router"] = RunnerFinto(
+    casa[LLM_ROUTER_KEY] = RunnerFinto(
         json.dumps({"esiti": [{"osservazione": 0, "esito": "niente", "perche": "boh"}]}),
         turno=_propone_dimentica)
 
     await pr.proposer_round(casa)
 
-    assert len(casa["action_actuator"].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].chiamate) == 1
 
 
 # -- Chi amministra, e i suoi telefoni ----------------------------------------
@@ -367,17 +380,17 @@ async def test_gli_amministratori_sono_quelli_di_HA_senza_gli_utenti_di_sistema(
 async def test_utenti_NON_letti_nessun_avviso_e_lo_si_dice(casa):
     """Il verso del dubbio: se Home Assistant non dice chi amministra, non si
     avvisa a caso -- e il resoconto lo dice."""
-    casa["ha_client"] = _casa_ha(silence={"config/auth/list"})
+    casa[HA_CLIENT_KEY] = _casa_ha(silence={"config/auth/list"})
 
     esito = await delivery.notify_admins(casa, "x", actor="proponente")
 
     assert "errore" in esito
-    assert casa["action_actuator"].chiamate == []
+    assert casa[ACTUATOR_KEY].chiamate == []
 
 
 @pytest.mark.asyncio
 async def test_un_amministratore_SENZA_telefono_si_conta_non_blocca_gli_altri(casa):
-    casa["ha_client"] = _casa_ha([
+    casa[HA_CLIENT_KEY] = _casa_ha([
         *({**u, "group_ids": ["system-admin"]} if u["id"] == "u-marta" else u
           for u in _UTENTI),
         {"id": "u-ospite", "name": "Ospite", "is_owner": False, "is_active": True,
@@ -388,7 +401,7 @@ async def test_un_amministratore_SENZA_telefono_si_conta_non_blocca_gli_altri(ca
     assert esito["push"] == 2
     assert len(esito["senza_telefono"]) == 1
     assert esito["senza_telefono"][0].startswith("u-ospite")
-    assert {c["call"]["servizio"] for c in casa["action_actuator"].chiamate} == {
+    assert {c["call"]["servizio"] for c in casa[ACTUATOR_KEY].chiamate} == {
         "notify.mobile_app_iphone_bet", "notify.mobile_app_iphone_di_marta"}
 
 
@@ -400,17 +413,17 @@ async def test_un_GUASTO_dell_avviso_non_toglie_il_turno(casa):
     Mutazione ESEGUITA (06/10/2026): `_alert_high` chiamato senza la sua
     protezione in testa al giro -- rossa (nessun esito scritto)."""
     _analisi(casa, 1)
-    casa["llm_router"] = _modello(_LUCE)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
 
     def guasto(**_):
         raise RuntimeError("archivio illeggibile")
 
-    casa["constructions"].to_alert = guasto
+    casa[CONSTRUCTIONS_KEY].to_alert = guasto
 
     esito = await pr.proposer_round(casa)
 
     assert esito is not None and esito["problemi"] == []
-    assert len(casa["constructions"].list(now=time.time())) == 1
+    assert len(casa[CONSTRUCTIONS_KEY].list(now=time.time())) == 1
 
 
 def test_to_alert_porta_SCADUTA_ORA_che_ROW_legge(tmp_path):

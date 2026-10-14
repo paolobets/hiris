@@ -17,6 +17,7 @@ import pytest
 from hiris.app import steering
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import GESTI, declared_ceiling
+from hiris.app.startup import live_values
 
 #: I mestieri con un guardiano, chiesti alla dichiarazione.
 _GUARDED = sorted(name for name, s in steering.SPECIES.items() if s.guard is not None)
@@ -44,7 +45,7 @@ async def test_il_dispatcher_di_ogni_attore_porta_il_soffitto_DICHIARATO(name):
     Togliendo solo `soffitto=` la prova e' rossa con il `ValueError` del
     costruttore: e' la stessa protezione, vista prima."""
     species = steering.SPECIES[name]
-    dispatcher = await species.guard({}, "turno-prova")
+    dispatcher = await species.guard(live_values(), "turno-prova")
     below = dispatcher._below
     assert below._soffitto == species.ceiling(), (name, below._soffitto)
 

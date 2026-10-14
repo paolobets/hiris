@@ -25,11 +25,12 @@ from hiris.app.api.handlers_home_space import (
 )
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.house import _EXCLUDED_KEY
-from hiris.app.home_space.reader import TABLES, HomeSpace
+from hiris.app.home_space.reader import HOME_SPACE_KEY, TABLES, HomeSpace
 from hiris.app.home_space.topology import OUTSIDE_CLASSES, visibility_classes
 from hiris.app.mind.facts import NOT_ENTITY_PREFIXES
 from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
 from hiris.app.mind.store import READING_RETENTION_S
+from hiris.app.startup import SCHEDULER_KEY, live_values
 from hiris.app.states import SUSPENDED
 from tests._avvio import started_app  # noqa: F401
 
@@ -50,12 +51,12 @@ def _js_array(source: str, name: str) -> list[str]:
 def _cron_time(app, job_id: str) -> str:
     """L'ora di un lavoro a orario, chiesta allo schedulatore dell'app avviata
     (`tests/_avvio.py`): «HH:MM»."""
-    fields = {f.name: str(f) for f in app["scheduler"].get_job(job_id).trigger.fields}
+    fields = {f.name: str(f) for f in app[SCHEDULER_KEY].get_job(job_id).trigger.fields}
     return f"{int(fields['hour']):02d}:{int(fields['minute']):02d}"
 
 
 def _interval_minutes(app, job_id: str) -> int:
-    return int(app["scheduler"].get_job(job_id).trigger.interval.total_seconds() // 60)
+    return int(app[SCHEDULER_KEY].get_job(job_id).trigger.interval.total_seconds() // 60)
 
 
 # -- C-09: i nomi delle misure ------------------------------------------------
@@ -69,7 +70,8 @@ def _interval_minutes(app, job_id: str) -> int:
 async def test_home_space_route_sends_measurement_names(aiohttp_client, tmp_path):
     store = HomeSpace(str(tmp_path))
     app = web.Application()
-    app["home_space_store"] = store
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()
@@ -78,7 +80,8 @@ async def test_home_space_route_sends_measurement_names(aiohttp_client, tmp_path
     assert list(body["nomi_misure"].items()) == list(_MEASUREMENT_NAMES.items())
 
     app = web.Application()
-    app["home_space_store"] = None
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()
@@ -259,7 +262,8 @@ def test_report_pages_keep_no_scheduler_copy():
 async def test_home_space_route_sends_register_names(aiohttp_client, tmp_path):
     store = HomeSpace(str(tmp_path))
     app = web.Application()
-    app["home_space_store"] = store
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()
@@ -269,7 +273,8 @@ async def test_home_space_route_sends_register_names(aiohttp_client, tmp_path):
     assert register_names()["categorie"] == "Categorie"
 
     app = web.Application()
-    app["home_space_store"] = None
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()
@@ -298,14 +303,16 @@ def test_no_page_keeps_the_register_names():
 async def test_home_space_route_sends_outside_marks(aiohttp_client, tmp_path):
     store = HomeSpace(str(tmp_path))
     app = web.Application()
-    app["home_space_store"] = store
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()
     assert body["segni_fuori"] == outside_marks()
 
     app = web.Application()
-    app["home_space_store"] = None
+    app.update(live_values())
+    app[HOME_SPACE_KEY] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
     body = await (await client.get("/api/home-space")).json()

@@ -7,7 +7,7 @@ del registro, collocava con l'`area_id` proprio e una mappa delle aree sua
 (`observer.house_lines`); le ricette prendevano ogni entita' del dispositivo,
 comprese disabilitate, nascoste e di servizio (`recipe_turn._device_entities`),
 e scorrevano i dispositivi per sapere a chi chiedere. Il resoconto
-(`server._report_ingredients`) nominava i dispositivi scorrendo l'anagrafe.
+(`day_report._report_ingredients`) nominava i dispositivi scorrendo l'anagrafe.
 Ogni volta che la casa imparava una regola -- il nome vivo (D1), l'area
 ereditata (D3), la regola del fuori (D2) -- gli attori restavano indietro.
 
@@ -39,8 +39,8 @@ cancello di `tests/test_prove_non_leggono_il_testo.py`).
 Rosso letto il 04/10/2026 sul codice di prima (`06fcd59`), con le funzioni
 dei giri chieste allo schedulatore: `observer._area_names`,
 `observer.house_lines`, `recipe_turn._device_entities`, `_device_name`,
-`devices_to_ask`, `_named_recipes`, `server.reconsideration_round` (l'anagrafe
-intera per `measure_memory_window`) e `server._report_ingredients`.
+`devices_to_ask`, `_named_recipes`, `observer_round.reconsideration_round` (l'anagrafe
+intera per `measure_memory_window`) e `day_report._report_ingredients`.
 
 Mutazioni ESEGUITE il 13/10/2026 (F7, criterio 6), ripristino verificato con
 `git status`:
@@ -83,6 +83,7 @@ from hiris.app.home_space.topology import live_mirror
 from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.proxy.entity_cache import _to_minimal
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -221,7 +222,7 @@ def _job_sources(app) -> tuple[set[str], set[pathlib.Path]]:
     Un lavoro iscritto come `functools.partial(funzione, app)` si guarda
     nella funzione che avvolge (`.func`): e' cosi' che `server.py` iscrive i
     lavori usciti in `conservazione.py` (Tappa 8)."""
-    jobs = app["scheduler"].get_jobs()
+    jobs = app[SCHEDULER_KEY].get_jobs()
     funcs = [getattr(job.func, "func", job.func) for job in jobs]
     names = {func.__name__ for func in funcs}
     files = {pathlib.Path(sys.modules[func.__module__].__file__) for func in funcs}
@@ -280,13 +281,15 @@ async def test_nessun_attore_scorre_l_anagrafe(started_app):
 @pytest.mark.asyncio
 async def test_la_derivazione_non_si_e_svuotata(started_app):
     """Le due prove della derivazione. I campi chiesti al lettore ci sono
-    tutti quelli che le copie leggevano; i giri del server trovati comprendono
-    quelli che compongono la casa; e una funzione piantata che scorre
-    l'anagrafe e ne legge un campo si vede, senza toccare la prova."""
+    tutti quelli che le copie leggevano; le funzioni guardate comprendono i
+    giri che compongono la casa (dal 14/10/2026 le ricette e lo scope vivono
+    in `mind/`, e li' li trova la cartella, non il grafo dei lavori); e una
+    funzione piantata che scorre l'anagrafe e ne legge un campo si vede, senza
+    toccare la prova."""
     fields = anagrafe_fields()
     assert {"area_id", "dispositivo_id", "translation_key", "nome", "classe",
             "unita", "piano_id"} <= fields
-    rounds = {key.split("::")[1] for key in round_functions(started_app)}
+    rounds = {key.split("::")[1] for key in actor_functions(started_app)}
     assert {"_report_ingredients", "recipe_round",
             "reconsideration_round"} <= rounds, sorted(rounds)
     planted = ast.parse(

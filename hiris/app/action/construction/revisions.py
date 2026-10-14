@@ -24,6 +24,8 @@ import logging
 import secrets
 import threading
 
+from aiohttp import web
+
 from ...chat_thread import ChatThread, thread_from_columns, thread_params
 from ...states import (
     APPLIED,
@@ -841,3 +843,6 @@ class ConstructionStore:
         """Applica `CONSERVAZIONE`; torna le proposte e gli avvisi tolti."""
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now)
+
+
+CONSTRUCTIONS_KEY = web.AppKey("constructions", ConstructionStore)

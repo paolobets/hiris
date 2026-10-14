@@ -8,7 +8,7 @@ Prima di questo task nessuna suite esercitava `_run_retention`: leggeva
 all'import, e nessun test costruiva uno scenario per verificarlo (si scopre
 grep-ando `hiris_retention`/`_run_retention` nei test esistenti: zero
 occorrenze prima di questo file). Il Task 12 lo rende un parametro letto da
-`app["chat_settings"]` -- un valore che un PUT su
+`app[CHAT_SETTINGS_KEY]` -- un valore che un PUT su
 `/api/chat-settings` puo' cambiare a caldo -- ed e' proprio questo che
 merita un pin: se il numero tornasse a essere catturato una volta sola
 all'avvio (o a leggere una costante fissa), un utente che abbassa la
@@ -20,15 +20,19 @@ l'app davvero (`fotografia_porte.mounted`) e fa girare il lavoro
 `hiris_retention` che lo schedulatore ha registrato. Un blocco spostato non la
 rompe piu'; un lavoro che non pota, si'.
 
-Dalla Tappa 8 (Task 6, D-27) l'archivio della chat e' `app["chat_store"]`, e
-la finestra la chiede alle impostazioni a ogni potatura (`read_retention_days`)."""
+Dalla Tappa 8 (Task 6, D-27) l'archivio della chat e' `app[CHAT_STORE_KEY]`,
+che la potatura trova fra i valori dell'app (`conservazione.archives`), e la
+finestra la chiede alle impostazioni a ogni potatura (`read_retention_days`).
+Mutazione ESEGUITA (14/10/2026): tolta la chiave dall'avvio -- rossa (il
+messaggio di 10 giorni fa resta)."""
 import sys
 from datetime import UTC
 from pathlib import Path
 
 import pytest
 
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
+from hiris.app.startup import SCHEDULER_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -37,14 +41,14 @@ import fotografia_porte
 
 @pytest.mark.asyncio
 async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_path):
-    """Il PUT che cambia `giorni_conservazione` a caldo riassegna
-    `app["chat_settings"]` (handlers_settings.py): la potatura di
+    """Il PUT che cambia `giorni_conservazione` a caldo aggiorna
+    `app[CHAT_SETTINGS_KEY]` (handlers_settings.py): la potatura di
     stanotte deve vedere QUEL valore, non uno catturato all'avvio.
 
     Mutazione ESEGUITA (03/10/2026): i giorni letti una volta sola all'avvio,
     fuori da `_run_retention` -- rossa. Rieseguita l'08/10/2026 sul codice
     nuovo: `read_retention_days` costruito col valore dell'avvio invece che
-    con la lettura di `app["chat_settings"]` -- rossa."""
+    con la lettura di `app[CHAT_SETTINGS_KEY]` -- rossa."""
     from datetime import datetime, timedelta
 
     from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -68,13 +72,13 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
     store._conn.commit()
 
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
-        run_retention = app["scheduler"].get_job("hiris_retention").func
-        app["chat_settings"] = ChatSettings(retention_days=5)
+        run_retention = app[SCHEDULER_KEY].get_job("hiris_retention").func
+        app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=5))
         await run_retention()
         assert load_history(data_dir, thread=T) == [], (
             "5 giorni: il messaggio di 10 giorni fa doveva sparire")
 
-        # Ora lo stesso oggetto app, ma con la chiave riassegnata a un valore che
+        # Ora lo stesso oggetto app, ma con le impostazioni cambiate in un valore che
         # NON pota niente (com'e' dopo un PUT che alza la soglia): la potatura
         # deve vederlo, non un 5 catturato alla costruzione della chiusura.
         append_messages([{"role": "user", "content": "recente"}], data_dir, thread=T)
@@ -85,7 +89,7 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
             (vecchio_ts2, "recente"),
         )
         store2._conn.commit()
-        app["chat_settings"] = ChatSettings(retention_days=0)
+        app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=0))
         await run_retention()
         assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
             "0: la potatura non deve aver toccato niente"

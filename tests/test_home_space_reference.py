@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from hiris.app.home_space.briefing import now_line
-from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
@@ -266,9 +266,9 @@ def test_il_turno_VERO_porta_l_orologio_e_il_nucleo_no(archivio):
 
     archivio.hold_registries({}, [], reference_frame=reference_frame(_CONFIG))
 
-    ora = house_hour({"home_space_store": archivio})
+    ora = house_hour({HOME_SPACE_KEY: archivio})
     assert ora.startswith("Adesso sono le") and ora.endswith("(fuso Europe/Rome).")
-    testo, _ = compose_briefing({"home_space_store": archivio})
+    testo, _ = compose_briefing({HOME_SPACE_KEY: archivio})
     assert "Adesso sono le" not in testo, "l'ora e' tornata nel nucleo"
 
 

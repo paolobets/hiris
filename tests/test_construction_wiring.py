@@ -8,6 +8,8 @@ import logging
 
 import pytest
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+
 
 @pytest.mark.asyncio
 async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, caplog):
@@ -16,7 +18,7 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
 
     **Questo test prova la CHIAMATA, non la sua presenza nel sorgente, e la
     ragione e' un difetto vissuto.** La versione precedente diceva
-    `assert 'app["constructions"].risana(' in sorgente` -- e una parola chiave
+    `assert 'app[CONSTRUCTIONS_KEY].risana(' in sorgente` -- e una parola chiave
     SBAGLIATA la soddisfaceva uguale. Il 29/08 la conversione di `action/` ha
     rinominato il parametro nella `def` (`adesso -> now`) e ha lasciato indietro
     il chiamante: `risana(adesso=...)` contro `def risana(*, now)`. **Il
@@ -39,7 +41,7 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
     import time as _time
 
     from hiris.app.action.construction.revisions import ConstructionStore
-    from tests._avvio import SERVER_LOGGER, started_with
+    from tests._avvio import STARTUP_LOGGER, started_with
 
     archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
     try:
@@ -54,9 +56,9 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
     finally:
         archivio.close()
 
-    with caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with started_with(tmp_path) as app:
-            stato = app["constructions"].read(ident, now=_time.time())["stato"]
+            stato = app[CONSTRUCTIONS_KEY].read(ident, now=_time.time())["stato"]
     avvisi = [rec.getMessage() for rec in caplog.records
               if "risanamento delle costruzioni" in rec.getMessage()]
     assert stato != "in_corso", (

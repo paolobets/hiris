@@ -24,19 +24,27 @@ from unittest.mock import AsyncMock, MagicMock, create_autospec
 import pytest
 import pytest_asyncio
 
-from hiris.app import server
-from hiris.app.action.actuator import ActionActuator
-from hiris.app.action.journal import Journal
+from hiris.app import startup
+from hiris.app.action.actuator import ACTUATOR_KEY, ActionActuator
+from hiris.app.action.journal import JOURNAL_KEY, Journal
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY
 from hiris.app.api.handlers_chat import create_tool_dispatcher
-from hiris.app.api.soffitto import consente
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.api.soffitto import ROLES_KEY, consente
 from hiris.app.chat_thread import ChatThread
-from hiris.app.home_space.reader import HomeSpace
-from hiris.app.keeper.store import AgendaStore
-from hiris.app.keeper.sweeper import Sweeper
-from hiris.app.memory.store import MemoryStore
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
+from hiris.app.keeper import sweeper
+from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
+from hiris.app.keeper.sweeper import SWEEPER_KEY, Sweeper
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.storage import DATA_DIR_KEY
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
+
+from hiris.app.startup import live_values
 
 # ── L'avvio vero, con gli `add_job` registrati ─────────────────────────────
 #
@@ -77,15 +85,15 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(recorded_s
     registro dei servizi e la stessa casa che l'app tiene.
 
     Mutazione ESEGUITA (03/10/2026): `ActionActuator(...)` costruita con
-    `None` al posto di `app["journal"]` -- rossa (`None is <Journal>`)."""
+    `None` al posto di `app[JOURNAL_KEY]` -- rossa (`None is <Journal>`)."""
     app, _jobs = recorded_startup
-    assert isinstance(app["journal"], Journal)
-    assert isinstance(app["agenda"], AgendaStore)
-    porta = app["action_actuator"]
+    assert isinstance(app[JOURNAL_KEY], Journal)
+    assert isinstance(app[AGENDA_KEY], AgendaStore)
+    porta = app[ACTUATOR_KEY]
     assert isinstance(porta, ActionActuator)
-    assert porta._journal is app["journal"]
-    assert porta._ha is app["ha_client"]
-    assert porta._registry is app["service_registry"]
+    assert porta._journal is app[JOURNAL_KEY]
+    assert porta._ha is app[HA_CLIENT_KEY]
+    assert porta._registry is app[SERVICE_REGISTRY_KEY]
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -93,8 +101,8 @@ async def test_il_battito_e_registrato_come_lavoro(recorded_startup):
     """Mutazione ESEGUITA (03/10/2026): `seconds=15` -> `seconds=60` nel
     lavoro del battito -- rossa."""
     app, jobs = recorded_startup
-    assert isinstance(app["sweeper"], Sweeper)
-    assert app["scheduler"].get_job("hiris_keeper_heartbeat") is not None, (
+    assert isinstance(app[SWEEPER_KEY], Sweeper)
+    assert app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat") is not None, (
         f"il battito non e' registrato -- lavori: {sorted(jobs)}")
     battito = jobs["hiris_keeper_heartbeat"]
     assert battito["trigger"] == "interval"
@@ -113,7 +121,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
     chiamata.
 
     Mutazione ESEGUITA (03/10/2026): tolta la chiamata
-    `app["agenda"].risana(...)` dall'avvio -- rossa (`'in_corso' ==
+    `app[AGENDA_KEY].risana(...)` dall'avvio -- rossa (`'in_corso' ==
     'fallita'`)."""
     from tests._avvio import started_with
 
@@ -135,7 +143,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
 
     with mock.patch.object(ActionActuator, "execute", AsyncMock()) as execute:
         async with started_with(tmp_path) as app:
-            assert app["agenda"].read(ident)["stato"] == "fallita"
+            assert app[AGENDA_KEY].read(ident)["stato"] == "fallita"
     # E nessuno l'ha eseguita: risana() deve finire prima che qualunque cosa
     # la prenda di nuovo in mano.
     execute.assert_not_awaited()
@@ -154,10 +162,10 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
 @pytest.mark.asyncio(loop_scope="module")
 async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(recorded_startup):
     """Mutazione ESEGUITA (03/10/2026): `_battito` chiama
-    `app["sweeper"].batti()` senza l'istante -- rossa."""
+    `app[SWEEPER_KEY].batti()` senza l'istante -- rossa."""
     app, _jobs = recorded_startup
-    battito = app["scheduler"].get_job("hiris_keeper_heartbeat").func
-    with mock.patch.object(app["sweeper"], "batti", AsyncMock()) as batti:
+    battito = app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat").func
+    with mock.patch.object(app[SWEEPER_KEY], "batti", AsyncMock()) as batti:
         await battito()
 
     batti.assert_awaited_once()
@@ -167,7 +175,7 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(reco
     # doppio qui non lo impone, quindi lo impone il test.
     args, kwargs = batti.await_args
     assert len(args) == 1 and isinstance(args[0], float), (
-        "la chiusura deve passare un istante (`_time.time()`), non chiamare "
+        "la chiusura deve passare un istante (`time.time()`), non chiamare "
         "`batti` a vuoto")
     assert not kwargs
 
@@ -182,13 +190,13 @@ async def test_il_cleanup_chiude_promesse_e_cronaca():
     davvero, senza estrazioni."""
     promesse_finte = MagicMock()
     cronaca_finta = MagicMock()
-    app = {
-        "ha_client": CasaFinta({}),
-        "agenda": promesse_finte,
-        "journal": cronaca_finta,
+    app = {**live_values(),
+        HA_CLIENT_KEY: CasaFinta({}),
+        AGENDA_KEY: promesse_finte,
+        JOURNAL_KEY: cronaca_finta,
     }
 
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     promesse_finte.close.assert_called_once()
     cronaca_finta.close.assert_called_once()
@@ -200,31 +208,31 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     costruiscono l'app a mano, vedi `tests/test_api.py::client`) non deve
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
     `archivio_memoria` qui sotto."""
-    app = {"ha_client": CasaFinta({})}
-    await server._on_cleanup(app)  # non deve sollevare
+    app = {**live_values(), HA_CLIENT_KEY: CasaFinta({})}
+    await startup._on_cleanup(app)  # non deve sollevare
 
 
 @pytest.mark.asyncio
 async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
-    """`_on_cleanup` chiude `app["memory_store"]` con `.close()`, e non chiede
-    niente a `app["home_space_store"]`: l'anagrafe vive in memoria e non ha
+    """`_on_cleanup` chiude `app[MEMORY_STORE_KEY]` con `.close()`, e non chiede
+    niente a `app[HOME_SPACE_KEY]`: l'anagrafe vive in memoria e non ha
     niente da chiudere. Il suo `close()` vuoto e' uscito con M-51 (14/10/2026)
     insieme alla chiamata in `_on_cleanup`.
 
     Le finte hanno la forma del vero (`create_autospec`, T-04): una
     `MagicMock` nuda rispondeva a qualunque nome, compreso un `close()` che
     l'anagrafe non ha piu'. Mutazione ESEGUITA (14/10/2026): rimessa la
-    chiamata `app["home_space_store"].close()` in `_on_cleanup` -- rossa
+    chiamata `app[HOME_SPACE_KEY].close()` in `_on_cleanup` -- rossa
     (`AttributeError`, la finta non ha quel metodo)."""
     archivio_casa_finto = create_autospec(HomeSpace, instance=True)
     archivio_memoria_finto = create_autospec(MemoryStore, instance=True)
-    app = {
-        "ha_client": CasaFinta({}),
-        "home_space_store": archivio_casa_finto,
-        "memory_store": archivio_memoria_finto,
+    app = {**live_values(),
+        HA_CLIENT_KEY: CasaFinta({}),
+        HOME_SPACE_KEY: archivio_casa_finto,
+        MEMORY_STORE_KEY: archivio_memoria_finto,
     }
 
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     archivio_memoria_finto.close.assert_called_once()
     assert archivio_casa_finto.mock_calls == []
@@ -236,10 +244,11 @@ async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
 def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     """Punto 1 del task: non basta `promesse=` -- serve anche `registro=`,
     preso dallo STESSO oggetto dell'app che alimenta la porta
-    (`app["service_registry"]`), non una seconda costruzione."""
+    (`app[SERVICE_REGISTRY_KEY]`), non una seconda costruzione."""
     registro_sentinella = object()
     promesse_sentinella = object()
-    app = {"service_registry": registro_sentinella, "agenda": promesse_sentinella}
+    app = {**live_values(),
+           SERVICE_REGISTRY_KEY: registro_sentinella, AGENDA_KEY: promesse_sentinella}
 
     dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
 
@@ -256,10 +265,10 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
     from hiris.app.chat_store import close_all_stores, load_history
 
     paolo = ChatThread("persona:paolo", "pannello")
-    app = {"data_dir": str(tmp_path), "ha_client": None, "servizi": None,
-           "ruoli": {"quando": 0.0, "per_id": {}}}
+    app = {**live_values(), DATA_DIR_KEY: str(tmp_path), HA_CLIENT_KEY: None, SERVICES_KEY: None,
+           ROLES_KEY: {"quando": 0.0, "per_id": {}}}
     try:
-        collaboratori = server._promise_delivery(app)
+        collaboratori = sweeper._promise_delivery(app)
         assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling",
                                       "owner_thread"}
         assert collaboratori["write_to_thread"](paolo, "Esito della promessa «x»: y") is True
@@ -274,7 +283,7 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
 
         # Chi e' il proprietario lo dice Home Assistant, nelle righe GREZZE di
         # `config/auth/list` (Tappa 2, Task 12): `is_owner`, letto dal client.
-        app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+        app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
             {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
              "system_generated": False, "group_ids": ["system-users"]},
             {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,

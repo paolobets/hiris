@@ -27,6 +27,17 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -35,11 +46,11 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _get_store, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
+from hiris.app.live_value import LiveValue
 from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.consegna import consegna as consegna_turno
 from hiris.app.reasoning.queue import ReasoningQueue
 
-TOKEN = "token-di-prova-della-consegna"
 ADESSO = 1787324400.0
 # Il filo di chi ha chiesto: ogni promessa ne ha uno (spec 2026-09-26 §2).
 PAOLO = ChatThread("persona:paolo", "pannello")
@@ -51,20 +62,19 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
 
     app = server.create_app()
-    app["ha_client"] = CasaFinta({})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
-    app["internal_token"] = TOKEN
+    app[HA_CLIENT_KEY] = CasaFinta({})
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
 
     coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
-    app["reasoning_queue"] = coda
-    app["agenda"] = promesse
+    app[REASONING_QUEUE_KEY] = coda
+    app[AGENDA_KEY] = promesse
     # Task 3 (ruling 3.8): la cronologia dove finisce la riga breve di un
     # fallimento chiuso da qui.
-    app["data_dir"] = str(tmp_path)
+    app[DATA_DIR_KEY] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -141,7 +151,7 @@ async def test_un_turno_che_finisce_senza_concludere_lascia_un_fallimento_nel_re
     await _consegna(client, job, {
         "reply": "Ho letto le otto stanze, ma da qui non posso mandarti una notifica."})
 
-    esito = client.app["occurrence_registry"].occurrence("subscription")
+    esito = client.app[OCCURRENCES_KEY].occurrence("subscription")
     assert esito is not None, (
         "una promessa del ponte finita senza «conclude» non ha lasciato "
         "traccia nel registro degli esiti")
@@ -215,8 +225,8 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
-        app = {"agenda": promesse, "data_dir": str(tmp_path),
-               "models_config": {"ponte": {"scadenza_min": 3}}}
+        app = {AGENDA_KEY: promesse, DATA_DIR_KEY: str(tmp_path),
+               MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 3}})}
 
         close_expired_promise(app, {"wake": {"promessa_id": ident},
                                      "created_ts": 100.0, "deadline_ts": 700.0})
@@ -240,9 +250,9 @@ def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
     try:
         ident = _promessa_in_corso(promesse)
         registry = OccurrenceRegistry(clock=lambda: 999.0)
-        app = {"agenda": promesse, "occurrence_registry": registry,
-               "data_dir": str(tmp_path),
-               "models_config": {"ponte": {"scadenza_min": 10}}}
+        app = {AGENDA_KEY: promesse, OCCURRENCES_KEY: registry,
+               DATA_DIR_KEY: str(tmp_path),
+               MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
 
         close_expired_promise(app, {"wake": {"promessa_id": ident},
                                       "created_ts": 100.0, "deadline_ts": 700.0})
@@ -270,8 +280,8 @@ def test_una_promessa_gia_conclusa_dalla_scadenza_non_registra_un_secondo_esito(
         registry = OccurrenceRegistry(clock=lambda: 999.0)
         registry.successo("subscription")
 
-        close_expired_promise({"agenda": promesse, "occurrence_registry": registry,
-                                "models_config": {}},
+        close_expired_promise({AGENDA_KEY: promesse, OCCURRENCES_KEY: registry,
+                                MODELS_CONFIG_KEY: LiveValue({})},
                                {"wake": {"promessa_id": ident}})
 
         assert registry.occurrence("subscription")["tipo"] == "risposto"
@@ -290,7 +300,7 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        close_expired_promise({"agenda": promesse, "models_config": {}},
+        close_expired_promise({AGENDA_KEY: promesse, MODELS_CONFIG_KEY: LiveValue({})},
                                {"wake": {"promessa_id": ident}})
 
         assert promesse.read(ident)["stato"] == "mantenuta"
@@ -301,7 +311,7 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
 def test_un_job_scaduto_senza_promessa_non_esplode(tmp_path):
     from hiris.app.reasoning.consegna import close_expired_promise
 
-    close_expired_promise({"agenda": None, "models_config": {}}, {"wake": {}})
+    close_expired_promise({AGENDA_KEY: None, MODELS_CONFIG_KEY: LiveValue({})}, {"wake": {}})
 
 
 # --- ruling 3.8: i fallimenti chiusi da qui lo dicono nel filo, senza push ----
@@ -325,7 +335,7 @@ async def test_un_turno_senza_conclusione_lascia_una_riga_breve_nel_filo(consegn
 
     await _consegna(client, job, {"reply": "ho guardato ma non concludo"})
 
-    righe = load_history(client.app["data_dir"], thread=PAOLO)
+    righe = load_history(client.app[DATA_DIR_KEY], thread=PAOLO)
     assert len(righe) == 1
     assert righe[0]["role"] == "assistant"
     assert _FRASE in righe[0]["content"]
@@ -338,8 +348,8 @@ def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
-        app = {"agenda": promesse, "data_dir": str(tmp_path),
-               "models_config": {"ponte": {"scadenza_min": 10}}}
+        app = {AGENDA_KEY: promesse, DATA_DIR_KEY: str(tmp_path),
+               MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
 
         # Un job vero porta sempre i due istanti (colonne NOT NULL della
         # coda), e l'attesa detta e' la loro differenza (S-02).
@@ -365,8 +375,8 @@ def test_una_scadenza_su_una_promessa_orfana_non_scrive_in_nessun_filo(tmp_path)
             "VALUES('orfana','chiedi','detta prima',?,'?','in_corso',?)",
             (ADESSO + 10, ADESSO))
         promesse._conn.commit()
-        app = {"agenda": promesse, "data_dir": str(tmp_path),
-               "models_config": {"ponte": {"scadenza_min": 10}}}
+        app = {AGENDA_KEY: promesse, DATA_DIR_KEY: str(tmp_path),
+               MODELS_CONFIG_KEY: LiveValue({"ponte": {"scadenza_min": 10}})}
 
         close_expired_promise(app, {"wake": {"promessa_id": "orfana"}})
 
@@ -386,8 +396,8 @@ def test_una_scadenza_gia_conclusa_non_scrive_una_seconda_riga(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        close_expired_promise({"agenda": promesse, "data_dir": str(tmp_path),
-                                "models_config": {}},
+        close_expired_promise({AGENDA_KEY: promesse, DATA_DIR_KEY: str(tmp_path),
+                                MODELS_CONFIG_KEY: LiveValue({})},
                                {"wake": {"promessa_id": ident}})
 
         assert load_history(str(tmp_path), thread=PAOLO) == []
@@ -407,4 +417,4 @@ async def test_una_risposta_velenosa_non_entra_nella_riga_del_filo(consegna):
     await _consegna(client, job, {"reply": "Rate limit — riprova tra poco."})
 
     assert promesse.read(ident)["stato"] == "fallita"
-    assert load_history(client.app["data_dir"], thread=PAOLO) == []
+    assert load_history(client.app[DATA_DIR_KEY], thread=PAOLO) == []

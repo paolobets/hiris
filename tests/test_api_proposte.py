@@ -13,6 +13,13 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -22,6 +29,7 @@ from hiris.app.api.handlers_proposals import (
     handle_proposal_reject,
 )
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
 
@@ -76,9 +84,9 @@ def casa(tmp_path):
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, stakes=None, now_ts=100.0)
     try:
-        yield ({"observations": store, "ha_client": CasaFinta(
+        yield ({**live_values(), OBSERVATIONS_KEY: store, HA_CLIENT_KEY: CasaFinta(
                    synthetic_inputs(), answers={"config/auth/list": lambda extra: [_ADMIN]}),
-                "ruoli": {"quando": 0.0, "per_id": {}}}, store, ident)
+                ROLES_KEY: {"quando": 0.0, "per_id": {}}}, store, ident)
     finally:
         store.close()
 
@@ -162,7 +170,7 @@ async def test_RIFALLA_accoda_il_giro_e_riscrive_il_testo(casa, monkeypatch):
         "osservazione": 0, "esito": "a_mano",
         "testo": "Sposta la lavatrice dopo le 14",
         "perche": "cosi' cade nelle ore di sole"}]}))
-    app["llm_router"] = modello
+    app[LLM_ROUTER_KEY] = modello
 
     r = await handle_proposal_redo(
         _richiesta(app, {"id": ident}, {"richiesta": "troppo presto, dopo le 14"}))
@@ -206,7 +214,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_RIFALLA_lo_dice(casa):
 
     app, store, ident = casa
     giu = RunnerFinto(RunnerBackendError("Errore Claude."))
-    app["llm_router"] = LLMRouter(claude=giu, model_chain=["claude"])
+    app[LLM_ROUTER_KEY] = LLMRouter(claude=giu, model_chain=["claude"])
 
     r = await handle_proposal_redo(
         _richiesta(app, {"id": ident}, {"richiesta": "dopo le 14"}))
@@ -253,7 +261,7 @@ async def test_la_pagina_legge_le_DUE_code_in_un_elenco_solo(casa):
     from hiris.app.api.handlers_constructions import handle_get_constructions
 
     app, _store, _ident = casa
-    app["constructions"] = _FintaOfficina([
+    app[CONSTRUCTIONS_KEY] = _FintaOfficina([
         {"id": "c1", "stato": "in_attesa", "gesto": "crea", "dominio": "automation",
          "creata_ts": 50.0}])
 
@@ -275,7 +283,7 @@ async def test_l_elenco_unito_e_ordinato_dalla_PIU_RECENTE(casa):
     from hiris.app.api.handlers_constructions import handle_get_constructions
 
     app, _store, _ident = casa
-    app["constructions"] = _FintaOfficina([
+    app[CONSTRUCTIONS_KEY] = _FintaOfficina([
         {"id": "c1", "stato": "in_attesa", "gesto": "crea", "creata_ts": 999.0}])
 
     r = await handle_get_constructions(_richiesta(app))
@@ -293,9 +301,9 @@ async def test_il_PALLINO_somma_le_due_code(casa):
     from hiris.app.api.handlers_pending import handle_get_pending
 
     app, _store, _ident = casa
-    app["constructions"] = _FintaOfficina([
+    app[CONSTRUCTIONS_KEY] = _FintaOfficina([
         {"id": "c1", "stato": "in_attesa", "gesto": "crea", "creata_ts": 50.0}])
-    app["agenda"] = _FintaAgenda()
+    app[AGENDA_KEY] = _FintaAgenda()
 
     r = await handle_get_pending(_richiesta(app))
 
@@ -336,7 +344,7 @@ async def test_A10_senza_archivio_il_503_non_porta_un_elenco_vuoto(casa):
     from hiris.app.api.handlers_constructions import handle_get_constructions
 
     app, _store, _ident = casa
-    app.pop("constructions", None)
+    app.pop(CONSTRUCTIONS_KEY, None)
     r = await handle_get_constructions(_richiesta(app))
     assert r.status == 503
     assert json.loads(r.text) == {"error": "archivio non disponibile"}

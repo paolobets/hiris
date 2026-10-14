@@ -56,7 +56,7 @@ def test_ma_HIRIS_in_debug_resta_in_DEBUG(monkeypatch):
     Mutazione ESEGUITA: alzare il livello della radice -- rossa."""
     _livelli(monkeypatch, "debug")
 
-    assert logging.getLogger("hiris.app.server").getEffectiveLevel() == logging.DEBUG
+    assert logging.getLogger("hiris.app.startup").getEffectiveLevel() == logging.DEBUG
 
 
 def test_l_elenco_delle_librerie_copre_i_CLIENT_che_parlano_coi_modelli(monkeypatch):

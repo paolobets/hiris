@@ -34,6 +34,7 @@ from ..chat_thread import subject_key_for
 from ..home_space import historian
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.open_questions import OPEN_QUESTIONS
+from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, DECLINED_FIELD, MEANING_FIELD
 from ..mind import analyst, recipe_turn
 from ..mind.judgments import (
@@ -43,26 +44,13 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
+from ..mind.knowledge import KNOWLEDGE_KEY
 from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
-from ..mind.store import READING_RETENTION_S
-from ..mind.view import MindView
+from ..mind.store import OBSERVATIONS_KEY, READING_RETENTION_S
+from ..mind.view import mind_view
 from .boundary import error_response, house_clock_of, json_object
 from .soffitto import subject_name
-
-
-def mind_view(app) -> MindView:
-    """Le letture del cervello di questa app: l'UNICO punto che le costruisce,
-    per le rotte qui sotto, per lo strumento `mind`
-    (`handlers_chat.create_tool_dispatcher`) e per i giri del server che
-    chiedono i nomi dei dispositivi.
-
-    Si costruisce a ogni richiesta, ed e' gratis: tiene solo riferimenti agli
-    oggetti dell'app, che possono nascere dopo questa rotta (l'osservatore
-    parte all'avvio, a meta')."""
-    return MindView(store=app.get("observations"), watcher=app.get("watcher"),
-                    home_space=app.get("home_space_store"), cache=app.get("entity_cache"),
-                    judgments=app.get("type_judgments"))
 
 
 def _asked_day(request) -> str:
@@ -71,7 +59,7 @@ def _asked_day(request) -> str:
     dice quale giorno e' (`giorno`)."""
     return historian.resolve_day(
         request.query.get("day"),
-        historian.house_timezone(request.app.get("home_space_store")))
+        historian.house_timezone(request.app.get(HOME_SPACE_KEY)))
 
 
 async def handle_watching(request: web.Request) -> web.Response:
@@ -155,7 +143,7 @@ async def handle_set_objective(request) -> web.Response:
     criterio, e chi ha premuto salva deve sapere che non e' stato scritto
     niente.
     """
-    store = request.app.get("observations")
+    store = request.app.get(OBSERVATIONS_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     body = await json_object(request)
@@ -218,7 +206,7 @@ async def handle_set_judgment(request) -> web.Response:
     riga e' il soggetto che il confine ha attaccato alla richiesta, mai un
     campo del corpo.
     """
-    if request.app.get("knowledge") is None:
+    if request.app.get(KNOWLEDGE_KEY) is None:
         return error_response(503, "il sapere non e' disponibile")
     body = await json_object(request)
     if ("valore" not in body
@@ -273,7 +261,7 @@ async def handle_set_scope(request) -> web.Response:
     scrive solo chi amministra (il gesto della sua riga in
     `admission.ADMISSION`), come i giudizi sui tipi. E' una scrittura: passa dal `csrf_middleware`.
     """
-    store = request.app.get("observations")
+    store = request.app.get(OBSERVATIONS_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     body = await json_object(request)
@@ -374,7 +362,7 @@ async def handle_knowledge(request) -> web.Response:
     quelle di `non_capito` (`_fact_row`), con la sua fonte: per un significato
     e' la citazione, col tag (B-47).
     """
-    sapere = request.app.get("knowledge")
+    sapere = request.app.get(KNOWLEDGE_KEY)
     if sapere is None:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()

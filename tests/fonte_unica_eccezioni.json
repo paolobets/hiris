@@ -1,16 +1,16 @@
 {
  "letterali-di-stato": {
+  "hiris/app/api/shell.py": {
+   "conti": {
+    "unknown": 1
+   },
+   "non_e_un_doppione": "l'impronta della build quando il file non si legge: non e' uno stato di Home Assistant"
+  },
   "hiris/app/home_space/reference.py": {
    "conti": {
     "unknown": 1
    },
    "non_e_un_doppione": "lo slug di ripiego di un testo senza nome (`NO_SLUG`, la replica di slugify di Home Assistant): non e' uno stato di Home Assistant"
-  },
-  "hiris/app/server.py": {
-   "conti": {
-    "unknown": 1
-   },
-   "non_e_un_doppione": "l'impronta della build quando il file non si legge: non e' uno stato di Home Assistant"
   },
   "hiris/app/version.py": {
    "conti": {

@@ -29,7 +29,7 @@ import sqlite3
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from hiris.app.api.servizi import ServiziStore
+from hiris.app.api.servizi import SERVICE_WINDOW_KEY, ServiziStore
 
 
 def _coppia():
@@ -307,7 +307,7 @@ def test_il_contenitore_della_finestra_nasce_con_l_app():
     app = {}
     mod.prepara_finestra(app)
 
-    assert app["finestra_servizi"] == {}
+    assert app[SERVICE_WINDOW_KEY] == {}
 
 
 def test_una_presentazione_scaduta_non_si_LEGGE_anche_se_e_ancora_su_disco(archivio):

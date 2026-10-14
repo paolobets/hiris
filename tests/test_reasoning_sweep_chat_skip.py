@@ -21,9 +21,9 @@ spazzata non si ritaglia piu' dal sorgente di ``_on_startup`` per eseguirla
 in un namespace preparato a mano: si avvia l'app davvero
 (``fotografia_porte.mounted``) e si fa girare il lavoro
 ``hiris_reasoning_sweep`` che lo schedulatore ha registrato, sulla coda vera
-dell'app (``app["reasoning_queue"]``).
+dell'app (``app[REASONING_QUEUE_KEY]``).
 
-Dalla Tappa 8 (Task 6, D5) la spazzata non guarda piu' ``app["bridge_active"]``:
+Dalla Tappa 8 (Task 6, D5) la spazzata non guarda piu' ``app[BRIDGE_ACTIVE_KEY]``:
 gira acceso o spento che sia il ponte (`test_a_ponte_spento_la_coda_si_spazza`).
 """
 import contextlib
@@ -33,8 +33,12 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app import server
-from hiris.app.steering import JOB_SPECIES
+from hiris.app.mind import observer
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, JOB_SPECIES
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -46,16 +50,16 @@ async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
     """La spazzata VERA, sull'app avviata: `(spazzata, coda, app)`.
 
     `bridge_active` e `deadline_min` si scrivono nelle chiavi che la spazzata
-    legge (`app["bridge_active"]`, `app["models_config"]["ponte"]`), come le
+    legge (`app[BRIDGE_ACTIVE_KEY]`, `app[MODELS_CONFIG_KEY]["ponte"]`), come le
     lascerebbero `_recompute_chain` e la pagina Modelli."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        app["bridge_active"] = bridge_active
+        app[BRIDGE_ACTIVE_KEY].set(bridge_active)
         if deadline_min is not None:
-            config = dict(app.get("models_config") or {})
+            config = dict(app[MODELS_CONFIG_KEY].value or {})
             config["ponte"] = {**(config.get("ponte") or {}), "scadenza_min": deadline_min}
-            app["models_config"] = config
-        sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
-        yield sweep, app["reasoning_queue"], app
+            app[MODELS_CONFIG_KEY].set(config)
+        sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
+        yield sweep, app[REASONING_QUEUE_KEY], app
 
 
 @pytest.mark.asyncio
@@ -100,7 +104,7 @@ async def test_expired_holistic_job_is_logged_and_left_expired(tmp_path, monkeyp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", sorted(
-    k for k in JOB_SPECIES if k not in ("chat", "promessa", server.SCOPE_TURN_KIND)))
+    k for k in JOB_SPECIES if k not in ("chat", "promessa", observer.SCOPE_TURN_KIND)))
 async def test_un_turno_dichiarato_scade_e_non_e_un_orfano(tmp_path, kind, caplog):
     """Rossa su `8529b30`: analisi, ricette e attuazione scadute finivano
     nel registro come «orfano (ponte olistico rimosso)» (rapporto T0-T2 della
@@ -238,8 +242,8 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
         # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano. La
         # stessa app, la stessa spazzata: cambia solo cio' che la pagina
         # Modelli scriverebbe.
-        app["models_config"] = {**app["models_config"],
-                                "ponte": {**app["models_config"]["ponte"], "scadenza_min": 5}}
+        prima = app[MODELS_CONFIG_KEY].value
+        app[MODELS_CONFIG_KEY].set({**prima, "ponte": {**prima["ponte"], "scadenza_min": 5}})
         await sweep()
         assert q.get("j")["status"] == "failed"
 
@@ -260,12 +264,12 @@ async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
     """
     async with _started_sweep(tmp_path) as (spazzata, coda, app):
         adesso = _time.time()
-        coda.enqueue(server.SCOPE_TURN_KIND, {}, {}, deadline_ts=adesso - 1,
+        coda.enqueue(observer.SCOPE_TURN_KIND, {}, {}, deadline_ts=adesso - 1,
                      job_id="S1", now=adesso - 601)
 
         await spazzata()
 
-        ultimo = app["observations"].recent_attempts()[0]
+        ultimo = app[OBSERVATIONS_KEY].recent_attempts()[0]
         assert ultimo["esito"] == "scaduta"
         assert "non ha risposto" in ultimo["dettaglio"]
         assert coda.get("S1")["status"] == "expired"

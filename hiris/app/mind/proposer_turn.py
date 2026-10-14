@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import logging
 
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..steering import PROPOSER_SPECIES, SPECIES, read_json, refused_lines, refused_tool
 from .analyst import evidence_of, observation_key
 from .analyst_turn import READERS, AnalystDispatcher
@@ -178,8 +180,8 @@ async def guard(app, exchange: str | None = None, *,
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
 
-    store = app.get("home_space_store")
-    house = House.read(store, app.get("entity_cache")) if store is not None else None
+    store = app.get(HOME_SPACE_KEY)
+    house = House.read(store, app.get(ENTITY_CACHE_KEY)) if store is not None else None
     below = create_tool_dispatcher(app, exchange=exchange, house=house,
                                    actor=PROPOSER_SPECIES, refuse_high=refuse_high,
                                    soffitto=SPECIES[species].ceiling())

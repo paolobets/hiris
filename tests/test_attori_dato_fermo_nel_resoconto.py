@@ -5,7 +5,7 @@ Il caso: il 30/09/2026 l'inverter ha smesso di mandare dati, e il resoconto ha
 scritto **produzione 0 con copertura 1.0** (BACKLOG, «Un contatore CONGELATO
 non si distingue da un giorno a zero»).
 
-Qui la strada e' quella vera: `server._report_ingredients` sul client vero di
+Qui la strada e' quella vera: `day_report._report_ingredients` sul client vero di
 Home Assistant (`scripts/casa_finta.py`) con un'anagrafe vera
 (`build_home_space`), poi `report.build_report` -- cio' che fanno
 l'aggregazione notturna, il recupero dei resoconti e la riparazione d'avvio.
@@ -41,12 +41,14 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space.historian import day_boundaries
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, build_home_space
+from hiris.app.mind import day_report, recipe_turn
 from hiris.app.mind.flatline import HISTORY_DAYS
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
 from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
 
@@ -83,10 +85,10 @@ def _app():
         "integrazioni": [],
         "dispositivi": [{"id": DEVICE, "name": "Inverter", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
+    return {KNOWLEDGE_KEY: object(), HOME_SPACE_KEY: AnagrafeFinta(home_space),
             # Le tre fonti sono vive: senza stato sarebbero «sparite», e le
             # loro ricette mute (`recipes.muted_recipes`).
-            "entity_cache": SpecchioFinto([(
+            ENTITY_CACHE_KEY: SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
 
@@ -132,9 +134,9 @@ async def _report(day, *, frozen_from, statistic_ids=STATISTIC_IDS):
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period": _statistics})
     recipes = {DEVICE: RECIPE, "d_contatore": HOUSE_RECIPE}
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        ricette, serie, nomi, silent, mute = await server._report_ingredients(
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        ricette, serie, nomi, silent, mute = await day_report._report_ingredients(
             _app(), house, giorno=day, timezone=TIMEZONE)
     report = build_report(day=day, episodes=[], series=serie, recipes=ricette,
                           names=nomi, silent=silent, muted=mute)
@@ -263,8 +265,8 @@ def _thermometer_app():
              for t in THERMOMETERS]
     cache.append({"entity_id": HOUSE_METER, "state": "1",
                               "attributes": {"state_class": "total_increasing"}})
-    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
-            "entity_cache": SpecchioFinto(cache)}
+    return {KNOWLEDGE_KEY: object(), HOME_SPACE_KEY: AnagrafeFinta(home_space),
+            ENTITY_CACHE_KEY: SpecchioFinto(cache)}
 
 
 def _thermometer_rows(entity_id, from_iso, to_iso, frozen_from):
@@ -304,9 +306,9 @@ async def _thermometer_ingredients(day, *, frozen_from, statistic_ids):
                    {"name": "temperatura", "operation": "media_min_max",
                     "inputs": [f"@{THERMOMETERS[0]}"], "params": {"unit": "°C"}}]},
                "d_contatore": HOUSE_RECIPE}
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        ricette, serie, nomi, silent, mute = await server._report_ingredients(
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        ricette, serie, nomi, silent, mute = await day_report._report_ingredients(
             _thermometer_app(), house, giorno=day, timezone=TIMEZONE)
     # Un termometro e' una misura istantanea: dall'08/10/2026 il dato fermo
     # gli toglie le ore ferme -- qui il giorno intero -- e la misura che

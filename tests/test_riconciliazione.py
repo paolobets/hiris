@@ -26,12 +26,14 @@ from pathlib import Path
 import pytest
 
 from hiris.app.home_space.house import House
-from hiris.app.home_space.reader import HomeSpace, build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace, build_home_space
 from hiris.app.home_space.topology import Mirror, ha_running, live_mirror
-from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY, Fact, KnowledgeStore
 from hiris.app.mind.recipe_turn import ANSWER_FIELDS, DECLINED_FIELD
 from hiris.app.mind.reconciliation import reconcile, what_to_forget
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta, Refused
@@ -172,8 +174,8 @@ def archivi(tmp_path):
 @pytest.mark.asyncio
 async def test_la_riconciliazione_scrive_sugli_archivi_e_lo_dice(archivi, caplog):
     store, knowledge, home_space = archivi
-    app = {"observations": store, "knowledge": knowledge, "home_space_store": home_space,
-           "entity_cache": SpecchioFinto(STATES), "ha_client": _Client({"state": "RUNNING"})}
+    app = {OBSERVATIONS_KEY: store, KNOWLEDGE_KEY: knowledge, HOME_SPACE_KEY: home_space,
+           ENTITY_CACHE_KEY: SpecchioFinto(STATES), HA_CLIENT_KEY: _Client({"state": "RUNNING"})}
 
     with caplog.at_level(logging.INFO, logger="hiris.app.mind.reconciliation"):
         await reconcile(app)
@@ -189,8 +191,8 @@ async def test_la_riconciliazione_scrive_sugli_archivi_e_lo_dice(archivi, caplog
 @pytest.mark.asyncio
 async def test_a_casa_non_avviata_gli_archivi_restano_e_il_log_dice_perche(archivi, caplog):
     store, knowledge, home_space = archivi
-    app = {"observations": store, "knowledge": knowledge, "home_space_store": home_space,
-           "entity_cache": SpecchioFinto(STATES), "ha_client": _Client({"state": "STARTING"})}
+    app = {OBSERVATIONS_KEY: store, KNOWLEDGE_KEY: knowledge, HOME_SPACE_KEY: home_space,
+           ENTITY_CACHE_KEY: SpecchioFinto(STATES), HA_CLIENT_KEY: _Client({"state": "STARTING"})}
 
     with caplog.at_level(logging.INFO, logger="hiris.app.mind.reconciliation"):
         await reconcile(app)

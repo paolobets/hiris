@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.rounds import behavior_reader
 from hiris.app.proxy.entity_cache import EntityCache
-from hiris.app.server import behavior_reader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta

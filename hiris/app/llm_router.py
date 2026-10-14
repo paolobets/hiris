@@ -5,6 +5,8 @@ import time
 from contextvars import ContextVar
 from typing import Any
 
+from aiohttp import web
+
 from .claude_runner import (
     RunnerBackendError,
     _current_tool_calls,
@@ -71,14 +73,15 @@ class LLMRouter:
     backend solleva, si prova il successivo della catena.
 
     `model_chain` e' la catena che l'utente ha ordinato, gia' filtrata a chi
-    puo' rispondere (`providers.providers_in_chain`, vedi `server.py`). E'
+    puo' rispondere (`providers.providers_in_chain`, vedi `startup.py` e
+    `agent/bridge_governor._recompute_chain`). E'
     OBBLIGATORIA, e vale per quello che dice anche quando e' vuota: una catena
     vuota significa «nessuno in catena», non «ripiega su un ordine di
     strategia».
 
     **Il ramo «libreria» e' uscito** (Tappa 7, Task 9; voce M-07): `strategy`,
     `chat_policy`, `_norm_policy` e `_STRATEGY_ORDER` servivano solo quando
-    nessuno passava una catena, e `server.py` la passa sempre. I tre ordini
+    nessuno passava una catena, e `startup.py` la passa sempre. I tre ordini
     sono rimasti come i tre preset della pagina Modelli (`providers.PRESETS`),
     che e' l'unico posto in cui erano ancora una decisione.
     """
@@ -90,14 +93,14 @@ class LLMRouter:
         registry: Any = None,
         **backends: Any,
     ) -> None:
-        # `registro` è `provider_occurrences.OccurrenceRegistry` (app["occurrence_registry"]).
+        # `registro` è `provider_occurrences.OccurrenceRegistry` (app[OCCURRENCES_KEY]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
         # di libreria che non ha una app intorno; quando c'è, ogni giro del
         # ciclo di ripiego ci scrive che cosa ha visto. I runner non lo
         # ricevono: il turno della catena passa di qui, e due scrittori della
         # stessa osservazione sarebbero due rappresentazioni dello stesso
         # fatto. I turni del ponte, che di qui non passano, li registra chi li
-        # raccoglie (`server.py`, `api/`).
+        # raccoglie (`usage/bridge_loads.py`, `api/`).
         self._registry = registry
         members = chain_members()
         unknown = sorted(set(backends) - set(members))
@@ -261,4 +264,7 @@ class LLMRouter:
         compito, portava uno strumento «scappato» come testo (B22). Stessa
         ContextVar dei runner, come `last_truncated`."""
         return _current_tool_leaked.get()
+
+
+LLM_ROUTER_KEY = web.AppKey("llm_router", LLMRouter)
 

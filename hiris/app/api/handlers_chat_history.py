@@ -1,5 +1,6 @@
 from aiohttp import web
 
+from ..chat_settings import CHAT_SETTINGS_KEY
 from ..chat_store import (
     count_user_turns,
     delete_conversation,
@@ -8,8 +9,10 @@ from ..chat_store import (
     new_conversation,
     resume_conversation,
 )
-from ..chat_thread import adopt_if_owner, request_thread, unknown_id_text
+from ..chat_thread import SYNC_TURNS_KEY, adopt_if_owner, request_thread, unknown_id_text
 from ..home_space.historian import home_space_zone, house_timezone, instant_out
+from ..reasoning.queue import REASONING_QUEUE_KEY
+from ..storage import DATA_DIR_KEY
 from .boundary import error_response, house_clock_of
 from .handlers_chat import PENDING_REPLY_ERROR
 
@@ -45,9 +48,9 @@ def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
     Due strade, una frase (quella di `handle_chat`): il turno del ponte, che
     la coda conosce (`has_pending_chat`, ripieghi compresi), e il turno
     sincrono della catena, che dura quanto la chiamata al modello e lascia il
-    suo segno in `app["sync_turns"]` (`handlers_chat._sync_turn`)."""
-    queue = request.app.get("reasoning_queue")
-    sync_turns = request.app.get("sync_turns")
+    suo segno in `app[SYNC_TURNS_KEY]` (`handlers_chat._sync_turn`)."""
+    queue = request.app.get(REASONING_QUEUE_KEY)
+    sync_turns = request.app.get(SYNC_TURNS_KEY)
     if ((queue is not None and queue.has_pending_chat(thread))
             or (sync_turns is not None and sync_turns.busy(thread))):
         return error_response(409, PENDING_REPLY_ERROR)
@@ -55,7 +58,7 @@ def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
 
 
 async def handle_get_chat_history(request: web.Request) -> web.Response:
-    data_dir = request.app["data_dir"]
+    data_dir = request.app[DATA_DIR_KEY]
     thread = request_thread(request)
     # La cronologia di prima va al proprietario alla sua prima lettura: e' la
     # pagina che apre per prima, e senza questa riga la vedrebbe vuota finche'
@@ -64,7 +67,7 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # Si passa `retention_days` esplicitamente: senza, `load_history`
     # ricadrebbe in silenzio sul default del suo parametro, qualunque cosa
     # l'utente abbia scelto in «Impostazioni chat».
-    giorni = request.app["chat_settings"].retention_days
+    giorni = request.app[CHAT_SETTINGS_KEY].value.retention_days
     # collaudo 3.22, C4: `include_timestamp=True` SOLO qui -- questa e' la
     # rotta che disegna le bolle, e disegnarle con `new Date()` "al momento
     # del disegno" (il client, prima di questa correzione) affermava un'ora
@@ -94,8 +97,8 @@ async def handle_list_conversations(request: web.Request) -> web.Response:
     # di prima. Le tre scritture qui sotto NON adottano: su un'orfana
     # rispondono come per un id che non esiste.
     await adopt_if_owner(request.app, request, thread)
-    rows = list_conversations(request.app["data_dir"], thread=thread,
-                              days=request.app["chat_settings"].retention_days)
+    rows = list_conversations(request.app[DATA_DIR_KEY], thread=thread,
+                              days=request.app[CHAT_SETTINGS_KEY].value.retention_days)
     # «oggi», «ieri» della barra laterale: li dice l'orologio della casa
     # (C-17), sulle cifre di `ultimo_messaggio` nell'ora della casa.
     zone = _house_zone(request)
@@ -110,7 +113,7 @@ async def handle_new_conversation(request: web.Request) -> web.Response:
     busy = _reply_in_flight(request, thread)
     if busy is not None:
         return busy
-    new_conversation(request.app["data_dir"], thread=thread)
+    new_conversation(request.app[DATA_DIR_KEY], thread=thread)
     return web.json_response({"ok": True})
 
 
@@ -119,9 +122,9 @@ async def handle_resume_conversation(request: web.Request) -> web.Response:
     busy = _reply_in_flight(request, thread)
     if busy is not None:
         return busy
-    if not resume_conversation(request.app["data_dir"], thread=thread,
+    if not resume_conversation(request.app[DATA_DIR_KEY], thread=thread,
                                session_id=request.match_info["id"],
-                               days=request.app["chat_settings"].retention_days):
+                               days=request.app[CHAT_SETTINGS_KEY].value.retention_days):
         return error_response(404, _CONVERSATION_NOT_FOUND)
     return web.json_response({"ok": True})
 
@@ -131,7 +134,7 @@ async def handle_delete_conversation(request: web.Request) -> web.Response:
     busy = _reply_in_flight(request, thread)
     if busy is not None:
         return busy
-    if not delete_conversation(request.app["data_dir"], thread=thread,
+    if not delete_conversation(request.app[DATA_DIR_KEY], thread=thread,
                                session_id=request.match_info["id"]):
         return error_response(404, _CONVERSATION_NOT_FOUND)
     return web.json_response({"ok": True})

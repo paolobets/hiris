@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -192,7 +194,7 @@ async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
         request_ceiling,
     )
 
-    app: dict = {"ha_client": _house()}
+    app: dict = {HA_CLIENT_KEY: _house()}
     prepara_ruoli(app)
     by_subject = await ceiling_for(app, soggetto)
     request = _Richiesta(soggetto=soggetto)
@@ -208,7 +210,7 @@ async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
 async def test_ceiling_for_legge_il_ruolo_da_home_assistant():
     from hiris.app.api.soffitto import ceiling_for, prepara_ruoli
 
-    app: dict = {"ha_client": _house()}
+    app: dict = {HA_CLIENT_KEY: _house()}
     prepara_ruoli(app)
     assert (await ceiling_for(app, _PERSONA))["amministrare"] is False
     assert (await ceiling_for(app, {"specie": "persona", "id": "u-2"}))[

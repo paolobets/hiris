@@ -22,6 +22,19 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.action.actuator import ACTUATOR_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.keeper.sweeper import SWEEPER_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -77,13 +90,13 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     # sono quelle GREZZE di `config/auth/list` (Tappa 2, Task 12): prima il
     # client era un `AsyncMock`, e `users()` rendeva un oggetto finto che
     # nessuna casa manda.
-    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+    app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
         {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
          "system_generated": False, "group_ids": ["system-admin"]}]})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
     # `claude` porta una credenziale di TURNO, che vive quanto il turno.
     from conftest import credenziale_ponte
@@ -93,10 +106,10 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
     porta = PortaFinta()
-    app["home_space_store"] = casa
-    app["memory_store"] = memoria
-    app["agenda"] = promesse
-    app["action_actuator"] = porta
+    app[HOME_SPACE_KEY] = casa
+    app[MEMORY_STORE_KEY] = memoria
+    app[AGENDA_KEY] = promesse
+    app[ACTUATOR_KEY] = porta
     # L'orologio vero: e' lui che conclude una promessa e fa partire la
     # notifica dalla porta. `interpreta` non viene mai chiamato in questi test
     # -- qui il turno gira sul ponte, non sulla catena.
@@ -107,7 +120,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     # temporaneo) e il soffitto -- gli stessi collaboratori del montaggio vero.
     cartella_chat = tmp_path / "chat"
     cartella_chat.mkdir()
-    app["data_dir"] = str(cartella_chat)
+    app[DATA_DIR_KEY] = str(cartella_chat)
 
     async def _one_phone(_subject):
         return Recipients(("notify.mobile_app_iphone_bet",), None)
@@ -119,7 +132,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     async def _no_owner():
         return None
 
-    app["sweeper"] = Sweeper(
+    app[SWEEPER_KEY] = Sweeper(
         promesse, execute=porta.execute, interpreta=_mai,
         recipients=_one_phone,
         write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
@@ -290,7 +303,7 @@ async def test_concludi_dal_ponte_porta_l_esito_nel_filo_e_al_telefono(rotta):
 
     assert [c["servizio"] for c, _ in porta.chiamate] == [
         "notify.mobile_app_iphone_bet"]
-    righe = load_history(client.app["data_dir"], thread=PAOLO)
+    righe = load_history(client.app[DATA_DIR_KEY], thread=PAOLO)
     assert len(righe) == 1 and righe[0]["role"] == "assistant"
     assert "in bagno +0,4 gradi" in righe[0]["content"]
     assert promesse.read(ident)["motivo"] is None
@@ -312,7 +325,7 @@ async def test_concludi_dal_ponte_lascia_un_successo_nel_registro(rotta):
                    "arguments": {"avvisare": False, "testo": "tutto fermo"}},
     }, promessa=ident)
 
-    esito = client.app["occurrence_registry"].occurrence("subscription")
+    esito = client.app[OCCURRENCES_KEY].occurrence("subscription")
     assert esito is not None, (
         "una promessa conclusa dal ponte non ha lasciato traccia nel "
         "registro degli esiti")

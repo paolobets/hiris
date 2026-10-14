@@ -49,10 +49,23 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from typing import NamedTuple as _NamedTuple
 
+from aiohttp import web
+
 from .answer_reasons import NO_ANSWER_REASON
-from .models_store import _STORE_DEFAULTS, bridge_deadline_min
+from .claude_runner import CLAUDE_RUNNER_KEY
+from .home_space.reader import HOME_SPACE_KEY
+from .live_value import LiveValue
+from .llm_router import LLM_ROUTER_KEY
+from .models_store import _STORE_DEFAULTS, MODELS_CONFIG_KEY, bridge_deadline_min
+from .provider_occurrences import OCCURRENCES_KEY
 from .providers import subscription_has_token
-from .reasoning.queue import JOB_WAITING, PRIORITY_BACKGROUND, PRIORITY_CHAT
+from .reasoning.queue import JOB_WAITING, PRIORITY_BACKGROUND, PRIORITY_CHAT, REASONING_QUEUE_KEY
+from .usage.store import USAGE_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+BRIDGE_ACTIVE_KEY = web.AppKey("bridge_active", LiveValue)
+MODEL_CHAIN_KEY = web.AppKey("model_chain", LiveValue)
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +73,13 @@ logger = logging.getLogger(__name__)
 def _bridge_on(app) -> bool:
     """Se il ponte della coda di ragionamento e' cablato in questa app.
 
-    `server._on_startup` crea `app["reasoning_queue"]` sempre; `ponte.attivo`
-    (nell'archivio) governa la spazzata e `app["bridge_active"]`, non
+    `startup._on_startup` crea `app[REASONING_QUEUE_KEY]` sempre; `ponte.attivo`
+    (nell'archivio) governa la spazzata e `app[BRIDGE_ACTIVE_KEY]`, non
     l'esistenza dell'oggetto coda. Quindi la presenza della chiave e' il
     segnale giusto -- ed e' anche il modo in cui i test entrano e escono dal
     ramo senza toccare la configurazione.
     """
-    return app.get("reasoning_queue") is not None
+    return app.get(REASONING_QUEUE_KEY) is not None
 
 
 def _subscription_can_answer(app) -> tuple[bool, str]:
@@ -83,11 +96,11 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     if not subscription_has_token():
         return False, "manca il token"
     cap = int(
-        (app.get("models_config") or {})
+        app[MODELS_CONFIG_KEY].value
         .get("ponte", {})
         .get("tetto_giornaliero",
              _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
-    if app["reasoning_queue"].count_exchanges_today() >= cap:
+    if app[REASONING_QUEUE_KEY].count_exchanges_today() >= cap:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "
             "alla catena.", cap)
@@ -511,7 +524,7 @@ def house_hour(app, now: float | None = None) -> str:
     from .home_space.historian import house_timezone
 
     try:
-        zone = house_timezone(app.get("home_space_store"))
+        zone = house_timezone(app.get(HOME_SPACE_KEY))
     except Exception as exc:
         logger.warning("fuso della casa non leggibile (%s: %s): l'ora si dice "
                        "in UTC", type(exc).__name__, exc)
@@ -976,7 +989,7 @@ def declare_downgrade(app, *, agent: str, reason: str,
     logger.warning(
         "%s: il piano non puo' servire questo giro (%s): si scende alla "
         "catena. Il costo cambia -- dal forfait al consumo.", agent, reason)
-    store = app.get("usage")
+    store = app.get(USAGE_KEY)
     if store is None:
         return
     try:
@@ -1004,10 +1017,10 @@ def who_answered(app) -> str:
     decisione di `who_answers`, e perche' adesso la chiedono due porte: una
     regola che vale solo se il chiamante se la ricorda non e' una regola.
     """
-    registry = app.get("occurrence_registry")
+    registry = app.get(OCCURRENCES_KEY)
     if registry is None:
         return ""
-    for name in (app.get("model_chain") or []):
+    for name in app[MODEL_CHAIN_KEY].value:
         occurrence = registry.occurrence(name)
         if occurrence and occurrence["tipo"] == "risposto":
             return name
@@ -1026,7 +1039,7 @@ def bridge_model(app) -> str:
     valeva per meta' dei turni del piano. Il predefinito e' quello di
     `_STORE_DEFAULTS`, l'unico: non se ne scrive un secondo qui.
     """
-    return ((app.get("models_config") or {}).get("ponte", {}).get("modello")
+    return (app[MODELS_CONFIG_KEY].value.get("ponte", {}).get("modello")
             or _STORE_DEFAULTS["ponte"]["modello"])
 
 
@@ -1035,7 +1048,7 @@ def bridge_in_play(app) -> bool:
     quando il piano, adesso, non puo' rispondere -- e' la domanda che la chat
     si fa prima di partire, per non mandare un secondo turno mentre il ponte
     ne ha uno in volo (D-06, Chiusura 13/10/2026)."""
-    return bool(app.get("bridge_active") and _bridge_on(app))
+    return bool(app[BRIDGE_ACTIVE_KEY].value and _bridge_on(app))
 
 
 def who_answers(app) -> tuple[str, str]:
@@ -1064,7 +1077,7 @@ def chain_runner(app):
     scritta in nove punti, fra `server.py`, la chat, la promessa, il
     «Rifalla» e la pagina dei consumi.
     """
-    return app.get("llm_router") or app.get("claude_runner")
+    return app.get(LLM_ROUTER_KEY) or app.get(CLAUDE_RUNNER_KEY)
 
 
 class Start(_NamedTuple):
@@ -1144,9 +1157,9 @@ def enqueue_turn(app, species: str, wake: dict, context: dict, *,
     06/10/2026: la ragione di D4, «la chat passa avanti», e' chi aspetta).
     """
     declared = SPECIES[species]
-    deadline_min = bridge_deadline_min(app.get("models_config"))
+    deadline_min = bridge_deadline_min(app[MODELS_CONFIG_KEY].value)
     now = _time.time() if now is None else now
-    job_id = app["reasoning_queue"].enqueue(
+    job_id = app[REASONING_QUEUE_KEY].enqueue(
         declared.kind, wake, {**context, "model": bridge_model(app)},
         now + deadline_min * 60, now=now, thread=thread,
         priority=declared.priority if priority is None else priority)
@@ -1181,7 +1194,7 @@ def turn_in_flight(app, kind: str, *, wake_key: str | None = None) -> bool:
     del proponente e i suoi «Rifalla» stanno nella stessa specie, e un
     rifacimento in volo non deve fermare il giro orario (attori, Task 4.4).
     """
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     if queue is None:
         return False
     turn = queue.latest(kind, wake_key=wake_key)
@@ -1214,7 +1227,7 @@ def too_soon_to_ask_again(app, kind: str, *, wake_key: str | None = None) -> boo
     """Se l'ultimo turno di quella specie e' finito senza risposta utile da
     meno di un'ora. `wake_key` restringe ai turni con quella chiave nella
     sveglia, come `turn_in_flight`."""
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     turn = queue.latest(kind, wake_key=wake_key) if queue else None
     if turn is None:
         return False

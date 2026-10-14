@@ -378,8 +378,6 @@ _RADICE = Path(__file__).resolve().parent.parent / "hiris" / "app"
 _ECCEZIONI_GATE = (
     # comando WebSocket di Home Assistant, non il nome di uno strumento
     ("proxy/ha_client.py", "system_log/list"),
-    # riga di log per chi gestisce l'add-on, mai servita al modello
-    ("server.py", "system_log() ha "),
     # SQL: `view` e' una colonna/valore della tabella dei consumi
     ("usage/store.py", "CREATE TABLE IF NOT EXISTS consumo_giorno"),
 )

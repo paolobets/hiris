@@ -4,6 +4,8 @@ import asyncio
 import logging
 import re
 
+from aiohttp import web
+
 from ..home_space import type_vocabulary
 from ..home_space.ha_vocabulary import domain_of
 from ._sanitize import sanitize_ha_value
@@ -55,7 +57,7 @@ def automation_config_id(cache, entity_id: str) -> str | None:
     cui quell'id vive gia', senza aprire un secondo rubinetto verso Home
     Assistant, e' lo specchio dello stato: `_to_minimal` lo porta in
     `automation_id`. I due chiamanti che devono risolverlo -- il collettore
-    delle tracce in `server.py` e la storia in
+    delle tracce in `mind/conditions_round.py` e la storia in
     `home_space/house_history.py` (`run_key`) -- farebbero
     altrimenti la stessa scansione due volte, in due file diversi: e' un solo posto, come per
     `inventory_is_readable` qui sopra.
@@ -635,13 +637,13 @@ class EntityCache:
         self._states: dict[str, dict] = {}
         # False finche' una lettura intera non e' arrivata in fondo. Serve a
         # distinguere "inventario non ancora pronto" da "casa senza entita'":
-        # server.py logga e prosegue se il caricamento iniziale fallisce, e
+        # startup.py logga e prosegue se il caricamento iniziale fallisce, e
         # senza la bandiera chi legge risponderebbe con un elenco vuoto in
         # entrambi i casi ("la casa e' vuota"). Il controllo comune e'
         # `inventory_is_readable`, qui sopra.
         self._loaded = False
         # True quando l'ultima rilettura intera e' fallita (A-09): lo specchio
-        # e' quello di prima, e chi riprova (`server.reload_entity_inventory`,
+        # e' quello di prima, e chi riprova (`rounds.reload_entity_inventory`,
         # il giro dei due minuti) lo sa. Vedi la proprieta' `stale`.
         self._stale = False
         # Tampone della rilettura (`_reread`): None fuori dalla rilettura;
@@ -677,7 +679,7 @@ class EntityCache:
         connessione era giu'. Fino al 03/10/2026 nessuno lo riprovava: il giro
         dei due minuti guardava solo `loaded`, e lo specchio restava vecchio
         fino alla riconnessione successiva. Lo guarda
-        `server.reload_entity_inventory`.
+        `rounds.reload_entity_inventory`.
         """
         return self._stale
 
@@ -846,5 +848,8 @@ class EntityCache:
         if entity_ids is None:
             return dict(self._states)
         return {eid: self._states[eid] for eid in entity_ids if eid in self._states}
+
+
+ENTITY_CACHE_KEY = web.AppKey("entity_cache", EntityCache)
 
 

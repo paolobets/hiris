@@ -29,7 +29,18 @@ import logging
 import secrets
 import time
 
-from ..reasoning.queue import JOB_EXPIRED, JOB_FAILED, JOB_WAITING, PRIORITY_CHAT
+from aiohttp import web
+
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..reasoning.queue import (
+    JOB_EXPIRED,
+    JOB_FAILED,
+    JOB_WAITING,
+    PRIORITY_CHAT,
+    REASONING_QUEUE_KEY,
+)
 from ..states import PENDING, SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
@@ -39,7 +50,9 @@ from ..steering import (
     enqueue_turn,
     start,
 )
+from ..usage.store import USAGE_KEY
 from . import proposer_turn
+from .store import OBSERVATIONS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +75,7 @@ DISCARDED = "scartato"
 #: I rifacimenti in corso sulla catena, per id di proposta. Sulla catena il
 #: turno non passa dalla coda, e due pressioni ravvicinate pagherebbero due
 #: turni: questo insieme vive solo finche' la richiesta e' aperta.
-CHAIN_IN_FLIGHT = "rifalla_in_volo"
+CHAIN_IN_FLIGHT = web.AppKey("rifalla_in_volo", set)
 
 #: La regola del rifacimento, davanti al contratto degli esiti. Era la meta'
 #: di `_REDO_SYSTEM`; l'altra meta' -- chi sei, cosa sai fare -- e' il
@@ -160,13 +173,13 @@ def _presence(app):
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
 
-    home_space = app.get("home_space_store")
-    return (PresenceMask(House.read(home_space, app.get("entity_cache")))
+    home_space = app.get(HOME_SPACE_KEY)
+    return (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
             if home_space is not None else None)
 
 
 def _built_in(app, exchange: str | None) -> frozenset[str]:
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return frozenset()
     return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)
@@ -187,7 +200,7 @@ async def redo(app, store, proposal: dict, request: str, *,
     # rifacimento scartato da un'automazione arrivata prima.
     if redoing(app, proposal) or automate_turn.preparing(app) == ident:
         raise InFlight(ident)
-    in_flight = app.setdefault(CHAIN_IN_FLIGHT, set())
+    in_flight = app[CHAIN_IN_FLIGHT]
     route, downgrade, runner = start(app, PROPOSER_SPECIES)
     observation = observation_of(store, proposal)
     if route == "ponte":
@@ -207,7 +220,7 @@ async def redo(app, store, proposal: dict, request: str, *,
         dispatcher = await declared.guard(app, exchange)
         presence = getattr(dispatcher, "presence", None)
         answer, turn = await chain_turn(
-            runner, PROPOSER_SPECIES, usage=app.get("usage"), soggetto=subject,
+            runner, PROPOSER_SPECIES, usage=app.get(USAGE_KEY), soggetto=subject,
             max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
             user_message=build_question(proposal, request, observation,
                                         presence=presence),
@@ -235,7 +248,7 @@ def deliver(app, job: dict, decision: dict) -> None:
 
     wake = job.get("wake") or {}
     ident = wake.get(WAKE_KEY)
-    store = app.get("observations")
+    store = app.get(OBSERVATIONS_KEY)
     if not ident or store is None:
         return
     occurrence = proposer_turn.apply_outcomes(
@@ -271,7 +284,7 @@ def settle(app, store, ident: str, request: str, occurrence: dict, *,
                                  why=outcome["perche"], now_ts=time.time())
     else:
         built = outcome["proposta_id"]
-        constructions = app.get("constructions")
+        constructions = app.get(CONSTRUCTIONS_KEY)
         if constructions is not None:
             constructions.answers(built, actor=PROPOSER_SPECIES,
                                   fingerprint=row["impronta"], prova=row["prova"])
@@ -300,7 +313,7 @@ def state(app, proposal: dict) -> dict | None:
     porta il suo id."""
     from ..reasoning.queue import turn_answer
 
-    queue, store = app.get("reasoning_queue"), app.get("observations")
+    queue, store = app.get(REASONING_QUEUE_KEY), app.get(OBSERVATIONS_KEY)
     if queue is None or store is None \
             or proposal.get("stato") != PENDING:
         return None

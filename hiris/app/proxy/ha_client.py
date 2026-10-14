@@ -9,6 +9,7 @@ from typing import ClassVar
 from urllib.parse import quote
 
 import aiohttp
+from aiohttp import web
 
 # La forma di un entity_id (dominio.oggetto) vive una volta sola, nel
 # vocabolario di Home Assistant (`ha_vocabulary.is_entity_id`): qui serve a
@@ -97,6 +98,16 @@ AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
 # frammento (`_async_matching_config_entries_json_fragments`). Nessun
 # `require_admin` sul comando. L'evento porta una LISTA in `event`, non un
 # evento del bus: si smista per id dell'iscrizione, non per `event_type`.
+#
+# **Esiste su ogni Home Assistant che HIRIS ammette** (S-35, letto il
+# 14/10/2026 nel sorgente): il comando compare al tag `2022.10.0` (assente al
+# `2022.9.0`), prima del minimo dichiarato in `config.yaml`
+# (`homeassistant: "2024.7.0"`). Al tag `2024.7.0` lo registra
+# `components/config/config_entries.py::async_setup` senza condizioni e senza
+# `require_admin`, e il componente `config` e' una dipendenza dichiarata di
+# `frontend` (`components/frontend/manifest.json`): una casa che mostra la
+# pagina dell'add-on lo ha. Un rifiuto resta possibile solo come guasto, e
+# `_subscription_confirmed` lo scrive nel registro come errore.
 CONFIG_ENTRIES_SUBSCRIPTION = "config_entries/subscribe"
 
 #: L'evento con cui Home Assistant dichiara di aver FINITO di avviarsi, e lo
@@ -2017,7 +2028,7 @@ class HAClient:
         legge come «non ha mai girato».
 
         **La risoluzione `entity_id -> id di configurazione` NON avviene
-        qui**, ma ai chiamanti (`server.py::watch_automation_outcomes` e la
+        qui**, ma ai chiamanti (`mind/conditions_round.py::watch_automation_outcomes` e la
         storia, `house_history.read_runs`), dove lo specchio dello stato
         gia' vive: il client resta «legge e non giudica». L'id sta in
         `attributes["id"]` dello stato dell'entita' --
@@ -2876,3 +2887,6 @@ class HAClient:
                     cb(event_type)
                 except Exception:
                     logger.exception("anagrafe_listener callback raised")
+
+
+HA_CLIENT_KEY = web.AppKey("ha_client", HAClient)

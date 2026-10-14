@@ -21,7 +21,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from hiris.app import conservazione, server, storage
+from hiris.app import conservazione, storage
+from hiris.app.api.handlers_health import handle_health
+from hiris.app.live_value import LiveValue
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._avvio import started_app  # noqa: F401
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -168,7 +173,7 @@ async def test_la_salute_dice_per_quanto_HIRIS_ricorda(started_app):
 
     Mutazione ESEGUITA (08/10/2026): tolta la chiave `conservazione` da
     `handle_health` -- rossa (`KeyError`)."""
-    response = await server.handle_health(SimpleNamespace(app=started_app, get={}.get))
+    response = await handle_health(SimpleNamespace(app=started_app, get={}.get))
     rows = json.loads(response.body)["conservazione"]
     assert rows == conservazione.declarations(started_app)
     by_place = {(row["archivio"], row["tabella"]): row for row in rows}
@@ -188,18 +193,18 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     e il ponte non c'entra.
 
     Mutazione ESEGUITA (08/10/2026): in `conservazione.nightly` l'archivio
-    della coda saltato quando `app["bridge_active"]` e' falso -- rossa."""
+    della coda saltato quando `app[BRIDGE_ACTIVE_KEY]` e' falso -- rossa."""
     from unittest import mock
 
-    queue = started_app["reasoning_queue"]
+    queue = started_app[REASONING_QUEUE_KEY]
     window_s = queue.CONSERVAZIONE["reasoning_jobs"][0] * storage.DAY_S
     born = time.time() - window_s - 3600
     queue.enqueue("chat", {}, {}, born + 60, job_id="vecchio", now=born)
     queue.sweep_expired(now=born + 120)
     assert queue.get("vecchio")["status"] == "expired"
 
-    with mock.patch.dict(started_app, {"bridge_active": False}):
-        await started_app["scheduler"].get_job("hiris_retention").func()
+    with mock.patch.dict(started_app, {BRIDGE_ACTIVE_KEY: LiveValue(False)}):
+        await started_app[SCHEDULER_KEY].get_job("hiris_retention").func()
 
     # Riletta da una seconda connessione: una cancellazione non committata si
     # vedrebbe dalla connessione dell'archivio e da nessun'altra (rilievo

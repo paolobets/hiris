@@ -25,13 +25,17 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.rounds import HA_PROBLEMS_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_home_space import compose_briefing
+from hiris.app.home_space.rounds import reread_ha_problems
 from hiris.app.home_space.topology import PROBLEM_SEVERITY
-from hiris.app.server import reread_ha_problems
+from hiris.app.live_value import LiveValue
+from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_briefing import compose
 
@@ -326,12 +330,12 @@ def test_is_fixable_assente_non_e_un_no():
 # --------------------------------------------------------------------------
 
 def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
-    """La catena intera: `app["ha_problems"]` -> `compose_briefing` ->
+    """La catena intera: `app[HA_PROBLEMS_KEY]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
-    app = {"ha_problems": {"problemi": [
+    app = {**live_values(), HA_PROBLEMS_KEY: LiveValue({"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
-    ]}}
+    ]})}
     testo, _ = compose_briefing(app)
     assert "caldaia" in testo
     assert "pressione" in testo
@@ -355,10 +359,10 @@ def test_rileggi_problemi_mette_la_fotografia_in_ram():
         _p(domain="hue", issue_id="ignorato", ignored=True)]
     house = CasaFinta(inputs)
 
-    app: dict = {}
+    app = live_values()
     esito = asyncio.run(reread_ha_problems(app, house))
-    assert esito == app["ha_problems"]
-    assert [p["domain"] for p in app["ha_problems"]["problemi"]] == ["caldaia"]
+    assert esito == app[HA_PROBLEMS_KEY].value
+    assert [p["domain"] for p in app[HA_PROBLEMS_KEY].value["problemi"]] == ["caldaia"]
     assert house.calls == [("repairs/list_issues", None)]
 
 
@@ -370,9 +374,9 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     client, con la causa e il codice."""
     house = CasaFinta(synthetic_inputs(), silence={"repairs/list_issues"})
 
-    app: dict = {}
+    app = live_values()
     asyncio.run(reread_ha_problems(app, house))
-    assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto",
+    assert app[HA_PROBLEMS_KEY].value == {"errore": "Home Assistant non ha risposto",
                                   "causa": "silenzio", "codice": None}
     testo, _ = compose_briefing(app)
     assert "non si è potuto guardare" in testo
@@ -385,9 +389,9 @@ def test_rileggi_problemi_porta_anche_il_rifiuto_col_suo_motivo():
     house = CasaFinta(synthetic_inputs(), refuse={"repairs/list_issues": {
         "code": "unknown_command", "message": "Unknown command."}})
 
-    app: dict = {}
+    app = live_values()
     asyncio.run(reread_ha_problems(app, house))
-    assert app["ha_problems"] == {"errore": "Unknown command.", "causa": "rifiuto",
+    assert app[HA_PROBLEMS_KEY].value == {"errore": "Unknown command.", "causa": "rifiuto",
                                   "codice": "unknown_command"}
     testo, _ = compose_briefing(app)
     assert "Unknown command." in testo
@@ -402,9 +406,9 @@ def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():
     class _ClienteVecchio:
         pass
 
-    app: dict = {}
+    app = live_values()
     assert asyncio.run(reread_ha_problems(app, _ClienteVecchio())) is None
-    assert "ha_problems" not in app
+    assert app[HA_PROBLEMS_KEY].value is None
     assert asyncio.run(reread_ha_problems(app, None)) is None
 
 

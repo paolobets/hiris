@@ -28,6 +28,11 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -72,18 +77,18 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
-    app["constructions"] = ConstructionStore(
+    app[AGENDA_KEY] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    app[CONSTRUCTIONS_KEY] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni.db"))
-    app["ha_client"] = CasaFinta(synthetic_inputs(),
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs(),
                                  answers={"config/auth/list": lambda extra: [_ADMIN]})
-    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]  # il client di prova e' locale
+    app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]  # il client di prova e' locale
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["agenda"].close()
-    app["constructions"].close()
+    app[AGENDA_KEY].close()
+    app[CONSTRUCTIONS_KEY].close()
 
 
 @pytest_asyncio.fixture
@@ -138,8 +143,8 @@ async def test_i_due_numeri_contano_cose_diverse(client):
     guarda (`promise.py::STATES_ESITO`). Usare `cancel()` qui, come faceva la
     prima stesura, rendeva questa prova verde per la ragione sbagliata.
     """
-    agenda = client.app["agenda"]
-    costruzioni = client.app["constructions"]
+    agenda = client.app[AGENDA_KEY]
+    costruzioni = client.app[CONSTRUCTIONS_KEY]
 
     identificatori = [_promessa(agenda, n, AMMINISTRATORE) for n in range(7)]
     for ident in identificatori[:2]:
@@ -168,7 +173,7 @@ async def test_senza_archivio_e_503(client_nudo):
 @pytest.mark.asyncio
 async def test_segna_solo_gli_id_passati(client):
     """La pagina segna cio' che ha MOSTRATO, non «tutto il non letto»."""
-    agenda = client.app["agenda"]
+    agenda = client.app[AGENDA_KEY]
     identificatori = [_promessa(agenda, n) for n in range(3)]
     for ident in identificatori:
         agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
@@ -191,7 +196,7 @@ async def test_non_segna_una_in_sospeso(client):
     campo nullo, marcarla la toglierebbe da una sezione in cui non e' mai
     stata, e soprattutto le scriverebbe addosso un'ora di lettura falsa.
     """
-    agenda = client.app["agenda"]
+    agenda = client.app[AGENDA_KEY]
     ident = _promessa(agenda, 0)
 
     risposta = await client.post("/api/agenda/read", json={"ids": [ident]},
@@ -216,7 +221,7 @@ async def test_post_senza_x_requested_with_e_403_e_non_segna(client, csrf_strett
     rotta registrata prima del middleware risponderebbe 403 e avrebbe gia'
     scritto.
     """
-    agenda = client.app["agenda"]
+    agenda = client.app[AGENDA_KEY]
     ident = _promessa(agenda, 0)
     agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
 
@@ -246,7 +251,7 @@ async def test_una_proposta_scaduta_non_conta_nel_pallino(client):
     proposta in attesa» -- il contrario del mestiere del pallino (review
     indipendente, rilievo 6).
     """
-    costruzioni = client.app["constructions"]
+    costruzioni = client.app[CONSTRUCTIONS_KEY]
     _proposta(costruzioni, 0, now=ADESSO)
     oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
 

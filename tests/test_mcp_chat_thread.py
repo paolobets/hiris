@@ -34,15 +34,20 @@ import pytest_asyncio
 from conftest import SCADENZA_LONTANA
 from hiris.app import server
 from hiris.app.action.construction.revisions import ConstructionStore
-from hiris.app.action.construction.workshop import Workshop
-from hiris.app.action.journal import Journal
+from hiris.app.action.construction.workshop import WORKSHOP_KEY, Workshop
+from hiris.app.action.journal import JOURNAL_KEY, Journal
 from hiris.app.agent import runner as ponte
 from hiris.app.api import handlers_mcp
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
 from hiris.app.api.soffitto import _SOLO_AMMINISTRATORI
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_thread import thread_for
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
 from hiris.app.steering import PROMISE_SPECIES, SPECIES
+from hiris.app.usage import bridge_loads
 from tests.test_construction_workshop import WorkshopHouse, _intento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -66,16 +71,16 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     # Chi e' amministratore lo dice Home Assistant: Paolo si', Marta no. Le
     # righe sono quelle GREZZE di `config/auth/list`, e la regola che ne fa un
     # ruolo e' quella del client vero (Tappa 2, Task 12).
-    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+    app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
         {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,
          "system_generated": False, "group_ids": ["system-admin"]},
         {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
          "system_generated": False, "group_ids": ["system-users"]},
     ]})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     from conftest import credenziale_ponte
     credenziale_ponte(app, TOKEN)
 
@@ -83,9 +88,9 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     coda = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
-    app["workshop"] = Workshop(casa_ha.client, archivio, cronaca)
-    app["journal"] = cronaca
-    app["reasoning_queue"] = coda
+    app[WORKSHOP_KEY] = Workshop(casa_ha.client, archivio, cronaca)
+    app[JOURNAL_KEY] = cronaca
+    app[REASONING_QUEUE_KEY] = coda
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -111,7 +116,7 @@ def _accoda_chat(coda, soggetto, *, prendi=True) -> str:
 
 
 async def _proposta(client) -> str:
-    officina = client.app["workshop"]
+    officina = client.app[WORKSHOP_KEY]
     esito = await officina.propose(_intento(), actor="chat",
                                    exchange="turno-1", now=time.time())
     assert "errore" not in esito, esito
@@ -334,7 +339,7 @@ def test_il_registro_dei_turni_scrive_il_soggetto_del_ponte(tmp_path):
     from hiris.app.usage.store import UsageStore
 
     archivio = UsageStore(str(tmp_path / "usage.db"))
-    registra = server._registra_turno_ponte(archivio)
+    registra = bridge_loads._registra_turno_ponte(archivio)
     registra({"species": "chat", "channel": "ponte", "provider": "subscription",
               "model": "m", "duration_ms": 1, "iterations": 1, "tools": [],
               "outcome": "riuscito", "subject": MARTA})

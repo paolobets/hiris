@@ -34,9 +34,17 @@ from __future__ import annotations
 import logging
 import time
 
+from aiohttp import web
+
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
+from .queue import REASONING_QUEUE_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+SUBMIT_CHAT_REPLY_KEY = web.AppKey("submit_chat_reply")
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +66,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
     riuscita. Cio' che va saputo di un ramo lo dice il ramo stesso, nel
     registro dell'add-on, e il resto lo dice l'archivio che il ramo scrive.
     """
-    q = app.get("reasoning_queue")
+    q = app.get(REASONING_QUEUE_KEY)
     decision = decision or {}
     if q is None or not q.submit(job_id, nonce, decision, now):
         return False
@@ -119,7 +127,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # resta ignorato, come dalla fetta E4.
         reply = decision.get("reply")
         thread = (job or {}).get("thread")
-        submit_chat_reply = app.get("submit_chat_reply")
+        submit_chat_reply = app.get(SUBMIT_CHAT_REPLY_KEY)
         if thread is None:
             logger.warning(
                 "consegna di un turno di chat senza filo (job_id=%s): accodato "
@@ -156,8 +164,9 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
     # Qui arrivano i turni che non sono ne' di chat ne' di promessa: quelli
     # degli attori. Non c'e' niente da attuare -- la decisione resta
     # registrata -- e la risposta se la va a prendere dalla coda il giro
-    # periodico che ha accodato il turno (i raccoglitori in `server.py` e
-    # `mind/proposer_round._collect`). E' la consegna normale di un attore, e
+    # periodico che ha accodato il turno (i raccoglitori `_collect_*` di
+    # `mind/analyst_round.py`, `mind/recipe_round.py`, `mind/observer_round.py`
+    # e `mind/proposer_round._collect`). E' la consegna normale di un attore, e
     # non si annota: fino alla Chiusura (S-23) qui scattava un WARNING a ogni
     # consegna che non fosse dell'osservatore, su un meccanismo -- la
     # revisione olistica -- uscito da mesi.
@@ -194,3 +203,86 @@ def close_expired_promise(app, job: dict) -> None:
         logger.warning(
             "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
             ident, minuti)
+
+
+def _chat_reply_submitter(app, data_dir: str):
+    """La consegna del ponte per i turni `kind="chat"`, pubblicata
+    dall'avvio in `app[SUBMIT_CHAT_REPLY_KEY]`.
+
+    Viveva annidata in `_on_startup`; e' una funzione di modulo dal
+    03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'», D1) perche'
+    le prove la possano costruire su un'app e una cartella loro invece di
+    ritagliarla dal testo. Stesso codice, chiamata dallo stesso punto.
+    """
+    # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
+    # jobs — writes the runner's reply into chat_store instead of actuating
+    # the house. Fetta «le chat divise»: la risposta va nel filo del job
+    # (`thread`, letto dalla coda da `reasoning/consegna`) -- la
+    # cronologia di chi ha scritto, non una sola per tutti.
+    from ..chat_store import _is_toxic_assistant as _is_toxic_chat_reply
+    from ..chat_store import append_messages as _append_chat_messages
+    from ..chat_thread import ChatThread
+
+    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:
+        if not reply_text:
+            return
+        # Final-review Fix 3 (Slice 4b): mirror the sync path's persistence
+        # guard (handlers_chat.py) so a reply that arrived via the async
+        # runner gets the same treatment as one from the local runner.
+        if _is_toxic_chat_reply(reply_text):
+            # Drop silently from the history, same as the sync path: the next
+            # turn must not inherit a poisoned/leaked history. There's no
+            # HTTP response here to carry a visible error (the caller already
+            # got a 202 long ago) -- the poll route's chat_reply_skipped
+            # handling is the user-facing side of this.
+            #
+            # Rilievo R1 della revisione indipendente sul tratto
+            # `v3.22.2..HEAD`: la guardia sopra non deve tacere due volte.
+            # Fino a questa correzione un turno del ponte tornato con uno dei
+            # cinque sentinella d'errore (`chat_store.BRIDGE_SENTINELS`)
+            # spariva qui senza lasciare NIENTE nel registro degli esiti --
+            # non e' la stessa cosa di "non l'ho interrogato" (`occurrence()
+            # is None`): il ponte ha risposto, e ha risposto con un
+            # fallimento. Confondere le due e' la stessa contraddizione da
+            # cui e' nato il Task 6 (Modelli che diceva «non l'hai ancora
+            # usato» con turni riusciti in `consumo_giorno`), spostata dal
+            # successo al fallimento. Il testo del sentinella non e' una
+            # causa nota (nessun codice HTTP, nessuna credenziale, nessun
+            # modello) -- e' `family="altro"`, come ogni guasto che il
+            # prodotto misura senza inventarne il perche'.
+            registry = app.get(OCCURRENCES_KEY)
+            if registry is not None:
+                registry.fallimento(
+                    SUBSCRIPTION.id, family="altro", code=None,
+                    message=reply_text, durata_s=0.0)
+            return
+        # Task 6 (collaudo-3.22, indagine-abbonamento.md): QUI, e non prima
+        # -- e non in `agent/runner.py::_logga_uso`, dove parte gia' Consumi.
+        # Il ponte non passa mai da `LLMRouter.chat()` (l'unico chiamante di
+        # `.successo(...)` fino a questa fetta): la pagina Modelli non aveva
+        # nessun modo di sapere che il ponte avesse MAI risposto, e diceva
+        # «non l'hai ancora usato» a un proprietario con 105 turni riusciti
+        # da fine agosto (`GET /api/usage`, `last_use` di oggi).
+        #
+        # `_logga_uso` (che alimenta Consumi) e' PIU' A MONTE di questo punto:
+        # gira dentro `_invoca`, prima che il chiamante guardi `invocation.rc`
+        # o `occurrence.has_result` -- un turno con `rc != 0` o senza evento
+        # finale puo' comunque avere un `usage` non vuoto (il conteggio dei
+        # token puo' arrivare anche su un esito d'errore) e farebbe scrivere
+        # un successo su un turno che non lo e' stato. Qui invece il successo
+        # e' un fatto GIA' accertato: siamo dopo il filtro di tossicita' che
+        # scarta i cinque sentinella d'errore del ponte
+        # (`chat_store.BRIDGE_SENTINELS`) e dopo il controllo «reply non
+        # vuota» -- se il codice arriva a questa riga, e' perche' sta per
+        # scrivere in cronologia una risposta vera, la stessa che l'utente
+        # sta per leggere. E' anche il motivo per cui NON sta in
+        # `reasoning/consegna` (proposta dell'audit L3 dell'agosto
+        # scorso, H2): li' la guardia e' solo «reply non vuota», che i
+        # sentinella la superano -- registrare il successo li' avrebbe
+        # sostituito la bugia di oggi con la bugia opposta.
+        registry = app.get(OCCURRENCES_KEY)
+        if registry is not None:
+            registry.successo(SUBSCRIPTION.id)
+        _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,
+                              thread=thread)
+    return _submit_chat_reply

@@ -40,6 +40,9 @@ import logging
 import time
 
 from ..home_space.ha_vocabulary import is_entity_id
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..proxy.ha_client import HA_CLIENT_KEY
 from ..steering import ANALYST_SPECIES, SPECIES, read_json, refused_lines
 from . import analyst
 
@@ -100,7 +103,7 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
     il turno non dice quale lettura e' servita a quale osservazione, e
     ripeterle su ognuna sarebbe una copia. Dal Task 3.6 (D5) arrivano sulla
     catena da `steering.TurnOutcome.tool_calls`, sul ponte dalla decisione
-    del turno, con lo stesso nome nudo (`server._collect_analyst_turn`).
+    del turno, con lo stesso nome nudo (`analyst_round._collect_analyst_turn`).
 
     `presence` (`privacy.PresenceMask`) riporta all'id vero un segnaposto che
     il modello ha letto negli strumenti e scritto in un `rimetti`.
@@ -532,7 +535,7 @@ class AnalystDispatcher:
 
     Sta DAVANTI al dispatcher della chat invece di modificarlo, come
     `PromiseDispatcher`: `compute` non deve esistere nella chat. Lo stesso
-    oggetto risponde sulla catena (`server.analyst_round`) e sul ponte
+    oggetto risponde sulla catena (`analyst_round.analyst_round`) e sul ponte
     (`/api/mcp`, `steering.Species.guard`).
     """
 
@@ -589,9 +592,9 @@ async def guard(app, exchange: str | None = None) -> AnalystDispatcher:
     from ..home_space.house_history import statistic_ids_for_round
     from ..home_space.privacy import PresenceMask
 
-    store = app.get("home_space_store")
-    ha = app.get("ha_client")
-    house = House.read(store, app.get("entity_cache")) if store is not None else None
+    store = app.get(HOME_SPACE_KEY)
+    ha = app.get(HA_CLIENT_KEY)
+    house = House.read(store, app.get(ENTITY_CACHE_KEY)) if store is not None else None
     if house is not None and ha is not None:
         with_statistics = await statistic_ids_for_round(app, ha)
         if not isinstance(with_statistics, dict):

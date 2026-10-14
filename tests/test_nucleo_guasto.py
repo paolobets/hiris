@@ -9,6 +9,9 @@ come gli altri: lo dice il compositore, e ogni porta riceve la stessa frase.
 import pytest
 
 from hiris.app.api.handlers_home_space import BRIEFING_FAILED, compose_briefing
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.startup import live_values
 from tests._runner_finto import RunnerFinto
 
 
@@ -23,7 +26,7 @@ class _MemoriaGuasta:
 
 
 def _app_guasta() -> dict:
-    return {"memory_store": _MemoriaGuasta()}
+    return {**live_values(), MEMORY_STORE_KEY: _MemoriaGuasta()}
 
 
 def test_il_compositore_dichiara_il_guasto_invece_di_sollevare():
@@ -46,7 +49,8 @@ async def test_la_rotta_del_nucleo_mostra_il_guasto_invece_di_un_500(aiohttp_cli
     from hiris.app.api.handlers_home_space import handle_get_briefing
 
     app = web.Application()
-    app["memory_store"] = _MemoriaGuasta()
+    app.update(live_values())
+    app[MEMORY_STORE_KEY] = _MemoriaGuasta()
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
@@ -67,7 +71,7 @@ async def test_la_promessa_sulla_catena_riceve_la_stessa_frase():
             "conclude", {"avvisare": False, "testo": "niente"})
 
     modello = RunnerFinto(turno=_conclude)
-    app = {"llm_router": modello, **_app_guasta()}
+    app = {LLM_ROUTER_KEY: modello, **_app_guasta()}
     await interpreta_promise(app, {"id": "p1", "frase": "dimmi", "domanda": "guarda",
                                    "istantanea": []})
     assert modello.ultima["context_str"] == BRIEFING_FAILED

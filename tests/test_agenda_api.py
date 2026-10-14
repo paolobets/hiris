@@ -22,12 +22,13 @@ import os
 import pytest
 import pytest_asyncio
 
-from hiris.app.action.journal import Journal
+from hiris.app.action.journal import JOURNAL_KEY, Journal
 from hiris.app.api.boundary import occurrence_out
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
 from hiris.app.server import create_app
+from hiris.app.storage import DATA_DIR_KEY
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),
 # senza niente di specifico alle impostazioni: stesso riuso cross-file gia'
@@ -53,24 +54,24 @@ async def client(aiohttp_client, tmp_path):
     app = create_app()
     # Lo scrive l'avvio (`_on_startup`), che qui non gira: senza, la lettura
     # dell'adozione dei fili (`chat_thread`) non ha dove guardare.
-    app["data_dir"] = str(tmp_path)
-    app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[AGENDA_KEY] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     # La cronaca (`GET /api/executions/{id}`, rilievo ① della review finale):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
     # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
     # sola in `create_app` -> `_avvia` (server.py).
-    app["journal"] = Journal(os.path.join(str(tmp_path), "azioni.db"))
+    app[JOURNAL_KEY] = Journal(os.path.join(str(tmp_path), "azioni.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["agenda"].close()
-    app["journal"].close()
+    app[AGENDA_KEY].close()
+    app[JOURNAL_KEY].close()
 
 
 @pytest.mark.asyncio
 async def test_get_promesse_torna_le_in_sospeso(client):
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "e' aumentata?"}, thread=SVILUPPO, now=1.0)
 
@@ -82,7 +83,7 @@ async def test_get_promesse_torna_le_in_sospeso(client):
 
 @pytest.mark.asyncio
 async def test_get_promesse_tutte_include_le_concluse(client):
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           thread=SVILUPPO, now=1.0)["promessa"]["id"]
@@ -98,7 +99,7 @@ async def test_get_promesse_tutte_include_le_concluse(client):
 async def test_get_dichiara_la_finestra_con_total_e_shown(client):
     """C-14 (13/10/2026): la rotta taglia a 200 e lo dice, con le stesse
     chiavi della pagina della memoria. Rossa prima: `KeyError: 'total'`."""
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                      "domanda": "?"}, thread=SVILUPPO, now=1.0)
     corpo = await (await client.get("/api/agenda?all=1")).json()
@@ -113,7 +114,7 @@ async def test_get_manda_le_parole_degli_stati_che_la_pagina_riconosce(client):
     `stato`. Mutazione ESEGUITA: `stati` tolto dalla risposta -- rossa qui e
     nelle prove JS della pagina."""
     from hiris.app import states
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                      "domanda": "?"}, thread=SVILUPPO, now=1.0)
     corpo = await (await client.get("/api/agenda?all=1")).json()
@@ -124,7 +125,7 @@ async def test_get_manda_le_parole_degli_stati_che_la_pagina_riconosce(client):
 
 @pytest.mark.asyncio
 async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           thread=SVILUPPO, now=1.0)["promessa"]["id"]
@@ -154,7 +155,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
     `csrf_middleware` di `/api/memories/{id}`. Un 403 non deve aver toccato
     l'archivio -- la promessa resta `in_attesa`, disdicibile per davvero piu'
     tardi, non "disdetta a meta'"."""
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           thread=SVILUPPO, now=1.0)["promessa"]["id"]
@@ -167,7 +168,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
 
 @pytest.mark.asyncio
 async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, csrf_stretto):
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           thread=SVILUPPO, now=1.0)["promessa"]["id"]
@@ -206,7 +207,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     """
     from hiris.app.home_space.tools import ToolDispatcher
 
-    archivio = client.app["agenda"]
+    archivio = client.app[AGENDA_KEY]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "?"}, thread=SVILUPPO, now=1.0)
 
@@ -234,7 +235,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
 @pytest.mark.asyncio
 async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
-    journal = client.app["journal"]
+    journal = client.app[JOURNAL_KEY]
     ident = journal.log(
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
         executed=True, changed=["light.studio"], now=1_755_600_000.0)
@@ -258,7 +259,7 @@ async def test_get_esecuzione_fallita_porta_error_sul_confine(client):
     """La riga di cronaca porta `errore` -- e' il dominio, e cosi' la legge
     il modello -- ma su HTTP esce `error`, come ogni altro errore (D2): la
     pagina Promesse legge `execution.error` (`agenda-route.js`)."""
-    journal = client.app["journal"]
+    journal = client.app[JOURNAL_KEY]
     ident = journal.log(
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
         executed=False, error="Home Assistant ha rifiutato la chiamata: 500",
@@ -282,10 +283,10 @@ async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
 async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
     # App a parte, SENZA "cronaca": mutare `client.app` di un'app gia'
     # avviata e' deprecato in aiohttp (e l'ha confermato un tentativo
-    # precedente di questo stesso test, con un `del client.app["journal"]`
+    # precedente di questo stesso test, con un `del client.app[JOURNAL_KEY]`
     # dopo il montaggio). Qui la chiave manca fin dall'inizio.
     #
-    # Mutazione: se la rotta leggesse `request.app["journal"]` con
+    # Mutazione: se la rotta leggesse `request.app[JOURNAL_KEY]` con
     # l'indicizzazione diretta invece di `.get(...)`, questa riga
     # solleverebbe un KeyError invece del 503 onesto -- il test lo
     # vedrebbe come un 500.
@@ -304,7 +305,7 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     passare, stessa esenzione di `GET /api/agenda`. Mutazione: se la rotta
     finisse dietro un controllo CSRF (o venisse registrata come POST/GET
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
-    journal = client.app["journal"]
+    journal = client.app[JOURNAL_KEY]
     ident = journal.log(actor="chat", service="a.b", entity=[],
                              executed=True, now=1.0)
     risposta = await client.get(f"/api/executions/{ident}")

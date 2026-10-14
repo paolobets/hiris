@@ -44,6 +44,8 @@ test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 import logging
 import time
 
+from aiohttp import web
+
 from ..proxy.ha_client import HAReadError
 
 logger = logging.getLogger(__name__)
@@ -356,3 +358,6 @@ class ServiceRegistry:
         rispondesse una lista vuota lascerebbe questo `False`.
         """
         return self._caricato_a is None
+
+
+SERVICE_REGISTRY_KEY = web.AppKey("service_registry", ServiceRegistry)

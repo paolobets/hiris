@@ -17,7 +17,7 @@ Home Assistant, i silenzi, le sequenze, i ritardi).
    ombreggia (`add_state_listener = None`) -- un nome di `vars(HAClient)`;
 2. un `AsyncMock`/`MagicMock`/`Mock`/`create_autospec` e' assegnato a un nome
    di client: `ha`, `ha_client`, `mock_ha`, `client`, un attributo
-   `.ha_client`, una voce `[...]["ha_client"]`;
+   `.ha_client`, una voce `[...][HA_CLIENT_KEY]` (o `[...]["ha_client"]`);
 3. un `setattr` -- `monkeypatch.setattr(x, "<nome>", ...)` o il `setattr`
    di Python -- sostituisce su un oggetto qualunque un nome di
    `vars(HAClient)` scritto per esteso (`"_ws_send"`, `"calendar_events"`):
@@ -54,7 +54,7 @@ nessuno nelle prove.
 Mutazione ESEGUITA (04/10/2026): aggiunta a `tests/test_entity_cache.py` una
 classe `_Ghost` con `async def get_states(self, entity_ids)` -- rossa, col
 messaggio che nomina file, riga, classe e metodo; poi una funzione con
-`app["ha_client"] = MagicMock()` -- rossa allo stesso modo. Ripristinato il
+`app[HA_CLIENT_KEY] = MagicMock()` -- rossa allo stesso modo. Ripristinato il
 file dalla copia, identico byte per byte (`cmp`). Sulle forme nuove, stesso
 giorno e stesso file: `monkeypatch.setattr(house, "get_states", ...)` --
 rossa; `patch.object(HAClient, "_ws_send", ...)` -- rossa; ripristinato
@@ -64,7 +64,8 @@ import ast
 import sys
 from pathlib import Path
 
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy import ha_client as ha_client_module
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY, HAClient
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,6 +74,12 @@ MOCK_FACTORIES = frozenset({"AsyncMock", "MagicMock", "Mock", "create_autospec"}
 
 #: I nomi con cui le prove chiamano il client di Home Assistant.
 CLIENT_NAMES = frozenset({"ha", "ha_client", "mock_ha", "client"})
+
+#: La voce dell'app che porta il client: la `web.AppKey` (X-32), per i nomi
+#: che il modulo che la dichiara le da', e la stringa che era fino al
+#: 14/10/2026. Senza i nomi, `app[HA_CLIENT_KEY] = MagicMock()` passava.
+CLIENT_ENTRIES = frozenset({"ha_client"} | {
+    nome for nome, valore in vars(ha_client_module).items() if valore is HA_CLIENT_KEY})
 
 #: Lista di AMMISSIONE: `(file relativo a tests/, classe o bersaglio, nome) ->
 #: ragione`. Vuota il 04/10/2026 (vedi il docstring).
@@ -105,7 +112,9 @@ def _is_client_target(target: ast.expr) -> bool:
     if isinstance(target, ast.Attribute):
         return target.attr == "ha_client"
     if isinstance(target, ast.Subscript):
-        return isinstance(target.slice, ast.Constant) and target.slice.value == "ha_client"
+        voce = target.slice
+        return ((isinstance(voce, ast.Constant) and voce.value in CLIENT_ENTRIES)
+                or (isinstance(voce, ast.Name) and voce.id in CLIENT_ENTRIES))
     return False
 
 
@@ -222,7 +231,10 @@ def test_la_scansione_vede_le_forme_che_vieta():
     non guarda piu' niente. E non vede cio' che non vieta: una classe con un
     nome che il client non ha, un mock dato a qualcos'altro, un `setattr` di
     un nome che il client non ha o non scritto per esteso, un `patch.object`
-    di un'altra classe."""
+    di un'altra classe.
+
+    Mutazione ESEGUITA (14/10/2026): la voce riconosciuta solo come stringa,
+    com'era prima di X-32 -- rossa (`app[HA_CLIENT_KEY]` non trovata)."""
     source = '''
 class FakeClient:
     async def get_states(self, entity_ids):
@@ -239,7 +251,7 @@ def build(app, runner):
     ha = AsyncMock()
     mock_ha = unittest.mock.MagicMock()
     client = create_autospec(HAClient)
-    app["ha_client"] = Mock()
+    app[HA_CLIENT_KEY] = Mock()
     runner.ha_client = MagicMock()
     runner._client = MagicMock()
     openai_client = MagicMock()
@@ -268,7 +280,7 @@ def replace(monkeypatch, house, cache):
         ("mock", "ha", "AsyncMock"),
         ("mock", "mock_ha", "MagicMock"),
         ("mock", "client", "create_autospec"),
-        ("mock", "app['ha_client']", "Mock"),
+        ("mock", "app[HA_CLIENT_KEY]", "Mock"),
         ("mock", "runner.ha_client", "MagicMock"),
         ("mock", "ha_client", "AsyncMock"),
         ("replace", "monkeypatch.setattr(house)", "_ws_send"),

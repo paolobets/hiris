@@ -26,9 +26,9 @@ from aiohttp.test_utils import make_mocked_request
 
 @pytest.mark.asyncio
 async def test_handle_config_returns_theme():
-    from hiris.app.api.handlers_config import handle_config
+    from hiris.app.api.handlers_config import THEME_KEY, handle_config
     app = MagicMock()
-    app.get = MagicMock(side_effect=lambda k, d=None: "dark" if k == "theme" else d)
+    app.get = MagicMock(side_effect=lambda k, d=None: "dark" if k is THEME_KEY else d)
     request = make_mocked_request("GET", "/api/config", app=app)
     resp = await handle_config(request)
     assert json.loads(resp.body) == {"theme": "dark"}

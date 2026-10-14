@@ -14,7 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from hiris.app.steering import start
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.live_value import LiveValue
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, start
+from hiris.app.usage.store import USAGE_KEY
 from tests.test_chat_subscription_path import _make_app
 
 _HANDLERS = (Path(__file__).resolve().parents[1] / "hiris" / "app" / "api"
@@ -36,10 +40,10 @@ def test_un_motivo_gia_noto_non_chiede_a_who_answers():
     catena anche col ponte acceso e il piano che, adesso, potrebbe
     rispondere."""
     usage = MagicMock()
-    app = {"llm_router": object(), "usage": usage, "bridge_active": True}
+    app = {LLM_ROUTER_KEY: object(), USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(True)}
     route, downgrade, runner = start(app, "chat", downgrade="scadenza")
     assert (route, downgrade) == ("catena", "scadenza")
-    assert runner is app["llm_router"]
+    assert runner is app[LLM_ROUTER_KEY]
     usage.log_fallback.assert_called_once()
     assert usage.log_fallback.call_args.args[:2] == ("chat", "scadenza")
 
@@ -53,9 +57,9 @@ async def test_senza_runner_il_ripiego_non_si_dichiara(tmp_path, monkeypatch):
     se c'era un runner."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    app["llm_router"] = None
-    app["claude_runner"] = None
-    app["usage"] = usage = MagicMock()
+    app[LLM_ROUTER_KEY] = None
+    app[CLAUDE_RUNNER_KEY] = None
+    app[USAGE_KEY] = usage = MagicMock()
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 503

@@ -1,7 +1,7 @@
 """La voce di menu di HIRIS e l'opzione che la governa (spec 2026-09-27 §2).
 
 L'opzione `non_admin_access` e' l'unica fonte della scelta: si legge UNA volta
-in `create_app` e da li' in poi vive in `app["non_admin_access"]`. All'avvio
+in `create_app` e da li' in poi vive in `app[ACCESS_FLAG_KEY]`. All'avvio
 HIRIS chiede al Supervisor il proprio slug, scrive in Home Assistant l'override
 della sua voce di menu (`frontend/update_panel`) e rilegge `get_panels` per
 dire nel registro lo stato VERO della voce.
@@ -37,17 +37,25 @@ import time
 import pytest
 from aiohttp import web
 
-from hiris.app import server
+from hiris.app import server, startup
 from hiris.app.action import installation
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.action.installation import INSTALLATION_TASK_KEY
+from hiris.app.api.admission import ACCESS_FLAG_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
 from hiris.app.proxy import ha_client
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY, HAClient
+from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
 from tests._specchio_finto import SpecchioFinto
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from casa_finta import SILENT, CasaFinta, Refused
+
+from hiris.app.startup import live_values
 
 HOUSE_SLUG = "6354e165_hiris"   # lo slug vero sulla casa, 27/09/2026
 LOGGER = "hiris.app.action.installation"
@@ -145,6 +153,7 @@ async def test_own_slug_chiede_al_supervisor_col_suo_gettone(aiohttp_server, mon
         return web.json_response({"result": "ok", "data": {"slug": HOUSE_SLUG}})
 
     app = web.Application()
+    app.update(live_values())
     app.router.add_get("/addons/self/info", info)
     srv = await aiohttp_server(app)
     monkeypatch.setattr(ha_client, "SUPERVISOR_URL", str(srv.make_url("")).rstrip("/"))
@@ -170,6 +179,7 @@ async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, mo
         return web.json_response({"result": "error"}, status=403)
 
     app = web.Application()
+    app.update(live_values())
     app.router.add_get("/addons/self/info", info)
     srv = await aiohttp_server(app)
     supervisore = str(srv.make_url("")).rstrip("/")
@@ -184,7 +194,7 @@ async def test_un_rifiuto_del_supervisor_si_dice_col_suo_nome(aiohttp_server, mo
     assert esito["codice"] == 403
 
 def _app(accesso: bool, ha):
-    return {"non_admin_access": accesso, "ha_client": ha}
+    return {**live_values(), ACCESS_FLAG_KEY: accesso, HA_CLIENT_KEY: ha}
 
 
 # ── L'opzione: una lettura, rigida, chiusa nel dubbio ────────────────────────
@@ -205,7 +215,7 @@ def test_l_opzione_si_legge_rigida_e_nel_dubbio_e_spenta(monkeypatch, grezzo, at
 
     app = server.create_app()
 
-    assert app["non_admin_access"] is atteso
+    assert app[ACCESS_FLAG_KEY] is atteso
 
 
 def test_l_opzione_nasce_in_create_app_e_non_si_rilegge(monkeypatch):
@@ -215,7 +225,7 @@ def test_l_opzione_nasce_in_create_app_e_non_si_rilegge(monkeypatch):
     app = server.create_app()
     monkeypatch.setenv("HIRIS_NON_ADMIN_ACCESS", "true")
 
-    assert app["non_admin_access"] is False
+    assert app[ACCESS_FLAG_KEY] is False
 
 
 def test_l_opzione_ha_una_casa_sola():
@@ -239,7 +249,7 @@ def test_l_opzione_ha_una_casa_sola():
         testo = f.read_text(encoding="utf-8")
         letture += [f.name for _ in re.finditer(r'"HIRIS_NON_ADMIN_ACCESS"', testo)]
         scritture += [f.name for _ in re.finditer(
-            r'\[\s*"non_admin_access"\s*\]\s*=(?!=)', testo)]
+            r'\[\s*ACCESS_FLAG_KEY\s*\]\s*=(?!=)', testo)]
     assert len(letture) == 1, letture
     assert len(scritture) == 1, scritture
 
@@ -354,7 +364,7 @@ async def test_senza_supervisor_non_si_chiama_nessuno(supervisor, monkeypatch, c
     else:
         monkeypatch.setenv("SUPERVISOR_TOKEN", token)
     ha = _casa()
-    app = {**_app(True, ha), "data_dir": str(tmp_path)}
+    app = {**_app(True, ha), DATA_DIR_KEY: str(tmp_path)}
 
     with caplog.at_level(logging.INFO, logger=LOGGER):
         await installation.install(app)
@@ -456,14 +466,14 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     Mutazione: aspettarla dentro l'avvio -- rossa (il client non parte)."""
     monkeypatch.setenv("HIRIS_NON_ADMIN_ACCESS", "true")
     app = server.create_app()
-    app.on_startup.remove(server._on_startup)
+    app.on_startup.remove(startup._on_startup)
     ha = _filo_appeso("frontend/update_panel")
-    app["ha_client"] = ha
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = RunnerFinto()
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["entity_cache"] = SpecchioFinto()
+    app[HA_CLIENT_KEY] = ha
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = RunnerFinto()
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[ENTITY_CACHE_KEY] = SpecchioFinto()
 
     client = await asyncio.wait_for(aiohttp_client(app), timeout=5)
     resp = await client.get("/api/health")
@@ -573,10 +583,10 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     assert _nucleo(ha), "precondizione: la sincronia e' appesa su update_panel"
 
     start = time.monotonic()
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     assert time.monotonic() - start < 1.0, "la chiusura ha aspettato la sincronia appesa"
-    assert app["installation_task"].done()
+    assert app[INSTALLATION_TASK_KEY].done()
 
 
 @pytest.mark.asyncio
@@ -594,9 +604,9 @@ async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog
 
 
 def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
-    """`start_installation` legge `app["ha_client"]`, che nasce in `_on_startup`:
+    """`start_installation` legge `app[HA_CLIENT_KEY]`, che nasce in `_on_startup`:
     l'ordine dei due e' un fatto, e si pinna."""
     app = server.create_app()
     hooks = list(app.on_startup)
-    assert server._on_startup in hooks and installation.start_installation in hooks
-    assert hooks.index(installation.start_installation) > hooks.index(server._on_startup)
+    assert startup._on_startup in hooks and installation.start_installation in hooks
+    assert hooks.index(installation.start_installation) > hooks.index(startup._on_startup)

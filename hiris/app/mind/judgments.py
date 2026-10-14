@@ -16,6 +16,8 @@ import re
 import sqlite3
 import time as _time
 
+from aiohttp import web
+
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.type_judgments import (
     _SUBJECT_KINDS,
@@ -35,8 +37,14 @@ from ..home_space.type_vocabulary import (
     REPO_JUDGMENTS,
     judgment_seed_rows,
 )
-from .knowledge import Fact
+from ..live_value import LiveValue
+from .knowledge import KNOWLEDGE_KEY, Fact
 from .seed import REPO_PRIORITY, SEED_AUTHOR
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+TYPE_JUDGMENTS_KEY = web.AppKey("type_judgments", LiveValue)
+TYPE_JUDGMENTS_STATUS_KEY = web.AppKey("type_judgments_status", LiveValue)
 
 #: La provenienza di una riga scritta dalla porta: **il proprietario l'ha
 #: detto** (`knowledge.PROVENANCES`). Fino al 08/10/2026 la porta scriveva
@@ -121,7 +129,7 @@ class JudgmentNotInEffect(RuntimeError):
 def build_judgments(knowledge, *, unavailable_reason: str | None = None) -> tuple[TypeJudgments,
                                                                                    dict]:
     """`unavailable_reason` vale solo senza sapere: e' l'errore vero con cui
-    l'archivio non si e' aperto (`server._open_knowledge`), e il `perche` lo
+    l'archivio non si e' aperto (`startup._open_knowledge`), e il `perche` lo
     porta invece del solo «non e' disponibile» (Task 7b, 17/09/2026)."""
     if knowledge is None:
         why = "il sapere non e' disponibile"
@@ -326,7 +334,7 @@ def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudg
 def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: str | None,
                    author_name: str, said_by: str, now=_time.time) -> dict:
     """**La porta unica** (spec §4): valida, scrive, ricostruisce l'istantanea e
-    sostituisce INSIEME `app["type_judgments"]` e `app["type_judgments_status"]`
+    sostituisce INSIEME `app[TYPE_JUDGMENTS_KEY]` e `app[TYPE_JUDGMENTS_STATUS_KEY]`
     -- la correzione vale subito (spec §0, decisione 2). Torna `{"riga",
     "istantanea"}`: la riga scritta e lo stato dell'istantanea intero
     (`_status`), lo stesso oggetto di `/api/health`.
@@ -349,11 +357,11 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     `soffitto.subject_name`, la casa dei nomi -- e mai dal corpo di una
     richiesta.
     """
-    knowledge = app.get("knowledge")
+    knowledge = app.get(KNOWLEDGE_KEY)
     if knowledge is None:
         raise JudgmentRefused("il sapere non e' disponibile")
     subject = str(subject or "").strip()
-    _check(subject_kind, subject, field, value, app.get("type_judgments", REPO_JUDGMENTS))
+    _check(subject_kind, subject, field, value, app[TYPE_JUDGMENTS_KEY].value)
     if value is None:
         seeded = _seed_values().get((subject_kind, subject, field))
         fact = None if seeded is None else Fact(
@@ -371,7 +379,8 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                     when_ts=now())
         _writing(knowledge.write, fact)
     judgments, status = build_judgments(knowledge)
-    app["type_judgments"], app["type_judgments_status"] = judgments, status
+    app[TYPE_JUDGMENTS_KEY].set(judgments)
+    app[TYPE_JUDGMENTS_STATUS_KEY].set(status)
     row = None if fact is None else {
         "soggetto_genere": fact.subject_kind, "soggetto": fact.subject, "campo": fact.field,
         "valore": fact.value, "chi": fact.who, "quando_ts": fact.when_ts}

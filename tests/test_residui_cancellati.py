@@ -28,6 +28,7 @@ import json
 import pathlib
 
 from hiris.app.conservazione import RESIDUI_DISMESSI, cancella_residui
+from hiris.app.usage.store import USAGE_KEY
 
 
 def _fai(cartella: pathlib.Path, nome: str, contenuto: str = "x") -> pathlib.Path:
@@ -297,8 +298,8 @@ def test_un_contatore_IMPORTATO_sparisce_uno_illeggibile_resta(tmp_path):
 
     async def boot() -> None:
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            seen["richieste"] = app["usage"].totali()["richieste"]
-            seen["importati"] = app["usage"].legacy_imported()
+            seen["richieste"] = app[USAGE_KEY].totali()["richieste"]
+            seen["importati"] = app[USAGE_KEY].legacy_imported()
 
     asyncio.run(boot())
 

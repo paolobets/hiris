@@ -17,9 +17,10 @@ import pytest_asyncio
 
 from conftest import firma, servizio_approvato
 from hiris.app import chat_store
-from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY, ConstructionStore
 from hiris.app.api import canali, ingresso
 from hiris.app.api.servizi import (
+    SERVICES_KEY,
     ServiziStore,
     migrate_service_threads,
     open_services,
@@ -27,9 +28,10 @@ from hiris.app.api.servizi import (
 )
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread, subject_key_for, thread_for
-from hiris.app.keeper.store import AgendaStore
-from hiris.app.memory.store import MemoryStore
-from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY, Fact, KnowledgeStore
+from hiris.app.storage import DATA_DIR_KEY
 from tests.test_admission import _compose
 
 _HIRIS = Path(__file__).resolve().parents[1] / "hiris"
@@ -50,7 +52,7 @@ def _riconosci(app, privata, pubblica) -> dict:
     soggetto, rifiuto = canali.riconosci(
         chiave=pubblica, momento=testata["X-HIRIS-Momento"],
         unico=testata["X-HIRIS-Unico"], firma=testata["X-HIRIS-Firma"],
-        metodo="GET", percorso="/api/health", corpo=b"", servizi=app["servizi"],
+        metodo="GET", percorso="/api/health", corpo=b"", servizi=app[SERVICES_KEY],
         visti={}, adesso=time.time())
     assert rifiuto is None, rifiuto
     return soggetto
@@ -64,7 +66,7 @@ def test_due_servizi_OMONIMI_hanno_due_fili(tmp_path):
     `canali.riconosci` -- `luogo:retropanel` per entrambi). Mutazione ESEGUITA
     (07/10/2026): `ident=autorizzato["nome"]` -- rossa sull'uguaglianza delle
     due chiavi."""
-    app = {"servizi": ServiziStore(str(tmp_path / "servizi.db"))}
+    app = {SERVICES_KEY: ServiziStore(str(tmp_path / "servizi.db"))}
     primo = servizio_approvato(app, "utente", nome="retropanel")
     secondo = servizio_approvato(app, "utente", nome="retropanel")
 
@@ -74,7 +76,7 @@ def test_due_servizi_OMONIMI_hanno_due_fili(tmp_path):
     assert uno["id"] == ServiziStore.fingerprint(primo[1])
     assert subject_key_for(uno) != subject_key_for(due)
     assert thread_for(uno, "canale") != thread_for(due, "canale")
-    app["servizi"].close()
+    app[SERVICES_KEY].close()
 
 
 def _sessione(data_dir: str, chiave: str, testo: str) -> None:
@@ -98,7 +100,7 @@ def test_la_migrazione_porta_i_fili_dal_nome_all_IMPRONTA(tmp_path, caplog):
     Mutazione ESEGUITA (07/10/2026): `rekey_subjects` che non scrive (il
     corpo dell'`UPDATE` con `WHERE 0`) -- rossa (`0 == 1`)."""
     data_dir = str(tmp_path)
-    app = {"servizi": ServiziStore(str(tmp_path / "servizi.db")), "data_dir": data_dir}
+    app = {SERVICES_KEY: ServiziStore(str(tmp_path / "servizi.db")), DATA_DIR_KEY: data_dir}
     privata, pubblica = servizio_approvato(app, "utente", nome="cucina", specie="luogo")
     servizio_approvato(app, "utente", nome="gemello", specie="integrazione")
     servizio_approvato(app, "utente", nome="gemello", specie="integrazione")
@@ -121,7 +123,7 @@ def test_la_migrazione_porta_i_fili_dal_nome_all_IMPRONTA(tmp_path, caplog):
     assert any("integrazione:gemello" in r for r in righe), righe
 
     assert migrate_service_threads(app) == {"sessioni di chat": 0}
-    app["servizi"].close()
+    app[SERVICES_KEY].close()
 
 
 T_NASCITA = 1_790_000_000.0  # un istante fisso, scelto a mano: non e' una misura
@@ -130,18 +132,18 @@ T_NASCITA = 1_790_000_000.0  # un istante fisso, scelto a mano: non e' una misur
 def _servizio_parlante(tmp_path) -> tuple[dict, str]:
     """Una casa con un servizio `luogo:cucina` approvato e gli archivi che la
     migrazione tocca; torna l'app e la chiave nuova del servizio."""
-    app = {"servizi": ServiziStore(str(tmp_path / "servizi.db")),
-           "data_dir": str(tmp_path),
-           "agenda": AgendaStore(str(tmp_path / "promesse.db")),
-           "constructions": ConstructionStore(str(tmp_path / "costruzioni.db")),
-           "memory_store": MemoryStore(str(tmp_path / "memoria.db")),
-           "knowledge": KnowledgeStore(str(tmp_path / "sapere.db"))}
+    app = {SERVICES_KEY: ServiziStore(str(tmp_path / "servizi.db")),
+           DATA_DIR_KEY: str(tmp_path),
+           AGENDA_KEY: AgendaStore(str(tmp_path / "promesse.db")),
+           CONSTRUCTIONS_KEY: ConstructionStore(str(tmp_path / "costruzioni.db")),
+           MEMORY_STORE_KEY: MemoryStore(str(tmp_path / "memoria.db")),
+           KNOWLEDGE_KEY: KnowledgeStore(str(tmp_path / "sapere.db"))}
     privata, pubblica = servizio_approvato(app, "utente", nome="cucina", specie="luogo")
     return app, subject_key_for(_riconosci(app, privata, pubblica))
 
 
 def _chiudi(app) -> None:
-    for chiave in ("servizi", "agenda", "constructions", "memory_store", "knowledge"):
+    for chiave in (SERVICES_KEY, AGENDA_KEY, CONSTRUCTIONS_KEY, MEMORY_STORE_KEY, KNOWLEDGE_KEY):
         app[chiave].close()
 
 
@@ -155,11 +157,11 @@ def test_le_promesse_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     Mutazione ESEGUITA (07/10/2026): l'agenda tolta dagli archivi di
     `_service_thread_archives` -- rossa, la promessa resta sotto il nome."""
     app, nuova = _servizio_parlante(tmp_path)
-    sua = app["agenda"].create(
+    sua = app[AGENDA_KEY].create(
         {"specie": "chiedi", "frase": "x", "quando_ts": T_NASCITA + 3600,
          "domanda": "?"}, thread=ChatThread("luogo:cucina", "canale"),
         now=T_NASCITA)["promessa"]["id"]
-    altrui = app["agenda"].create(
+    altrui = app[AGENDA_KEY].create(
         {"specie": "chiedi", "frase": "y", "quando_ts": T_NASCITA + 3600,
          "domanda": "?"}, thread=ChatThread("persona:u-paolo", "interno"),
         now=T_NASCITA)["promessa"]["id"]
@@ -167,9 +169,9 @@ def test_le_promesse_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
         moved = migrate_service_threads(app)
 
-    assert app["agenda"].read_in_thread(sua, ChatThread(nuova, "canale")) is not None
+    assert app[AGENDA_KEY].read_in_thread(sua, ChatThread(nuova, "canale")) is not None
     assert moved["promesse"] == 1
-    assert app["agenda"].read_in_thread(altrui, ChatThread("persona:u-paolo",
+    assert app[AGENDA_KEY].read_in_thread(altrui, ChatThread("persona:u-paolo",
                                                            "interno")) is not None
     assert "1 promesse" in caplog.text
     assert migrate_service_threads(app)["promesse"] == 0
@@ -187,7 +189,7 @@ def test_le_costruzioni_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     app, nuova = _servizio_parlante(tmp_path)
 
     def _proposta(soggetto: str) -> str:
-        return app["constructions"].propose(
+        return app[CONSTRUCTIONS_KEY].propose(
             operation="crea", domain="automation", key=soggetto.split(":")[1], actor="chat",
             exchange="t1", phrase="x", prima=None, dopo={"alias": "x"},
             helper=[], preview="x", stakes=None, now=T_NASCITA,
@@ -198,7 +200,7 @@ def test_le_costruzioni_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
         moved = migrate_service_threads(app)
 
-    leggi = app["constructions"].read
+    leggi = app[CONSTRUCTIONS_KEY].read
     assert leggi(sua, now=T_NASCITA)["thread"].subject_key == nuova
     assert leggi(altrui, now=T_NASCITA)["thread"].subject_key == "persona:u-paolo"
     assert moved["costruzioni"] == 1
@@ -216,7 +218,7 @@ def test_i_ricordi_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     `_service_thread_archives` -- rossa, sotto la chiave nuova non c'e'
     nessun ricordo."""
     app, nuova = _servizio_parlante(tmp_path)
-    memoria = app["memory_store"]
+    memoria = app[MEMORY_STORE_KEY]
     memoria.remember("la cucina ha due finestre", detto_da="cucina",
                      said_by="luogo:cucina")
     memoria.remember("preferisco la luce calda", detto_da="Paolo",
@@ -245,7 +247,7 @@ def test_le_righe_del_sapere_del_servizio_passano_all_IMPRONTA(tmp_path, caplog)
     `_service_thread_archives` -- rossa, la riga resta sotto il nome; e il
     commit di `conn` al posto di `_commit` -- rossa, la versione non avanza."""
     app, nuova = _servizio_parlante(tmp_path)
-    sapere = app["knowledge"]
+    sapere = app[KNOWLEDGE_KEY]
     for chi, soggetto in (("cucina", "luogo:cucina"), ("Paolo", "persona:u-paolo")):
         sapere.write(Fact(
             subject_kind="tipo", subject=f"sensor.{chi.lower()}", field="genere",
@@ -267,12 +269,12 @@ def test_le_righe_del_sapere_del_servizio_passano_all_IMPRONTA(tmp_path, caplog)
     # N86-1 (giro 86): l'archivio atteso e non aperto non sparisce in
     # silenzio. Mutazione ESEGUITA (07/10/2026): il `logger.warning` tolto --
     # rossa, la riga non c'e'.
-    app["knowledge"] = None
+    app[KNOWLEDGE_KEY] = None
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="hiris.app.api.servizi"):
         assert "righe del sapere" not in migrate_service_threads(app)
     assert "righe del sapere: archivio non aperto, non migrate" in caplog.text
-    app["knowledge"] = sapere
+    app[KNOWLEDGE_KEY] = sapere
     _chiudi(app)
 
 
@@ -293,7 +295,7 @@ async def test_l_avvio_vero_migra_ogni_archivio_del_soggetto(tmp_path):
 
     vecchia = "luogo:cucina"
     servizi = ServiziStore(str(tmp_path / "servizi.db"))
-    _privata, pubblica = servizio_approvato({"servizi": servizi}, "utente",
+    _privata, pubblica = servizio_approvato({SERVICES_KEY: servizi}, "utente",
                                             nome="cucina", specie="luogo")
     servizi.close()
     nuova = f"luogo:{ServiziStore.fingerprint(pubblica)}"
@@ -321,36 +323,36 @@ async def test_l_avvio_vero_migra_ogni_archivio_del_soggetto(tmp_path):
 
     async with started_with(tmp_path) as app:
         trovate = {
-            "agenda": app["agenda"].read(promessa)["thread"].subject_key,
-            "constructions": app["constructions"].read(
+            AGENDA_KEY: app[AGENDA_KEY].read(promessa)["thread"].subject_key,
+            CONSTRUCTIONS_KEY: app[CONSTRUCTIONS_KEY].read(
                 costruzione, now=T_NASCITA)["thread"].subject_key,
-            "memory_store": [r["said_by"] for r in app["memory_store"].fetch(limit=10)],
-            "knowledge": app["knowledge"].get("tipo", "sensor.cucina", "genere").said_by,
+            MEMORY_STORE_KEY: [r["said_by"] for r in app[MEMORY_STORE_KEY].fetch(limit=10)],
+            KNOWLEDGE_KEY: app[KNOWLEDGE_KEY].get("tipo", "sensor.cucina", "genere").said_by,
         }
 
     assert {chiave for _nome, chiave in SUBJECT_ARCHIVES} == set(trovate), (
         "un archivio nuovo in SUBJECT_ARCHIVES: questa prova deve scrivergli una riga")
-    assert trovate == {"agenda": nuova, "constructions": nuova,
-                       "memory_store": [nuova], "knowledge": nuova}, trovate
+    assert trovate == {AGENDA_KEY: nuova, CONSTRUCTIONS_KEY: nuova,
+                       MEMORY_STORE_KEY: [nuova], KNOWLEDGE_KEY: nuova}, trovate
 
 
 def test_l_avvio_apre_l_archivio_e_migra_nello_stesso_gesto(tmp_path):
     """L'avvio chiama `open_services` (la chiamata sta fuori da `server.py`,
-    regola del 06/10/2026): apre l'archivio, lo mette in `app["servizi"]` e
+    regola del 06/10/2026): apre l'archivio, lo mette in `app[SERVICES_KEY]` e
     migra i fili. Mutazione ESEGUITA (07/10/2026): togliere
     `migrate_service_threads(app)` da `open_services` -- rossa, il filo resta
     sotto il nome."""
     data_dir = str(tmp_path)
     path = str(tmp_path / "servizi.db")
-    prima = {"servizi": ServiziStore(path), "data_dir": data_dir}
+    prima = {SERVICES_KEY: ServiziStore(path), DATA_DIR_KEY: data_dir}
     _privata, pubblica = servizio_approvato(prima, "utente", nome="cucina", specie="luogo")
-    prima["servizi"].close()
+    prima[SERVICES_KEY].close()
     _sessione(data_dir, "luogo:cucina", "accendi la luce")
 
-    app = {"data_dir": data_dir}
+    app = {DATA_DIR_KEY: data_dir}
     store = open_services(app, path)
 
-    assert app["servizi"] is store
+    assert app[SERVICES_KEY] is store
     assert _testi(data_dir, f"luogo:{ServiziStore.fingerprint(pubblica)}") == [
         "accendi la luce"]
     store.close()
@@ -374,8 +376,8 @@ async def casa(aiohttp_client, tmp_path):
     app = _compose(tmp_path)
     client = await aiohttp_client(app)
     yield client
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio

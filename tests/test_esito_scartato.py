@@ -26,6 +26,7 @@ import pytest
 from conftest import SCADENZA_LONTANA
 from hiris.app import steering
 from hiris.app.agent import runner as ponte
+from hiris.app.usage import bridge_loads
 from hiris.app.usage.store import UsageStore
 
 
@@ -205,11 +206,10 @@ def test_sul_ponte_la_decisione_porta_la_riga_del_suo_turno(monkeypatch):
 
 
 def test_il_gancio_del_server_torna_l_id_della_riga(consumi):
-    """`server._registra_turno_ponte`: l'id che il runner consegna e' quello
+    """`bridge_loads._registra_turno_ponte`: l'id che il runner consegna e' quello
     della riga scritta, non un nome nuovo."""
-    from hiris.app import server
 
-    registra = server._registra_turno_ponte(consumi)
+    registra = bridge_loads._registra_turno_ponte(consumi)
     ident = registra({"species": "analista", "channel": "ponte",
                       "provider": "subscription", "model": "m",
                       "duration_ms": 1, "iterations": 1, "tools": [],

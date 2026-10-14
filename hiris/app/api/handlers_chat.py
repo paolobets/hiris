@@ -5,7 +5,11 @@ from contextlib import nullcontext
 
 from aiohttp import web
 
-from ..chat_settings import MESSAGE_CAP
+from ..action.actuator import ACTUATOR_KEY
+from ..action.construction.workshop import WORKSHOP_KEY
+from ..action.journal import JOURNAL_KEY
+from ..action.registry import SERVICE_REGISTRY_KEY
+from ..chat_settings import CHAT_SETTINGS_KEY, MESSAGE_CAP
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -14,7 +18,13 @@ from ..chat_store import (
     load_history,
     unanswered_assistant_lines,
 )
-from ..chat_thread import ChatThread, adopt_if_owner, request_thread, unknown_id_text
+from ..chat_thread import (
+    SYNC_TURNS_KEY,
+    ChatThread,
+    adopt_if_owner,
+    request_thread,
+    unknown_id_text,
+)
 
 # `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
@@ -26,8 +36,15 @@ from ..chat_thread import ChatThread, adopt_if_owner, request_thread, unknown_id
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.historian import house_timezone, local_date
 from ..home_space.house import House
+from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
+from ..keeper.store import AGENDA_KEY
+from ..memory.store import MEMORY_STORE_KEY
+from ..mind.judgments import TYPE_JUDGMENTS_KEY
+from ..mind.knowledge import KNOWLEDGE_KEY
+from ..mind.view import mind_view
 from ..model_resolution import downgrade_note
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
 
 # Fix round 1, Important 2 (Task 5): il nome di chi parla arriva
@@ -35,7 +52,10 @@ from ..providers import SUBSCRIPTION
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
-from ..reasoning.queue import JOB_DECIDED, JOB_EXPIRED, JOB_FAILED, JOB_WAITING
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..proxy.ha_client import HA_CLIENT_KEY
+from ..proxy.state_translations import STATE_TRANSLATIONS_KEY
+from ..reasoning.queue import JOB_DECIDED, JOB_EXPIRED, JOB_FAILED, JOB_WAITING, REASONING_QUEUE_KEY
 from ..steering import (
     bridge_in_play,
     chain_turn,
@@ -44,10 +64,11 @@ from ..steering import (
     start,
     with_hour,
 )
+from ..storage import DATA_DIR_KEY
+from ..usage.store import USAGE_KEY
 from .boundary import error_body, error_response, house_clock_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
-from .handlers_mind import mind_view
 from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
@@ -66,12 +87,12 @@ _REPLY_NOT_ARRIVED = "La risposta non è arrivata in tempo. Riprova."
 _MAX_HISTORY_TOKENS = 6000
 
 def _sync_turn(app, thread: ChatThread):
-    """Il turno sincrono di `thread`, segnato in `app["sync_turns"]`.
+    """Il turno sincrono di `thread`, segnato in `app[SYNC_TURNS_KEY]`.
 
     L'app vera lo crea in `create_app`; un'app di prova costruita a mano che
     non lo porta non ha nessuna rotta delle conversazioni da proteggere, e il
     turno gira senza segno."""
-    turns = app.get("sync_turns")
+    turns = app.get(SYNC_TURNS_KEY)
     return turns.turn(thread) if turns is not None else nullcontext()
 
 
@@ -238,8 +259,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                          "quello di chi l'ha aperto o quello del suo mestiere "
                          "(steering.Species.ceiling), mai nessuno")
     return ToolDispatcher(
-        app.get("home_space_store"),
-        app.get("memory_store"),
+        app.get(HOME_SPACE_KEY),
+        app.get(MEMORY_STORE_KEY),
         # Il soffitto di chi ha aperto il turno (I-1), o quello dichiarato dal
         # suo mestiere (decisione 13): mai `None`, vedi sopra.
         soffitto=soffitto,
@@ -252,8 +273,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # ricevere una stringa vuota che si legge «ha parlato e non si
         # capiva».
         phrase=frase,
-        cache=app.get("entity_cache"),
-        actuator=app.get("action_actuator"),
+        cache=app.get(ENTITY_CACHE_KEY),
+        actuator=app.get(ACTUATOR_KEY),
         # Il canale verso Home Assistant, per `related`: quello strumento non
         # legge l'archivio, chiede a HA chi tocca una cosa
         # (`search/related`). Senza questa riga sarebbe uno strumento sempre
@@ -263,37 +284,37 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # E' lo STESSO oggetto che usa la porta dell'azione, non un secondo
         # canale: due connessioni verso HA sarebbero due stati di
         # riconnessione da tenere allineati.
-        ha=app.get("ha_client"),
+        ha=app.get(HA_CLIENT_KEY),
         # Il registro dei servizi (`action/registry.py`), la STESSA istanza
         # che riceve `action_actuator` qui sopra -- mai una seconda costruzione.
         # Serve a `promise` per verificare un `fai` ADESSO
         # (`ToolDispatcher._verify_now`).
-        registry=app.get("service_registry"),
+        registry=app.get(SERVICE_REGISTRY_KEY),
         # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.
-        agenda=app.get("agenda"),
+        agenda=app.get(AGENDA_KEY),
         # L'officina (`action/construction/workshop.py`, fetta «costruire»):
         # la casa di `propose`/`confirm`. Sorella di `action_actuator`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
-        workshop=app.get("workshop"),
+        workshop=app.get(WORKSHOP_KEY),
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
         exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
-        # `server.py`, mai una seconda apertura di `azioni.db`. Serve a
+        # `startup.py::_on_startup`, mai una seconda apertura di `azioni.db`. Serve a
         # `history` per attribuire a HIRIS cio' che ha fatto HIRIS.
-        journal=app.get("journal"),
+        journal=app.get(JOURNAL_KEY),
         # Le parole con cui uno stato si rende, dall'08/09/2026 lette da Home
         # Assistant e non piu' da quattro tabelle scritte a mano (spec §6). E'
         # la STESSA istanza che legge il nucleo (`compose_briefing`) e la rotta
         # dei fatti: una tabella sola, o uno strumento e il digesto direbbero
         # la stessa entita' con parole diverse -- che e' esattamente la
         # divergenza da cui e' nata la casa unica del vocabolario degli stati.
-        translations=app.get("state_translations"),
+        translations=app.get(STATE_TRANSLATIONS_KEY),
         # Il sapere: gli strumenti ne leggono il significato della classe di
         # un'entita'. STESSA istanza di quella che l'osservatore scrive --
         # una casa sola per cio' che HIRIS ha capito, o le due divergono.
-        knowledge=app.get("knowledge"),
+        knowledge=app.get(KNOWLEDGE_KEY),
         # L'istantanea dei giudizi sui tipi (spec 2026-09-16 §3, D3): il
         # dispatcher nasce a ogni turno (vedi il docstring qui sopra), e ogni
         # turno riceve l'istantanea corrente, non un fornitore -- una
@@ -303,7 +324,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # (`tests/test_execute_tool.py`), e `ToolDispatcher.__init__` ricade
         # gia' sul solo seme se riceve `None` -- in una vera richiesta questo
         # ramo non degrada mai, perche' l'avvio scrive sempre la chiave.
-        judgments=app.get("type_judgments"),
+        judgments=app[TYPE_JUDGMENTS_KEY].value,
         # Il filo di chi ha aperto il turno -- vedi il docstring qui sopra
         # per chi lo calcola e per la guardia che lo usa.
         thread=thread,
@@ -459,7 +480,7 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
         # L'archivio restituisce `started_at` in epoca (G-14, Tappa 8); un
         # istante che non si leggeva arriva `None`, e la riga esce senza data:
         # meglio nessuna data che una spostata.
-        timezone = house_timezone(app.get("home_space_store"))
+        timezone = house_timezone(app.get(HOME_SPACE_KEY))
         lines = ["Sessioni precedenti (memory):"]
         for s in past:
             epoch = s["started_at"]
@@ -504,7 +525,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     ripiego silenzioso dal forfait al consumo si scopre a fine mese.
 
     **«Chi ha risposto» si MISURA, non si deduce.** La tentazione è leggere
-    `app["model_chain"][0]`, cioè «ha risposto il primo della catena»:
+    `app[MODEL_CHAIN_KEY][0]`, cioè «ha risposto il primo della catena»:
     sarebbe falso proprio nel caso che conta, perché il router RIPIEGA, quindi
     il primo può aver fallito e aver risposto il secondo. Si legge quindi il
     registro degli esiti (Task 11), che il ciclo di ripiego del router aggiorna
@@ -515,7 +536,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     l'esito del turno PRECEDENTE.
 
     Se non si può stabilire chi ha risposto -- registro assente (nessun router:
-    `app["claude_runner"]` da solo non registra niente), catena vuota, nessun
+    `app[CLAUDE_RUNNER_KEY]` da solo non registra niente), catena vuota, nessun
     successo osservato -- si restituisce "" e la nota NON si scrive. Meglio
     nessuna nota che una che nomina il provider sbagliato: questa riga parla di
     soldi, e una riga falsa sui soldi è peggio del silenzio.
@@ -669,7 +690,7 @@ async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
     answered = False
     try:
         answer, turn = await chain_turn(
-            runner, "chat", usage=app.get("usage"), soggetto=soggetto,
+            runner, "chat", usage=app.get(USAGE_KEY), soggetto=soggetto,
             user_message=with_hour(phrase, house_hour(app)),
             system_prompt=system_prompt, context_str=context_str,
             conversation_history=history, model="auto",
@@ -681,13 +702,13 @@ async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
                 soggetto=soggetto, frase=phrase, thread=thread, house=house))
         answered = turn.answered
     except RunnerBackendError as exc:
-        # `runner` puo' essere `app["claude_runner"]`, cioe' un backend
+        # `runner` puo' essere `app[CLAUDE_RUNNER_KEY]`, cioe' un backend
         # diretto che SOLLEVA invece di consegnare una frase come il router.
         answer = exc.friendly_message
     if answered and not _is_toxic_assistant(answer):
         if thread is not None:
             append_messages([{"role": "assistant", "content": answer}],
-                            app["data_dir"], thread=thread)
+                            app[DATA_DIR_KEY], thread=thread)
         else:
             # Un job senza filo (accodato prima delle chat divise) non arriva
             # qui dal poll -- e' un 404 -- ma se ci arrivasse la risposta non
@@ -700,7 +721,8 @@ async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
 async def _downgrade_to_chain(request: web.Request, job_id: str):
     """Rifà sulla catena il turno che il piano non ha servito in tempo.
 
-    È qui e non nello sweep di `server.py` per una ragione misurata: lo sweep
+    È qui e non nello sweep (`conservazione.reasoning_sweep`) per una ragione
+    misurata: lo sweep
     gira ogni 2 minuti, e `static/chat/send.js` smette di interrogare dopo
     `CHAT_POLL_MAX_MS` (5 minuti). Con la scadenza predefinita di 5 minuti, un
     ripiego fatto dallo sweep arriverebbe fra il quinto e il settimo minuto --
@@ -718,7 +740,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     Restituisce `None` quando un altro poll ha già reclamato questo turno: si
     continua ad aspettare lui invece di ripiegare due volte.
     """
-    queue = request.app["reasoning_queue"]
+    queue = request.app[REASONING_QUEUE_KEY]
     now = time.time()
     job = queue.reclaim_expired(job_id, now)
     if job is None:
@@ -736,7 +758,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # `occurrence_phrase` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
     # ha risposto. È la stessa parola più larga del fatto che questa fetta
     # esiste per togliere.
-    occurrence_registry = request.app.get("occurrence_registry")
+    occurrence_registry = request.app.get(OCCURRENCES_KEY)
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
             SUBSCRIPTION.id, family="scaduto", code=None,
@@ -848,7 +870,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     `POST` aveva fissato. Spostarla su una `POST` nuova farebbe ripartire dal
     browser cio' che il server sa gia' fare da se'."""
     job_id = request.match_info.get("job_id", "")
-    reasoning_queue = request.app.get("reasoning_queue")
+    reasoning_queue = request.app.get(REASONING_QUEUE_KEY)
     if reasoning_queue is None:
         return error_response(503, "coda dei turni non disponibile")
     job = reasoning_queue.get(job_id)
@@ -936,8 +958,8 @@ async def handle_chat(request: web.Request) -> web.Response:
         return error_response(
             413, f"Il messaggio è troppo lungo: al massimo {MESSAGE_CAP} caratteri.")
 
-    data_dir = request.app["data_dir"]
-    settings = request.app["chat_settings"]
+    data_dir = request.app[DATA_DIR_KEY]
+    settings = request.app[CHAT_SETTINGS_KEY].value
     # Fetta «le chat divise»: il filo di chi scrive, calcolato UNA volta qui e
     # passato a tutto cio' che segue -- cronologia, riassunti, limite dei
     # turni, 409, scrittura, job. Ricalcolarlo in ogni punto sarebbe cinque
@@ -978,9 +1000,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     # raggiungibile (il turno numero N sta ancora aspettando quando arriva
     # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
     # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
-    # cronologia da solo (`server._submit_chat_reply`).
+    # cronologia da solo (`consegna._chat_reply_submitter`).
     if (bridge_in_play(request.app)
-            and request.app["reasoning_queue"].has_pending_chat(thread)):
+            and request.app[REASONING_QUEUE_KEY].has_pending_chat(thread)):
         return error_response(409, PENDING_REPLY_ERROR)
 
     # La partenza, da `steering.start` come ogni altro turno (D-06, Chiusura

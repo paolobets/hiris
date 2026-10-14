@@ -1,0 +1,103 @@
+"""La serie dell'analista si compone in un posto solo (D-34).
+
+Sul ponte la domanda parte all'accodamento (`analyst_round`) e la risposta si
+applica minuti dopo, alla raccolta (`_collect_analyst_turn`): tutte e due
+hanno bisogno della serie e della memoria dell'analista. Fino al 14/10/2026
+ognuna le componeva da se', riga per riga; ora le chiedono a
+`mind/analyst_round.analyst_inputs`. Qui si prova la proprieta': sugli stessi archivi
+le due strade vedono la stessa serie e la stessa memoria.
+
+Mutazione ESEGUITA (14/10/2026): la raccolta rimessa a comporre la serie da
+se', senza `analyst.with_deviation` -- rossa (la serie della raccolta non ha
+lo scarto). Ripristino verificato con `git status`.
+
+La memoria entra nel confronto dal 14/10/2026 (N161-3, revisore giro 161):
+l'archivio della prova ha un'analisi passata, e la memoria deve essere piena
+prima del confronto. Mutazione ESEGUITA: la raccolta compone la memoria di un
+altro giorno (`analyst_inputs(store, "2026-09-16", ...)`) -- rossa (la
+memoria della raccolta non ha l'osservazione di quel giorno). Ripristino
+verificato con `git status`.
+"""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from hiris.app import steering
+from hiris.app.home_space import historian
+from hiris.app.live_value import LiveValue
+from hiris.app.mind import analyst_round, analyst_turn
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
+from tests.test_mind_analyst_memory import _osservazione
+
+
+def _report(day: str, value: float) -> dict:
+    return {"giorno": day, "obiettivo": None,
+            "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prelievo",
+                        "operazione": "somma_periodo", "valore": value,
+                        "unita": "kWh", "copertura": 1.0}],
+            "forme": [], "cronaca": []}
+
+
+class _Queue:
+    latest_if_decided = ReasoningQueue.latest_if_decided
+
+    def __init__(self, turn):
+        self.turn = turn
+
+    def latest(self, kind, **_filters):
+        return self.turn
+
+
+@pytest.fixture()
+def app(tmp_path):
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    usage = UsageStore(str(tmp_path / "consumi.db"))
+    for day, value in (("2026-09-15", 1.0), ("2026-09-16", 4.0), ("2026-09-17", 2.0)):
+        store.replace_report(day, _report(day, value))
+    # Un'analisi di un giorno passato: e' la memoria dell'analista (N161-3).
+    # Senza, la memoria e' `[]` sulle due strade e il confronto non la vede.
+    store.replace_analysis("2026-09-16", {"osservazioni": [_osservazione()]})
+    try:
+        yield {**live_values(),
+               OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(False)}
+    finally:
+        store.close()
+        usage.close()
+
+
+@pytest.mark.asyncio
+async def test_accodamento_e_raccolta_vedono_la_stessa_serie(app, monkeypatch):
+    today = historian.today(historian.house_timezone(None)).isoformat()
+    seen = {}
+    real_bridge, real_apply = analyst_turn.bridge_turn, analyst_turn.apply_analysis
+
+    def _bridge(series, previous, **kwargs):
+        seen["accodamento"] = (series, previous)
+        return real_bridge(series, previous, **kwargs)
+
+    def _apply(series, reply, *, previous, **kwargs):
+        seen["raccolta"] = (series, previous)
+        return real_apply(series, reply, previous=previous, **kwargs)
+
+    monkeypatch.setattr(analyst_turn, "bridge_turn", _bridge)
+    monkeypatch.setattr(analyst_turn, "apply_analysis", _apply)
+    monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
+    monkeypatch.setattr(analyst_round, "enqueue_turn", lambda app, species, wake, job: ("j", 5))
+    monkeypatch.setattr(analyst_round, "turn_in_flight", lambda app, kind: False)
+    await analyst_round.analyst_round(app)
+
+    app[REASONING_QUEUE_KEY] = _Queue({
+        "status": "decided", "wake": {"giorno": today},
+        "decision": {"reply": json.dumps({"osservazioni": []}), "tools_called": [],
+                     "outcome": "riuscito"}})
+    analyst_round._collect_analyst_turn(app, app[OBSERVATIONS_KEY], today)
+
+    assert seen["accodamento"][0]["serie"], "la derivazione non ha composto nessuna serie"
+    assert seen["accodamento"][1], "la derivazione non ha composto nessuna memoria"
+    assert seen["raccolta"] == seen["accodamento"]

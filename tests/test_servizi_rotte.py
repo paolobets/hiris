@@ -20,6 +20,14 @@ import pytest
 import pytest_asyncio
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -74,20 +82,19 @@ def _chiave() -> str:
 @pytest_asyncio.fixture
 async def cliente(aiohttp_client, tmp_path):
     app = create_app()
-    app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: _UTENTI})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["internal_token"] = ""
-    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]
+    app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: _UTENTI})
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]
     from hiris.app.api.servizi import ServiziStore
-    app["servizi"] = ServiziStore(str(tmp_path / "servizi.db"))
+    app[SERVICES_KEY] = ServiziStore(str(tmp_path / "servizi.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["servizi"].close()
+    app[SERVICES_KEY].close()
 
 
 def _chi(utente):
@@ -325,10 +332,10 @@ async def test_leggere_l_elenco_NON_scrive_l_archivio(cliente):
     import os
 
     from hiris.app.api.servizi import ServiziStore
-    archivio = cliente.app["servizi"]
+    archivio = cliente.app[SERVICES_KEY]
     archivio.presenta(nome="scaduta", chiave=_chiave(), indirizzo="x",
                       now_ts=time.time() - ServiziStore.ATTESA_S - 60)
-    cartella = cliente.app["data_dir"]
+    cartella = cliente.app[DATA_DIR_KEY]
 
     def disco():
         # Il file e il suo giornale WAL: una cancellazione finisce nel secondo.

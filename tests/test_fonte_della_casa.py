@@ -37,16 +37,17 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.verification import verification
 from hiris.app.home_space.briefing import _unreliable_state
 from hiris.app.home_space.house import SOURCE_STATES, House
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, build_home_space
 from hiris.app.home_space.topology import Mirror, live_mirror
+from hiris.app.mind import day_report, recipe_turn
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
 from hiris.app.mind.operations import CAUSES
 from hiris.app.mind.recipes import silent_entities
-from hiris.app.proxy.entity_cache import _to_minimal
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY, _to_minimal
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_action_actuator import FintaCache, _asked, _registro_pronto
 
@@ -325,18 +326,18 @@ async def _ingredients(answer, statistic_ids):
     un risultato, o `Refused(...)` per il guasto. Il client e' quello vero."""
     registries = {"entita": ENTITIES, "integrazioni": ENTRIES, "dispositivi": DEVICES
                   + [{"id": "d_ricetta", "name": "Ricetta"}]}
-    app = {"knowledge": object(),
-           "home_space_store": AnagrafeFinta(build_home_space(registries)),
-           "entity_cache": None}
+    app = {KNOWLEDGE_KEY: object(),
+           HOME_SPACE_KEY: AnagrafeFinta(build_home_space(registries)),
+           ENTITY_CACHE_KEY: None}
 
     async def _stat_ids(_app, _ha, **_kw):
         return statistic_ids
 
-    with mock.patch.object(server.recipe_turn, "recipes",
+    with mock.patch.object(recipe_turn, "recipes",
                            lambda _k: {"d_ricetta": RICETTA}), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
         house = CasaFinta(synthetic_inputs(), answers={_STATISTICS: lambda _extra: answer})
-        return await server._report_ingredients(app, house, giorno="2026-10-03",
+        return await day_report._report_ingredients(app, house, giorno="2026-10-03",
                                                 timezone="Europe/Rome")
 
 

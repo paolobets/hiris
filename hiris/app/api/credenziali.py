@@ -34,6 +34,15 @@ import hmac
 import logging
 import secrets
 
+from aiohttp import web
+
+from ..models_store import MODELS_CONFIG_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+BRIDGE_CREDENTIAL_KEY = web.AppKey("credenziale_ponte")
+CREDENTIALS_KEY = web.AppKey("credenziali")
+
 logger = logging.getLogger(__name__)
 
 #: **Il ruolo che questa credenziale porta al cancello delle rotte**
@@ -106,24 +115,36 @@ def prepara_credenziali(app) -> None:
     errore in aiohttp 4 — la stessa ragione per cui nascono lì i contatori dei
     giri di strumento, la cache dei ruoli e i valori già visti dei canali.
     """
-    app["credenziali"] = {}
+    app[CREDENTIALS_KEY] = {}
     # La credenziale del ponte IN CORSO. Sta in un contenitore suo perche' il
     # worker ne chiede una a ogni giro (ogni pochi secondi) e coniarne una
     # nuova ogni volta ne lascerebbe centinaia vive insieme: si riusa finche'
     # e' a meta' vita, e si rinnova dopo.
-    app["credenziale_ponte"] = {}
+    app[BRIDGE_CREDENTIAL_KEY] = {}
 
 
-#: Quanto vive una credenziale del ponte, e perche' non e' «un turno esatto».
-#:
-#: Un turno del ponte dura minuti, ma il worker ne chiede una a ogni giro di
-#: sondaggio -- ogni pochi secondi. Una per giro ne lascerebbe centinaia vive
-#: insieme; una per turno richiederebbe di sapere quando un turno comincia, che
-#: il worker non sa. Dieci minuti e' il compromesso: piu' della scadenza
-#: predefinita di un turno del ponte (`ponte.scadenza_min` nell'archivio dei
-#: modelli, che la pagina Modelli puo' alzare oltre) e infinitamente meno di
-#: «per sempre», che e' cio' che era prima.
-PONTE_S = 600.0
+def durata_ponte_s(app) -> float:
+    """Quanto vive una credenziale del ponte: il DOPPIO del turno piu' lungo
+    ammesso (`ponte.scadenza_min`, letta da `models_store.bridge_deadline_min`).
+
+    Un turno del ponte dura al piu' la sua scadenza, ma il worker ne chiede una
+    a ogni giro di sondaggio -- ogni pochi secondi. Una per giro ne lascerebbe
+    centinaia vive insieme; una per turno richiederebbe di sapere quando un
+    turno comincia, che il worker non sa. Si riusa quindi fino a meta' vita: e
+    il doppio e' cio' che fa si' che a meta' vita resti ancora un turno intero.
+
+    Fino al 14/10/2026 erano dieci minuti fissi (`PONTE_S`): il doppio della
+    scadenza PREDEFINITA, e meno di un turno quando la pagina Modelli la
+    alzava oltre i cinque minuti (S-24). Col predefinito il numero e' lo
+    stesso.
+
+    **Cosa non copre, dichiarato.** La scadenza si legge adesso, il turno l'ha
+    fissata all'accodamento (`deadline_ts`): un turno accodato prima che la
+    scadenza si abbassasse puo' durare piu' di quanto la credenziale di adesso
+    copre."""
+    from ..models_store import bridge_deadline_min
+
+    return 2 * 60.0 * bridge_deadline_min(app[MODELS_CONFIG_KEY].value)
 
 
 def credenziale_ponte_viva(app, *, adesso: float) -> str:
@@ -131,15 +152,17 @@ def credenziale_ponte_viva(app, *, adesso: float) -> str:
 
     Si rinnova a meta' vita e non a scadenza: una credenziale che scade mentre
     un turno la sta usando farebbe fallire quel turno, e un turno fallito per
-    una scadenza e' un guasto che nessuno saprebbe leggere.
+    una scadenza e' un guasto che nessuno saprebbe leggere. La vita e'
+    `durata_ponte_s`: a meta' ne resta un turno intero.
     """
-    corrente = app.get("credenziale_ponte")
+    corrente = app.get(BRIDGE_CREDENTIAL_KEY)
     if corrente is None:
         return ""
-    if corrente.get("scade", 0) - adesso > PONTE_S / 2:
+    durata_s = durata_ponte_s(app)
+    if corrente.get("scade", 0) - adesso > durata_s / 2:
         return corrente["segreto"]
-    segreto = conia(app["credenziali"], mestiere="ponte",
-                    durata_s=PONTE_S, adesso=adesso)
+    segreto = conia(app[CREDENTIALS_KEY], mestiere="ponte",
+                    durata_s=durata_s, adesso=adesso)
     corrente["segreto"] = segreto
-    corrente["scade"] = adesso + PONTE_S
+    corrente["scade"] = adesso + durata_s
     return segreto

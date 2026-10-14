@@ -22,11 +22,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import SCADENZA_LONTANA
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.agent import runner as ponte
 from hiris.app.keeper import exchange
-from hiris.app.mind import proposer_round
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.live_value import LiveValue
+from hiris.app.mind import analyst_round, observer_round, proposer_round, recipe_round
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import live_values
 from tests.test_agent_runner_inaddon import _ProcFelice
 from tests.test_mind_analyst_turn import _serie
 from tests.test_mind_observer import _casa
@@ -104,13 +108,13 @@ class _Coda:
 
 
 def _app(tmp_path, modello="opus"):
-    return {"reasoning_queue": _Coda(),
-            "models_config": {"ponte": {"modello": modello, "scadenza_min": 5}},
-            "observations": ObservationsStore(str(tmp_path / "oss.db"))}
+    return {**live_values(), REASONING_QUEUE_KEY: _Coda(),
+            MODELS_CONFIG_KEY: LiveValue({"ponte": {"modello": modello, "scadenza_min": 5}}),
+            OBSERVATIONS_KEY: ObservationsStore(str(tmp_path / "oss.db"))}
 
 
 def _accodato(app) -> dict:
-    (job,) = app["reasoning_queue"].accodati
+    (job,) = app[REASONING_QUEUE_KEY].accodati
     return job["context"]
 
 
@@ -122,13 +126,13 @@ def test_l_osservatore_sul_ponte_usa_il_modello_del_proprietario(tmp_path):
     rossa (`KeyError: 'model'`)."""
     app = _app(tmp_path)
     try:
-        server._enqueue_scope_turn(app, app["observations"], _casa(),
+        observer_round._enqueue_scope_turn(app, app[OBSERVATIONS_KEY], _casa(),
                                    reason="prova", window_s=None,
                                    lotto={"climate.camera_t"}, annota=False,
                                    campagna_ts=0.0)
         assert _accodato(app)["model"] == "opus"
     finally:
-        app["observations"].close()
+        app[OBSERVATIONS_KEY].close()
 
 
 def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
@@ -140,26 +144,26 @@ def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
     app = _app(tmp_path)
     try:
         accodamenti = {
-            "ricette": lambda: server._enqueue_recipe_turn(
+            "ricette": lambda: recipe_round._enqueue_recipe_turn(
                 app, CASA, "dev1", objective="risparmiare"),
-            "analista": lambda: server._enqueue_analyst_turn(
+            "analista": lambda: analyst_round._enqueue_analyst_turn(
                 app, _serie(), "2026-10-05"),
             "promessa": lambda: exchange._enqueue_to_bridge(
                 app, {"id": "p1", "frase": "dimmi", "domanda": "guarda"}),
         }
         for nome, accoda in accodamenti.items():
-            app["reasoning_queue"].accodati.clear()
+            app[REASONING_QUEUE_KEY].accodati.clear()
             accoda()
             assert _accodato(app).get("model") == "opus", nome
 
-        app["reasoning_queue"].accodati.clear()
+        app[REASONING_QUEUE_KEY].accodati.clear()
         proposer_round._enqueue(app, "2026-10-05", [
             {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
              "innesco": 1, "base": 3, "cosa": "sale",
              "cosa_cambierebbe": "spendere meno"}], [])
         assert _accodato(app).get("model") == "opus", "proponente"
     finally:
-        app["observations"].close()
+        app[OBSERVATIONS_KEY].close()
 
 
 def test_il_modello_del_ponte_si_legge_in_UN_posto():
@@ -167,9 +171,9 @@ def test_il_modello_del_ponte_si_legge_in_UN_posto():
     scrive un secondo."""
     from hiris.app.models_store import _STORE_DEFAULTS
 
-    assert steering.bridge_model({}) == _STORE_DEFAULTS["ponte"]["modello"]
+    assert steering.bridge_model(live_values()) == _STORE_DEFAULTS["ponte"]["modello"]
     assert steering.bridge_model(
-        {"models_config": {"ponte": {"modello": "haiku"}}}) == "haiku"
+        {**live_values(), MODELS_CONFIG_KEY: LiveValue({"ponte": {"modello": "haiku"}})}) == "haiku"
 
 
 def _job(kind="osservatore", **context):

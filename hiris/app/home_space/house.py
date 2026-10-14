@@ -112,7 +112,7 @@ class House:
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
         # Le entita' per cui Home Assistant tiene statistiche, lette dal giro
-        # (`server.statistic_ids_for_round`); `None` = non lette (B-12).
+        # (`house_history.statistic_ids_for_round`); `None` = non lette (B-12).
         self.statistic_ids = None if statistic_ids is None else frozenset(statistic_ids)
         # L'ultima dashboard Energia tenuta (`HomeSpace.energy`), o `None` se
         # nessuna lettura e' riuscita: la sorgente di `energy_role` (D13).
@@ -423,7 +423,7 @@ class House:
         """La STESSA istantanea (anagrafe, specchio, registri caduti), con
         l'elenco delle statistiche che il giro ha letto dopo averla aperta.
         Nessuna lettura nuova: chi la chiama ha gia' l'elenco in mano
-        (`server.statistic_ids_for_round`, la lettura unica del giro)."""
+        (`house_history.statistic_ids_for_round`, la lettura unica del giro)."""
         return House(self.home_space, self.mirror, self.unavailable, statistic_ids,
                      self.energy)
 
@@ -648,7 +648,7 @@ class House:
         Serve quando l'elenco delle statistiche non si e' letto (G7-1, la
         rimisura dello sprint su 413ce7a7): si chiedono le serie di tutte, e
         chi ha statistiche lo dice la risposta di Home Assistant
-        (`server._report_ingredients`)."""
+        (`day_report._report_ingredients`)."""
         entry = self.entry(entity_id) or {}
         device_id, instance = entry.get("dispositivo_id"), entry.get("config_entry_id")
         return [eid for eid, e in self._entity_index().items()

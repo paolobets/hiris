@@ -14,12 +14,18 @@ import json
 
 import pytest
 
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.home_space import historian
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.live_value import LiveValue
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind import analyst_round
 from hiris.app.mind import analyst_turn as at
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.usage.store import UsageStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
 
 _RIFIUTATA = json.dumps({"osservazioni": [], "rimetti": [{"id": "sensor.x"}]})
@@ -51,7 +57,8 @@ def casa(tmp_path):
     usage = UsageStore(str(tmp_path / "consumi.db"))
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
-    app = {"observations": store, "usage": usage, "bridge_active": False}
+    app = {**live_values(),
+           OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(False)}
     try:
         yield app
     finally:
@@ -61,7 +68,7 @@ def casa(tmp_path):
 
 def _oggi(app):
     return historian.today(
-        historian.house_timezone(app.get("home_space_store"))).isoformat()
+        historian.house_timezone(app.get(HOME_SPACE_KEY))).isoformat()
 
 
 @pytest.mark.asyncio
@@ -71,25 +78,25 @@ async def test_sulla_CATENA_il_rifiuto_si_scrive_e_torna_nella_domanda(casa):
     `refused_problems` -- rossa (la seconda domanda non porta il problema)."""
     app = casa
     modello = _modello(_RIFIUTATA, json.dumps({"osservazioni": []}))
-    app["llm_router"] = modello
+    app[LLM_ROUTER_KEY] = modello
 
-    await server.analyst_round(app)
-    riga = app["usage"].turns(species=steering.ANALYST_SPECIES)[0]
+    await analyst_round.analyst_round(app)
+    riga = app[USAGE_KEY].turns(species=steering.ANALYST_SPECIES)[0]
     assert riga["outcome"] == steering.REFUSED
     assert any(_PROBLEMA in p for p in riga["problems"])
     assert _PROBLEMA not in modello.chiamate[0]["user_message"]
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert _PROBLEMA in modello.chiamate[1]["user_message"]
-    assert app["observations"].analysis(_oggi(app)) is not None
+    assert app[OBSERVATIONS_KEY].analysis(_oggi(app)) is not None
 
 
 @pytest.mark.asyncio
 async def test_una_risposta_buona_NON_si_segna_rifiutata(casa):
     app = casa
-    app["llm_router"] = _modello(json.dumps({"osservazioni": []}))
-    await server.analyst_round(app)
-    assert app["usage"].turns()[0]["outcome"] == "riuscito"
+    app[LLM_ROUTER_KEY] = _modello(json.dumps({"osservazioni": []}))
+    await analyst_round.analyst_round(app)
+    assert app[USAGE_KEY].turns()[0]["outcome"] == "riuscito"
 
 
 class _Coda:
@@ -109,16 +116,16 @@ def test_sul_PONTE_il_raccoglitore_scrive_il_rifiuto_sulla_riga_del_turno(casa):
     Mutazione ESEGUITA (06/10/2026): il raccoglitore senza `declare_refused`
     -- rossa."""
     app = casa
-    ident = app["usage"].log_turn(
+    ident = app[USAGE_KEY].log_turn(
         species=steering.ANALYST_SPECIES, provider="subscription", model="m",
         channel="ponte", duration_ms=1, iterations=1, tools=[],
         outcome="riuscito", now=1_758_000_000.0)
-    app["reasoning_queue"] = _Coda({
+    app[REASONING_QUEUE_KEY] = _Coda({
         "status": "decided", "wake": {"giorno": _oggi(app)},
         "decision": {"reply": _RIFIUTATA, "tools_called": [],
                      "outcome": "riuscito", "turn_id": ident}})
-    server._collect_analyst_turn(app, app["observations"], _oggi(app))
-    riga = app["usage"].turns()[0]
+    analyst_round._collect_analyst_turn(app, app[OBSERVATIONS_KEY], _oggi(app))
+    riga = app[USAGE_KEY].turns()[0]
     assert riga["outcome"] == steering.REFUSED
     assert any(_PROBLEMA in p for p in riga["problems"])
 
@@ -130,17 +137,17 @@ async def test_sul_PONTE_la_domanda_accodata_porta_i_problemi(casa, monkeypatch)
     Mutazione ESEGUITA (06/10/2026): il giro senza `refused_problems` --
     rossa (la domanda accodata non porta il problema)."""
     app = casa
-    ident = app["usage"].log_turn(
+    ident = app[USAGE_KEY].log_turn(
         species=steering.ANALYST_SPECIES, provider="subscription", model="m",
         channel="ponte", duration_ms=1, iterations=1, tools=[],
         outcome="riuscito", now=1_758_000_000.0)
-    steering.declare_refused(app["usage"], ident, [_PROBLEMA])
+    steering.declare_refused(app[USAGE_KEY], ident, [_PROBLEMA])
     accodati = []
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
-    monkeypatch.setattr(server, "enqueue_turn",
+    monkeypatch.setattr(analyst_round, "enqueue_turn",
                         lambda app, specie, wake, job: accodati.append(job) or ("j", 5))
-    monkeypatch.setattr(server, "turn_in_flight", lambda app, kind: False)
-    await server.analyst_round(app)
+    monkeypatch.setattr(analyst_round, "turn_in_flight", lambda app, kind: False)
+    await analyst_round.analyst_round(app)
     assert _PROBLEMA in accodati[0]["history"][0]["content"]
 
 

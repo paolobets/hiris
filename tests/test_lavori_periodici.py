@@ -14,7 +14,10 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
+from hiris.app import startup
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -25,7 +28,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 def _job(app, job_id):
-    job = app["scheduler"].get_job(job_id)
+    job = app[SCHEDULER_KEY].get_job(job_id)
     assert job is not None, f"il lavoro {job_id} non e' registrato"
     return job
 
@@ -56,7 +59,7 @@ async def test_la_potatura_gira_alle_03_00(started_app):
     `hiris_retention` -- rossa."""
     assert str(_job(started_app, "hiris_retention").trigger) == \
         "cron[hour='3', minute='0']"
-    assert started_app["scheduler"].get_job("hiris_mind_pruning") is None
+    assert started_app[SCHEDULER_KEY].get_job("hiris_mind_pruning") is None
 
 
 async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_app):
@@ -67,11 +70,27 @@ async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_a
     chiamata a `watch_system_conditions`)."""
     job = _job(started_app, "hiris_mind_conditions")
     assert str(job.trigger) == "interval[0:10:00]"
-    with mock.patch.object(server, "watch_system_conditions",
+    with mock.patch.object(startup, "watch_system_conditions",
                            mock.AsyncMock()) as watched:
         await job.func()
     watched.assert_awaited_once()
     assert watched.await_args.args[0] is started_app
+
+
+async def test_il_giro_delle_condizioni_tiene_anche_gli_id_delle_statistiche(started_app):
+    """Lo stesso lavoro, dopo le condizioni, rinfresca gli id delle statistiche
+    che l'osservatore tiene (`hold_watcher_statistic_ids`). Nessuna prova lo
+    guardava: la chiamata tolta dal lavoro lasciava la suite verde (misurato
+    il 14/10/2026, F8 passo 1b).
+
+    Mutazione ESEGUITA: tolta la chiamata da `startup.conditions_job` --
+    rossa."""
+    job = _job(started_app, "hiris_mind_conditions")
+    with mock.patch.object(startup, "watch_system_conditions", mock.AsyncMock()), \
+            mock.patch.object(startup, "hold_watcher_statistic_ids",
+                              mock.AsyncMock()) as held:
+        await job.func()
+    held.assert_awaited_once_with(started_app, started_app[HA_CLIENT_KEY])
 
 
 async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_app):
@@ -79,7 +98,7 @@ async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_
     sempre senza che nessuno rileggesse le loro tracce."""
     job = _job(started_app, "hiris_mind_automation_traces")
     assert str(job.trigger) == "interval[0:02:00]"
-    with mock.patch.object(server, "watch_automation_outcomes",
+    with mock.patch.object(startup, "watch_automation_outcomes",
                            mock.AsyncMock()) as watched:
         await job.func()
     watched.assert_awaited_once()
@@ -90,11 +109,11 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
     pochi minuti, non alla prossima notte."""
     job = _job(started_app, "hiris_entity_cache_reload")
     assert str(job.trigger) == "interval[0:02:00]"
-    with mock.patch.object(server, "reload_entity_inventory",
+    with mock.patch.object(startup, "reload_entity_inventory",
                            mock.AsyncMock()) as reloaded:
         await job.func()
     reloaded.assert_awaited_once()
-    assert reloaded.await_args.args[0] is started_app["entity_cache"]
+    assert reloaded.await_args.args[0] is started_app[ENTITY_CACHE_KEY]
 
 
 async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_app):
@@ -107,7 +126,7 @@ async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_ap
     Tappa 8 Task 6).
 
     Mutazione ESEGUITA: un `add_job` in piu' in `_on_startup` -- rossa."""
-    jobs = started_app["scheduler"].get_jobs()
+    jobs = started_app[SCHEDULER_KEY].get_jobs()
     assert len(jobs) == 16, sorted(job.id for job in jobs)
     readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
         encoding="utf-8")
@@ -165,7 +184,7 @@ async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):
 
     Mutazione ESEGUITA: tolta la chiamata all'avvio -- rossa."""
     watched = mock.AsyncMock()
-    with mock.patch.object(server, "watch_system_conditions", watched):
+    with mock.patch.object(startup, "watch_system_conditions", watched):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)):
             pass
     assert watched.await_count >= 1

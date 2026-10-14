@@ -23,8 +23,8 @@ revisore (giro 160, N160-2), l'anagrafe: `tests/_anagrafe_finta.py`
    discendere da `HomeSpace` o da `AnagrafeFinta`;
 2. una classe definisce `chat` senza discendere da `RunnerFinto`;
 3. un `AsyncMock`/`MagicMock`/`Mock`/`create_autospec` e' assegnato a un
-   `.chat`, a una voce `["entity_cache"]`/`["claude_runner"]`/`["llm_router"]`/
-   `["home_space_store"]`,
+   `.chat`, a una voce `[ENTITY_CACHE_KEY]`/`[CLAUDE_RUNNER_KEY]`/
+   `[LLM_ROUTER_KEY]`/`[HOME_SPACE_KEY]` (o alla stringa di una di queste),
    o passato come `cache=` o come runner al router (`claude=`, `openrouter=`,
    `openai=`, `ollama=`).
 
@@ -48,7 +48,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from hiris.app import claude_runner, llm_router
+from hiris.app.home_space import reader
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.proxy import entity_cache
 from hiris.app.proxy.entity_cache import EntityCache
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,7 +60,16 @@ CONDIVISI = {"tests/_specchio_finto.py", "tests/_runner_finto.py", "tests/_anagr
 BASI_SPECCHIO = frozenset({"EntityCache", "SpecchioFinto"})
 BASI_ANAGRAFE = frozenset({"HomeSpace", "AnagrafeFinta"})
 BASI_RUNNER = frozenset({"RunnerFinto"})
-VOCI = frozenset({"entity_cache", "claude_runner", "llm_router", "home_space_store"})
+#: Le voci dell'app che portano specchio, runner, router e anagrafe: le
+#: `web.AppKey` (X-32), per i nomi che i moduli che le dichiarano danno loro,
+#: e le stringhe che erano fino al 14/10/2026. Senza i nomi,
+#: `app[CLAUDE_RUNNER_KEY] = MagicMock()` passava.
+_CHIAVI = ((entity_cache, entity_cache.ENTITY_CACHE_KEY),
+           (claude_runner, claude_runner.CLAUDE_RUNNER_KEY),
+           (llm_router, llm_router.LLM_ROUTER_KEY), (reader, reader.HOME_SPACE_KEY))
+VOCI = frozenset({"entity_cache", "claude_runner", "llm_router", "home_space_store"} | {
+    nome for modulo, chiave in _CHIAVI for nome, valore in vars(modulo).items()
+    if valore is chiave})
 ARGOMENTI = frozenset({"cache", "claude", "openrouter", "openai", "ollama"})
 
 #: Lista di AMMISSIONE: nome di `EntityCache` o di `HomeSpace` -> perche' non
@@ -109,7 +121,8 @@ def _bersaglio_finto(t: ast.expr) -> bool:
     if isinstance(t, ast.Attribute):
         return t.attr == "chat"
     if isinstance(t, ast.Subscript):
-        return isinstance(t.slice, ast.Constant) and t.slice.value in VOCI
+        return ((isinstance(t.slice, ast.Constant) and t.slice.value in VOCI)
+                or (isinstance(t.slice, ast.Name) and t.slice.id in VOCI))
     return False
 
 
@@ -159,7 +172,7 @@ def test_nessuno_specchio_ne_runner_scritto_a_mano():
     la riga; una classe `_Cache` con `all_states` in
     `tests/test_mind_compute.py` -- rossa. Per l'anagrafe (N160-2): una
     classe `_Store` con `read` e `unavailable` rimessa in
-    `tests/test_fonte_della_casa.py`, e `app["home_space_store"] =
+    `tests/test_fonte_della_casa.py`, e `app[HOME_SPACE_KEY] =
     MagicMock()` in `tests/test_mind_compute.py` -- rosse, col file e la
     riga."""
     trovate = scansiona_prove()
@@ -185,7 +198,11 @@ def test_la_derivazione_non_si_e_svuotata():
 
 def test_la_scansione_vede_le_forme_che_vieta():
     """Una scansione che non trova mai niente sembra viva e non guarda piu'
-    niente: le forme vietate si trovano, quelle ammesse no."""
+    niente: le forme vietate si trovano, quelle ammesse no.
+
+    Mutazione ESEGUITA (14/10/2026): le voci riconosciute solo come stringhe,
+    com'era prima di X-32 -- rossa (`app[CLAUDE_RUNNER_KEY]` e
+    `app[HOME_SPACE_KEY]` non trovate)."""
     sorgente = '''
 class _Cache:
     def all_states(self):
@@ -223,9 +240,9 @@ class _Rotta(AnagrafeFinta):
 
 def f(app, runner):
     runner.chat = AsyncMock(return_value="x")
-    app["claude_runner"] = MagicMock()
+    app[CLAUDE_RUNNER_KEY] = MagicMock()
     app["altro"] = MagicMock()
-    app["home_space_store"] = Mock()
+    app[HOME_SPACE_KEY] = Mock()
     LLMRouter(claude=MagicMock(), model_chain=["claude"])
     ToolDispatcher(None, None, cache=MagicMock())
 '''
@@ -233,6 +250,6 @@ def f(app, runner):
                in scansiona(sorgente, nomi_specchio(), nomi_anagrafe())}
     assert trovate == {("_Cache", "all_states"), ("_Modello", "chat"),
                        ("_Store", "unavailable"),
-                       ("runner.chat", "mock"), ("app['claude_runner']", "mock"),
-                       ("app['home_space_store']", "mock"),
+                       ("runner.chat", "mock"), ("app[CLAUDE_RUNNER_KEY]", "mock"),
+                       ("app[HOME_SPACE_KEY]", "mock"),
                        ("claude=", "mock"), ("cache=", "mock")}

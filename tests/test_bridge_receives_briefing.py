@@ -44,17 +44,21 @@ from conftest import SCADENZA_LONTANA
 from hiris.app import steering
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.claude_runner import (
     BASE_IDENTITY,
     BASE_TOOL_RULES,
+    CLAUDE_RUNNER_KEY,
     COMPACT_PROMPT,
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.steering import SPECIES, compose_base
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, SPECIES, compose_base
+from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
 
 #: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
@@ -734,13 +738,14 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     runner_mock = RunnerFinto("sync reply")
 
     app = web.Application()
-    app["llm_router"] = runner_mock
-    app["claude_runner"] = runner_mock
-    app["chat_settings"] = impostazioni
-    app["data_dir"] = data_dir
-    app["bridge_active"] = True
+    app.update(live_values())
+    app[LLM_ROUTER_KEY] = runner_mock
+    app[CLAUDE_RUNNER_KEY] = runner_mock
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
+    app[DATA_DIR_KEY] = data_dir
+    app[BRIDGE_ACTIVE_KEY].set(True)
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
-    app["reasoning_queue"] = q
+    app[REASONING_QUEUE_KEY] = q
     app.router.add_post("/api/chat", handle_chat)
     return app, q, data_dir
 

@@ -27,7 +27,7 @@ RISPOSTA («e allora dillo»).
 import pytest
 
 from hiris.app import steering
-from hiris.app.usage.store import UsageStore
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 
 
 @pytest.fixture()
@@ -94,7 +94,7 @@ def test_l_imbuto_SCRIVE_e_non_solo_registra(consumi):
     in sei posti resta indietro in tre, ed e' successo.
 
     Mutazione ESEGUITA: `declare_downgrade` che scrive solo nel log -- rossa."""
-    app = {"usage": consumi}
+    app = {USAGE_KEY: consumi}
 
     steering.declare_downgrade(app, agent="analista", reason="tetto giornaliero",
                                now=1_758_000_000.0)
@@ -131,7 +131,7 @@ def test_senza_MOTIVO_l_imbuto_non_TOCCA_nemmeno_l_archivio():
     Mutazione ESEGUITA: togliere `if not reason` dall'imbuto -- rossa."""
     spia = _Spia()
 
-    steering.declare_downgrade({"usage": spia}, agent="analista", reason="",
+    steering.declare_downgrade({USAGE_KEY: spia}, agent="analista", reason="",
                                now=1_758_000_000.0)
 
     assert spia.chiamate == []

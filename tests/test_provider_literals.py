@@ -20,8 +20,13 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from aiohttp import web
 
 from hiris.app import providers
+from hiris.app.agent.bridge_governor import RECOMPUTE_CHAIN_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.providers import CLAUDE_CREDENTIAL_KEY
+from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._runner_finto import RunnerFinto
 from tests.test_api import client  # noqa: F401
 
@@ -37,7 +42,7 @@ AMMESSI_PY = {
         "il nome del MODULO Python dell'SDK, che si sonda per le sue eccezioni",
     ("agent/runner.py", "claude"):
         "il nome dell'eseguibile della CLI del ponte, fuori dall'immagine",
-    ("server.py", "ollama"):
+    ("startup.py", "ollama"):
         "la chiave fittizia che l'endpoint compatibile OpenAI di Ollama chiede",
 }
 
@@ -115,13 +120,17 @@ def test_nessun_id_di_provider_e_scritto_nel_javascript():
 # Un sesto provider
 # ---------------------------------------------------------------------------
 
+#: La credenziale del sesto, in una chiave dell'app come quelle dei cinque
+#: (`providers.CLAUDE_CREDENTIAL_KEY`...).
+SESTO_CREDENTIAL_KEY = web.AppKey("sesto_api_key")
+
 SESTO = providers.Provider(
     id="sesto",
     name="Il sesto",
     nature="a consumo",
     privacy="I tuoi messaggi passano dal sesto.",
     missing_reason="manca la chiave",
-    credential=lambda sources: bool(sources.get("sesto_api_key")),
+    credential=lambda sources: bool(sources.get(SESTO_CREDENTIAL_KEY)),
     model_path=("provider_models", "sesto"),
     auto_model="sesto-1",
 )
@@ -141,18 +150,18 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
       rosso sulla catena: il sesto non risponde, e non entra;
     - `compose_topology` con «Fuori dalla catena» sui cinque id di oggi ->
       rosso sulla riga del sesto."""
+    from hiris.app.agent.bridge_governor import _recompute_chain
     from hiris.app.llm_router import LLMRouter
-    from hiris.app.server import _recompute_chain
 
     monkeypatch.setattr(providers, "PROVIDERS", providers.PROVIDERS + (SESTO,))
     app = client.app
-    app["sesto_api_key"] = "una-chiave"
-    app["claude_api_key"] = "sk-test"
+    app[SESTO_CREDENTIAL_KEY] = "una-chiave"
+    app[CLAUDE_CREDENTIAL_KEY] = "sk-test"
     router = LLMRouter(claude=RunnerFinto("da claude"), sesto=RunnerFinto("dal sesto"),
                        model_chain=["claude"])
-    app["llm_router"] = router
-    app["recompute_chain"] = lambda: _recompute_chain(app)
-    app["model_chain"] = ["claude"]
+    app[LLM_ROUTER_KEY] = router
+    app[RECOMPUTE_CHAIN_KEY] = lambda: _recompute_chain(app)
+    app[MODEL_CHAIN_KEY].set(["claude"])
 
     body = await (await client.get("/api/models/config")).json()
     assert body["ordine_fisso"][-1] == "sesto"

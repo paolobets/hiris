@@ -7,6 +7,12 @@ from hiris.app.keeper.exchange import (
     PromiseDispatcher,
     promise_tools,
 )
+from hiris.app.live_value import LiveValue
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._runner_finto import RunnerFinto
 
 # Marcatore applicato ai singoli test asincroni sotto, non al modulo: un
@@ -200,7 +206,7 @@ async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
     from hiris.app.keeper.exchange import interpreta_promise
 
     runner = _runner_conclusivo(avvisare=True, testo="e' salita di 2 gradi")
-    app = {"llm_router": runner}
+    app = {**live_values(), LLM_ROUTER_KEY: runner}
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 
@@ -224,7 +230,7 @@ async def test_interpreta_promessa_senza_concludi_e_un_errore_dichiarato():
     `sweeper._keep_chiedi`)."""
     from hiris.app.keeper.exchange import interpreta_promise
 
-    esito = await interpreta_promise({"llm_router": _runner_muto()},
+    esito = await interpreta_promise({**live_values(), LLM_ROUTER_KEY: _runner_muto()},
                                       _promessa_chiedi())
 
     assert "errore" in esito
@@ -264,7 +270,7 @@ async def test_sulla_CATENA_nessuno_risponde_e_il_motivo_non_cita_il_router():
     giu = RunnerFinto(RunnerBackendError("Errore Claude."))
     router = LLMRouter(claude=giu, model_chain=["claude"])
 
-    esito = await interpreta_promise({"llm_router": router}, _promessa_chiedi())
+    esito = await interpreta_promise({**live_values(), LLM_ROUTER_KEY: router}, _promessa_chiedi())
 
     assert router.last_unanswered is True
     # La frase resta come diagnosi di HIRIS, non come parole del modello
@@ -282,7 +288,7 @@ async def test_il_turno_che_non_conclude_riporta_cio_che_il_modello_aveva_detto(
     un'ora sull'add-on vivo."""
     from hiris.app.keeper.exchange import interpreta_promise
 
-    app = {"llm_router": RunnerFinto(
+    app = {**live_values(), LLM_ROUTER_KEY: RunnerFinto(
         "Ho letto le otto stanze, ma da qui non posso mandarti una notifica.")}
 
     esito = await interpreta_promise(app, _promessa_chiedi())
@@ -301,7 +307,7 @@ async def test_la_risposta_del_modello_entra_nel_motivo_troncata():
     risposta del modello puo' essere lunghissima, e va riportata a misura."""
     from hiris.app.keeper.exchange import interpreta_promise
 
-    app = {"llm_router": RunnerFinto("temperatura " * 2000)}
+    app = {**live_values(), LLM_ROUTER_KEY: RunnerFinto("temperatura " * 2000)}
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 
@@ -315,7 +321,7 @@ async def test_se_il_modello_non_ha_detto_proprio_niente_il_motivo_lo_dichiara()
     riportare, il motivo non deve inventarsi un virgolettato vuoto."""
     from hiris.app.keeper.exchange import interpreta_promise
 
-    esito = await interpreta_promise({"llm_router": _runner_muto()},
+    esito = await interpreta_promise({**live_values(), LLM_ROUTER_KEY: _runner_muto()},
                                       _promessa_chiedi())
 
     assert "non ha concluso" in esito["errore"]
@@ -326,7 +332,7 @@ async def test_se_il_modello_non_ha_detto_proprio_niente_il_motivo_lo_dichiara()
 async def test_interpreta_promessa_senza_runner_e_un_errore_dichiarato():
     from hiris.app.keeper.exchange import interpreta_promise
 
-    esito = await interpreta_promise({}, _promessa_chiedi())
+    esito = await interpreta_promise(live_values(), _promessa_chiedi())
 
     assert "errore" in esito
     assert "modello" in esito["errore"]
@@ -362,11 +368,11 @@ class _CodaFinta:
 
 
 def _app_col_ponte(coda=None, router=None):
-    return {
-        "bridge_active": True,
-        "reasoning_queue": coda if coda is not None else _CodaFinta(),
-        "models_config": {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}},
-        "llm_router": router if router is not None else RunnerFinto("non dovevi chiedere a me"),
+    return {**live_values(),
+        BRIDGE_ACTIVE_KEY: LiveValue(True),
+        REASONING_QUEUE_KEY: coda if coda is not None else _CodaFinta(),
+        MODELS_CONFIG_KEY: LiveValue({"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}),
+        LLM_ROUTER_KEY: router if router is not None else RunnerFinto("non dovevi chiedere a me"),
     }
 
 
@@ -445,7 +451,7 @@ async def test_col_ponte_spento_il_turno_resta_sulla_catena_come_sempre():
 
     coda = _CodaFinta()
     app = _app_col_ponte(coda, _runner_conclusivo(avvisare=False, testo="niente"))
-    app["bridge_active"] = False
+    app[BRIDGE_ACTIVE_KEY].set(False)
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 
@@ -484,7 +490,7 @@ async def test_senza_ripiego_non_si_annuncia_niente():
 
     app = _app_col_ponte(_CodaFinta(),
                          _runner_conclusivo(avvisare=False, testo="niente"))
-    app["bridge_active"] = False
+    app[BRIDGE_ACTIVE_KEY].set(False)
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 

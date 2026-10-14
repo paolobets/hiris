@@ -39,7 +39,10 @@ import time
 
 from aiohttp import web
 
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..chat_thread import request_thread
+from ..keeper.store import AGENDA_KEY
+from ..mind.store import OBSERVATIONS_KEY
 from .admission import NOT_ADMITTED
 from .boundary import error_response
 from .soffitto import denies, request_ceiling
@@ -47,15 +50,15 @@ from .soffitto import denies, request_ceiling
 
 def _proposals_pending(app) -> int:
     """Quante proposte da fare a mano aspettano una tua decisione."""
-    observations = app.get("observations")
+    observations = app.get(OBSERVATIONS_KEY)
     if observations is None:
         return 0
     return observations.pending_proposals_count()
 
 
 async def handle_get_pending(request: web.Request) -> web.Response:
-    agenda = request.app.get("agenda")
-    constructions = request.app.get("constructions")
+    agenda = request.app.get(AGENDA_KEY)
+    constructions = request.app.get(CONSTRUCTIONS_KEY)
     # Un archivio solo che manca basta a rendere la risposta parziale, e una
     # risposta parziale qui e' indistinguibile da una completa: il guscio
     # riceverebbe un numero e un buco, e il buco diventerebbe un pallino

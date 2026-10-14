@@ -27,7 +27,7 @@ from hiris.app.api.handlers_chat_history import (
     handle_new_conversation,
     handle_resume_conversation,
 )
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_store import (
     CONVERSATION_TITLE_MAX_CHARS,
     OUTCOME_ONLY_TITLE,
@@ -43,9 +43,11 @@ from hiris.app.chat_store import (
     new_conversation,
     resume_conversation,
 )
-from hiris.app.chat_thread import ChatThread, SyncTurnsInFlight
+from hiris.app.chat_thread import SYNC_TURNS_KEY, ChatThread, SyncTurnsInFlight
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.proxy._sanitize import _TRUNCATED
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.storage import DATA_DIR_KEY
 from tests.test_chat_divise import MARTA, PAOLO, _make_app, _semina_orfane
 from tests.test_settings_api import csrf_stretto  # noqa: F401
 
@@ -416,7 +418,7 @@ def test_cancellare_non_tocca_le_orfane(tmp_path):
 def _app_with_conversations(tmp_path, **kw):
     app, q, data_dir = _make_app(tmp_path, **kw)
     # Come in `create_app`: il segno dei turni sincroni nasce con l'app.
-    app["sync_turns"] = SyncTurnsInFlight()
+    app[SYNC_TURNS_KEY] = SyncTurnsInFlight()
     app.router.add_get("/api/chat/conversations", handle_list_conversations)
     app.router.add_post("/api/chat/conversations", handle_new_conversation)
     app.router.add_post("/api/chat/conversations/{id}/resume", handle_resume_conversation)
@@ -544,7 +546,7 @@ async def test_durante_un_turno_sincrono_le_tre_scritture_rispondono_409(tmp_pat
         await release.wait()
         return "risposta lenta"
 
-    app["llm_router"].chat = slow_chat
+    app[LLM_ROUTER_KEY].chat = slow_chat
     async with TestClient(TestServer(app)) as client:
         turn = asyncio.ensure_future(client.post(
             "/api/chat", json={"message": "domanda lenta"}, headers=_P))
@@ -567,7 +569,7 @@ async def test_un_turno_sincrono_che_fallisce_libera_il_filo(tmp_path):
     async def broken_chat(**_kw):
         raise RuntimeError("guasto del modello")
 
-    app["llm_router"].chat = broken_chat
+    app[LLM_ROUTER_KEY].chat = broken_chat
     async with TestClient(TestServer(app)) as client:
         assert (await client.post("/api/chat", json={"message": "x"},
                                   headers=_P)).status == 500
@@ -609,9 +611,9 @@ async def real_client(aiohttp_client, tmp_path, monkeypatch):
     from hiris.app.server import create_app
 
     app = create_app()
-    app["data_dir"] = str(tmp_path)
-    app["chat_settings"] = ChatSettings()
-    app["reasoning_queue"] = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[REASONING_QUEUE_KEY] = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
@@ -623,7 +625,7 @@ SVILUPPO = ChatThread("sviluppo:-", "sviluppo")
 
 
 def _real_session(client):
-    d = client.app["data_dir"]
+    d = client.app[DATA_DIR_KEY]
     old, new = _two_conversations(d, SVILUPPO)
     return d, old, new
 
@@ -680,7 +682,7 @@ async def test_delete_conversazione_senza_x_requested_with_e_403_e_non_cancella(
 @pytest.mark.asyncio
 async def test_l_elenco_dell_app_vera_risponde(real_client):
     # Il segno dei turni sincroni nasce con l'app, non all'avvio.
-    assert isinstance(real_client.app["sync_turns"], SyncTurnsInFlight)
+    assert isinstance(real_client.app[SYNC_TURNS_KEY], SyncTurnsInFlight)
     _d, old, new = _real_session(real_client)
     body = await (await real_client.get("/api/chat/conversations")).json()
     assert [c["id"] for c in body["conversations"]] == [new, old]

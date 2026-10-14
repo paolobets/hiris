@@ -16,6 +16,16 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -73,15 +83,14 @@ class _Archivio:
 
 async def _cliente(aiohttp_client, tmp_path, house: CasaFinta):
     app = create_app()
-    app["ha_client"] = house
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["internal_token"] = ""
-    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]  # il client di prova e' locale
-    app["workshop"] = _Officina()
-    app["constructions"] = _Archivio()
+    app[HA_CLIENT_KEY] = house
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]  # il client di prova e' locale
+    app[WORKSHOP_KEY] = _Officina()
+    app[CONSTRUCTIONS_KEY] = _Archivio()
     app.on_startup.clear()
     app.on_cleanup.clear()
     return await aiohttp_client(app)
@@ -96,7 +105,7 @@ async def cliente(aiohttp_client, tmp_path):
 def _role_reads(cliente) -> int:
     """Quante volte la casa ha letto gli utenti: la casa lo sa, la prova non
     lo conta da se'."""
-    return [command for command, _extra in cliente.app["ha_client"].calls].count(
+    return [command for command, _extra in cliente.app[HA_CLIENT_KEY].calls].count(
         "config/auth/list")
 
 
@@ -112,7 +121,7 @@ async def test_un_amministratore_applica(cliente):
                                   headers=_testate("u-admin"))
 
     assert risposta.status == 200
-    assert cliente.app["workshop"].applicate == [("c1", "pagina")]
+    assert cliente.app[WORKSHOP_KEY].applicate == [("c1", "pagina")]
 
 
 @pytest.mark.asyncio
@@ -130,7 +139,7 @@ async def test_un_utente_qualunque_NON_applica_e_gli_si_dice_perche(cliente):
     assert risposta.status == 403
     corpo = await risposta.json()
     assert corpo["error"], "un rifiuto senza motivo e' un ordine"
-    assert cliente.app["workshop"].applicate == [], (
+    assert cliente.app[WORKSHOP_KEY].applicate == [], (
         "l'officina ha scritto lo stesso: il soffitto non ha morso")
 
 
@@ -144,7 +153,7 @@ async def test_anche_RIMETTI_COM_ERA_passa_dal_soffitto(cliente):
                                   headers=_testate("u-ospite"))
 
     assert risposta.status == 403
-    assert cliente.app["workshop"].applicate == []
+    assert cliente.app[WORKSHOP_KEY].applicate == []
 
 
 @pytest.mark.asyncio
@@ -180,7 +189,7 @@ async def test_se_il_ruolo_non_si_legge_si_NEGA(aiohttp_client, tmp_path):
                                   headers=_testate("u-admin"))
 
     assert risposta.status == 403
-    assert cliente.app["workshop"].applicate == []
+    assert cliente.app[WORKSHOP_KEY].applicate == []
 
 
 @pytest.mark.asyncio
@@ -206,7 +215,7 @@ async def test_la_cache_dei_ruoli_SCADE(cliente):
     from hiris.app.api import soffitto
 
     await cliente.post("/api/constructions/c1/confirm", headers=_testate("u-admin"))
-    cliente.app["ruoli"]["quando"] = time.time() - soffitto.RUOLI_VALIDI_S - 1
+    cliente.app[ROLES_KEY]["quando"] = time.time() - soffitto.RUOLI_VALIDI_S - 1
     await cliente.post("/api/constructions/c1/confirm", headers=_testate("u-admin"))
 
     assert _role_reads(cliente) == 2
@@ -297,6 +306,6 @@ async def test_la_porta_porta_anche_il_SOGGETTO_alla_cronaca(cliente):
     await cliente.post("/api/constructions/c1/confirm",
                        headers=_testate("u-admin"))
 
-    visto = cliente.app["workshop"].soggetti[-1]
+    visto = cliente.app[WORKSHOP_KEY].soggetti[-1]
     assert visto["id"] == "u-admin"
     assert visto["specie"] == "persona"

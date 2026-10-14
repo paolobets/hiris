@@ -33,8 +33,15 @@ import logging
 import secrets
 import time
 
+from aiohttp import web
+
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..background import spawn
+from ..home_space.reader import HOME_SPACE_KEY
+from ..live_value import LiveValue
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY
 from ..steering import (
     AUTOMATE_SPECIES,
     PROPOSER_SPECIES,
@@ -47,9 +54,11 @@ from ..steering import (
     start,
     turn_in_flight,
 )
+from ..usage.store import USAGE_KEY
 from .proposal_redo import round_lines
 from .proposer_turn import PROPOSE, ProposerDispatcher
 from .proposer_turn import guard as proposer_guard
+from .store import OBSERVATIONS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +68,7 @@ AUTOMATE_TURN_KIND = SPECIES[AUTOMATE_SPECIES].kind
 #: La chiave di `app` che dice quale proposta ha un turno sulla catena in
 #: corso. Sul ponte lo sa la coda; sulla catena il turno vive in questo
 #: processo, e muore con lui: un riavvio lo perde insieme alla chiave.
-IN_FLIGHT = "automazione_in_volo"
+IN_FLIGHT = web.AppKey("automazione_in_volo", LiveValue)
 
 #: Il tetto della risposta, dichiarato: lo stesso del proponente, per la
 #: stessa ragione e con la stessa avvertenza (non misurato: lo sceglie la
@@ -125,12 +134,12 @@ async def guard(app, exchange: str | None = None) -> AutomateDispatcher:
 
 def preparing(app) -> str | None:
     """L'id della proposta che ha un turno in corso, o `None`."""
-    on_chain = app.get(IN_FLIGHT)
+    on_chain = app[IN_FLIGHT].value
     if on_chain:
         return on_chain
     if not turn_in_flight(app, AUTOMATE_TURN_KIND):
         return None
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     turn = queue.latest(AUTOMATE_TURN_KIND) if queue is not None else None
     return ((turn or {}).get("wake") or {}).get("proposta")
 
@@ -203,15 +212,15 @@ def begin(app, row: dict) -> str | None:
         from ..home_space.house import House
         from ..home_space.privacy import PresenceMask
 
-        home_space = app.get("home_space_store")
-        presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
+        home_space = app.get(HOME_SPACE_KEY)
+        presence = (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
                     if home_space is not None else None)
         enqueue_turn(app, AUTOMATE_SPECIES, {"proposta": row["id"]},
                      bridge_turn(row, presence=presence))
         return None
     if runner is None:
         return "nessun modello collegato: non posso prepararla adesso."
-    app[IN_FLIGHT] = row["id"]
+    app[IN_FLIGHT].set(row["id"])
     # Un compito senza padrone: `spawn` gli tiene il riferimento forte.
     spawn(_chain(app, row, runner), name="automazione")
     return None
@@ -226,7 +235,7 @@ async def _chain(app, row: dict, runner) -> None:
         dispatcher = await declared.guard(app, exchange)
         presence = getattr(dispatcher, "presence", None)
         answer, turn = await chain_turn(
-            runner, AUTOMATE_SPECIES, usage=app.get("usage"),
+            runner, AUTOMATE_SPECIES, usage=app.get(USAGE_KEY),
             max_tokens=MAX_ANSWER_TOKENS,
             user_message=build_question(row, presence=presence),
             system_prompt=SYSTEM, tools=declared.catalog_for_turn(),
@@ -237,7 +246,7 @@ async def _chain(app, row: dict, runner) -> None:
         logger.warning("automazione: turno fallito per %s (%s: %s)",
                        row.get("id"), type(error).__name__, error)
     finally:
-        app[IN_FLIGHT] = None
+        app[IN_FLIGHT].set(None)
 
 
 def settle(app, ident: str, exchange: str | None, answer, *,
@@ -259,7 +268,7 @@ def settle(app, ident: str, exchange: str | None, answer, *,
     -- ne' la catena (`_chain`) ne' la consegna (`deliver`) -- e la leggeva
     una prova sola.
     """
-    store = app.get("observations")
+    store = app.get(OBSERVATIONS_KEY)
     if store is None or not ident:
         return
     built = _built_in(app, exchange)
@@ -291,8 +300,8 @@ def deliver(app, job: dict | None, decision: dict) -> None:
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
 
-    home_space = app.get("home_space_store")
-    presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
+    home_space = app.get(HOME_SPACE_KEY)
+    presence = (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
                 if home_space is not None else None)
     settle(app, ((job or {}).get("wake") or {}).get("proposta") or "",
            decision.get("exchange_id"), decision.get("reply"),
@@ -301,7 +310,7 @@ def deliver(app, job: dict | None, decision: dict) -> None:
 
 def _built_in(app, exchange: str | None) -> str | None:
     """La proposta piu' recente nata nel turno, o `None`."""
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return None
     ids = constructions.proposed_in(exchange, actor=PROPOSER_SPECIES)

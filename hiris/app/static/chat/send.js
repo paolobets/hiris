@@ -95,7 +95,8 @@
       /* Cinque minuti di attesa non possono finire in un vicolo cieco. Su
          questo percorso il turno vive sul server: se la risposta arriva dopo
          che abbiamo smesso di chiedere, finisce comunque in cronologia
-         (`server.py::_submit_chat_reply`) e ricompare al caricamento dopo.
+         (`reasoning/consegna.py::_chat_reply_submitter`) e ricompare al
+         caricamento dopo.
          Dirlo e' piu' vero -- e piu' utile -- di un «Riprova» che
          rimanderebbe la stessa domanda una seconda volta. */
       window.HirisChatMessages.updateBubble(placeholderRow,

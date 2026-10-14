@@ -40,9 +40,12 @@ from aiohttp import web
 from ..chat_thread import subject_key_for
 from ..home_space.historian import home_space_zone, house_clock, house_timezone
 from ..home_space.house import House
+from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.render import render_memory
 from ..memory.interpretation import deduci_unit, validate
+from ..memory.store import MEMORY_STORE_KEY
 from ..proxy._sanitize import sanitize_ha_value
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
@@ -63,7 +66,7 @@ _MEMORIES_SHOWN_LIMIT = 200
 
 
 async def handle_get_memories(request: web.Request) -> web.Response:
-    store = request.app.get("memory_store")
+    store = request.app.get(MEMORY_STORE_KEY)
     if store is None:
         # Stessa convenzione di handle_get_home_space (handlers_home_space.py): senza
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
@@ -74,9 +77,9 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     # Le ancore si risolvono sulla casa di questa richiesta (A-13), con la
     # regola che tutte le porte dei ricordi chiedono a `House.tether` (G-21):
     # un'anagrafe mai letta, o un registro caduto, lasciano `esiste` a `None`.
-    house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
+    house = House.read(request.app.get(HOME_SPACE_KEY), request.app.get(ENTITY_CACHE_KEY))
     # `detto_il` nell'ora della casa, come da ogni porta (`render_memory`).
-    timezone = house_timezone(request.app.get("home_space_store"))
+    timezone = house_timezone(request.app.get(HOME_SPACE_KEY))
     zone = home_space_zone(timezone)
 
     # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
@@ -115,7 +118,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
 
 
 async def handle_patch_memory(request: web.Request) -> web.Response:
-    store = request.app.get("memory_store")
+    store = request.app.get(MEMORY_STORE_KEY)
     if store is None:
         return error_response(503, "l’archivio della memoria non è disponibile")
     try:
@@ -148,7 +151,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # arriva all'utente deve dirlo com'e' (`unverifiable_types`, sotto):
     # "non esiste nell'anagrafe" e' falso quando l'anagrafe non e' mai
     # stata letta.
-    house = House.read(request.app.get("home_space_store"), request.app.get("entity_cache"))
+    house = House.read(request.app.get(HOME_SPACE_KEY), request.app.get(ENTITY_CACHE_KEY))
     lookup = house.lookup()
     unverifiable_types = house.unverifiable_tether_kinds()
     # Classi e unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
@@ -260,7 +263,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
 
 
 async def handle_delete_memory(request: web.Request) -> web.Response:
-    store = request.app.get("memory_store")
+    store = request.app.get(MEMORY_STORE_KEY)
     if store is None:
         return error_response(503, "l’archivio della memoria non è disponibile")
     try:

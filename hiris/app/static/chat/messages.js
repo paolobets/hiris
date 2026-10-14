@@ -186,7 +186,8 @@
        - Turno servito dal ponte (HTTP 202 + job_id): `_enqueue_chat_job`
          scrive il messaggio dell'utente in chat_store PRIMA di accodare, e la
          risposta ci finisce quando il runner la consegna
-         (`server.py::_submit_chat_reply`), senza che la pagina c'entri.
+         (`reasoning/consegna.py::_chat_reply_submitter`), senza che la pagina
+         c'entri.
          Chiudere non perde niente: al caricamento dopo, `restore()` la rilegge
          da `GET api/chat/history`.
        - Turno servito direttamente: l'intero scambio viene scritto
@@ -198,7 +199,7 @@
      inventata. L'aspetto dell'indicatore resta identico nei due casi: cambia
      una frase, e cambia perche' il fatto e' diverso. */
   var KEEP_OPEN_NOTICE = 'Le risposte lunghe possono richiedere qualche minuto. Tieni aperta questa pagina: se la chiudi, questa risposta si perde.';
-  /* Il "se arriva" non e' timidezza: `_submit_chat_reply` (server.py) scarta in
+  /* Il "se arriva" non e' timidezza: `_submit_chat_reply` (reasoning/consegna.py) scarta in
      silenzio una risposta vuota o tossica, e il job ha una scadenza sua
      (`BRIDGE_DEADLINE_MIN`). La cronologia raccoglie la risposta se la risposta
      c'e', ed e' esattamente quel che il messaggio dei cinque minuti dice gia. */

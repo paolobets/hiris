@@ -8,6 +8,9 @@ import logging
 
 import pytest
 
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
+from hiris.app.action.journal import JOURNAL_KEY
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import started_app  # noqa: F401
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -25,12 +28,12 @@ async def test_l_app_avviata_ha_i_lavori_periodici_e_gli_archivi(started_app):
     un'app vuota: `get_job` torna `None`, e `None == None` e' verde.
 
     Mutazione ESEGUITA: cambiato l'id del lavoro `hiris_mind_aggregation` in
-    `server._on_startup` -- rossa."""
+    `startup._on_startup` -- rossa."""
     _SEEN.append(started_app)
-    jobs = {job.id for job in started_app["scheduler"].get_jobs()}
+    jobs = {job.id for job in started_app[SCHEDULER_KEY].get_jobs()}
     assert len(jobs) >= 10, jobs
     assert "hiris_mind_aggregation" in jobs
-    assert started_app["workshop"]._journal is started_app["journal"]
+    assert started_app[WORKSHOP_KEY]._journal is started_app[JOURNAL_KEY]
 
 
 async def test_il_registro_hiris_parla_mentre_l_app_e_accesa(started_app):
@@ -59,4 +62,4 @@ async def test_la_stessa_app_serve_tutte_le_prove_del_file(started_app):
         "lanciata da sola questa prova non confronta niente: "
         "si lancia con il file intero")
     assert all(app is _SEEN[0] for app in _SEEN), "ogni prova ha avviato la sua app"
-    assert started_app["scheduler"].running
+    assert started_app[SCHEDULER_KEY].running

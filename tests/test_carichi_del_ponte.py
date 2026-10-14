@@ -5,7 +5,7 @@ Le definizioni (`tools/list`) e i risultati (`tools/call`) passano da
 misure complete» §4(2).
 
 **Thread-safe, e non per scrupolo.** La rotta scrive dal thread del loop; chi
-legge (`server._registra_turno_ponte`) gira nel thread dell'executor del
+legge (`bridge_loads._registra_turno_ponte`) gira nel thread dell'executor del
 ponte. Il contatore dei giri di `handlers_mcp` non ha lock perche' lo tocca
 un thread solo: questo ne ha due.
 

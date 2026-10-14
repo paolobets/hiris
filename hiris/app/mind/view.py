@@ -29,12 +29,15 @@ from datetime import timedelta
 from ..home_space import historian
 from ..home_space.house import House
 from ..home_space.log_source import Manifest, integration_of, manifest_of
+from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.topology import read_mirror
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import proposer_turn
 from .analyst import TRIGGER_WORDS, observation_key
+from .judgments import TYPE_JUDGMENTS_KEY
 from .report import ANALYST_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
-from .store import attempt_out
-from .watcher import scope_row
+from .store import OBSERVATIONS_KEY, attempt_out
+from .watcher import WATCHER_KEY, scope_row
 
 #: Quanti giorni di righe grezze si mostrano (`volume`). **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -386,3 +389,19 @@ def _with_outcomes(analysis: dict) -> dict:
         outcome = by_key.get(observation_key(observation))
         seen.append({**observation, "esito": outcome} if outcome else observation)
     return {**analysis, "osservazioni": seen}
+
+
+def mind_view(app) -> MindView:
+    """Le letture del cervello di questa app: l'UNICO punto che le costruisce,
+    per le rotte di `api/handlers_mind.py`, per lo strumento `mind`
+    (`handlers_chat.create_tool_dispatcher`) e per i giri del cervello che
+    chiedono i nomi dei dispositivi. Sta accanto a `MindView` dal 14/10/2026
+    (F8 passo 2): prima stava fra le rotte, e i giri che l'hanno raggiunta in
+    `mind/` avrebbero importato una rotta (N161-1).
+
+    Si costruisce a ogni richiesta, ed e' gratis: tiene solo riferimenti agli
+    oggetti dell'app, che possono nascere dopo questa rotta (l'osservatore
+    parte all'avvio, a meta')."""
+    return MindView(store=app.get(OBSERVATIONS_KEY), watcher=app.get(WATCHER_KEY),
+                    home_space=app.get(HOME_SPACE_KEY), cache=app.get(ENTITY_CACHE_KEY),
+                    judgments=app[TYPE_JUDGMENTS_KEY].value)

@@ -205,8 +205,16 @@ def _imports(path: Path) -> set[Path]:
 
 def responding_modules() -> set[Path]:
     """I moduli che rispondono: quelli dei gestori delle rotte (chiesti al
-    router), quello del dispatcher degli strumenti (chiesto al catalogo), e
-    la chiusura dei loro import dentro `hiris/app/`."""
+    router), quello del dispatcher degli strumenti (chiesto al catalogo),
+    quello che compone l'app (`create_app`), e la chiusura dei loro import
+    dentro `hiris/app/`.
+
+    Il modulo di `create_app` e' una radice dichiarata dal 14/10/2026 (F8
+    passo 5): i collaboratori che le rotte ricevono dall'app e non importano
+    (l'attuatore, l'officina, le revisioni) li importa solo chi li monta.
+    Fino a quel giorno ci si arrivava per caso, perche' un gestore -- il guscio
+    HTML -- viveva ancora in `server.py`; uscito il guscio, l'attuatore era
+    uscito dal cancello senza che nessuno lo decidesse."""
     import sys
 
     from hiris.app import server
@@ -214,6 +222,7 @@ def responding_modules() -> set[Path]:
 
     app = server.create_app()
     roots = {route.handler.__module__ for route in app.router.routes()}
+    roots.add(server.create_app.__module__)
     assert tools.KNOWLEDGE_TOOLS, "il catalogo degli strumenti e' vuoto"
     roots.add(tools.ToolDispatcher.__module__)
     todo = [Path(sys.modules[name].__file__) for name in roots

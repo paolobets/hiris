@@ -29,7 +29,12 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
 
 
 @pytest.fixture
@@ -172,6 +177,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
+from hiris.app.startup import live_values
 
 
 @pytest.fixture(autouse=True)
@@ -202,10 +208,11 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     impostazioni = ChatSettings(name="test-agent", system_prompt="Sei HIRIS.")
 
     app = web.Application()
-    app["reasoning_queue"] = reasoning_queue
-    app["chat_settings"] = impostazioni
-    app["data_dir"] = data_dir
-    app["bridge_active"] = True
+    app.update(live_values())
+    app[REASONING_QUEUE_KEY] = reasoning_queue
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
+    app[DATA_DIR_KEY] = data_dir
+    app[BRIDGE_ACTIVE_KEY].set(True)
 
     archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
@@ -218,8 +225,8 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     ricordo_segreto = "Il codice del cancello e' 1974, non dirlo a nessuno"
     archivio_memoria.remember(ricordo_segreto, detto_da="paolo")
-    app["home_space_store"] = archivio_casa
-    app["memory_store"] = archivio_memoria
+    app[HOME_SPACE_KEY] = archivio_casa
+    app[MEMORY_STORE_KEY] = archivio_memoria
 
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)

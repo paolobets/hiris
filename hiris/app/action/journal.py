@@ -32,6 +32,8 @@ import logging
 import secrets
 import threading
 
+from aiohttp import web
+
 from ..chat_thread import subject_from_key, subject_key_for
 from ..storage import (
     Retention,
@@ -340,3 +342,6 @@ class Journal:
         if entity is not None:
             occurrences = [e for e in occurrences if entity in e["entita"]]
         return occurrences[:int(max(1, limit))]
+
+
+JOURNAL_KEY = web.AppKey("journal", Journal)

@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 
 def test_default_e_completo_senza_argomenti():
@@ -294,7 +294,7 @@ async def _start(tmp_path):
     from tests._avvio import started_with
 
     async with started_with(tmp_path) as app:
-        return app["chat_settings"]
+        return app[CHAT_SETTINGS_KEY].value
 
 
 @pytest.mark.asyncio
@@ -323,16 +323,16 @@ async def test_il_secondo_avvio_non_riscrive_e_non_rilogga(tmp_path, caplog):
     riga ricompare al secondo avvio)."""
     import logging
 
-    from tests._avvio import SERVER_LOGGER
+    from tests._avvio import STARTUP_LOGGER
 
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         await _start(tmp_path)
     assert "giorni_conservazione" in caplog.text
     caplog.clear()
     # Fra i due avvii l'utente cambia il valore dalla pagina: il secondo avvio
     # non deve riportarlo al default.
     ChatSettings(retention_days=7).save(str(tmp_path))
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         assert (await _start(tmp_path)).retention_days == 7
     assert "giorni_conservazione" not in caplog.text, (
         "la migrazione ha parlato di nuovo al secondo avvio: non era piu' il "

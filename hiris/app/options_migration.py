@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from .models_store import MODELS_CONFIG_KEY
 from .providers import CLAUDE, DEFAULT_PRESET, SUBSCRIPTION, chosen_model, get, preset
 
 logger = logging.getLogger(__name__)
@@ -177,7 +178,7 @@ def _initial_chain(credentials: dict) -> list[str]:
 def seed_at_startup(app, data_dir: str, credentials: dict) -> None:
     """Le due semine dell'avvio, nell'ordine: la catena, poi il modello del
     piano. Ognuna guarda il SUO segno e si salva da se', e l'archivio in
-    memoria (`app["models_config"]`) si rilegge dopo ciascuna: fondere le due
+    memoria (`app[MODELS_CONFIG_KEY]`) si rilegge dopo ciascuna: fondere le due
     in una scrittura sola le renderebbe una migrazione sola che puo' trovarsi
     a meta', che e' cio' che i segni distinti esistono per evitare.
 
@@ -209,7 +210,7 @@ def seed_at_startup(app, data_dir: str, credentials: dict) -> None:
             log=logger),
     )
     for seed in seeds:
-        store, to_save = seed(dict(app["models_config"]))
+        store, to_save = seed(dict(app[MODELS_CONFIG_KEY].value))
         if to_save:
             save_models_config(data_dir, store, flags=True)
-            app["models_config"] = load_models_config(data_dir)
+            app[MODELS_CONFIG_KEY].set(load_models_config(data_dir))

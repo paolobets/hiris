@@ -17,6 +17,12 @@ from collections.abc import Callable
 from contextlib import suppress
 from typing import Any
 
+from aiohttp import web
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+DATA_DIR_KEY = web.AppKey("data_dir")
+
 logger = logging.getLogger(__name__)
 
 # Migration callable: receives the connection, transforms schema from version k-1 to k.

@@ -14,10 +14,10 @@
    service worker: un guscio vecchio chiede gli script vecchi PER NOME, e la
    rivalidazione degli asset non serve a niente.
 
-   Il pezzo che mancava esisteva gia': `app["build_stamp"]` (server.py) e'
+   Il pezzo che mancava esisteva gia': `app[BUILD_STAMP_KEY]` (server.py) e'
    l'hash del contenuto del frontend, restituito da GET api/health e gia'
    mostrato a schermo da chat/main.js -- ma nessuno lo confrontava con
-   niente. Da questo task, server._inject_version scrive nel guscio servito
+   niente. Da questo task, shell._inject_version scrive nel guscio servito
    una `<meta name="hiris-build" content="...">` con quello stesso valore
    (una fonte sola, non ricalcolato qui): questo modulo la legge e la
    confronta col `build` che GET api/health restituisce in quel momento.
@@ -26,7 +26,7 @@
    anche il JavaScript vecchio, che questo controllo non contiene. Il
    meccanismo protegge dalla prima build che lo contiene in poi -- un client
    fermo a una build precedente a questa non puo' autodiagnosticarsi, ed e'
-   per questo che il server logga lato suo (server.py, richiesta di un asset
+   per questo che il server logga lato suo (api/shell.py, richiesta di un asset
    con un'impronta ?v= stantia): quella riga funziona SUBITO, anche coi
    client vecchi. Qui non si prova a "riparare" un client vecchio: si prova
    solo a impedire che, ANDANDO AVANTI, lo stesso buco si ripeta senza che

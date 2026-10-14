@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import logging
 
+from ..action.actuator import ACTUATOR_KEY
+from ..action.registry import SERVICE_REGISTRY_KEY
 from ..proxy._sanitize import truncate_with_marker
+from ..proxy.ha_client import HA_CLIENT_KEY
 from .promise import MAX_SERVICES_PER_PROMISE, REASON_CAP, delivery_call, push_message
 from .recipient import recipients_for
 
@@ -73,7 +76,7 @@ async def notify_admins(app, text: str, *, actor: str) -> dict:
     """
     from ..api.soffitto import administrators
 
-    actuator = app.get("action_actuator")
+    actuator = app.get(ACTUATOR_KEY)
     if actuator is None:
         return {"errore": "nessuna porta dei servizi montata"}
     admins = await administrators(app)
@@ -84,8 +87,8 @@ async def notify_admins(app, text: str, *, actor: str) -> dict:
     sent, failures, unreachable = 0, [], []
     for subject in admins:
         try:
-            recipients = await recipients_for(subject, app.get("ha_client"),
-                                              app.get("service_registry"))
+            recipients = await recipients_for(subject, app.get(HA_CLIENT_KEY),
+                                              app.get(SERVICE_REGISTRY_KEY))
         except Exception as error:
             unreachable.append(f"{subject['id']} ({type(error).__name__})")
             continue

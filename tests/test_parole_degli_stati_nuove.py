@@ -23,9 +23,14 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY, Fact, KnowledgeStore
 from hiris.app.mind.state_words import prime_state_translations
-from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_CATEGORY, StateTranslations
+from hiris.app.proxy.state_translations import (
+    STATE_TRANSLATIONS_CATEGORY,
+    STATE_TRANSLATIONS_KEY,
+    StateTranslations,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -69,8 +74,8 @@ async def test_la_cache_dice_se_la_tabella_e_appena_letta():
 @pytest.mark.asyncio
 async def test_il_giro_sulla_tabella_in_cache_non_tocca_il_sapere(sapere):
     casa = AnagrafeFinta(cornice={"versione_ha": "2026.9.4", "lingua": "it"})
-    app = {"knowledge": sapere, "home_space_store": casa,
-           "state_translations": StateTranslations(_client())}
+    app = {KNOWLEDGE_KEY: sapere, HOME_SPACE_KEY: casa,
+           STATE_TRANSLATIONS_KEY: StateTranslations(_client())}
 
     await prime_state_translations(app)
     assert sapere.get("tipo", "binary_sensor.gas", "significato").value == "Gas"

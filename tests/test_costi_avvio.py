@@ -5,7 +5,7 @@ si legga una volta all'avvio». Per far scendere un numero bisogna prima
 averlo: fino al 01/10/2026 era solo letto dal codice («circa 17 connessioni
 piu' 4 letture intere», spec §1.4), mai contato eseguendo.
 
-Questa prova AVVIA DAVVERO `server._on_startup` -- con lo stesso montaggio
+Questa prova AVVIA DAVVERO `startup._on_startup` -- con lo stesso montaggio
 della fotografia delle porte (`fotografia_porte.mounted`), che e' l'unico
 punto in cui gli attrezzi avviano il prodotto -- su una casa sintetica che
 conta ogni metodo che le viene chiesto.
@@ -47,12 +47,16 @@ import itertools
 import sys
 from pathlib import Path
 
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import casa_finta
 import fotografia_porte
 
+from hiris.app import startup
 from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
@@ -209,7 +213,7 @@ def test_l_avvio_si_iscrive_prima_di_leggere_e_la_prima_connessione_non_rilegge(
     `_ws_loop` -- rossa (anagrafe, comportamento e plance rimandati)."""
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            house = app["ha_client"]
+            house = app[HA_CLIENT_KEY]
             return (list(house._session.sent), list(house._session.sent_after),
                     [command for command, _extra in house.calls],
                     sorted(task.get_name() for task in house._session.deferred_work),
@@ -235,10 +239,9 @@ def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypa
     Mutazione ESEGUITA (03/10/2026, Task 7): tolta la chiamata a
     `reread_after_first_connection` -- rossa (la prima connessione non
     rileggerebbe)."""
-    from hiris.app import server
     from hiris.app.proxy import ha_client as ha_client_module
 
-    monkeypatch.setattr(server, "FIRST_CONNECTION_CAP_S", 0.05)
+    monkeypatch.setattr(startup, "FIRST_CONNECTION_CAP_S", 0.05)
     # Dopo il rifiuto il client aspetta: la connessione non arriva durante
     # l'avvio, come quando il nucleo non e' ancora su.
     monkeypatch.setattr(ha_client_module, "AUTH_RETRY_FIRST_S", 3600)
@@ -251,8 +254,8 @@ def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypa
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             unreachable) as app:
-            return app["ha_client"]._reread_at_first_connection, \
-                app["entity_cache"].loaded
+            return app[HA_CLIENT_KEY]._reread_at_first_connection, \
+                app[ENTITY_CACHE_KEY].loaded
 
     asked, loaded = asyncio.run(boot())
     assert asked
@@ -296,7 +299,6 @@ def test_la_prima_connessione_subito_dopo_il_tetto_avvisa_ogni_ascoltatore(tmp_p
     connessione, e si confrontano gli ascoltatori iscritti nell'istante
     dell'avviso con quelli iscritti a fine avvio, per ogni genere che
     l'avviso raggiunge."""
-    from hiris.app import server
 
     announced = _announced_kinds()
     # Chi era iscritto quando l'avviso e' arrivato, genere per genere: lo
@@ -322,11 +324,11 @@ def test_la_prima_connessione_subito_dopo_il_tetto_avvisa_ogni_ascoltatore(tmp_p
         await asyncio.wait_for(ha_client.ws_ready.wait(), 10)
         return False
 
-    monkeypatch.setattr(server, "_open_websocket", connection_right_after_the_ceiling)
+    monkeypatch.setattr(startup, "_open_websocket", connection_right_after_the_ceiling)
 
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            house = app["ha_client"]
+            house = app[HA_CLIENT_KEY]
             return {kind: [cb for cb in getattr(house, f"_{kind}_listeners")
                            if cb not in probes] for kind in announced}
 

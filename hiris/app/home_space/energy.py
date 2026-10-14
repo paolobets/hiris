@@ -150,7 +150,7 @@ def describe(held: dict | None, house,
     non ha ne' entita' ne' unita'.
 
     `statistiche` e' la regola di oggi del giro delle ricette: l'id sta
-    nell'elenco di `recorder/list_statistic_ids` (`server.statistic_ids_for_round`).
+    nell'elenco di `recorder/list_statistic_ids` (`house_history.statistic_ids_for_round`).
     Non e' una regola nuova: la regola unica di «ha statistiche» (B-12) la
     porta un'altra fetta, e quando c'e' si chiede a lei. `with_series` a
     `None` e' «non l'ho potuto chiedere», e il campo resta `None`.

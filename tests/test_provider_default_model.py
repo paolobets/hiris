@@ -3,7 +3,7 @@
 Era il difetto peggiore trovato dal progetto (§0.5), e la parte peggiore era
 che riguardava lo STESSO valore: il modello di Claude API aveva effetto
 immediato sul ponte (`api/handlers_chat._enqueue_chat_job` rilegge
-`app["models_config"]` a ogni turno) e solo al riavvio sull'API (i tre runner
+`app[MODELS_CONFIG_KEY]` a ogni turno) e solo al riavvio sull'API (i tre runner
 lo ricevevano come argomento di costruzione, `default_model=`, e poi leggevano
 `self._default_model`). La pagina Modelli ne dichiarava uno solo: **sbagliata,
 non imprecisa**, cioe' l'invariante 4 della spec violato in due modi insieme.
@@ -23,7 +23,9 @@ import pytest_asyncio
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.backends.openrouter_runner import OpenRouterRunner
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.llm_router import LLMRouter
+from hiris.app.live_value import LiveValue
+from hiris.app.llm_router import LLM_ROUTER_KEY, LLMRouter
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import CLAUDE, OPENAI, OPENROUTER
 
 
@@ -102,7 +104,7 @@ async def test_un_modello_esplicito_vince_sulla_scelta():
 #
 # La finta e' SCOMODA nel modo in cui lo e' la produzione: `models_config` non
 # viene MUTATO, viene RIASSEGNATO -- e' quello che fa
-# `handle_save_models_config` (`request.app["models_config"] = clean`). Una
+# `handle_save_models_config` (`request.app[MODELS_CONFIG_KEY] = clean`). Una
 # finta che mutasse il dizionario in-place farebbe passare anche un runner che
 # si fosse tenuto un riferimento al dizionario di partenza, cioe' regalerebbe
 # una freschezza che la produzione non ha.
@@ -110,12 +112,12 @@ async def test_un_modello_esplicito_vince_sulla_scelta():
 
 
 def _archivio(**provider_models):
-    return {"models_config": {"provider_models": dict(provider_models)}}
+    return {MODELS_CONFIG_KEY: LiveValue({"provider_models": dict(provider_models)})}
 
 
 def _lettura(app, provider):
     def leggi() -> str:
-        return (app.get("models_config") or {}).get("provider_models", {}).get(provider, "")
+        return (app[MODELS_CONFIG_KEY].value or {}).get("provider_models", {}).get(provider, "")
     return leggi
 
 
@@ -126,7 +128,7 @@ async def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio():
                           read_model=_lettura(app, "claude"))
     assert await _modello_spedito(runner) == "claude-opus-4-7"
 
-    app["models_config"] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
+    app[MODELS_CONFIG_KEY].set({"provider_models": {"claude": "claude-haiku-4-5-20251001"}})
     assert await _modello_spedito(runner) == "claude-haiku-4-5-20251001", (
         "il runner deve LEGGERE il modello al momento dell'uso, non averlo "
         "ricevuto alla costruzione"
@@ -138,7 +140,7 @@ async def test_il_modello_di_openai_cambia_dal_turno_dopo():
     app = _archivio(openai="gpt-4.1")
     runner = _cloud(read_model=_lettura(app, "openai"))
     assert await _modello_spedito(runner) == "gpt-4.1"
-    app["models_config"] = {"provider_models": {"openai": "gpt-4o-mini"}}
+    app[MODELS_CONFIG_KEY].set({"provider_models": {"openai": "gpt-4o-mini"}})
     assert await _modello_spedito(runner) == "gpt-4o-mini"
 
 
@@ -149,7 +151,7 @@ async def test_il_modello_di_openrouter_cambia_dal_turno_dopo():
                               read_model=_lettura(app, "openrouter"))
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
     assert await _modello_spedito(runner) == "openai/gpt-4.1"
-    app["models_config"] = {"provider_models": {"openrouter": ""}}
+    app[MODELS_CONFIG_KEY].set({"provider_models": {"openrouter": ""}})
     assert await _modello_spedito(runner) == OPENROUTER.auto_model.split("openrouter:")[-1]
 
 
@@ -159,17 +161,17 @@ async def test_il_modello_di_ollama_cambia_dal_turno_dopo():
     passato esplicitamente (quell'istanza ne ha scaricato uno solo). Prima
     quella vittoria era di un valore cotto nel costruttore (`fixed_model`);
     adesso e' di una lettura, ed e' l'unica differenza."""
-    archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
+    archivio = {MODELS_CONFIG_KEY: LiveValue({"ollama": {"modello": "llama3.1:8b"}})}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         read_model=lambda: (
-            (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
+            (archivio[MODELS_CONFIG_KEY].value or {}).get("ollama", {}).get("modello", "")
         ),
     )
     assert await _modello_spedito(runner) == "llama3.1:8b"
     assert await _modello_spedito(runner, model="gpt-4o") == "llama3.1:8b"
 
-    archivio["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
+    archivio[MODELS_CONFIG_KEY].set({"ollama": {"modello": "qwen2.5:14b"}})
     assert await _modello_spedito(runner) == "qwen2.5:14b"
     assert await _modello_spedito(runner, model="gpt-4o") == "qwen2.5:14b"
 
@@ -191,8 +193,8 @@ async def test_una_lettura_che_torna_None_non_rompe_il_turno():
 # credenziali di Claude API e di Ollama perche' i due runner nascano, e si
 # chiede la lettura AL RUNNER che l'ha ricevuta (`_read_model`).
 #
-# L'app e' una per file: le prove riassegnano `app["models_config"]` e lo
-# rimettono com'era alla fine (`_assigned`).
+# L'app e' una per file: le prove sostituiscono il valore di
+# `app[MODELS_CONFIG_KEY]` e lo rimettono com'era alla fine (`_assigned`).
 # ---------------------------------------------------------------------------
 
 
@@ -207,30 +209,21 @@ async def started_runners(tmp_path_factory):
 
 
 def _reader(app, provider):
-    runner = app["llm_router"]._backend_map()[provider]
+    runner = app[LLM_ROUTER_KEY]._backend_map()[provider]
     assert runner is not None, f"l'avvio non ha costruito il runner di {provider}"
     return runner._read_model
 
 
 @contextlib.contextmanager
 def _assigned(app, models_config):
-    """`app["models_config"]` RIASSEGNATO (come fa la PUT), e rimesso alla
-    fine: l'app e' condivisa dalle prove del file."""
-    before = app.get("models_config", _MISSING)
-    if models_config is _MISSING:
-        app.pop("models_config", None)
-    else:
-        app["models_config"] = models_config
+    """`app[MODELS_CONFIG_KEY]` SOSTITUITO (come fa la PUT, col `set` del suo
+    `LiveValue`), e rimesso alla fine: l'app e' condivisa dalle prove del file."""
+    before = app[MODELS_CONFIG_KEY].value
+    app[MODELS_CONFIG_KEY].set(models_config)
     try:
         yield
     finally:
-        if before is _MISSING:
-            app.pop("models_config", None)
-        else:
-            app["models_config"] = before
-
-
-_MISSING = object()
+        app[MODELS_CONFIG_KEY].set(before)
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -247,8 +240,8 @@ async def test_la_lettura_dell_avvio_vede_l_archivio_RIASSEGNATO(started_runners
     with _assigned(started_runners,
                    {"provider_models": {"claude": "claude-opus-4-7"}}):
         assert leggi() == "claude-opus-4-7"
-        started_runners["models_config"] = {
-            "provider_models": {"claude": "claude-sonnet-4-6"}}
+        started_runners[MODELS_CONFIG_KEY].set({
+            "provider_models": {"claude": "claude-sonnet-4-6"}})
         assert leggi() == "claude-sonnet-4-6"
 
 
@@ -266,20 +259,21 @@ async def test_la_lettura_del_locale_NON_passa_da_provider_models(started_runner
                    {"ollama": {"modello": "llama3.1:8b"},
                     "provider_models": {"ollama": "un-fantasma"}}):
         assert modello_locale() == "llama3.1:8b"
-        started_runners["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
+        started_runners[MODELS_CONFIG_KEY].set({"ollama": {"modello": "qwen2.5:14b"}})
         assert modello_locale() == "qwen2.5:14b"
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_la_lettura_regge_un_archivio_che_non_c_e_ancora(started_runners):
-    """Un turno puo' arrivare con l'archivio assente: la lettura deve
-    rispondere "" invece di sollevare.
+async def test_la_lettura_regge_un_archivio_vuoto(started_runners):
+    """Un archivio senza modelli: la lettura deve rispondere "" invece di
+    sollevare. Dal 14/10/2026 (X-31) l'archivio non puo' piu' mancare: nasce
+    in `create_app` come `LiveValue({})`, e il caso vero e' quello vuoto.
 
-    Mutazione ESEGUITA (03/10/2026): `app.get("models_config") or {}` ->
-    `app["models_config"]` in `_model_of` -- rossa (`KeyError`)."""
+    Mutazione ESEGUITA (14/10/2026): `.get(provider, "")` -> `[provider]` in
+    `model_reader` -- rossa (`KeyError`)."""
     modello_di = _reader(started_runners, "claude")
     modello_locale = _reader(started_runners, "ollama")
-    with _assigned(started_runners, _MISSING):
+    with _assigned(started_runners, {}):
         assert modello_di() == ""
         assert modello_locale() == ""
 

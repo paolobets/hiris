@@ -65,11 +65,11 @@ from hiris.app.action.registry import ServiceRegistry
 from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.behavior import reread
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.rounds import reload_entity_inventory
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.keeper.recipient import _REASON_NO_ACTIVE_NOTIFY, recipients_for
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import EntityCache, automation_config_id
-from hiris.app.server import reload_entity_inventory
 from tests._casa_sintetica import synthetic_inputs
 
 

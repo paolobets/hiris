@@ -16,9 +16,14 @@ from __future__ import annotations
 
 import logging
 
-from ..chat_thread import subject_from_thread
+from aiohttp import web
+
+from ..action.registry import SERVICE_REGISTRY_KEY
+from ..chat_thread import subject_from_thread, thread_for
 from ..proxy._sanitize import sanitize_ha_value
+from ..proxy.ha_client import HA_CLIENT_KEY
 from ..states import FAILED, KEPT, SKIPPED
+from ..storage import DATA_DIR_KEY
 from .delivery import deliver
 from .outcome import write_line
 from .promise import (
@@ -336,6 +341,9 @@ class Sweeper:
         return "la notifica non è arrivata a " + "; ".join(failures)
 
 
+SWEEPER_KEY = web.AppKey("sweeper", Sweeper)
+
+
 def target_changed(at_birth, now) -> str | None:
     """Se il bersaglio di una promessa non copre piu' le stesse entita', **la
     frase che lo dice** (reperto B-6, 22/09/2026). `None` se non e' cambiato.
@@ -362,3 +370,45 @@ def target_changed(at_birth, now) -> str | None:
             f"{at_birth} entità, adesso ne copre {now}. Ho eseguito su "
             "quelle di adesso — se non è ciò che volevi, la casa è cambiata da "
             "quando l’hai chiesto.")
+
+
+def _promise_delivery(app) -> dict:
+    """I collaboratori con cui l'orologio consegna l'esito di una
+    promessa (spec 2026-09-26 §2.4): chiusure su `app`, lette a ogni
+    risveglio -- l'orologio non sa ne' di Home Assistant ne' della chat.
+
+    - `recipients`: `recipients_for` sul client di Home Assistant di ADESSO
+      e sul registro dei servizi dell'app (A-04: i `notify` da li', non da una
+      lettura propria di `/api/services`);
+    - `write_to_thread`: `chat_store.append_assistant_line` nella cartella
+      dell'add-on (filtra i veleni, rifiuta un filo assente);
+    - `ceiling`: `api/soffitto.py::ceiling_at_wake`, il soffitto di chi ha
+      chiesto riletto al risveglio;
+    - `owner_thread`: il filo del pannello del proprietario, se Home
+      Assistant ne dice uno solo (`api/soffitto.py::sole_owner`) -- a chi
+      l'orologio da' una promessa orfana che si sveglia prima che lui apra
+      il pannello.
+    """
+    from ..api.soffitto import ceiling_at_wake, sole_owner
+    from ..chat_store import append_assistant_line
+    from .recipient import recipients_for
+
+    async def _recipients(subject):
+        return await recipients_for(subject, app.get(HA_CLIENT_KEY),
+                                    app.get(SERVICE_REGISTRY_KEY))
+
+    def _write(thread, content, *, quoted=None):
+        return append_assistant_line(content, app[DATA_DIR_KEY], thread=thread,
+                                     quoted=quoted)
+
+    async def _ceiling(subject):
+        return await ceiling_at_wake(app, subject)
+
+    async def _owner_thread():
+        # Il filo lo calcola `thread_for`, come per ogni richiesta dal
+        # pannello (`ingress`): due calcoli dello stesso filo sono due fili.
+        owner = await sole_owner(app)
+        return thread_for(owner, "ingress") if owner else None
+
+    return {"recipients": _recipients, "write_to_thread": _write,
+            "ceiling": _ceiling, "owner_thread": _owner_thread}

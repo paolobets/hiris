@@ -37,11 +37,29 @@ import threading
 import time
 from collections.abc import Callable
 
-from ..storage import DAY_S, Retention, archive_name, connect, init_schema, prune_declared
+from aiohttp import web
+
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
+from ..keeper.store import AGENDA_KEY
+from ..memory.store import MEMORY_STORE_KEY
+from ..mind.knowledge import KNOWLEDGE_KEY
+from ..storage import (
+    DATA_DIR_KEY,
+    DAY_S,
+    Retention,
+    archive_name,
+    connect,
+    init_schema,
+    prune_declared,
+)
 
 # I ruoli e le specie si chiedono al vocabolario del confine (F-02): fino al
 # 07/10/2026 `RUOLI` era scritto due volte, qui e in `canali.py`.
 from .canali import RUOLI, SERVICE_SPECIES, SPECIE_IGNOTA
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+SERVICE_WINDOW_KEY = web.AppKey("finestra_servizi")
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +257,9 @@ class ServiziStore:
             return prune_declared(self._conn, CONSERVAZIONE, now)
 
 
+SERVICES_KEY = web.AppKey("servizi", ServiziStore)
+
+
 #: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione
 #: del proprietario del 22/09/2026, e sta scritta dove si applica. Non e' lo
 #: scarto ammesso sul momento di una firma (`canali.SCARTO_MOMENTO_S`): fino al
@@ -284,7 +305,7 @@ def open_services(app, path: str) -> ServiziStore:
     non in `server.py` (regola del 06/10/2026: `server.py` registra e avvia,
     non ospita); l'avvio la chiama al posto del costruttore, DOPO aver aperto
     gli archivi che la migrazione tocca."""
-    app["servizi"] = store = ServiziStore(path)
+    app[SERVICES_KEY] = store = ServiziStore(path)
     migrate_service_threads(app)
     return store
 
@@ -293,8 +314,8 @@ def open_services(app, path: str) -> ServiziStore:
 #: una colonna, oltre alla chat: `(nome per il registro, chiave in app)`. Ognuno
 #: ha `rekey_subjects`. L'avvio li apre PRIMA di `open_services`
 #: (`tests/test_servizi_identita.py` lo prova sull'app avviata).
-SUBJECT_ARCHIVES = (("promesse", "agenda"), ("costruzioni", "constructions"),
-                    ("ricordi", "memory_store"), ("righe del sapere", "knowledge"))
+SUBJECT_ARCHIVES = (("promesse", AGENDA_KEY), ("costruzioni", CONSTRUCTIONS_KEY),
+                    ("ricordi", MEMORY_STORE_KEY), ("righe del sapere", KNOWLEDGE_KEY))
 
 
 def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], int] | None]]:
@@ -312,7 +333,7 @@ def _service_thread_archives(app) -> list[tuple[str, Callable[[dict[str, str]], 
 
     archives: list[tuple[str, Callable[[dict[str, str]], int] | None]] = [
         ("sessioni di chat",
-         lambda renames: chat_store.rekey_subjects(app["data_dir"], renames)),
+         lambda renames: chat_store.rekey_subjects(app[DATA_DIR_KEY], renames)),
     ]
     for label, key in SUBJECT_ARCHIVES:
         archive = app.get(key)
@@ -329,7 +350,7 @@ def migrate_service_threads(app) -> dict[str, int]:
     Non solleva: un archivio che non riesce lascia le sue righe dov'erano,
     lo dice, e gli altri migrano lo stesso. Si rifa' a ogni avvio, e dal
     secondo non trova niente: le chiavi vecchie non esistono piu'."""
-    store = app.get("servizi")
+    store = app.get(SERVICES_KEY)
     if store is None:
         return {}
     try:
@@ -397,4 +418,4 @@ def prepara_finestra(app) -> None:
     E vive **in memoria**, non nell'archivio: una finestra che sopravvive a un
     riavvio è una finestra che ti sei dimenticato aperta.
     """
-    app["finestra_servizi"] = {}
+    app[SERVICE_WINDOW_KEY] = {}

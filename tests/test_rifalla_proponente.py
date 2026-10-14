@@ -15,12 +15,17 @@ import time
 import pytest
 
 from hiris.app import steering
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import proposal_redo as redo
 from hiris.app.mind import proposer_round as pr
 from hiris.app.mind import proposer_turn as pt
 from hiris.app.mind.analyst import evidence_of, observation_key
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.consegna import consegna
-from hiris.app.reasoning.queue import PRIORITY_CHAT, ReasoningQueue
+from hiris.app.reasoning.queue import PRIORITY_CHAT, REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.usage.store import USAGE_KEY
 from tests._runner_finto import RunnerFinto
 from tests.test_proponente import (
     _INTENZIONE_BUONA,
@@ -37,7 +42,7 @@ RICHIESTA = "non toccare il termostato, prova con lo scaldabagno"
 
 def _manuale(casa):
     riga = osservazioni()[0]
-    return casa["observations"].add_proposal(
+    return casa[OBSERVATIONS_KEY].add_proposal(
         text="Abbassa il termostato di notte", perche="il prelievo notturno sale",
         fingerprint=observation_key(riga), prova=evidence_of(riga),
         stakes=None, now_ts=1.0)
@@ -45,14 +50,14 @@ def _manuale(casa):
 
 def _seconda(casa):
     riga = osservazioni()[1]
-    return casa["observations"].add_proposal(
+    return casa[OBSERVATIONS_KEY].add_proposal(
         text="Sposta la lavatrice dopo le 21", perche="alle 19 costa di piu'",
         fingerprint=observation_key(riga), prova=evidence_of(riga),
         stakes=None, now_ts=2.0)
 
 
 def _proposta(casa, ident):
-    return next(p for p in casa["observations"].proposals() if p["id"] == ident)
+    return next(p for p in casa[OBSERVATIONS_KEY].proposals() if p["id"] == ident)
 
 
 def _esiti(**esito):
@@ -70,20 +75,20 @@ async def test_il_secondo_giro_vede_la_forma_SCARTATA_e_la_richiesta(casa):
     Mutazione ESEGUITA (06/10/2026): `build_question` senza il filo dei giri
     -- rossa, la forma scartata non arriva."""
     ident = _manuale(casa)
-    casa["llm_router"] = _Modello(
+    casa[LLM_ROUTER_KEY] = _Modello(
         ([], _esiti(esito="a_mano", testo="Spegni lo scaldabagno alle 23",
                     perche="di notte non serve acqua calda")),
         ([], _esiti(esito="a_mano", testo="Spegni lo scaldabagno alle 22",
                     perche="un'ora prima costa meno")))
 
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), "un'ora prima")
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), "un'ora prima")
 
-    seconda = casa["llm_router"].chiamate[1]["user_message"]
+    seconda = casa[LLM_ROUTER_KEY].chiamate[1]["user_message"]
     assert "[0] Scaldabagno" in seconda, "l'osservazione non e' arrivata"
     assert "Abbassa il termostato di notte" in seconda, "la forma scartata non c'e'"
     assert RICHIESTA in seconda and "un'ora prima" in seconda
-    assert "propose" in _strumenti(casa["llm_router"], 1)
+    assert "propose" in _strumenti(casa[LLM_ROUTER_KEY], 1)
     riga = _proposta(casa, ident)
     assert riga["testo"] == "Spegni lo scaldabagno alle 22"
     assert riga["perche"] == "un'ora prima costa meno"
@@ -98,11 +103,11 @@ async def test_il_giro_si_conta_come_PROPONENTE_non_come_chat(casa):
 
     Mutazione ESEGUITA (06/10/2026): `chain_turn` con specie «chat» -- rossa."""
     ident = _manuale(casa)
-    casa["llm_router"] = _Modello(([], _esiti(esito="niente", perche="x")))
+    casa[LLM_ROUTER_KEY] = _Modello(([], _esiti(esito="niente", perche="x")))
 
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
-    assert [t["species"] for t in casa["usage"].turns()] == [steering.PROPOSER_SPECIES]
+    assert [t["species"] for t in casa[USAGE_KEY].turns()] == [steering.PROPOSER_SPECIES]
 
 
 @pytest.mark.asyncio
@@ -110,10 +115,10 @@ async def test_NIENTE_lascia_la_proposta_com_era_e_lo_scrive_nel_filo(casa):
     """Scelta del proprietario: «niente» entra nel filo come un giro
     qualunque, col perche', e la proposta resta aperta e invariata."""
     ident = _manuale(casa)
-    casa["llm_router"] = _Modello(([], _esiti(
+    casa[LLM_ROUTER_KEY] = _Modello(([], _esiti(
         esito="niente", perche="senza il termostato non c'e' altro da spostare")))
 
-    esito = await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    esito = await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     riga = _proposta(casa, ident)
     assert esito["esito"] == pt.NOTHING
@@ -131,18 +136,18 @@ async def test_COSTRUITA_chiude_la_proposta_SUPERATA_e_lega_la_costruita(casa):
     Mutazione ESEGUITA (06/10/2026): `settle` senza `close_proposal` -- rossa,
     la proposta resta «attesa»."""
     ident = _manuale(casa)
-    casa["llm_router"] = _Modello((
+    casa[LLM_ROUTER_KEY] = _Modello((
         [("propose", _INTENZIONE_BUONA)],
         lambda risultati: _esiti(esito="costruita", proposta_id=_id_nato(risultati))))
 
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     riga = _proposta(casa, ident)
-    nata = _id_nato(casa["llm_router"].risultati)
+    nata = _id_nato(casa[LLM_ROUTER_KEY].risultati)
     assert riga["stato"] == "superata"
     assert riga["esito_nota"] == pt.SUPERSEDED_WHY
     assert riga["giri"][-1]["proposta_id"] == nata
-    costruita = casa["constructions"].read(nata, now=time.time())
+    costruita = casa[CONSTRUCTIONS_KEY].read(nata, now=time.time())
     assert costruita["impronta"] == observation_key(osservazioni()[0])
 
 
@@ -151,9 +156,9 @@ async def test_una_COSTRUITA_inventata_non_chiude_niente(casa):
     """Il contratto del proponente vale anche qui: un id che non e' nato in
     questo turno si rifiuta, e la risposta e' illeggibile."""
     ident = _manuale(casa)
-    casa["llm_router"] = _Modello(([], _esiti(esito="costruita", proposta_id="finto")))
+    casa[LLM_ROUTER_KEY] = _Modello(([], _esiti(esito="costruita", proposta_id="finto")))
 
-    esito = await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    esito = await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     assert esito["esito"] == redo.UNREADABLE
     assert _proposta(casa, ident)["stato"] == "in_attesa"
@@ -179,17 +184,17 @@ async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
             partito.set()
             await libera.wait()
 
-    casa["llm_router"] = RunnerFinto(_esiti(esito="niente", perche="x"), turno=_lento)
+    casa[LLM_ROUTER_KEY] = RunnerFinto(_esiti(esito="niente", perche="x"), turno=_lento)
     primo = asyncio.create_task(
-        redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA))
+        redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA))
     await asyncio.wait_for(partito.wait(), 5)
 
     with pytest.raises(redo.InFlight):
-        await redo.redo(casa, casa["observations"], _proposta(casa, ident), "di nuovo")
+        await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), "di nuovo")
     libera.set()
     await primo
 
-    assert len(casa["llm_router"].chiamate) == 1
+    assert len(casa[LLM_ROUTER_KEY].chiamate) == 1
     assert ident not in casa[redo.CHAIN_IN_FLIGHT], "finita la richiesta, si libera"
 
 
@@ -198,8 +203,8 @@ async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
 @pytest.fixture()
 def ponte(casa, tmp_path, monkeypatch):
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
-    casa["reasoning_queue"] = coda
-    casa["models_config"] = {}
+    casa[REASONING_QUEUE_KEY] = coda
+    casa[MODELS_CONFIG_KEY].set({})
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     monkeypatch.setattr("hiris.app.mind.proposal_redo.start",
                         lambda app, species: steering.Start("ponte", "", None))
@@ -224,7 +229,7 @@ async def test_sul_PONTE_si_accoda_con_la_precedenza_della_CHAT(ponte):
     casa, coda = ponte
     ident = _manuale(casa)
 
-    esito = await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    esito = await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     turno = coda.latest(pt.PROPOSAL_TURN_KIND, wake_key=redo.WAKE_KEY,
                         wake_value=ident)
@@ -241,14 +246,14 @@ async def test_lo_stato_IN_CORSO_lo_dice_la_coda_e_un_secondo_giro_aspetta(ponte
     in volo non parte."""
     casa, _coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     stato = redo.state(casa, _proposta(casa, ident))
 
     assert stato["stato"] == redo.RUNNING
     assert stato["richiesta"] == RICHIESTA
     with pytest.raises(redo.InFlight):
-        await redo.redo(casa, casa["observations"], _proposta(casa, ident), "altro")
+        await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), "altro")
 
 
 @pytest.mark.asyncio
@@ -261,7 +266,7 @@ async def test_la_CONSEGNA_scrive_il_giro_una_volta_sola(ponte):
     -- rossa, il giro non c'e' e la riga resta «illeggibile»."""
     casa, coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
     turno, decisione = _risposta_piano(coda, _esiti(
         esito="a_mano", testo="Spegni lo scaldabagno alle 23", perche="di notte"))
 
@@ -284,8 +289,8 @@ async def test_una_proposta_DECISA_mentre_il_giro_e_in_volo_scarta_la_risposta(p
     -- rossa, un giro scritto su una proposta rifiutata."""
     casa, coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
-    casa["observations"].close_proposal(ident, "disdetta")
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
+    casa[OBSERVATIONS_KEY].close_proposal(ident, "disdetta")
     turno, decisione = _risposta_piano(coda, _esiti(
         esito="a_mano", testo="Spegni lo scaldabagno", perche="x"))
 
@@ -302,13 +307,13 @@ async def test_SCADUTO_e_VUOTO_si_dicono_e_la_richiesta_resta(ponte):
     deciso senza risposta e' un fallimento, non una proposta illeggibile."""
     casa, coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
     coda.sweep_expired(time.time() + 24 * 3600)
 
     scaduto = redo.state(casa, _proposta(casa, ident))
     assert scaduto["stato"] == redo.EXPIRED and scaduto["richiesta"] == RICHIESTA
 
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), "di nuovo")
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), "di nuovo")
     turno, decisione = _risposta_piano(coda, "")
     await consegna(casa, turno["job_id"], turno["nonce"], decisione, time.time())
     assert redo.state(casa, _proposta(casa, ident))["stato"] == redo.FAILED
@@ -324,7 +329,7 @@ async def test_un_rifacimento_NON_ferma_e_non_nasconde_il_giro_orario(ponte):
     rossa, nessun turno del giro accodato."""
     casa, coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
 
     await pr.proposer_round(casa)
 
@@ -343,10 +348,10 @@ async def test_un_rifacimento_di_A_non_tocca_lo_stato_ne_la_partenza_di_B(ponte)
     `wake_value` -- rossa, B si legge «in corso» con la richiesta di A."""
     casa, coda = ponte
     a, b = _manuale(casa), _seconda(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, a), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, a), RICHIESTA)
 
     assert redo.state(casa, _proposta(casa, b)) is None
-    await redo.redo(casa, casa["observations"], _proposta(casa, b), "piu' tardi")
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, b), "piu' tardi")
 
     assert redo.state(casa, _proposta(casa, a))["richiesta"] == RICHIESTA
     assert redo.state(casa, _proposta(casa, b))["richiesta"] == "piu' tardi"
@@ -365,7 +370,7 @@ async def test_un_turno_ATTESO_oltre_la_scadenza_si_dice_SCADUTO(ponte, monkeypa
     `deadline_ts` -- rossa, il turno scaduto si legge «in corso»."""
     casa, coda = ponte
     ident = _manuale(casa)
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), RICHIESTA)
     job = coda.latest(pt.PROPOSAL_TURN_KIND, wake_key=redo.WAKE_KEY,
                       wake_value=ident)
     oltre = job["deadline_ts"] + 1
@@ -375,4 +380,4 @@ async def test_un_turno_ATTESO_oltre_la_scadenza_si_dice_SCADUTO(ponte, monkeypa
 
     assert job["status"] == "pending"
     assert stato["stato"] == redo.EXPIRED and stato["richiesta"] == RICHIESTA
-    await redo.redo(casa, casa["observations"], _proposta(casa, ident), "di nuovo")
+    await redo.redo(casa, casa[OBSERVATIONS_KEY], _proposta(casa, ident), "di nuovo")

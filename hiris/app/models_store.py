@@ -10,8 +10,15 @@ import json
 import logging
 import os
 
+from aiohttp import web
+
+from .live_value import LiveValue
 from .providers import DEFAULT_PRESET, OLLAMA, all_providers, chain_members
 from .storage import write_json_atomic
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+MODELS_CONFIG_KEY = web.AppKey("models_config", LiveValue)
 
 logger = logging.getLogger(__name__)
 

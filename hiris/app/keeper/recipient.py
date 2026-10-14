@@ -215,9 +215,9 @@ async def recipients_for(subject: dict | None, ha, services) -> Recipients:
         return Recipients((), _REASON_LINK_PERSON)
 
     if ha is None:
-        # Nessun client (l'app senza Home Assistant, `server.py` passa
-        # `app.get("ha_client")`): prima lo copriva l'`except` attorno alla
-        # lettura, che il client non solleva piu' (D3).
+        # Nessun client (l'app senza Home Assistant, `keeper/sweeper.py` e
+        # `keeper/delivery.py` passano `app.get(HA_CLIENT_KEY)`): prima lo
+        # copriva l'`except` attorno alla lettura, che il client non solleva piu' (D3).
         return Recipients((), _REASON_HA_DOWN)
     states = await ha.get_states()
     if not isinstance(states, list):

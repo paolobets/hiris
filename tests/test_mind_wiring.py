@@ -22,20 +22,36 @@ from unittest import mock
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.mind.conditions_round import TRACE_CURSORS_KEY, TRACES_BOOT_TS_KEY
+from hiris.app.mind.day_report import BACKFILL_QUIET_KEY
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.mind.watcher import WATCHER_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_KEY
+from hiris.app.startup import SCHEDULER_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server
+from hiris.app import startup
 from hiris.app.home_space import historian
+from hiris.app.home_space.rounds import integration_follower
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+from hiris.app.live_value import LiveValue
+from hiris.app.mind import conditions_round, day_report, facts
+from hiris.app.mind.conditions_round import watch_system_conditions
 from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
-from hiris.app.server import integration_follower, watch_system_conditions
+from hiris.app.startup import live_values
 from hiris.app.storage import archive_name
 from tests._anagrafe_finta import AnagrafeFinta
-from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
+from tests._avvio import STARTUP_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests._specchio_finto import SpecchioFinto, raw_state
@@ -53,13 +69,13 @@ def _job(app, job_id: str):
     """Il lavoro VERO che l'avvio ha registrato sullo schedulatore. Fino al
     03/10/2026 la funzione si ritagliava dal testo di `_on_startup` e si
     eseguiva con le sue variabili libere ricopiate a mano in un dizionario."""
-    job = app["scheduler"].get_job(job_id)
+    job = app[SCHEDULER_KEY].get_job(job_id)
     assert job is not None, f"il lavoro {job_id} non e' registrato"
     return job.func
 
 
 def _server_lines(caplog) -> list[str]:
-    return [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
+    return [r.getMessage() for r in caplog.records if r.name == STARTUP_LOGGER]
 
 
 #: Il registro della conservazione: la potatura e' uscita da `server.py`
@@ -225,7 +241,7 @@ def _system_house(problems, integrations, log_entries=(), **faults) -> CasaFinta
 def _announced(app: dict, integrations) -> dict:
     """L'elenco iniziale dell'iscrizione alle integrazioni, nella forma di
     Home Assistant, passato all'ascoltatore che l'avvio iscrive: e' cosi' che
-    le integrazioni arrivano in `app["ha_integrations"]`."""
+    le integrazioni arrivano in `app[HA_INTEGRATIONS_KEY]`."""
     integration_follower(app)([{"type": None, "entry": row} for row in integrations])
     return app
 
@@ -263,7 +279,8 @@ def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono(
     all'osservatore). La finta di prima restituiva l'esito gia' tradotto, e
     quella traduzione non la guardava."""
     osservatore = _OsservatoreFinto()
-    app = _announced({"watcher": osservatore}, [{"entry_id": "y", "state": "not_loaded"}])
+    app = _announced({**live_values(),
+                      WATCHER_KEY: osservatore}, [{"entry_id": "y", "state": "not_loaded"}])
     house = _system_house([{"domain": "hue", "issue_id": "x"}], [])
 
     esito = asyncio.run(watch_system_conditions(app, house))
@@ -286,7 +303,7 @@ def test_un_errore_di_problemi_salta_il_giro_per_intero(failure):
     silenzio e il rifiuto di Home Assistant), e la busta la fa il client. E il
     giro si salta PRIMA delle altre due letture: `house.calls` lo dice."""
     osservatore = _OsservatoreFinto()
-    app = _announced({"watcher": osservatore}, [])
+    app = _announced({**live_values(), WATCHER_KEY: osservatore}, [])
     house = _system_house([], [], **_FAILURES[failure](_PROBLEMS))
 
     esito = asyncio.run(watch_system_conditions(app, house))
@@ -307,7 +324,7 @@ def test_le_integrazioni_non_ancora_annunciate_saltano_il_giro_per_intero():
     `app.get("ha_integrations")` diventato `app.get("ha_integrations", [])`
     -- rossa (`assert 0 is None`: il giro gira sulle integrazioni vuote)."""
     osservatore = _OsservatoreFinto()
-    app = {"watcher": osservatore}
+    app = {**live_values(), WATCHER_KEY: osservatore}
     house = _system_house([], [])
 
     esito = asyncio.run(watch_system_conditions(app, house))
@@ -338,7 +355,7 @@ def test_a_broken_log_read_skips_the_round_entirely(failure):
     osservatore = _OsservatoreFinto()
     # Le integrazioni annunciate: senza, il giro si salterebbe PRIMA di
     # leggere il registro di errori, e la prova sarebbe verde a vuoto.
-    app = _announced({"watcher": osservatore}, [])
+    app = _announced({**live_values(), WATCHER_KEY: osservatore}, [])
     house = _system_house([], [], **_FAILURES[failure](_LOG))
 
     esito = asyncio.run(watch_system_conditions(app, house))
@@ -399,8 +416,8 @@ async def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_f
 
     Mutazione ESEGUITA (03/10/2026): la riga del fuso spostata FUORI dal
     try -- rossa (`RuntimeError` esce dal lavoro)."""
-    with mock.patch.dict(started_app, {"home_space_store": _ArchivioCasaCheSolleva()}), \
-            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with mock.patch.dict(started_app, {HOME_SPACE_KEY: _ArchivioCasaCheSolleva()}), \
+            caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         await _job(started_app, "hiris_mind_aggregation")()  # non deve sollevare
 
     assert any(
@@ -436,17 +453,17 @@ async def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, cap
         """La riparazione d'avvio scriverebbe gia' ieri e l'altro ieri: qui
         si guarda cio' che scrive il giro della notte, e lui solo."""
 
-    with mock.patch.object(server, "reaggregate_last_two_days", _no_repair):
+    with mock.patch.object(startup, "reaggregate_last_two_days", _no_repair):
         async with started_with(tmp_path) as app:
-            assert app["observations"].reports(limit=5) == []
-            with mock.patch.dict(app, {"home_space_store": None}), \
-                caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+            assert app[OBSERVATIONS_KEY].reports(limit=5) == []
+            with mock.patch.dict(app, {HOME_SPACE_KEY: None}), \
+                caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
                 await _job(app, "hiris_mind_aggregation")()
             ieri = (historian.today(None) - timedelta(days=1)).isoformat()
             avvisi = [r.getMessage() for r in caplog.records
-                      if r.name == SERVER_LOGGER and r.levelno >= logging.WARNING]
+                      if r.name == STARTUP_LOGGER and r.levelno >= logging.WARNING]
             assert not avvisi, avvisi
-            assert [r["giorno"] for r in app["observations"].reports(limit=5)] == [ieri]
+            assert [r["giorno"] for r in app[OBSERVATIONS_KEY].reports(limit=5)] == [ieri]
 
 
 def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tmp_path):
@@ -492,9 +509,9 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.{soggetto}", da="off", a="on")
 
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+        asyncio.run(day_report.reaggregate_last_two_days(
+            {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+             KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS)},
             ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -516,9 +533,9 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # giorni. Un conteggio fisso avrebbe fatto passare per regressione un
         # difetto riparato.
         prima = _cronaca_intera(archivio)
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+        asyncio.run(day_report.reaggregate_last_two_days(
+            {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+             KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS)},
             ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
         dopo = _cronaca_intera(archivio)
@@ -558,15 +575,15 @@ async def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp
     ricevuto: dict = {}
 
     async def _spia(app, ha_client, **kwargs):
-        casa = app.get("home_space_store")
+        casa = app.get(HOME_SPACE_KEY)
         ricevuto["home_space_store"] = casa
         ricevuto["anagrafe"] = casa.read() if casa is not None else None
 
-    with mock.patch.object(server, "reaggregate_last_two_days", _spia):
+    with mock.patch.object(startup, "reaggregate_last_two_days", _spia):
         async with started_with(tmp_path) as app:
             assert ricevuto.get("home_space_store") is not None
-            assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
-            assert ricevuto["home_space_store"] is app["home_space_store"]
+            assert isinstance(ricevuto["home_space_store"], startup.HomeSpace)
+            assert ricevuto["home_space_store"] is app[HOME_SPACE_KEY]
     # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
     # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
     # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`
@@ -782,7 +799,7 @@ def test_fake_automation_watcher_matches_watcher_watch_automation_outcome():
 
 
 def test_without_a_watcher_the_traces_round_returns_none():
-    result = asyncio.run(server.watch_automation_outcomes({}, _traces_house({})))
+    result = asyncio.run(conditions_round.watch_automation_outcomes({}, _traces_house({})))
     assert result is None
 
 
@@ -795,7 +812,8 @@ def test_no_marked_automation_reads_no_trace():
     solo scritta nel docstring.)"""
     watcher = _FakeAutomationWatcher([])
     client = _traces_house({})
-    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes({**live_values(),
+                                                                     WATCHER_KEY: watcher}, client))
     assert result == 0
     assert watcher.calls == []
     assert _traces_asked(client) == []
@@ -824,10 +842,10 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
             {"run_id": "3", "script_execution": "error"},
         ],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 3
     assert [c[:2] for c in watcher.calls] == [
@@ -851,12 +869,12 @@ def test_the_title_is_the_name_the_house_gives_at_the_outcome():
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
         "1771346155971": [{"run_id": "2", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _automation_mirror(
+    app = {**live_values(), WATCHER_KEY: watcher, ENTITY_CACHE_KEY: _automation_mirror(
         {"automation.luci_sera": "1771346155970",
          "automation.senza_nome": "1771346155971"},
         names={"automation.luci_sera": "Luci della sera (rinominata)"})}
 
-    asyncio.run(server.watch_automation_outcomes(app, client))
+    asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert {c[0]: c[2] for c in watcher.calls} == {
         "automation.luci_sera": "Luci della sera (rinominata)",
@@ -885,10 +903,10 @@ def test_a_not_triggered_trace_is_not_forwarded():
             {"run_id": "1", "script_execution": None},
         ],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.x": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -896,7 +914,7 @@ def test_a_not_triggered_trace_is_not_forwarded():
 
 def test_a_trace_older_than_process_boot_is_not_forwarded():
     """Una traccia con `timestamp.start` precedente all'avvio di QUESTO
-    processo (`app["automation_traces_boot_ts"]`, scritto in `_on_startup`)
+    processo (`app[TRACES_BOOT_TS_KEY]`, scritto in `_on_startup`)
     e' scattata mentre HIRIS era spento, o in un avvio precedente: non si
     recupera -- stessa disciplina di `watch_system_conditions`, "meglio un
     buco nella storia che una bugia nella storia". `timestamp.start` e' un
@@ -915,10 +933,10 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
              "timestamp": {"start": "2020-01-01T00:00:00+00:00"}},
         ],
     })
-    app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0,
-           "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher, TRACES_BOOT_TS_KEY: 1787572800.0,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.x": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -951,17 +969,17 @@ def test_a_failed_read_for_one_automation_does_not_stop_the_others():
         return [{"run_id": "1", "script_execution": "error"}]
 
     client = CasaFinta(synthetic_inputs(), answers={_TRACE_LIST: _trace_list})
-    app = {"watcher": watcher, "entity_cache": _automation_mirror({
+    app = {**live_values(), WATCHER_KEY: watcher, ENTITY_CACHE_KEY: _automation_mirror({
         "automation.rotta": "1771346155970",
         "automation.buona": "1771346155971"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 1
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
     # Il cursore dell'automazione non letta non si tocca: resta quello
     # dell'ultimo giro riuscito (qui: nessuno).
-    assert "automation.rotta" not in app["automation_trace_cursors"]
+    assert "automation.rotta" not in app[TRACE_CURSORS_KEY]
 
 
 def test_marked_automations_are_read_in_one_connection():
@@ -984,12 +1002,12 @@ def test_marked_automations_are_read_in_one_connection():
         "1771346155971": [{"run_id": "1", "script_execution": "error"}],
         "1771346155972": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _automation_mirror({
+    app = {**live_values(), WATCHER_KEY: watcher, ENTITY_CACHE_KEY: _automation_mirror({
         "automation.a": "1771346155970",
         "automation.b": "1771346155971",
         "automation.c": "1771346155972"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert len(client.connections) == 1
     assert client.connections == [("ws", (_TRACE_LIST, _TRACE_LIST, _TRACE_LIST))]
@@ -1008,18 +1026,18 @@ def test_a_silent_batch_writes_nothing_and_keeps_every_cursor(caplog):
     `"errore" in report` -- rossa (`KeyError: 'tracce'`)."""
     watcher = _FakeAutomationWatcher(["automation.a", "automation.b"])
     client = CasaFinta(synthetic_inputs(), silence={_TRACE_LIST})
-    app = {"watcher": watcher,
-           "automation_trace_cursors": {"automation.a": {"vecchio"}},
-           "entity_cache": _automation_mirror({
+    app = {**live_values(), WATCHER_KEY: watcher,
+           TRACE_CURSORS_KEY: {"automation.a": {"vecchio"}},
+           ENTITY_CACHE_KEY: _automation_mirror({
                "automation.a": "1771346155970",
                "automation.b": "1771346155971"})}
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
-        result = asyncio.run(server.watch_automation_outcomes(app, client))
+    with caplog.at_level(logging.WARNING, logger="hiris.app.mind.conditions_round"):
+        result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
-    assert app["automation_trace_cursors"] == {"automation.a": {"vecchio"}}
+    assert app[TRACE_CURSORS_KEY] == {"automation.a": {"vecchio"}}
     assert any("non lette" in r.getMessage() for r in caplog.records)
 
 
@@ -1049,10 +1067,10 @@ def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
     client = _traces_house({
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert _traces_asked(client) == ["1771346155970"]
     assert result == 1
@@ -1086,11 +1104,11 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
     client = _traces_house({
         "1771346155971": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _automation_mirror({
+    app = {**live_values(), WATCHER_KEY: watcher, ENTITY_CACHE_KEY: _automation_mirror({
         "automation.scritta_a_mano": None,
         "automation.buona": "1771346155971"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert _traces_asked(client) == ["1771346155971"]
     assert result == 1
@@ -1116,12 +1134,12 @@ def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
     """
     watcher = _FakeAutomationWatcher(["automation.scritta_a_mano"])
     client = _traces_house({})
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.scritta_a_mano": None})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.scritta_a_mano": None})}
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.mind.conditions_round"):
         for _ in range(3):
-            asyncio.run(server.watch_automation_outcomes(app, client))
+            asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     levels = [r.levelname for r in caplog.records
               if "non si risolve dallo specchio" in r.getMessage()]
@@ -1148,14 +1166,14 @@ def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
     })
     blind = _automation_mirror({"automation.luci_sera": None})
     seeing = _automation_mirror({"automation.luci_sera": "1771346155970"})
-    app = {"watcher": watcher, "entity_cache": blind}
+    app = {**live_values(), WATCHER_KEY: watcher, ENTITY_CACHE_KEY: blind}
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
-        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco
-        app["entity_cache"] = seeing
-        asyncio.run(server.watch_automation_outcomes(app, client))   # risolve
-        app["entity_cache"] = blind
-        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco di nuovo
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.mind.conditions_round"):
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # cieco
+        app[ENTITY_CACHE_KEY] = seeing
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # risolve
+        app[ENTITY_CACHE_KEY] = blind
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # cieco di nuovo
 
     levels = [r.levelname for r in caplog.records
               if "non si risolve dallo specchio" in r.getMessage()]
@@ -1184,18 +1202,18 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
     client = _traces_house({
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.luci_sera": None})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.luci_sera": None})}
 
-    blind_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    blind_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert blind_round == 0
     assert _traces_asked(client) == []
-    assert "automation.luci_sera" not in app.get("automation_trace_cursors", {})
+    assert "automation.luci_sera" not in app.get(TRACE_CURSORS_KEY, {})
 
     # Lo specchio arriva: la traccia gia' conservata da HA e' NUOVA per il
     # cursore, e il fatto si scrive adesso invece di essere perso per sempre.
-    app["entity_cache"] = _automation_mirror({"automation.luci_sera": "1771346155970"})
-    seeing_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    app[ENTITY_CACHE_KEY] = _automation_mirror({"automation.luci_sera": "1771346155970"})
+    seeing_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert seeing_round == 1
     assert _traces_asked(client) == ["1771346155970"]
 
@@ -1244,14 +1262,14 @@ def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
             {"run_id": "2", "script_execution": "error"},
         ],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.rotta": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.rotta": "1771346155970"})}
 
-    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    first_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert first_round == 1  # il "finished" iniziale non chiude niente; l'"error" apre
     assert store.count == 1
 
-    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    second_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert second_round == 0
     assert store.count == 1
 
@@ -1279,14 +1297,14 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
             {"run_id": "2", "script_execution": "finished"},
         ],
     })
-    app = {"watcher": watcher,
-           "entity_cache": _automation_mirror({"automation.guarita": "1771346155970"})}
+    app = {**live_values(), WATCHER_KEY: watcher,
+           ENTITY_CACHE_KEY: _automation_mirror({"automation.guarita": "1771346155970"})}
 
-    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    first_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert first_round == 2  # apre e chiude nello stesso giro
     assert store.count == 2
 
-    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    second_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert second_round == 0
     assert store.count == 2
 
@@ -1327,15 +1345,15 @@ def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path
 
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
     try:
-        app = {
-            "knowledge": sapere,
-            "home_space_store": _casa_versione_lingua(),
-            "state_translations": _CacheTraduzioni({
+        app = {**live_values(),
+            KNOWLEDGE_KEY: sapere,
+            HOME_SPACE_KEY: _casa_versione_lingua(),
+            STATE_TRANSLATIONS_KEY: _CacheTraduzioni({
                 "lette": True, "lingua": "it", "appena_lette": True, "risorse": {
                     "component.binary_sensor.entity_component.gas.name": "Gas"}}),
         }
 
-        asyncio.run(server.prime_state_translations(app))
+        asyncio.run(startup.prime_state_translations(app))
 
         riga = sapere.get("tipo", "binary_sensor.gas", "significato")
         assert riga.value == "Gas"
@@ -1352,11 +1370,11 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
 
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
     try:
-        app = {"knowledge": sapere, "home_space_store": _casa_versione_lingua(),
-               "state_translations": _CacheTraduzioni(
+        app = {**live_values(), KNOWLEDGE_KEY: sapere, HOME_SPACE_KEY: _casa_versione_lingua(),
+               STATE_TRANSLATIONS_KEY: _CacheTraduzioni(
                    {"lette": False, "motivo": "HA non ha risposto"})}
 
-        asyncio.run(server.prime_state_translations(app))
+        asyncio.run(startup.prime_state_translations(app))
 
         assert sapere.summary()["totale"] == 0
     finally:
@@ -1366,11 +1384,11 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
 def test_senza_sapere_la_lettura_delle_traduzioni_non_si_rompe(tmp_path):
     """L'avvio costruisce il sapere prima, ma la funzione non deve dipendere
     da un ordine che nessuno le garantisce: senza `knowledge` legge e basta."""
-    app = {"home_space_store": _casa_versione_lingua(),
-           "state_translations": _CacheTraduzioni(
+    app = {**live_values(), HOME_SPACE_KEY: _casa_versione_lingua(),
+           STATE_TRANSLATIONS_KEY: _CacheTraduzioni(
                {"lette": True, "lingua": "it", "risorse": {}})}
 
-    esito = asyncio.run(server.prime_state_translations(app))
+    esito = asyncio.run(startup.prime_state_translations(app))
 
     assert esito["lette"] is True
 
@@ -1398,7 +1416,7 @@ def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):
         archivio.record(quando_ts=base.timestamp() + 3600, source="entita",
                         subject="light.cucina", da="on", a="off")
 
-        server.aggregate_day(store=archivio, day=giorno, timezone="Europe/Rome",
+        facts.aggregate_day(store=archivio, day=giorno, timezone="Europe/Rome",
                              recipes={}, series={}, names={})
 
         resoconto = archivio.report(giorno)
@@ -1440,9 +1458,9 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.{soggetto}", da="off", a="on")
 
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+        asyncio.run(day_report.reaggregate_last_two_days(
+            {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+             KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS)},
             ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -1496,17 +1514,17 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
         archivio.replace_report("2026-08-24", {
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
             "giudizio": chronicle_mark(REPO_JUDGMENTS)})
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
-        scritto = asyncio.run(server.backfill_one_report(
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-22", scritto
         assert archivio.report("2026-08-22") is not None
 
         # Il giro dopo prende il successivo, e salta quello gia' scritto.
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
@@ -1538,11 +1556,11 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
         archivio.replace_report("2026-08-24", {
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
             "giudizio": chronicle_mark(REPO_JUDGMENTS)})
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz))) is None
     finally:
         archivio.close()
@@ -1567,11 +1585,11 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
         quando = (oggi - timedelta(days=2)).replace(hour=10)
         archivio.record(quando_ts=quando.timestamp(), source="entita",
                         subject="light.a", da="off", a="on")
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
@@ -1585,7 +1603,7 @@ def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path
     loggare la riga con la durata -- rossa.
 
     **L'impronta asserita qui e' vera per costruzione** (giro di correzioni 1,
-    punto 7): `app["type_judgments"]` porta `REPO_JUDGMENTS`, quindi
+    punto 7): `app[TYPE_JUDGMENTS_KEY]` porta `REPO_JUDGMENTS`, quindi
     l'uguaglianza dice «la cronaca rifatta ha scritto un'impronta», non «ha
     scritto quella dei giudizi che ha ricevuto». Che sia proprio quella --
     con un'istantanea diversa da quella del repo -- lo difende
@@ -1612,11 +1630,11 @@ def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path
                 "giorno": giorno, "misure": [{"soggetto": "d", "misura": "m", "valore": 1,
                                               "unita": "kWh", "copertura": 1.0}],
                 "forme": [], "cronaca": [], "giudizio": {"impronta": "vecchia"}})
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
-        with caplog.at_level(logging.INFO, logger=server.logger.name):
-            scritto = asyncio.run(server.backfill_one_report(
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
+        with caplog.at_level(logging.INFO, logger=day_report.logger.name):
+            scritto = asyncio.run(day_report.backfill_one_report(
                 app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-23"
         rifatto = archivio.report("2026-08-23")
@@ -1689,10 +1707,10 @@ def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ere
 
         # Il taglio alle 05:00 del 23: via il termostato e `light.a`.
         archivio.prune(_ts(23, 5) + READING_RETENTION_S)
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
-        scritto = asyncio.run(server.backfill_one_report(
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
 
         assert scritto == "2026-08-24"
@@ -1746,10 +1764,10 @@ def test_su_una_casa_GIOVANE_il_primo_giorno_rifa_la_cronaca(tmp_path):
             scritti[giorno] = {**archivio.report(giorno), "giudizio": {"impronta": "vecchia"}}
             archivio.replace_report(giorno, scritti[giorno])
 
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
-        giri = [asyncio.run(server.backfill_one_report(
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
+        giri = [asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
             for _ in range(3)]
 
@@ -1784,17 +1802,18 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
                 "giorno": giorno, "misure": [], "forme": [], "cronaca": [],
                 "giudizio": {"impronta": "vecchia"}})
 
-        def _rotta(*, store, day, timezone, judgments, house=None):
+        def _rotta(*, store, day, timezone, judgments, house=None, when_ts=None):
             if day == "2026-08-23":
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments, house=house)
+                                           judgments=judgments, house=house,
+                                           when_ts=when_ts)
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _rotta)
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
-        scritto = asyncio.run(server.backfill_one_report(
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _rotta)
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-24"
         assert archivio.report("2026-08-23")["giudizio"] == {"impronta": "vecchia"}
@@ -1831,11 +1850,11 @@ async def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(started_app, cap
         chiamate.append((app, ha_client))
         return "2026-08-23"
 
-    with mock.patch.object(server, "backfill_one_report", _finta), \
-            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with mock.patch.object(startup, "backfill_one_report", _finta), \
+            caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         await _job(started_app, "hiris_mind_backfill")()
 
-    assert chiamate == [(started_app, started_app["ha_client"])], (
+    assert chiamate == [(started_app, started_app[HA_CLIENT_KEY])], (
         "il giro deve chiamare `backfill_one_report` con l'app e il cliente di HA")
     assert _server_lines(caplog) == [], (
         "un nome che non esiste finisce nel ramo di guardia invece che in un errore: "
@@ -1871,19 +1890,19 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
             "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
             "giudizio": chronicle_mark(REPO_JUDGMENTS)})
 
-        def _broken(*, store, day, timezone, judgments, house=None):
+        def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError(f"un difetto locale del {day}")
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _broken)
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
         def _round(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return sorted(re.search(r"cronaca di (\S+) non rifatta", r.getMessage()).group(1)
                           for r in caplog.records if "non rifatta" in r.getMessage())
@@ -1935,22 +1954,23 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
         start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
         failing = {"2026-08-23"}
 
-        def _chronicle(*, store, day, timezone, judgments, house=None):
+        def _chronicle(*, store, day, timezone, judgments, house=None, when_ts=None):
             if day in failing:
                 raise ValueError("un difetto locale")
             return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
-                                           judgments=judgments, house=house)
+                                           judgments=judgments, house=house,
+                                           when_ts=when_ts)
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _chronicle)
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
         def _warnings(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return [r for r in caplog.records if "non rifatta" in r.getMessage()]
 
@@ -1992,30 +2012,30 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
         archivio.record(quando_ts=first.replace(hour=10).timestamp(), source="entita",
                         subject="light.g", da="off", a="on")
         broken = {"ingredients": True, "chronicle": False}
-        real_ingredients = server._report_ingredients
-        real_chronicle = server.rebuild_chronicle
+        real_ingredients = day_report._report_ingredients
+        real_chronicle = day_report.rebuild_chronicle
 
         async def _ingredients(app, ha_client, *, giorno, timezone):
             if broken["ingredients"]:
                 raise ConnectionError("Home Assistant non risponde")
             return await real_ingredients(app, ha_client, giorno=giorno, timezone=timezone)
 
-        def _chronicle(*, store, day, timezone, judgments, house=None):
+        def _chronicle(*, store, day, timezone, judgments, house=None, when_ts=None):
             if broken["chronicle"]:
                 raise ValueError("un difetto locale")
             return real_chronicle(store=store, day=day, timezone=timezone, judgments=judgments)
 
-        monkeypatch.setattr(server, "_report_ingredients", _ingredients)
-        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-               "backfill_quiet": {}}
+        monkeypatch.setattr(day_report, "_report_ingredients", _ingredients)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _chronicle)
+        app = {**live_values(), HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archivio,
+               KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: LiveValue(REPO_JUDGMENTS),
+               BACKFILL_QUIET_KEY: {}}
 
         def _round(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                done = asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                done = asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return done, [r.getMessage() for r in caplog.records
                           if "non recuperato" in r.getMessage()
@@ -2056,7 +2076,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
     scopre e' la (2).
     Mutazioni ESEGUITE: (a) `setdefault` nel giro e niente chiave in
     `_on_startup` -- rossa sulla (2); (b) il giro che riassegna
-    `app["backfill_quiet"]` -- rossa sulla (1)."""
+    `app[BACKFILL_QUIET_KEY]` -- rossa sulla (1)."""
     import warnings
     from datetime import datetime
 
@@ -2064,25 +2084,25 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
 
     archivio = _one_stale_day(tmp_path)
     try:
-        def _broken(*, store, day, timezone, judgments, house=None):
+        def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError("un difetto locale")
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _broken)
         app = web.Application()
-        for key, value in (("home_space_store", None), ("observations", archivio),
-                           ("knowledge", None), ("type_judgments", REPO_JUDGMENTS),
-                           ("backfill_quiet", {})):
+        app.update(live_values())
+        for key, value in ((HOME_SPACE_KEY, None), (OBSERVATIONS_KEY, archivio),
+                           (KNOWLEDGE_KEY, None), (BACKFILL_QUIET_KEY, {})):
             app[key] = value
-        quiet = app["backfill_quiet"]
+        quiet = app[BACKFILL_QUIET_KEY]
         app.freeze()
         clock = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            asyncio.run(server.backfill_one_report(
+            asyncio.run(day_report.backfill_one_report(
                 app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
         assert not [w for w in caught if "Changing state" in str(w.message)], \
             [str(w.message) for w in caught]
-        assert app["backfill_quiet"] is quiet and "2026-08-23" in quiet
+        assert app[BACKFILL_QUIET_KEY] is quiet and "2026-08-23" in quiet
     finally:
         archivio.close()
 
@@ -2114,3 +2134,24 @@ def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
     # E il contatore resta com'era: `valore` e' il cambio, niente media.
     assert contatore["valore"] == 1.4
     assert contatore["media"] is None
+
+
+def test_mind_view_passa_ogni_lettura_dell_app():
+    """`mind_view` costruisce `MindView` dagli oggetti dell'app, e ognuno
+    arriva: senza `type_judgments` il resoconto del giorno esce senza i
+    giudizi sui tipi, e nessun'altra prova lo vedeva (N163-2, giro 161 del
+    revisore: la mutazione `judgments=None` restava verde).
+
+    Mutazione: `judgments=None` in `mind/view.py::mind_view` -- rossa."""
+    from hiris.app.mind.view import mind_view
+
+    app = {key: object() for key in (OBSERVATIONS_KEY, WATCHER_KEY,
+                                     HOME_SPACE_KEY, ENTITY_CACHE_KEY)}
+    giudizi = object()
+    app[TYPE_JUDGMENTS_KEY] = LiveValue(giudizi)
+    view = mind_view(app)
+    assert view._judgments is giudizi
+    assert view.store is app[OBSERVATIONS_KEY]
+    assert view.watcher is app[WATCHER_KEY]
+    assert view._home_space is app[HOME_SPACE_KEY]
+    assert view._cache is app[ENTITY_CACHE_KEY]

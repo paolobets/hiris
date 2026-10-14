@@ -268,7 +268,7 @@ async def compute(arguments: dict, *, ha, house, now: float,
     Le letture sono quelle di `history`, dal loro unico proprietario
     (`house_history.read_bands` e `read_series`; R1 di `tests/test_fonte_unica.py`).
     L'elenco delle statistiche arriva con la casa (`House.with_statistics`,
-    dalla lettura condivisa `server.statistic_ids_for_round`): senza, nessuna
+    dalla lettura condivisa `house_history.statistic_ids_for_round`): senza, nessuna
     entita' si dice «senza statistiche» -- chi non ha potuto chiedere non lo
     afferma.
     """
@@ -283,7 +283,7 @@ async def compute(arguments: dict, *, ha, house, now: float,
     silent: dict = {}
     if series_ids:
         silent = silent_entities(house, series_ids) or {}
-        report = await read_bands(ha, series_ids, query)
+        report = await read_bands(ha, series_ids, query.start, query.end)
         if "errore" in report:
             refusal = unread_series(str(report["errore"]))
             silent = {**{e: refusal for e in series_ids}, **silent}

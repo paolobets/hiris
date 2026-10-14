@@ -23,9 +23,12 @@ scende alla catena:
 """
 import pytest
 
+from hiris.app.live_value import LiveValue
 from hiris.app.model_resolution import _DOWNGRADE_REASONS
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
-from hiris.app.steering import who_answers
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, who_answers
 
 
 class _CodaFinta:
@@ -40,9 +43,9 @@ class _CodaFinta:
 
 def _app(*, ponte=True, coda=None, tetto=150):
     return {
-        "bridge_active": ponte,
-        "reasoning_queue": coda if coda is not None else _CodaFinta(),
-        "models_config": {"ponte": {"tetto_giornaliero": tetto}},
+        BRIDGE_ACTIVE_KEY: LiveValue(ponte),
+        REASONING_QUEUE_KEY: coda if coda is not None else _CodaFinta(),
+        MODELS_CONFIG_KEY: LiveValue({"ponte": {"tetto_giornaliero": tetto}}),
     }
 
 
@@ -72,7 +75,7 @@ def test_col_ponte_spento_si_scende_alla_catena_SENZA_dichiarare_un_ripiego(col_
 
 def test_senza_la_coda_cablata_si_scende_alla_catena_senza_ripiego(col_token):
     app = _app()
-    del app["reasoning_queue"]
+    del app[REASONING_QUEUE_KEY]
     assert who_answers(app) == ("catena", "")
 
 

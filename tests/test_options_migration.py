@@ -10,6 +10,7 @@ import logging
 
 import pytest
 
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.options_migration import seed_chain
 
 VUOTO = {
@@ -194,7 +195,7 @@ async def _start_seeding_the_chain(tmp_path, credenziali) -> dict:
     from tests._avvio import credential_environment, started_with
 
     async with started_with(tmp_path, credential_environment(credenziali)) as app:
-        return copy.deepcopy(app["models_config"])
+        return copy.deepcopy(app[MODELS_CONFIG_KEY].value)
 
 
 CREDENZIALI_DEL_PROPRIETARIO = {
@@ -266,7 +267,8 @@ async def test_ollama_senza_modello_non_entra_in_catena_per_migrazione(tmp_path)
     ritroverebbe in catena un provider senza modello.
 
     Mutazione ESEGUITA (03/10/2026, sull'avvio vero): tolto `"ollama"` dai
-    nomi che `server._chain_as_it_was` tiene fuori -- rossa (`'ollama' not in
+    nomi che `server._chain_as_it_was` (oggi `options_migration._initial_chain`)
+    tiene fuori -- rossa (`'ollama' not in
     ['claude', 'openrouter', 'ollama']`)."""
     models_config = await _start_seeding_the_chain(
         tmp_path, {**CREDENZIALI_DEL_PROPRIETARIO, "ollama": True})

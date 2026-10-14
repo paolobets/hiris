@@ -135,8 +135,10 @@ OWNERS = {
 #: di stato di B-07, B-08, B-09 chiedono ora al vocabolario, ed e' entrato il
 #: campo omonimo dell'istanza (`disabilitata_da`, due letture in `house.py`,
 #: dichiarate nell'elenco con la ragione). Era 13 prima della Tappa 7, Task 3:
-#: `workshop._reread` non legge piu' gli stati (A-15).
-CAP = 12
+#: `workshop._reread` non legge piu' gli stati (A-15). Era 12 prima di F8
+#: della Chiusura (A-41, 14/10/2026): i tre giri chiedono `system_log`,
+#: `traces` e `hourly_statistics` alle letture di `house_history`.
+CAP = 9
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce
@@ -179,18 +181,19 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
     "traces": (
         "home_space/house_history.py",
         ("la raffica delle tracce della storia (Task 8 della Tappa 2; "
-         "`read_runs` dal Task 13 della Tappa 3); il secondo chiamante e' in "
-         "`SHARED_READS`")),
+         "`read_runs` dal Task 13 della Tappa 3); il giro degli esiti delle "
+         "automazioni le chiede a `read_traces` (A-41)")),
     "system_log": (
         "home_space/house_history.py",
         ("il registro degli errori della storia (`read_errors`, dal Task 13 "
-         "della Tappa 3); il giro delle condizioni e' in `SHARED_READS`")),
+         "della Tappa 3); il giro delle condizioni lo chiede a `read_log` "
+         "(A-41)")),
     "hourly_statistics": (
         "home_space/house_history.py",
-        ("le statistiche orarie della storia (`read_values`, dal Task 13 della "
-         "Tappa 3); il resoconto del giorno e' in `SHARED_READS`")),
+        ("le statistiche orarie della storia (`read_bands`, dal Task 13 della "
+         "Tappa 3); il resoconto del giorno le chiede a `read_bands` (A-41)")),
     "problems": (
-        "server.py",
+        "home_space/rounds.py",
         ("`reread_ha_problems`, il giro dei 5 minuti: il giro delle condizioni "
          "riusa `app[\"ha_problems\"]` (A-02, chiusa al Task 5)")),
     "statistic_ids": (
@@ -286,7 +289,7 @@ SHARED_READS: dict[str, dict[str, tuple[str | None, str]]] = {
              "delle `person`, accanto agli stati letti per intero")),
     },
     "extract_from_target": {
-        "server.py": (
+        "home_space/rounds.py": (
             None,
             ("`tree_comparison_round` chiede a Home Assistant di risolvere le "
              "aree e confronta la risposta con l'albero dell'anagrafe: e' la "
@@ -294,31 +297,6 @@ SHARED_READS: dict[str, dict[str, tuple[str | None, str]]] = {
              "unite in `House`), voluta da Paolo il 13/10/2026. La lettura del "
              "proprietario risolve il bersaglio di un servizio: un'altra "
              "domanda")),
-    },
-    # Le tre qui sotto hanno la stessa radice, R13 della spec: le letture
-    # degli strumenti sono metodi privati di un oggetto che nasce a ogni turno
-    # coi permessi di una persona, e i giri del cervello non possono
-    # chiamarle -- quindi rileggono da soli. La voce e' A-41, aperta il
-    # 04/10/2026 quando questo cancello li ha trovati: fino ad allora li
-    # copriva A-08, che non parla di queste letture.
-    "system_log": {
-        "server.py": (
-            "A-41",
-            ("il giro delle condizioni (ogni 10 minuti) legge il registro degli "
-             "errori per `Watcher.watch_system`; lo strumento non e' "
-             "richiamabile dal cervello (R13)")),
-    },
-    "traces": {
-        "server.py": (
-            "A-41",
-            ("`watch_automation_outcomes` legge in raffica le tracce delle "
-             "automazioni segnate; lo strumento non e' richiamabile (R13)")),
-    },
-    "hourly_statistics": {
-        "server.py": (
-            "A-41",
-            ("`_report_ingredients` legge le serie orarie del resoconto del "
-             "giorno; lo strumento non e' richiamabile (R13)")),
     },
 }
 

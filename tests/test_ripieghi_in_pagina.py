@@ -10,7 +10,7 @@ import pathlib
 import pytest
 
 from hiris.app.api.handlers_usage import handle_usage
-from hiris.app.usage.store import UsageStore
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 
@@ -27,7 +27,7 @@ def app(tmp_path):
     store.log("claude", "claude-opus-4-7", token_in=10, token_out=5,
               cost_usd=0.01, cost_state="noto", now=1_758_000_000.0)
     try:
-        yield {"usage": store}, store
+        yield {USAGE_KEY: store}, store
     finally:
         store.close()
 

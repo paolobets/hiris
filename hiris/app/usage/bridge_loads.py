@@ -6,7 +6,7 @@ la rotta sa per quale turno (`X-HIRIS-Turno`). Qui si annotano i CARATTERI --
 mai gli argomenti, mai i contenuti.
 
 **Due thread, quindi un lock.** Scrive il loop di aiohttp; legge il thread
-dell'executor del ponte (`server._registra_turno_ponte`). Il contatore dei
+dell'executor del ponte (`bridge_loads._registra_turno_ponte`). Il contatore dei
 giri di `handlers_mcp` fa a meno del lock perche' lo tocca un thread solo:
 questo no.
 
@@ -18,9 +18,11 @@ uso non si espelle.
 from __future__ import annotations
 
 import threading
+import time
 from collections import OrderedDict
 
-BRIDGE_LOADS_KEY = "bridge_loads"
+from aiohttp import web
+
 MAX_TRACKED = 64
 
 
@@ -61,7 +63,51 @@ class BridgeLoads:
             return self._per_exchange.pop(exchange_id, None)
 
 
+BRIDGE_LOADS_KEY = web.AppKey("bridge_loads", BridgeLoads)
+
+
 def create_bridge_loads(app) -> None:
     """Si crea mentre l'app si compone, come i contatori dei giri (M-2):
     scrivere in `app[...]` a richiesta gia' servita e' deprecato in aiohttp."""
     app[BRIDGE_LOADS_KEY] = BridgeLoads()
+
+
+def _registra_turno_ponte(archivio, carichi=None):
+    """Collega il registro dei turni al ponte.
+
+    Non traduce niente: il ponte emette gia' le chiavi di `log_turn`. Un
+    vocabolario intermedio qui sarebbe un terzo posto in cui una colonna
+    nuova si dimentica di comparire.
+
+    `subject` arriva nella riga: per un turno di chat e' il soggetto che
+    `handlers_chat` mette nel contesto del job all'accodamento (fetta «le chat
+    divise»), letto da `runner._measure_turn`; per le altre specie e' `None`,
+    perche' nessuna persona le ha aperte. Qui non si inventa niente.
+
+    **La giunzione** (spec «le misure complete» §4): la riga porta
+    l'`exchange_id`, la composizione e i giri dello stream; `carichi` (il
+    `BridgeLoads` dell'app) sa le definizioni e i risultati che /api/mcp ha
+    servito a quel turno. `payload_rows_ponte` li unisce. Gira nel thread
+    dell'executor del ponte: `BridgeLoads` ha il suo lock.
+
+    Una riga senza composizione (la forma di prima del 28/09/2026) scrive il
+    solo turno: `payload_rows_ponte` non inventa giri senza cio' che e' stato
+    consegnato. Un guasto qui non fa cadere il turno: lo prende il
+    `try` di `runner._measure_turn`, che chiama questo gancio.
+    """
+    from .giro import payload_rows_ponte
+
+    def registra(riga: dict) -> str:
+        riga = dict(riga)
+        soggetto = riga.pop("subject", None)
+        exchange_id = riga.pop("exchange_id", "")
+        composizione = riga.pop("composition", None)
+        giri = riga.pop("exchanges", None) or []
+        adesso = time.time()
+        ident = archivio.log_turn(**riga, subject=soggetto, now=adesso)
+        preso = carichi.take(exchange_id) if carichi is not None else None
+        for pesi in payload_rows_ponte(composizione, giri, preso):
+            archivio.log_payload(ident, now=adesso, **pesi)
+        return ident
+
+    return registra

@@ -3,7 +3,7 @@
 **VERSIONE B (3.0.0).** `should_start_agent_worker` non legge piu' NIENTE
 dall'ambiente per decidere se il ponte e' acceso: `PROVIDER_SUBSCRIPTION` e
 `BRIDGE_ENABLED` erano le ultime due opzioni dell'add-on lette qui, e sono
-uscite dallo schema. Il valore arriva come argomento -- `app["bridge_active"]`,
+uscite dallo schema. Il valore arriva come argomento -- `app[BRIDGE_ACTIVE_KEY]`,
 lo stesso che governa la spazzata e l'instradamento della chat -- e il token
 resta letto dall'ambiente perche' e' una credenziale, e le credenziali stanno
 ancora fra le opzioni.
@@ -17,8 +17,17 @@ import asyncio
 
 import pytest
 
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.server import _govern_bridge_worker, should_start_agent_worker
+from hiris.app.agent import bridge_governor
+from hiris.app.agent.bridge_governor import (
+    AGENT_WORKER_TASK_KEY,
+    _govern_bridge_worker,
+    should_start_agent_worker,
+)
+from hiris.app.live_value import LiveValue
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 
 
 def test_worker_off_by_default(monkeypatch):
@@ -46,7 +55,7 @@ def test_il_token_da_solo_non_accende_il_lavoratore(monkeypatch):
 
     Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
     ponte da se' (`_sub_first_class`), e quindi anche questo lavoratore. Era
-    l'ultima seconda rappresentazione del prodotto: `app["bridge_active"]`
+    l'ultima seconda rappresentazione del prodotto: `app[BRIDGE_ACTIVE_KEY]`
     poteva valere True mentre `ponte.attivo` -- cio' che la pagina Modelli
     mostra e scrive -- diceva False.
 
@@ -91,10 +100,10 @@ async def test_accendere_il_ponte_fa_partire_il_lavoratore(monkeypatch, tmp_path
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
     # Il lavoratore legge la coda dell'app (A-23): in produzione c'e' sempre,
     # l'avvio la costruisce prima di accendere il ponte.
-    app = {"bridge_active": True,
-           "reasoning_queue": ReasoningQueue(str(tmp_path / "r.db"))}
+    app = {**live_values(), BRIDGE_ACTIVE_KEY: LiveValue(True),
+           REASONING_QUEUE_KEY: ReasoningQueue(str(tmp_path / "r.db"))}
     _govern_bridge_worker(app)
-    compito = app.get("agent_worker_task")
+    compito = app[AGENT_WORKER_TASK_KEY].value
     assert compito is not None, (
         "il ponte e' acceso e il token c'e': senza lavoratore ogni turno "
         "accodato scadrebbe prima di ricevere una risposta"
@@ -111,10 +120,11 @@ async def test_spegnere_il_ponte_ferma_il_lavoratore(monkeypatch):
     secondi per sempre."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
-    app = {"bridge_active": False, "agent_worker_task": finto}
+    app = {**live_values(),
+           BRIDGE_ACTIVE_KEY: LiveValue(False), AGENT_WORKER_TASK_KEY: LiveValue(finto)}
     _govern_bridge_worker(app)
     assert finto.fermato is True
-    assert app["agent_worker_task"] is None
+    assert app[AGENT_WORKER_TASK_KEY].value is None
 
 
 @pytest.mark.asyncio
@@ -124,9 +134,10 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
     non deve produrre due cicli che si contendono la stessa coda."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
-    app = {"bridge_active": True, "agent_worker_task": finto}
+    app = {**live_values(),
+           BRIDGE_ACTIVE_KEY: LiveValue(True), AGENT_WORKER_TASK_KEY: LiveValue(finto)}
     _govern_bridge_worker(app)
-    assert app["agent_worker_task"] is finto
+    assert app[AGENT_WORKER_TASK_KEY].value is finto
     assert finto.fermato is False
 
 
@@ -147,19 +158,19 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
 async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(
         monkeypatch, tmp_path):
     """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
-    `_recompute_chain`. Se questa si limitasse a cablare `app["bridge_active"]`
+    `_recompute_chain`. Se questa si limitasse a cablare `app[BRIDGE_ACTIVE_KEY]`
     senza governare il lavoratore, ogni turno andrebbe in una coda senza
     consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
-    from hiris.app import server
 
-    app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []},
-           "reasoning_queue": ReasoningQueue(str(tmp_path / "r.db"))}
-    server._recompute_chain(app)
+    app = {**live_values(),
+           MODELS_CONFIG_KEY: LiveValue({"ponte": {"attivo": True}, "chain_order": []}),
+           REASONING_QUEUE_KEY: ReasoningQueue(str(tmp_path / "r.db"))}
+    bridge_governor._recompute_chain(app)
 
-    assert app["bridge_active"] is True
-    compito = app.get("agent_worker_task")
+    assert app[BRIDGE_ACTIVE_KEY].value is True
+    compito = app[AGENT_WORKER_TASK_KEY].value
     assert compito is not None, (
         "il salvataggio ha acceso il ponte e non ha fatto partire chi "
         "risponde: il bottone «Mettilo primo» risponde 200 e fa aspettare"
@@ -176,16 +187,16 @@ async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(mo
     secondi finche' l'add-on non viene riavviato -- venticinquemila righe in
     due ore, che e' cio' che ha fatto scorrere via un avvio dal registro."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
-    from hiris.app import server
 
     finto = _CompitoFinto()
-    app = {"models_config": {"ponte": {"attivo": False}, "chain_order": []},
-           "agent_worker_task": finto}
-    server._recompute_chain(app)
+    app = {**live_values(),
+           MODELS_CONFIG_KEY: LiveValue({"ponte": {"attivo": False}, "chain_order": []}),
+           AGENT_WORKER_TASK_KEY: LiveValue(finto)}
+    bridge_governor._recompute_chain(app)
 
-    assert app["bridge_active"] is False
+    assert app[BRIDGE_ACTIVE_KEY].value is False
     assert finto.fermato is True
-    assert app["agent_worker_task"] is None
+    assert app[AGENT_WORKER_TASK_KEY].value is None
 
 
 def test_senza_un_loop_non_si_avvia_niente_e_non_si_solleva_niente(monkeypatch):
@@ -193,6 +204,6 @@ def test_senza_un_loop_non_si_avvia_niente_e_non_si_solleva_niente(monkeypatch):
     da un server (`test_model_activation.py`). Un compito asincrono non ha dove
     girare, e non averlo non e' un errore da inghiottire: e' il fatto vero."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
-    app = {"bridge_active": True}
+    app = {**live_values(), BRIDGE_ACTIVE_KEY: LiveValue(True)}
     _govern_bridge_worker(app)
-    assert app.get("agent_worker_task") is None
+    assert app[AGENT_WORKER_TASK_KEY].value is None

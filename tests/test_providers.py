@@ -20,8 +20,13 @@ from unittest import mock
 
 import pytest
 
+from hiris.app.live_value import LiveValue
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import providers_in_chain
-from tests._avvio import SERVER_LOGGER, UNREACHABLE_OLLAMA
+from hiris.app.startup import live_values
+from hiris.app.steering import MODEL_CHAIN_KEY
+from tests._avvio import STARTUP_LOGGER, UNREACHABLE_OLLAMA
 
 
 def _runners(router):
@@ -85,16 +90,16 @@ def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
 # (`tests/_avvio.py::started_with`) su un archivio e su credenziali che la
 # prova prepara, e si guarda la catena che l'avvio CONSEGNA al router
 # (`LLMRouter(model_chain=...)`, registrata da una spia che avvolge la classe
-# vera) e quella che pubblica in `app["model_chain"]`.
+# vera) e quella che pubblica in `app[MODEL_CHAIN_KEY]`.
 #
-# Perche' anche la consegna al router e non solo `app["model_chain"]`: poche
+# Perche' anche la consegna al router e non solo `app[MODEL_CHAIN_KEY]`: poche
 # righe sotto, l'avvio chiama `_rimetti_in_vigore()` -> `_recompute_chain`, che
-# RISCRIVE `app["model_chain"]` e `router._chat_policy` con la stessa regola
-# riletta dal router. Guardando solo `app["model_chain"]`, un difetto del
+# RISCRIVE `app[MODEL_CHAIN_KEY]` e `router._chat_policy` con la stessa regola
+# riletta dal router. Guardando solo `app[MODEL_CHAIN_KEY]`, un difetto del
 # blocco dell'avvio sarebbe coperto dal ricalcolo, e la prova resterebbe verde.
 #
 # E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
-# `app["model_chain"]` aveva DUE scritture, `list(_chain)` dentro il ramo
+# `app[MODEL_CHAIN_KEY]` aveva DUE scritture, `list(_chain)` dentro il ramo
 # dei runner e `[]` nel suo `else`, e la seconda non era coperta da niente.
 # Dalla Tappa 7 T9 (M-30) la scrittura e' una sola, quella di `_recompute_chain`.
 # ---------------------------------------------------------------------------
@@ -142,7 +147,7 @@ async def test_l_avvio_costruisce_la_catena_dall_archivio_e_dalle_credenziali(tm
     async with _started(tmp_path, ["openrouter", "claude", "ollama"],
                         credentials=("openrouter", "claude")) as (app, chains):
         assert _the_chain(chains) == ["openrouter", "claude"]
-        assert app["model_chain"] == ["openrouter", "claude"]
+        assert app[MODEL_CHAIN_KEY].value == ["openrouter", "claude"]
 
 
 @pytest.mark.asyncio
@@ -156,7 +161,7 @@ async def test_l_avvio_non_accoda_un_credenziato_che_nessuno_ha_messo_in_catena(
     async with _started(tmp_path, ["claude"],
                         credentials=("claude", "openrouter", "openai")) as (app, chains):
         assert _the_chain(chains) == ["claude"]
-        assert app["model_chain"] == ["claude"]
+        assert app[MODEL_CHAIN_KEY].value == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -166,12 +171,12 @@ async def test_l_avvio_lascia_vuota_una_catena_vuota(tmp_path):
     async with _started(tmp_path, [],
                         credentials=("claude", "openrouter")) as (app, chains):
         assert _the_chain(chains) == []
-        assert app["model_chain"] == []
+        assert app[MODEL_CHAIN_KEY].value == []
 
 
 @pytest.mark.asyncio
 async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
-    """`app["model_chain"]` e' pubblicata alla pagina; la catena del router e'
+    """`app[MODEL_CHAIN_KEY]` e' pubblicata alla pagina; la catena del router e'
     un'altra lista. Se fossero lo STESSO oggetto, una modifica dell'una
     toccherebbe l'altro -- e la pagina e il router divergerebbero senza che
     nessuno abbia scritto una seconda regola.
@@ -180,19 +185,19 @@ async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
     (`_recompute_chain`), che riscrive la pubblicazione del blocco dell'avvio.
 
     Mutazione ESEGUITA (03/10/2026): in `_recompute_chain`
-    `router._chat_policy = list(chain)` -> `= app["model_chain"]` -- rossa.
-    La scrittura di `app["model_chain"]` nel blocco dell'avvio, che il
+    `router._chat_policy = list(chain)` -> `= app[MODEL_CHAIN_KEY]` -- rossa.
+    La scrittura di `app[MODEL_CHAIN_KEY]` nel blocco dell'avvio, che il
     ricalcolo riscriveva poche righe dopo (una mutazione su di lei restava
     verde: in produzione quella copia non arrivava a nessuno), e' uscita alla
     Tappa 7 T9 (voce M-30)."""
     async with _started(tmp_path, ["claude"], credentials=("claude",)) as (app, _chains):
-        published = app["model_chain"]
+        published = app[MODEL_CHAIN_KEY].value
         assert published == ["claude"]
-        assert published is not app["llm_router"]._chat_policy
-        assert published is not app["models_config"]["chain_order"]
+        assert published is not app[LLM_ROUTER_KEY]._chat_policy
+        assert published is not app[MODELS_CONFIG_KEY].value["chain_order"]
         published.append("openrouter")
-        assert app["llm_router"]._chat_policy == ["claude"]
-        assert app["models_config"]["chain_order"] == ["claude"]
+        assert app[LLM_ROUTER_KEY]._chat_policy == ["claude"]
+        assert app[MODELS_CONFIG_KEY].value["chain_order"] == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -204,7 +209,7 @@ async def test_l_avvio_dichiara_nel_registro_chi_resta_fuori_dalla_catena(tmp_pa
 
     Mutazione ESEGUITA (03/10/2026): tolto il `logger.info` di «FUORI dalla
     catena» -- rossa (`IndexError`: la frase non c'e')."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"],
                             credentials=("claude", "openrouter")):
             pass
@@ -220,7 +225,7 @@ async def test_l_avvio_non_scrive_niente_quando_non_c_e_niente_da_dichiarare(tmp
     """La vecchia prova guardava che il blocco isolato non scrivesse NIENTE;
     sull'avvio intero si guarda che non scriva la frase di chi e' fuori (il
     resto dell'avvio scrive le sue)."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",)):
             pass
     assert "FUORI dalla catena" not in caplog.text
@@ -285,7 +290,7 @@ async def test_il_modello_di_ollama_si_legge_DALL_ARCHIVIO_non_dall_ambiente(tmp
 # ---------------------------------------------------------------------------
 # LA SCRITTURA A CALDO (Task 10): `_recompute_chain`
 #
-# Fino alla 2.4.1 `handle_save_models_config` aggiornava `app["models_config"]`
+# Fino alla 2.4.1 `handle_save_models_config` aggiornava `app[MODELS_CONFIG_KEY]`
 # e basta: la catena del router si costruiva all'avvio, quindi un riordino
 # salvato non cambiava il turno successivo e -- peggio -- la pagina, che
 # descrive il RUNTIME perche' e' la sola misura che ha, alla ricarica
@@ -318,23 +323,23 @@ def _router(**backends):
 
 
 def _app(chain_order, *, ollama_modello="", timeout_s=120, router=None):
-    return {"models_config": {"chain_order": list(chain_order),
+    return {**live_values(), MODELS_CONFIG_KEY: LiveValue({"chain_order": list(chain_order),
                               "ollama": {"modello": ollama_modello,
-                                         "timeout_s": timeout_s}},
-            "llm_router": router}
+                                         "timeout_s": timeout_s}}),
+            LLM_ROUTER_KEY: router}
 
 
 def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
     """Il difetto che questo task chiude. Senza il ricalcolo, `catena_modelli`
     resta quella dell'avvio e `_chat_policy` pure: la pagina inviterebbe a un
     gesto e poi lo dimenticherebbe."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(),
                 catena=["openrouter", "claude"])
     app = _app(["claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude", "openrouter"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude", "openrouter"]
     assert r._chat_policy == ["claude", "openrouter"], (
         "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
         "cioe' la pagina torna a mentire"
@@ -346,13 +351,13 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     dell'uno toccherebbe l'altro e i due potrebbero divergere senza che nessuno
     abbia scritto una seconda regola (stessa ragione del `list(_chain)`
     dell'avvio)."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == r._chat_policy
-    assert app["model_chain"] is not r._chat_policy
+    assert app[MODEL_CHAIN_KEY].value == r._chat_policy
+    assert app[MODEL_CHAIN_KEY].value is not r._chat_policy
 
 
 def test_una_catena_svuotata_svuota_ANCHE_il_router():
@@ -360,12 +365,12 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     rimetterebbe in piedi la regola legacy tolta al Task 7: pagina che dice
     «la catena e' vuota, HIRIS non ha a chi chiedere» e chat che risponde lo
     stesso, usando l'ordine di prima."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY].value == []
     assert r._chat_policy == []
     assert _runners(r) == []
 
@@ -374,12 +379,12 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     """Un anello che il router salta in silenzio, disegnato numerato dalla
     pagina, e' la bugia che questa fetta ritira. La credenziale non basta: il
     ricalcolo guarda i backend che il router ha in mano."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude"]
     assert r._chat_policy == ["claude"]
 
 
@@ -387,12 +392,12 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     """Il runner locale nasce con l'indirizzo (e' la credenziale), ma senza un
     modello scelto non puo' rispondere: `_resolve_model` manderebbe "". E' la
     stessa regola dell'avvio (`_risponde`), riletta invece che ricordata."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
 def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
@@ -401,13 +406,13 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     prossimo messaggio ci passa. Il runner locale esiste gia' perche' nasce con
     l'indirizzo -- se nascesse con `address AND modello`, questo gesto
     tornerebbe 200 e non farebbe niente fino al riavvio."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     locale = _RunnerLocale()
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude", "ollama"]
+    assert app[MODEL_CHAIN_KEY].value == ["claude", "ollama"]
     assert _runners(r)[-1] is locale
 
 
@@ -415,7 +420,7 @@ def test_il_timeout_del_locale_viene_dall_archivio_a_ogni_ricalcolo():
     """L'unico valore della fetta che non si puo' leggere al momento dell'uso:
     `AsyncOpenAI` cuoce il timeout nel client alla costruzione. Il ricalcolo lo
     riapplica, cosi' anche quel numero vale dal prossimo messaggio."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     locale = _RunnerLocale()
     app = _app(["ollama"], ollama_modello="llama3.1:8b", timeout_s=300,
@@ -430,19 +435,19 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
     solleverebbe `TypeError: 'NoneType' object is not callable`. E la catena
     dev'essere vuota, non l'ordine scritto: senza backend non risponde
     nessuno."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     app = _app(["claude", "openrouter"], router=None)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
-def test_il_ricalcolo_regge_un_archivio_assente():
-    from hiris.app.server import _recompute_chain
+def test_il_ricalcolo_regge_un_archivio_vuoto():
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
-    app: dict = {}
+    app = live_values()
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY].value == []
 
 
 @pytest.mark.asyncio
@@ -466,15 +471,15 @@ async def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_model
     - `if _risponde["ollama"]:` (la verifica) -> `if local_model_url:` --
       rossa (la verifica parte senza un modello, e il registro lo dice);
     - `read_model=_local_model` -> `read_model=_model_of("openai")` -- rossa."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",),
                             ollama_url=UNREACHABLE_OLLAMA) as (app, _chains):
-            local = app["llm_router"]._backend_map()["ollama"]
+            local = app[LLM_ROUTER_KEY]._backend_map()["ollama"]
             assert local is not None, "con l'indirizzo il runner locale c'e'"
             assert local._local is True
             assert local._chosen_model() == ""
-            app["models_config"] = {**app["models_config"],
-                                    "ollama": {"modello": "qwen2.5:7b"}}
+            app[MODELS_CONFIG_KEY].set({**app[MODELS_CONFIG_KEY].value,
+                                    "ollama": {"modello": "qwen2.5:7b"}})
             assert local._chosen_model() == "qwen2.5:7b", (
                 "il modello del runner locale si legge dall'archivio, a ogni uso"
             )
@@ -491,7 +496,7 @@ async def test_con_un_modello_scelto_la_raggiungibilita_si_verifica(tmp_path, ca
 
     Mutazione ESEGUITA (03/10/2026): la guardia della verifica resa
     `if False:` (la verifica non parte mai) -- rossa."""
-    with caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["ollama"], ollama_url=UNREACHABLE_OLLAMA,
                             ollama_model="llama3.1:8b"):
             pass
@@ -516,6 +521,6 @@ async def test_ogni_runner_riceve_la_lettura_del_SUO_provider(tmp_path):
     async with _started(tmp_path, ["claude", "openai", "openrouter"],
                         credentials=tuple(scelti),
                         provider_models=scelti) as (app, _chains):
-        backends = app["llm_router"]._backend_map()
+        backends = app[LLM_ROUTER_KEY]._backend_map()
         letti = {provider: backends[provider]._chosen_model() for provider in scelti}
     assert letti == scelti

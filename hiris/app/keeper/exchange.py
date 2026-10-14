@@ -30,6 +30,7 @@ from ..steering import (
     start,
     with_hour,
 )
+from ..usage.store import USAGE_KEY
 from .promise import unanswered_reason, unfinished_reason
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
 
     try:
         answer, turn = await chain_turn(
-            runner, PROMISE_SPECIES, usage=app.get("usage"),
+            runner, PROMISE_SPECIES, usage=app.get(USAGE_KEY),
             max_tokens=PROMISE_MAX_TOKENS,
             # L'ora della casa in coda alla domanda, non nel nucleo (D-51).
             user_message=with_hour(_domanda(promise), house_hour(app)),

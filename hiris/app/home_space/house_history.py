@@ -35,6 +35,9 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from aiohttp import web
+
+from ..live_value import LiveValue
 from ..proxy._sanitize import sanitize_structure, sanitize_traceback, truncate_with_marker
 from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
 from ..proxy.ha_client import SHAPE, _failure
@@ -64,6 +67,11 @@ from .render import depth_for, render_entity
 from .topology import live_name
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+STATISTIC_IDS_HELD_KEY = web.AppKey("statistic_ids_held", LiveValue)
+STATISTIC_IDS_LOCK_KEY = web.AppKey("statistic_ids_lock", asyncio.Lock)
 
 if TYPE_CHECKING:
     from .house import House
@@ -1393,16 +1401,23 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
     return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
 
-async def read_bands(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
-    """Le statistiche orarie di Home Assistant nella finestra: `{"serie"}` o la
-    busta del guasto, intera (`read_failure`). L'unica lettura delle fasce
-    orarie: la chiedono i valori di `history` e la ricetta al volo
-    (`mind/compute.py`)."""
-    answer = await ha.hourly_statistics(
-        entity_ids, query.start.isoformat(), query.end.isoformat())
-    if not isinstance(answer, dict) or "serie" not in answer:
-        return read_failure(answer, "le statistiche orarie non sono arrivate")
-    return {"serie": answer["serie"]}
+async def read_bands(ha, entity_ids: list[str], start: datetime, end: datetime) -> dict:
+    """Le statistiche orarie di Home Assistant fra `start` e `end`: `{"serie"}`
+    o la busta del guasto, intera. L'unica lettura delle fasce orarie: la
+    chiedono i valori di `history`, la ricetta al volo (`mind/compute.py`) e il
+    resoconto del giorno (`mind/day_report._report_ingredients`, A-41: fino al
+    14/10/2026 leggeva da se').
+
+    La finestra sono due istanti e non una `HistoryQuery`: il resoconto ne
+    calcola una sua (il giorno e la sua storia), che non nasce da una
+    domanda.
+
+    **La forma la controlla il client, una volta**
+    (`HAClient._request_statistics`: `serie` e' un oggetto, o la busta di
+    `forma`). Fino al 14/10/2026 la ricontrollava anche questa funzione: un
+    secondo controllo dello stesso fatto (N162-1, revisore giro 162), come
+    quello tolto da `read_log` (N161-2)."""
+    return await ha.hourly_statistics(entity_ids, start.isoformat(), end.isoformat())
 
 
 def journal_acts(journal, query: HistoryQuery) -> list[dict] | None:
@@ -1458,7 +1473,8 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
               else {"serie": {}, "troncato": False})
     if "errore" in detail:
         return detail
-    bands = await read_bands(ha, band_ids, query) if band_ids else {"serie": {}}
+    bands = (await read_bands(ha, band_ids, query.start, query.end) if band_ids
+             else {"serie": {}})
     if "errore" in bands:
         return bands
     return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
@@ -1489,6 +1505,25 @@ def run_key(cache, ident: str, entry: Callable[[str], dict | None]) -> tuple[str
     unique_id = (entry(ident) or {}).get("unique_id")
     key = unique_id or object_id
     return ("script", str(key)) if key else None
+
+
+async def read_traces(ha, keys: list[tuple[str, str]]) -> dict:
+    """Le esecuzioni recenti delle chiavi date (`run_key`), in una raffica:
+    `{"tracce", "non_letti"}` grezze, come Home Assistant le conserva, o la
+    busta del guasto, intera.
+
+    L'unica lettura delle tracce: la chiedono le esecuzioni di `history`
+    (`read_runs`, che le sigilla prima di farne righe) e il giro degli esiti
+    delle automazioni (`conditions_round.watch_automation_outcomes`, A-41: fino al
+    14/10/2026 leggeva da se'), che ne guarda solo `run_id`, l'esito e
+    l'inizio.
+
+    **Nessuna chiave, nessuna domanda; e la forma la controlla il client,
+    una volta** (`HAClient.traces`: le due chiavi ci sono sempre, o la busta).
+    Fino al 14/10/2026 questa funzione rifaceva tutte e due le cose: un
+    secondo controllo dello stesso fatto (N162-1, revisore giro 162), come
+    quello tolto da `read_log` (N161-2)."""
+    return await ha.traces(keys)
 
 
 async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
@@ -1525,9 +1560,9 @@ async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
         return run_detail(query, chosen,
                           sanitize_structure(answer["traccia"], seal=seal))
     wanted = [key for key in keys.values() if key is not None]
-    answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
-    if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
-        return read_failure(answer, "le esecuzioni non sono arrivate")
+    answer = await read_traces(ha, wanted)
+    if "errore" in answer:
+        return answer
     traces = {name: sanitize_structure(runs, seal=seal)
               for name, runs in answer["tracce"].items()}
     return run_rows(query, chosen, traces=traces,
@@ -1572,6 +1607,25 @@ def sealed_log(entries: list, seal) -> list[dict]:
     return sealed
 
 
+async def read_log(ha) -> dict:
+    """Il registro degli errori di Home Assistant, grezzo: `{"voci": [...]}`
+    o la busta del guasto, intera.
+
+    L'unica lettura del registro: la chiedono gli errori di `history`
+    (`read_errors`, che sigilla le voci prima di farne righe) e il giro delle
+    condizioni (`conditions_round.watch_system_conditions`, A-41: fino al 14/10/2026
+    leggeva da se'), che passa le voci all'osservatore com'erano.
+
+    **La forma la controlla il client, una volta** (`HAClient.system_log`:
+    `voci` e' una lista, o la busta di `forma`; lo provano
+    `test_ha_client_busta.py` e `test_ha_client_system_log.py`). Fino al
+    14/10/2026 la ricontrollava anche questa funzione, ed era un secondo
+    controllo dello stesso fatto: tolto, la suite restava verde (N161-2,
+    revisore giro 161), perche' il client lo aveva gia' fatto. Un controllo
+    solo, dove la forma di Home Assistant si conosce."""
+    return await ha.system_log()
+
+
 async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> dict:
     """Il registro degli errori di Home Assistant, sigillato, nelle righe di
     `error_rows`. Non guarda la casa: gli errori si chiedono anche con
@@ -1581,9 +1635,9 @@ async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> d
     `system_log/list` e' `require_admin` in Home Assistant (la fonte sta in
     `privacy.ADMIN_ONLY_HISTORY_KINDS`): chi lo chiama ha GIA' deciso che puo'
     -- nella chat, `ToolDispatcher._history` col cancello di quell'insieme."""
-    answer = await ha.system_log()
-    if not isinstance(answer.get("voci"), list):
-        return read_failure(answer, "il registro di Home Assistant non ha risposto")
+    answer = await read_log(ha)
+    if "errore" in answer:
+        return answer
     return error_rows(query, sealed_log(answer["voci"], seal), manifest)
 
 
@@ -1647,25 +1701,23 @@ async def statistic_ids_for_round(app, ha_client, *,
     `server.py` fino al 06/10/2026 (attori, Task 3.6): la chiede anche il
     guardiano dell'analista, che il ponte costruisce in `/api/mcp`, e la porta
     della storia e' la casa che entrambi possono importare. La lettura buona
-    si tiene in `app["statistic_ids_held"]` per `STATISTIC_IDS_MEMORY_S`;
+    si tiene in `app[STATISTIC_IDS_HELD_KEY]` per `STATISTIC_IDS_MEMORY_S`;
     **un guasto non si tiene mai**: la busta (D3) torna al chiamante, e il
     giro dopo richiede.
 
-    **Col lucchetto** (`app["statistic_ids_lock"]`, S-30, Tappa 8): la
+    **Col lucchetto** (`app[STATISTIC_IDS_LOCK_KEY]`, S-30, Tappa 8; nasce
+    all'avvio, non alla prima lettura: X-31, Chiusura dello sprint): la
     lettura cede il controllo mentre aspetta Home Assistant, e senza
     lucchetto due giri che partono insieme a memoria vuota leggevano tutti e
     due. Il secondo aspetta il primo, e trova la sua lettura (o, dopo un
     guasto, richiede).
     """
-    lock = app.get("statistic_ids_lock")
-    if lock is None:
-        lock = app["statistic_ids_lock"] = asyncio.Lock()
-    async with lock:
+    async with app[STATISTIC_IDS_LOCK_KEY]:
         moment = time.monotonic() if now is None else now
-        held = app.get("statistic_ids_held")
+        held = app[STATISTIC_IDS_HELD_KEY].value
         if held is not None and moment - held[0] < STATISTIC_IDS_MEMORY_S:
             return held[1]
         reading = await ha_client.statistic_ids()
         if not isinstance(reading, dict):
-            app["statistic_ids_held"] = (moment, reading)
+            app[STATISTIC_IDS_HELD_KEY].set((moment, reading))
         return reading

@@ -8,13 +8,13 @@ turno dalla coda e lo consegna direttamente, e le prove fanno lo stesso.
 import pytest
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.reasoning.consegna import consegna
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.reasoning.consegna import SUBMIT_CHAT_REPLY_KEY, consegna
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
 
 
 def _app(tmp_path):
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    return {"reasoning_queue": q}, q
+    return {REASONING_QUEUE_KEY: q}, q
 
 
 # test_claim_then_submit_executes, che viveva qui, e' cancellato dalla fetta
@@ -73,7 +73,7 @@ async def test_consegna_la_risposta_anche_con_una_chiave_vecchia_nel_contesto(tm
 
     async def _submit_chat_reply(reply, thread):
         replies.append(reply)
-    app["submit_chat_reply"] = _submit_chat_reply
+    app[SUBMIT_CHAT_REPLY_KEY] = _submit_chat_reply
     q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="J", now=1.0,
               thread=ChatThread("persona:paolo", "pannello"))
     c = q.claim(10.0)

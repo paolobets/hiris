@@ -1,4 +1,5 @@
-"""Il cancello della Tappa 1: nessuna prova nuova legge il testo di `server.py`.
+"""Il cancello della Tappa 1: nessuna prova nuova legge il testo di `server.py`
+(ne' di `startup.py`, dove l'avvio e' andato alla Chiusura dello sprint).
 
 **Perche' esiste.** Una prova che cerca una stringa nel sorgente di
 `hiris/app/server.py`, o ne confronta due indici, difende la POSIZIONE di un
@@ -70,7 +71,12 @@ import pytest
 
 TESTS = Path(__file__).resolve().parent
 
-SERVER_MODULE = "hiris.app.server"
+#: I moduli il cui testo nessuna prova legge: `server.py`, e `startup.py`, dove
+#: l'avvio e' andato alla Chiusura dello sprint (F8, 14/10/2026) -- una prova
+#: che ne leggesse il testo difenderebbe di nuovo la posizione di una riga.
+WATCHED_MODULES = frozenset({"hiris.app.server", "hiris.app.startup"})
+WATCHED_NAMES = frozenset(m.rsplit(".", 1)[1] for m in WATCHED_MODULES)
+WATCHED_FILES = frozenset(f"{name}.py" for name in WATCHED_NAMES)
 SOURCE_READERS = {"getsource", "getsourcelines", "getfile", "getsourcefile", "findsource"}
 PATH_BUILDERS = {"Path", "PurePath", "open", "join"}
 MODULE_ORIGINS = {"__file__", "__spec__", "__loader__"}
@@ -112,7 +118,7 @@ def readings(source: str) -> set[tuple[str, int]]:
     funzione."""
     # Ogni forma riconosciuta passa per la parola `server` (un import, una
     # stringa, un percorso): un sorgente che non la contiene non legge.
-    if "server" not in source:
+    if not any(name in source for name in WATCHED_NAMES):
         return set()
     tree = ast.parse(source)
     # Una passata sola: i nodi e il genitore di ognuno.
@@ -127,22 +133,22 @@ def readings(source: str) -> set[tuple[str, int]]:
     objects: set[str] = set()
     for node in nodes:
         if isinstance(node, ast.ImportFrom) and node.module == "hiris.app":
-            modules |= {a.asname or a.name for a in node.names if a.name == "server"}
-        elif isinstance(node, ast.ImportFrom) and node.module == SERVER_MODULE:
+            modules |= {a.asname or a.name for a in node.names if a.name in WATCHED_NAMES}
+        elif isinstance(node, ast.ImportFrom) and node.module in WATCHED_MODULES:
             objects |= {a.asname or a.name for a in node.names}
         elif isinstance(node, ast.Import):
-            modules |= {a.asname or a.name for a in node.names if a.name == SERVER_MODULE}
+            modules |= {a.asname or a.name for a in node.names if a.name in WATCHED_MODULES}
 
     def names_server_module(expr: ast.expr) -> bool:
         """`sys.modules["hiris.app.server"]`, `import_module("hiris.app.server")`."""
         if isinstance(expr, ast.Subscript):
             key = expr.slice
             return (_called_name(expr.value) == "modules"
-                    and isinstance(key, ast.Constant) and key.value == SERVER_MODULE)
+                    and isinstance(key, ast.Constant) and key.value in WATCHED_MODULES)
         if isinstance(expr, ast.Call):
             return (_called_name(expr.func) == "import_module" and bool(expr.args)
                     and isinstance(expr.args[0], ast.Constant)
-                    and expr.args[0].value == SERVER_MODULE)
+                    and expr.args[0].value in WATCHED_MODULES)
         return False
 
     def refers_to_server(expr: ast.expr) -> bool:
@@ -228,7 +234,7 @@ def readings(source: str) -> set[tuple[str, int]]:
                 found.add((owner(node), node))
         elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
                 and id(node) not in docstrings
-                and node.value.replace("\\", "/").rsplit("/", 1)[-1] == "server.py"):
+                and node.value.replace("\\", "/").rsplit("/", 1)[-1] in WATCHED_FILES):
             builders = [a for a in up_to_statement(node)
                         if (isinstance(a, ast.BinOp) and isinstance(a.op, ast.Div))
                         or (isinstance(a, ast.Call) and _called_name(a.func) in PATH_BUILDERS)]
@@ -293,11 +299,14 @@ def test_no_test_reads_server_source_outside_the_admission_list():
     `assert "x" in inspect.getsource(server._on_startup)` -- rossa, e il
     messaggio nomina `test_mutazione_cancello.py::test_x`. E un aiutante
     nuovo `tests/_mutazione_cancello.py` con la stessa lettura in `aiuto()`
-    -- rossa, `{'_mutazione_cancello.py::aiuto': [7]}`."""
+    -- rossa, `{'_mutazione_cancello.py::aiuto': [7]}`. Il 14/10/2026 (F8):
+    `inspect.getsource(startup._on_startup)` in un file nuovo -- rossa, col
+    file e la riga; e `startup` tolto da `WATCHED_MODULES` -- rosse le due
+    forme di `startup.py` qui sotto."""
     new = {key: lines for key, lines in scan(TESTS).items() if key not in ADMITTED}
 
     assert new == {}, (
-        "queste prove leggono il testo di hiris/app/server.py: chiedi all'app "
+        "queste prove leggono il testo di server.py o startup.py: chiedi all'app "
         f"avviata cio' che cerchi nel sorgente -- {new}")
 
 
@@ -312,7 +321,7 @@ def test_every_admission_is_still_needed():
     stale = sorted(set(ADMITTED) - set(scan(TESTS)))
 
     assert stale == [], (
-        f"queste prove non leggono piu' server.py: togli la loro ammissione -- {stale}")
+        f"queste prove non leggono piu' quei file: togli la loro ammissione -- {stale}")
 
 
 @pytest.mark.parametrize("source", [
@@ -321,6 +330,19 @@ def test_every_admission_is_still_needed():
         "import inspect\n"
         "def test_x():\n"
         "    assert 'x' in inspect.getsource(server._on_startup)\n"
+    ),
+    # L'avvio uscito da `server.py` (F8): il suo testo e' sorvegliato allo
+    # stesso modo, col modulo e col percorso.
+    (
+        "from hiris.app import startup\n"
+        "import inspect\n"
+        "def test_x():\n"
+        "    assert 'x' in inspect.getsource(startup._on_startup)\n"
+    ),
+    (
+        "import pathlib\n"
+        "def test_x():\n"
+        "    assert 'x' in pathlib.Path('hiris/app/startup.py').read_text()\n"
     ),
     (
         "import inspect\n"

@@ -15,6 +15,8 @@ arrivato prima della sua nascita non riallinea niente.
 """
 from __future__ import annotations
 
+from ..background import spawn as _spawn
+
 
 async def reload_and_realign(client, entity_cache, watcher) -> None:
     """Rilegge lo specchio (`EntityCache.reload`) e con la STESSA fotografia
@@ -36,3 +38,20 @@ def disconnection_recorder(watcher):
         if observer is not None:
             observer.record_disconnection(window)
     return _record
+
+
+def mirror_reload_listener(client, entity_cache, watcher=lambda: None):
+    """Restituisce l'ascoltatore di topologia che rilegge lo specchio.
+
+    Spec «una porta sola» §6: il quarto avvisato, dopo anagrafe, servizi e
+    plance. Gli altri eventi dell'anagrafe non lo toccano. `_ws_loop` emette
+    «riconnessione» a ogni connessione riuscita DOPO la prima (Tappa 2, Task
+    7, D2): alla prima l'avvio legge lo specchio una volta da se'
+    (`entity_cache.load`), dopo essersi iscritto. Con la stessa fotografia
+    l'osservatore si riallinea (`mind/realignment.py`).
+    """
+    def _mirror_on_reconnect(event_type: str) -> None:
+        if event_type == "riconnessione":
+            _spawn(reload_and_realign(client, entity_cache, watcher),
+                   name="specchio-riconnessione")
+    return _mirror_on_reconnect

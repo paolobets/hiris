@@ -36,10 +36,17 @@ import logging
 import time
 from typing import NamedTuple
 
+from aiohttp import web
+
 from ..chat_thread import new_subject
 from ..proxy._sanitize import sanitize_ha_value
+from ..proxy.ha_client import HA_CLIENT_KEY
 from .canali import PUO, RUOLI, SERVICE_SPECIES, SPECIE_IGNOTA
-from .servizi import STATE_AUTHORIZED
+from .servizi import SERVICES_KEY, STATE_AUTHORIZED
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+ROLES_KEY = web.AppKey("ruoli")
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +231,8 @@ async def _ha_users(app, *, hold_failure_s: float = 0.0) -> dict | None:
     chiesto nell'ultimo minuto -- un servizio amministratore che apre le
     Costruzioni, per esempio.
     """
-    client = app.get("ha_client")
-    visti = app.get("ruoli")
+    client = app.get(HA_CLIENT_KEY)
+    visti = app.get(ROLES_KEY)
     if client is None or visti is None:
         return None
 
@@ -487,7 +494,7 @@ def approved_services(app) -> list[dict]:
     Chi deve nominare molti soggetti in una risposta (l'elenco delle
     Costruzioni) la legge una volta e la passa a `subject_name`, invece di
     rileggere l'archivio per ogni riga."""
-    services = app.get("servizi")
+    services = app.get(SERVICES_KEY)
     if services is None:
         return []
     try:
@@ -633,4 +640,4 @@ def prepara_ruoli(app) -> None:
     `quando = 0` vuol dire «mai letto», e la prima richiesta che serve un ruolo
     lo legge — non c'è nessun ramo «prima volta» da ricordarsi.
     """
-    app["ruoli"] = {"quando": 0.0, "per_id": {}}
+    app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}

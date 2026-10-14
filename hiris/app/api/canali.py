@@ -40,10 +40,15 @@ import base64
 import hashlib
 import logging
 
+from aiohttp import web
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from ..chat_thread import new_subject
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+SEEN_CHANNELS_KEY = web.AppKey("canali_visti")
 
 logger = logging.getLogger(__name__)
 
@@ -232,4 +237,4 @@ def prepara_canali(app) -> None:
     vivono nell'archivio (`api/servizi.py`) e nascono da un accoppiamento
     approvato dal proprietario, non da un campo di testo nelle opzioni.
     """
-    app["canali_visti"] = {}
+    app[SEEN_CHANNELS_KEY] = {}

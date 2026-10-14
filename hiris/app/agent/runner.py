@@ -1,10 +1,11 @@
 """Runner hiris-agent: prende i turni dalla coda di ragionamento HIRIS e li ragiona (mock|live).
 
-Gira dentro l'add-on (`run_loop`, avviato da `server.py`), e la coda la legge
+Gira dentro l'add-on (`run_loop`, avviato da `agent/bridge_governor.py`), e la coda la legge
 direttamente: si sveglia quando un turno viene accodato, non la interroga a
-intervalli (A-23). La credenziale di TURNO -- coniata da `server.py`, vive
-dieci minuti (`api/credenziali.PONTE_S`) -- serve alla rotta degli strumenti
-(`/api/mcp`), che la CLI chiama da un altro processo.
+intervalli (A-23). La credenziale di TURNO -- coniata da `agent/bridge_governor.py`, vive
+il doppio del turno piu' lungo (`api/credenziali.durata_ponte_s`) -- serve
+alla rotta degli strumenti (`/api/mcp`), che la CLI chiama da un altro
+processo.
 
 **Cosa puo' il ponte.** LEGGE la casa e la memoria e puo' AGIRE su di essa,
 con lo stesso catalogo della chat sincrona (`home_space/tools.KNOWLEDGE_TOOLS`):
@@ -694,8 +695,8 @@ def cli_model(resolved_model: str) -> str:
     con cui questo ponte parla (solo abbonamento, mai API a consumo -- vedi
     `_SUBPROCESS_ENV_DENYLIST` sotto). Oggi la chiamano il validatore del
     campo `ponte.modello` (`handlers_models._clean_subscription_model`) e la
-    semina di quel campo in `server.py`: cio' che arriva nel job e' gia' un
-    alias.
+    semina di quel campo in `options_migration.seed_at_startup`: cio' che
+    arriva nel job e' gia' un alias.
 
     fetta "il ponte riceve il nucleo" (parita' A, Task 4): passare un modello
     non-Anthropic (es. `gpt-4o`) a `claude --model` fa fallire OGNI turno con
@@ -1247,7 +1248,7 @@ def verify_init(occurrence: StreamOccurrence, species: str = "chat") -> tuple[bo
     return True, ""
 
 
-# Iniettato da `server.py` quando parte il lavoratore in-addon. Finche' resta
+# Iniettato da `agent/bridge_governor.py` quando parte il lavoratore in-addon. Finche' resta
 # `None` (una suite, per esempio) l'uso finisce solo nel log.
 _log_usage = None
 
@@ -1326,7 +1327,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     fa il proprio ciclo di strumenti dentro di se'. I pesi per giro arrivano
     da due parti: i token dallo stream (`message.usage`, un giro per
     `message.id`) e la composizione da `_invoca`. Le definizioni e i risultati
-    li ha visti `/api/mcp`, e li unisce `server._registra_turno_ponte`. Fino
+    li ha visti `/api/mcp`, e li unisce `bridge_loads._registra_turno_ponte`. Fino
     al 28/09/2026 qui c'era scritto che non esistevano: era falso (spec «le
     misure complete» §1).
 
@@ -1367,7 +1368,8 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                         "(job_id=%s) -- la forma dello stream e' cambiata?",
                         n_cli, (job or {}).get("job_id"))
         # **Le chiavi sono quelle di `UsageStore.log_turn`**, non un terzo
-        # vocabolario da tradurre a meta' strada: `server.py` le passa
+        # vocabolario da tradurre a meta' strada:
+        # `usage/bridge_loads._registra_turno_ponte` le passa
         # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
         # una colonna nuova si dimentica.
         return _log_turn({
@@ -1395,7 +1397,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "subject": (((job or {}).get("context") or {}).get("soggetto")
                         if (job or {}).get("kind") == "chat" else None),
             # Spec «le misure complete» §4: la riga porta cio' che serve alla
-            # giunzione in `server._registra_turno_ponte`, che ha l'app e
+            # giunzione in `bridge_loads._registra_turno_ponte`, che ha l'app e
             # quindi cio' che /api/mcp ha annotato per questo turno.
             "exchange_id": exchange_id,
             "composition": composition,
@@ -2201,7 +2203,7 @@ async def serve(job: dict, consegna, client, base_url: str, get_headers,
     """Un turno gia' preso dalla coda: lo ragiona e lo consegna.
 
     Tutto dentro il processo (A-23, 06/10/2026): `consegna` e'
-    `reasoning/consegna.consegna` legata all'app (`server.py`). Fino a quel
+    `reasoning/consegna.consegna` legata all'app (`agent/bridge_governor.py`). Fino a quel
     giorno il lavoratore chiamava se stesso via HTTP (`/api/reasoning/claim` e
     `/api/reasoning/submit`).
 
@@ -2227,7 +2229,7 @@ async def serve(job: dict, consegna, client, base_url: str, get_headers,
 
 async def run_loop(queue, consegna, base_url: str, get_headers, mode: str,
                    clock=time.time) -> None:
-    """Il lavoratore del ponte (task asyncio in-addon, avviato da `server.py`).
+    """Il lavoratore del ponte (task asyncio in-addon, avviato da `agent/bridge_governor.py`).
 
     **Non interroga la coda a intervalli** (A-23, 06/10/2026). Serve i turni
     finche' ce ne sono, poi aspetta che `ReasoningQueue.enqueue` lo svegli.

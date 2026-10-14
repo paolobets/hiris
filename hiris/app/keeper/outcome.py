@@ -17,9 +17,12 @@ from __future__ import annotations
 import logging
 
 from ..chat_store import append_assistant_line
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
 from ..states import FAILED, TAKEN
+from ..storage import DATA_DIR_KEY
 from .promise import failure_message
+from .store import AGENDA_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,7 @@ def write_line(write, promise: dict, content: str, *,
 def tell_failure(data_dir: str, promise: dict, reason, *,
                  quoted: str | None = None) -> bool:
     """La riga breve di una promessa fallita, per chi ha `data_dir` e non
-    l'orologio. `data_dir` e' `app["data_dir"]`, letto senza ripiego (D-27,
+    l'orologio. `data_dir` e' `app[DATA_DIR_KEY]`, letto senza ripiego (D-27,
     Tappa 8): fino all'08/10/2026 qui c'era una guardia per «un'app non
     montata del tutto», cioe' per le prove che costruivano un'app senza la
     cartella -- in produzione l'avvio la scrive sempre per prima."""
@@ -97,15 +100,15 @@ def fail_unfinished(app, ident: str, *, reason: str, now: float, family: str,
     che dice cosa e' successo (`scaduto` per chi non ha risposto, `altro` per
     chi ha risposto senza seguire il protocollo).
     """
-    store = app.get("agenda")
+    store = app.get(AGENDA_KEY)
     row = store.read(ident) if (store is not None and ident) else None
     if row is None:
         return UNKNOWN
     if row.get("stato") != TAKEN:
         return ALREADY_CLOSED
     if store.concludi(ident, state=FAILED, now=now, reason=reason):
-        tell_failure(app["data_dir"], row, reason, quoted=quoted)
-    registry = app.get("occurrence_registry")
+        tell_failure(app[DATA_DIR_KEY], row, reason, quoted=quoted)
+    registry = app.get(OCCURRENCES_KEY)
     if registry is not None:
         registry.fallimento(SUBSCRIPTION.id, family=family, code=None,
                             message=message, durata_s=durata_s)
@@ -137,15 +140,16 @@ async def keep_concluded(app, ident: str, conclusione: dict, *, now: float) -> s
     `UNKNOWN` anche quando manca l'orologio: senza, non c'e' chi possa
     chiuderla, e chi chiama lo dice al modello.
     """
-    sweeper = app.get("sweeper")
-    store = app.get("agenda")
+    from .sweeper import SWEEPER_KEY
+    sweeper = app.get(SWEEPER_KEY)
+    store = app.get(AGENDA_KEY)
     row = store.read(ident) if (store is not None and ident) else None
     if sweeper is None or row is None:
         return UNKNOWN
     if row.get("stato") != TAKEN:
         return ALREADY_CLOSED
     await sweeper.concludi_chiedi(row, conclusione, now=now)
-    registry = app.get("occurrence_registry")
+    registry = app.get(OCCURRENCES_KEY)
     if registry is not None:
         registry.successo(SUBSCRIPTION.id)
     return CLOSED

@@ -15,6 +15,8 @@ import json
 import logging
 import time
 
+from aiohttp import web
+
 from ..home_space.ha_vocabulary import (
     config_entry_is_healthy,
     config_entry_is_ignored,
@@ -65,7 +67,7 @@ _SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 # Quanti giri consecutivi una condizione deve mancare prima di dirla finita.
 #
 # DUE, e i due errori non costano uguale. Il rilevatore gira ogni 10 minuti
-# (`server.py`, `hiris_mind_conditions`), e `setup_retry` per costruzione
+# (`startup.py`, `hiris_mind_conditions`), e `setup_retry` per costruzione
 # RITENTA: un giro in cui HA non la elenca fra i problemi non significa che
 # sia guarita. Misurato sulla casa il 03/09: quattro episodi per un solo
 # guasto, coi tre buchi di esattamente un giro -- due giri li unificano
@@ -180,7 +182,8 @@ class Watcher:
         # `mark_automation`). Solo aggiunte, mai tolte: un'automazione che
         # ha scattato una volta resta interessante per sempre, e non c'e'
         # bisogno di "guarirla" dall'elenco. Vive solo in RAM e non si
-        # risemina al riavvio: la raccolta delle tracce (`server.py`) la
+        # risemina al riavvio: la raccolta delle tracce
+        # (`mind/conditions_round.py::watch_automation_outcomes`) la
         # rifara' da sola non appena l'automazione scattera' di nuovo --
         # diversamente da un guasto che DURA (sotto), qui non c'e' niente da
         # perdere restando vuoti fino al prossimo scatto.
@@ -189,7 +192,7 @@ class Watcher:
         # Fino a quel giorno era un `entity_id -> nome` fissato al PRIMO
         # scatto, dal nome che l'evento porta: un'automazione rinominata in
         # Home Assistant restava col nome vecchio fino al riavvio. Ora il
-        # nome lo dice la casa all'esito (`server.watch_automation_outcomes`
+        # nome lo dice la casa all'esito (`conditions_round.watch_automation_outcomes`
         # chiede `House.name`), e segue le rinomine.
         self._marked_automations: set[str] = set()
         # Le automazioni la cui ultima esecuzione VISTA e' un errore
@@ -519,8 +522,8 @@ class Watcher:
 
     def mark_automation(self, entity_id: str) -> bool:
         """Segna un'automazione come scattata. **Non scrive niente**: e' il
-        callback (indiretto: vedi il glue in `server.py::_on_startup`, che
-        estrae `entity_id`/`name` da `event_data` di
+        callback (indiretto: vedi `startup.py::mark_triggered_automation`,
+        che estrae `entity_id` da `event_data` di
         `AUTOMATION_TRIGGERED_EVENT`) di un evento che scatta all'INIZIO
         delle azioni, quando la traccia non e' ancora completa -- scrivere
         qui vorrebbe dire scrivere un esito che non esiste ancora (vedi
@@ -533,7 +536,8 @@ class Watcher:
         (Task 4 di «le tracce e il log»). Un identificatore malformato
         arriverebbe da un evento HA genuino solo per un bug altrove; ma se
         arrivasse, resterebbe in `self._marked_automations` -- l'insieme che
-        la cadenza breve di `server.py` rilegge OGNI due minuti -- e non c'e'
+        la cadenza breve di `mind/conditions_round.watch_automation_outcomes`
+        rilegge OGNI due minuti -- e non c'e'
         nessun altro punto d'ingresso da cui filtrarlo dopo. Questo e'
         l'unico, quindi basta controllare qui.
 
@@ -568,7 +572,8 @@ class Watcher:
 
     def marked_automations(self) -> list[str]:
         """Le automazioni segnate finora, in ordine stabile -- cio' che la
-        cadenza breve di `server.py` deve rileggere a ogni giro. Ordinata
+        cadenza breve di `mind/conditions_round.watch_automation_outcomes` deve
+        rileggere a ogni giro. Ordinata
         (non l'ordine di scoperta) perche' chi legge i log di due giri
         successivi possa confrontarli a colpo d'occhio."""
         return sorted(self._marked_automations)
@@ -679,7 +684,7 @@ class Watcher:
         passava, ed e' uscito. `title`
         (giro di correzioni, rilievo 5) e' il nome dell'automazione che la
         casa da' all'esito (`House.name`, chiesto da
-        `server.py::watch_automation_outcomes`; A-18) -- senza, il soggetto
+        `mind/conditions_round.py::watch_automation_outcomes`; A-18) -- senza, il soggetto
         piu' raccontato dell'archivio sarebbe di nuovo un identificatore
         opaco.
 
@@ -729,7 +734,7 @@ class Watcher:
         del chiamante (un parametro non passato) nello stesso segnale di
         «ho guardato ed era tutto a posto» -- l'esatta bugia che questo
         meccanismo esiste per non dire. Costringere ogni chiamante a essere
-        esplicito e' il prezzo, pagato una volta in `server.py::
+        esplicito e' il prezzo, pagato una volta in `mind/conditions_round.py::
         watch_system_conditions` e nei test.
 
         **Una voce del registro di errori (`HAClient.system_log()`, Task 1)
@@ -1210,7 +1215,7 @@ class Watcher:
 
     def hold_statistic_ids(self, reading) -> None:
         """L'elenco delle entita' con statistiche letto da un giro
-        (`server.statistic_ids_for_round`), per `watch_reading` (B-12).
+        (`house_history.statistic_ids_for_round`), per `watch_reading` (B-12).
 
         Una lettura fallita -- la busta del guasto (D3), o `None` -- non
         sostituisce l'ultima buona: un guasto del websocket non deve far
@@ -1219,3 +1224,6 @@ class Watcher:
         `sensor`, il triplo delle righe misurato il 15/09/2026)."""
         if isinstance(reading, (set, frozenset)):
             self._statistic_ids = frozenset(reading)
+
+
+WATCHER_KEY = web.AppKey("watcher", Watcher)

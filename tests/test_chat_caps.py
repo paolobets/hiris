@@ -5,7 +5,7 @@ untouched.
 
 Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
-- handle_chat gates on app["bridge_active"] AND app["reasoning_queue"]
+- handle_chat gates on app[BRIDGE_ACTIVE_KEY] AND app[REASONING_QUEUE_KEY]
   present (``steering._bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
   thread=None) stores context as JSON; the chat job context carries
@@ -43,10 +43,16 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_chat import handle_chat
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.startup import live_values
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
 
 # Lo stesso filo che `request_thread` calcola per una richiesta di questo
@@ -104,22 +110,23 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
         runner = RunnerFinto("sync reply")
 
     app = web.Application()
-    app["llm_router"] = runner
-    app["claude_runner"] = runner
-    app["chat_settings"] = impostazioni
-    app["data_dir"] = data_dir
-    app["bridge_active"] = ponte_attivo
+    app.update(live_values())
+    app[LLM_ROUTER_KEY] = runner
+    app[CLAUDE_RUNNER_KEY] = runner
+    app[CHAT_SETTINGS_KEY].set(impostazioni)
+    app[DATA_DIR_KEY] = data_dir
+    app[BRIDGE_ACTIVE_KEY].set(ponte_attivo)
     # Task 14: il tetto giornaliero del ponte si legge dall'ARCHIVIO
     # (`ponte.tetto_giornaliero`), dove l'utente lo cambia dalla pagina
     # Modelli, e non piu' da `app["chat_daily_cap"]` -- una copia di
     # `CHAT_DAILY_CAP` presa all'avvio, che nessun salvataggio aggiornava.
     if tetto_giornaliero is not None:
-        app["models_config"] = {"ponte": {"tetto_giornaliero": tetto_giornaliero}}
+        app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": tetto_giornaliero}})
 
     q = None
     if with_queue:
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
-        app["reasoning_queue"] = q
+        app[REASONING_QUEUE_KEY] = q
 
     app.router.add_post("/api/chat", handle_chat)
     return app, q, runner, impostazioni, data_dir
@@ -386,7 +393,7 @@ async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
     fosse controllato per primo, questo turno partirebbe verso la catena mentre
     il ponte ne ha ancora uno in volo -- e quello, quando arriva, si scrive in
     cronologia da solo (`_submit_chat_reply`, costruita da
-    `server._chat_reply_submitter`). Due risposte in volo
+    `consegna._chat_reply_submitter`). Due risposte in volo
     sulla stessa conversazione, che e' esattamente cio' che questa guardia
     esiste per impedire: la seconda arriverebbe in una cronologia che la prima
     sta per riscrivere."""

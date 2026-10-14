@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 
-from ..proxy.state_translations import read_for_house
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.state_translations import STATE_TRANSLATIONS_KEY, read_for_house
+from .knowledge import KNOWLEDGE_KEY
 from .seed import HOUSE_PRIORITY, meanings_from_translations
 
 logger = logging.getLogger(__name__)
@@ -55,9 +57,9 @@ async def prime_state_translations(app) -> dict:
     ricostruzione dell'anagrafe (`mind/reconciliation.after_rebuild`). Il giro
     serve alla prima lettura fallita.
     """
-    store = app.get("home_space_store")
+    store = app.get(HOME_SPACE_KEY)
     frame = store.reference_frame() if store is not None else {}
-    report = await read_for_house(app.get("state_translations"), frame)
+    report = await read_for_house(app.get(STATE_TRANSLATIONS_KEY), frame)
     if not report.get("lette"):
         logger.info("traduzioni degli stati non lette: %s", report.get("motivo"))
         return report
@@ -71,7 +73,7 @@ async def prime_state_translations(app) -> dict:
     # Si scrivono con `seed`, non con `write`: dove il repo ha una FRASE
     # («la potenza ISTANTANEA, non un'energia») quella resta, e il NOME che HA
     # pubblica («Potenza») non la schiaccia.
-    sapere = app.get("knowledge")
+    sapere = app.get(KNOWLEDGE_KEY)
     if sapere is not None and report.get("appena_lette"):
         # **B2: senza versione o lingua non si importa niente.** La fonte di
         # una riga deve dire da quale versione e in che lingua viene: scrivere

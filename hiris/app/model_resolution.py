@@ -252,7 +252,7 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     è partito», mai «mai, in assoluto». Per la rotta `subscription` la
     distanza fra le due era totale e permanente: nessun turno riuscito del
     ponte scriveva un successo (il buco che il Task 6 chiude altrove, in
-    `server.py::_submit_chat_reply`), quindi il registro restava vuoto per
+    `reasoning/consegna.py::_chat_reply_submitter`), quindi il registro restava vuoto per
     sempre e la frase mentiva su una casa vera con centinaia di turni
     riusciti. Per gli altri quattro provider la distanza è più corta -- un
     riavvio dell'add-on la richiude al turno buono successivo -- ma è la
@@ -412,10 +412,11 @@ def compose_now(
     """Chi risponde al prossimo messaggio, e perché.
 
     `catena` è l'ordine EFFETTIVO in cui il runtime prova i provider -- la
-    stessa lista che `server.py` passa a `LLMRouter(model_chain=...)` e
-    pubblica su `app["model_chain"]`, non una seconda derivazione.
+    stessa lista che `startup.py` passa a `LLMRouter(model_chain=...)` e
+    `agent/bridge_governor._recompute_chain` pubblica su `app[MODEL_CHAIN_KEY]`,
+    non una seconda derivazione.
 
-    `bridge_active` è `app["bridge_active"]` -- il parametro segue la
+    `bridge_active` è `app[BRIDGE_ACTIVE_KEY]` -- il parametro segue la
     conversione, la CHIAVE dell'app resta italiana. Quando è vero E c'è il
     token, il turno parte dal piano: `api/handlers_chat.handle_chat` lo accoda invece di
     prendere il router. Dal Task 14 quella strada ha un RITORNO -- se il piano
@@ -667,7 +668,8 @@ def compose_topology(
         La credenziale di Ollama è il SOLO indirizzo (fetta «la catena è
         l'unica verità», Task 7): l'indirizzo è ciò che si custodisce, il
         modello è ciò che si decide. Ma per RISPONDERE servono tutti e due --
-        `server.py` non costruisce il runner senza un modello -- e fra i due
+        il runner nasce dal solo indirizzo, ma senza un modello nessuno lo
+        mette in catena (`startup.py`, `_risponde`) -- e fra i due
         fatti si apriva un buco dichiarato dal Task 7: Ollama poteva stare in
         catena senza un backend dietro, cioè comparire come anello numerato in
         una pagina che descrive il runtime mentre `LLMRouter._ordered_backends_with_name`
@@ -677,8 +679,9 @@ def compose_topology(
         Si chiude senza rimettere il modello dentro la credenziale (sarebbero
         di nuovo due concetti in un posto solo): la riga resta credenziata, il
         pallino resta acceso, e a mancare è un GESTO -- non si entra in catena
-        finché non c'è un modello. Le parole lo dicono, e `server.py` filtra la
-        catena effettiva con lo stesso fatto.
+        finché non c'è un modello. Le parole lo dicono, e `startup.py` e
+        `agent/bridge_governor._recompute_chain` filtrano la catena effettiva
+        con lo stesso fatto.
         """
         p = get(pid)
         return bool(p and p.needs_chosen_model) and not models.get(pid, "")

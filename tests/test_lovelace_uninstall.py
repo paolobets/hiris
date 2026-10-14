@@ -35,6 +35,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from hiris.app.action import installation
+from hiris.app.api.admission import ACCESS_FLAG_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -347,7 +350,7 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
 # ---------------------------------------------------------------------------
 # `home_assistant_folder` — sopravvive alla card: i suoi test si sono SPOSTATI
 # qui, non cancellati. La usano anche la rilettura del comportamento
-# (`server.behavior_reader`) e il sigillo dei segreti
+# (`rounds.behavior_reader`) e il sigillo dei segreti
 # (`redaction.home_assistant_seal`). Fino al 03/10/2026 questi tre test
 # guardavano la copia di `server`, `_find_ha_config_dir` (A-40).
 # ---------------------------------------------------------------------------
@@ -409,7 +412,7 @@ async def test_l_installazione_disinstalla_la_card_dopo_la_voce_di_menu(monkeypa
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     ha = _casa([])
     ha.ws_ready.set()
-    app = {"ha_client": ha, "data_dir": str(tmp_path), "non_admin_access": False}
+    app = {HA_CLIENT_KEY: ha, DATA_DIR_KEY: str(tmp_path), ACCESS_FLAG_KEY: False}
     ordine = []
 
     async def voce(_app):
@@ -439,7 +442,7 @@ async def test_la_card_aspetta_il_nucleo_anche_quando_la_voce_di_menu_esce_subit
     `ws_ready` in `install` -- rossa (la card chiede le risorse prima)."""
     monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     ha = _casa([], slug=SILENT)
-    app = {"ha_client": ha, "data_dir": str(tmp_path), "non_admin_access": False}
+    app = {HA_CLIENT_KEY: ha, DATA_DIR_KEY: str(tmp_path), ACCESS_FLAG_KEY: False}
 
     compito = asyncio.create_task(installation.install(app))
     for _ in range(20):

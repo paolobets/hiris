@@ -53,14 +53,16 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.api.handlers_mind import handle_watching
 from hiris.app.home_space.house import SOURCE_STATES, House
-from hiris.app.mind import observer
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.mind import day_report, observer, recipe_turn
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
 from hiris.app.mind.recipes import MUTED_SOURCE_STATES, muted_recipes
 from hiris.app.mind.report import build_report
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.mind.watcher import Watcher
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.mind.watcher import WATCHER_KEY, Watcher
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
 from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house
@@ -68,6 +70,7 @@ from tests.test_fonte_della_casa import DEVICES, ENTITIES, ENTRIES, _house
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from hiris.app.startup import live_values
 from tests._anagrafe_finta import AnagrafeFinta
 
 OBSERVER = "observer"
@@ -141,9 +144,9 @@ def _mirror_cache():
 async def test_la_rotta_della_pagina_porta_la_fonte(store):
     """`GET /api/mind/watching` apre la casa del momento (`House.read`) e la
     passa a `watching`: la pagina e la batteria leggono la marca da li'."""
-    app = {"watcher": Watcher(store), "observations": store,
-           "home_space_store": AnagrafeFinta(_registries()),
-           "entity_cache": _mirror_cache()}
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+           HOME_SPACE_KEY: AnagrafeFinta(_registries()),
+           ENTITY_CACHE_KEY: _mirror_cache()}
 
     class _Request:
         def __init__(self):
@@ -165,9 +168,9 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
 
     Mutazione ESEGUITA: `_left_out` che torna a comporre la riga senza la
     casa -- rossa (`fonte` assente)."""
-    app = {"watcher": Watcher(store), "observations": store,
-           "home_space_store": AnagrafeFinta(_registries()),
-           "entity_cache": _mirror_cache()}
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+           HOME_SPACE_KEY: AnagrafeFinta(_registries()),
+           ENTITY_CACHE_KEY: _mirror_cache()}
 
     class _Request:
         def __init__(self):
@@ -185,8 +188,8 @@ async def test_anche_cio_che_e_fuori_porta_la_fonte_nella_stessa_forma(store):
                          ids=["senza archivio", "anagrafe mai letta"])
 @pytest.mark.asyncio
 async def test_senza_anagrafe_la_rotta_non_inventa_fonti(store, home_space_store):
-    app = {"watcher": Watcher(store), "observations": store,
-           "home_space_store": home_space_store, "entity_cache": _mirror_cache()}
+    app = {**live_values(), WATCHER_KEY: Watcher(store), OBSERVATIONS_KEY: store,
+           HOME_SPACE_KEY: home_space_store, ENTITY_CACHE_KEY: _mirror_cache()}
 
     class _Request:
         def __init__(self):
@@ -330,9 +333,9 @@ def test_il_resoconto_porta_una_riga_per_il_dispositivo_muto():
 
 
 async def _ingredients(recipes):
-    app = {"knowledge": object(),
-           "home_space_store": AnagrafeFinta(_registries({"id": d, "name": d} for d in recipes)),
-           "entity_cache": _mirror_cache()}
+    app = {**live_values(), KNOWLEDGE_KEY: object(),
+           HOME_SPACE_KEY: AnagrafeFinta(_registries({"id": d, "name": d} for d in recipes)),
+           ENTITY_CACHE_KEY: _mirror_cache()}
     asked: list[list[str]] = []
 
     async def _stat_ids(_app, _ha, **_kw):
@@ -341,9 +344,9 @@ async def _ingredients(recipes):
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period":
             lambda extra: asked.append(sorted(extra["statistic_ids"])) or {}})
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        result = await server._report_ingredients(app, house, giorno="2026-10-03",
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        result = await day_report._report_ingredients(app, house, giorno="2026-10-03",
                                                   timezone="Europe/Rome")
     return result, asked
 

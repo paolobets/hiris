@@ -30,6 +30,16 @@ consegna davvero al runner.
 """
 import json
 
+from hiris.app.action.actuator import ACTUATOR_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 
 def _strumenti_loggati(caplog):
     """I nomi degli strumenti dalla riga di log a livello debug che ha
@@ -95,17 +105,17 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
 
     mock_runner = RunnerFinto("ok")
 
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="base prompt"))
+    app[CLAUDE_RUNNER_KEY] = mock_runner
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
     if archivio_casa is not None:
-        app["home_space_store"] = archivio_casa
+        app[HOME_SPACE_KEY] = archivio_casa
     if archivio_memoria is not None:
-        app["memory_store"] = archivio_memoria
+        app[MEMORY_STORE_KEY] = archivio_memoria
     if cache is not None:
-        app["entity_cache"] = cache
+        app[ENTITY_CACHE_KEY] = cache
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -387,23 +397,23 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     with patch("anthropic.AsyncAnthropic"):
         runner = ClaudeRunner(api_key="test-key")
 
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
-    app["claude_runner"] = runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[CHAT_SETTINGS_KEY].set(ChatSettings(system_prompt="base prompt"))
+    app[CLAUDE_RUNNER_KEY] = runner
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
     if archivio_casa is not None:
-        app["home_space_store"] = archivio_casa
+        app[HOME_SPACE_KEY] = archivio_casa
     if archivio_memoria is not None:
-        app["memory_store"] = archivio_memoria
+        app[MEMORY_STORE_KEY] = archivio_memoria
     if cache is not None:
-        app["entity_cache"] = cache
+        app[ENTITY_CACHE_KEY] = cache
     # La porta dell'azione (`action/actuator.py`). Passarla e' cio' che rende
     # `execute` disponibile al dispatcher: senza, lo strumento c'e' nel
     # catalogo ma dichiara «il collegamento con Home Assistant non e'
     # disponibile» -- il degrado onesto del contratto di `dispatch()`.
     if actuator is not None:
-        app["action_actuator"] = actuator
+        app[ACTUATOR_KEY] = actuator
 
     app.on_startup.clear()
     app.on_cleanup.clear()

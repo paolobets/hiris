@@ -62,6 +62,9 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 
@@ -213,7 +216,7 @@ async def test_un_turno_nuovo_vede_la_casa_di_adesso():
     che apre il turno (`house_of`, come `handle_chat`) sia dal dispatcher
     che se la legge da se'."""
     store, cache = AnagrafeFinta({"entita": [], "aree": [], "dispositivi": []}), _kitchen("off")
-    app = {"home_space_store": store, "entity_cache": cache}
+    app = {HOME_SPACE_KEY: store, ENTITY_CACHE_KEY: cache}
     assert house_of(app).mirror.state["light.cucina"] == "off"
     assert ToolDispatcher(store, None, cache=cache)._mirror().state["light.cucina"] == "off"
     _turn_on(cache)

@@ -20,11 +20,7 @@ APP = ROOT / "hiris" / "app"
 #: fuori dalla tabella. Non sono di questa fetta (la tabella «Chi possiede
 #: cosa» della Chiusura): la modifica e' in una patch per il loro padrone, e
 #: la riga esce con lei.
-AMMESSI: dict[str, str] = {
-    "server.py": (
-        "il `base_url` di OpenAI nell'avvio: `server.py` e' fermo fino a F8, "
-        "patch in chiusura/f5-patch (F-09)"),
-}
+AMMESSI: dict[str, str] = {}
 
 
 def _bases() -> set[str]:

@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app import server
+from hiris.app.home_space import rounds
 from hiris.app.proxy.entity_cache import EntityCache, unreadable_inventory_error
 from hiris.app.proxy.ha_client import HAReadError
 from tests._casa_sintetica import synthetic_inputs
@@ -64,7 +64,7 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
         await cache.load(_house(down=True))
     assert cache.loaded is False
 
-    ricaricato = await server.reload_entity_inventory(cache, _house())
+    ricaricato = await rounds.reload_entity_inventory(cache, _house())
 
     assert ricaricato is True
     assert cache.loaded is True
@@ -96,7 +96,7 @@ async def test_dopo_la_ricarica_gli_strumenti_tornano_a_rispondere():
     prima = await _get_entities_on_come_lo_strumento(cache)
     assert isinstance(prima, dict) and "pront" in prima.get("error", "").lower()
 
-    await server.reload_entity_inventory(cache, _house())
+    await rounds.reload_entity_inventory(cache, _house())
 
     dopo = await _get_entities_on_come_lo_strumento(cache)
     accese = [s for s in synthetic_inputs()["states"] if s["state"] == "on"]
@@ -115,7 +115,7 @@ async def test_non_ricarica_quando_la_cache_e_gia_viva():
     letture_iniziali = _state_reads(house)
     assert letture_iniziali == 1
 
-    ricaricato = await server.reload_entity_inventory(cache, house)
+    ricaricato = await rounds.reload_entity_inventory(cache, house)
 
     assert ricaricato is False
     assert _state_reads(house) == letture_iniziali, (
@@ -131,7 +131,7 @@ async def test_home_assistant_ancora_giu_non_solleva_e_lascia_riprovare():
     cache = EntityCache()
     house_down = _house(down=True)
 
-    ricaricato = await server.reload_entity_inventory(cache, house_down)
+    ricaricato = await rounds.reload_entity_inventory(cache, house_down)
 
     assert ricaricato is False
     assert cache.loaded is False
@@ -139,10 +139,10 @@ async def test_home_assistant_ancora_giu_non_solleva_e_lascia_riprovare():
     assert _state_reads(house_down) == 1
 
     # Il giro dopo, con HA tornato, deve funzionare.
-    assert await server.reload_entity_inventory(cache, _house()) is True
+    assert await rounds.reload_entity_inventory(cache, _house()) is True
 
 
 @pytest.mark.asyncio
 async def test_senza_cache_o_senza_client_non_solleva():
-    assert await server.reload_entity_inventory(None, _house()) is False
-    assert await server.reload_entity_inventory(EntityCache(), None) is False
+    assert await rounds.reload_entity_inventory(None, _house()) is False
+    assert await rounds.reload_entity_inventory(EntityCache(), None) is False

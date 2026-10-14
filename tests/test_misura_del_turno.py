@@ -15,7 +15,7 @@ import pytest
 
 from hiris.app.claude_runner import _misura_corrente
 from hiris.app.steering import SPECIE, misura_turno
-from hiris.app.usage.store import UsageStore
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
 
 
@@ -61,11 +61,11 @@ class FintoRunner(RunnerFinto):
 
 @pytest.fixture()
 def app(tmp_path):
-    return {"usage": UsageStore(str(tmp_path / "consumi.db"))}
+    return {USAGE_KEY: UsageStore(str(tmp_path / "consumi.db"))}
 
 
 async def _gira(app, runner, specie="chat"):
-    async with misura_turno(app["usage"], runner, specie=specie,
+    async with misura_turno(app[USAGE_KEY], runner, specie=specie,
                             canale="catena-anthropic", modello="sonnet"):
         return await runner.chat()
 
@@ -82,11 +82,11 @@ async def test_il_filo_INTERO_dal_runner_alla_cronaca_dei_consumi(app):
 
     await _gira(app, runner)
 
-    turni = app["usage"].turns()
+    turni = app[USAGE_KEY].turns()
     assert len(turni) == 1
     assert turni[0]["iterations"] == 3
     assert turni[0]["tools"] == ["search", "view"]
-    assert app["usage"].payloads(turni[0]["id"]) != []
+    assert app[USAGE_KEY].payloads(turni[0]["id"]) != []
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_la_catena_registra_gli_argomenti(app):
 
     await _gira(app, runner)
 
-    riga = app["usage"].turns()[0]
+    riga = app[USAGE_KEY].turns()[0]
     assert riga["tools"] == ["search", "execute", "view"]
     assert riga["tool_args"] == [{"tipo": "light"},
                                  {"data": {"code": "***"}}, {}]
@@ -119,7 +119,7 @@ async def test_si_vede_CRESCERE_il_carico_giro_per_giro(app):
 
     await _gira(app, runner)
 
-    carichi = app["usage"].payloads(app["usage"].turns()[0]["id"])
+    carichi = app[USAGE_KEY].payloads(app[USAGE_KEY].turns()[0]["id"])
 
     assert [c["iteration"] for c in carichi] == [1, 2, 3, 4]
     assert [c["results_chars"] for c in carichi] == [0, 9000, 18000, 27000]
@@ -138,11 +138,11 @@ async def test_la_DURATA_si_misura(app):
         await asyncio.sleep(0.05)
         return await runner.chat()
 
-    async with misura_turno(app["usage"], runner, specie="chat",
+    async with misura_turno(app[USAGE_KEY], runner, specie="chat",
                             canale="catena-anthropic", modello="sonnet"):
         await _lento()
 
-    assert app["usage"].turns()[0]["duration_ms"] >= 40
+    assert app[USAGE_KEY].turns()[0]["duration_ms"] >= 40
 
 
 @pytest.mark.asyncio
@@ -158,7 +158,7 @@ async def test_un_turno_che_ESPLODE_si_registra_lo_stesso(app):
     with pytest.raises(RuntimeError):
         await _gira(app, runner)
 
-    turni = app["usage"].turns()
+    turni = app[USAGE_KEY].turns()
     assert len(turni) == 1
     assert turni[0]["outcome"] == "fallito"
     assert turni[0]["iterations"] == 2
@@ -196,16 +196,16 @@ async def test_due_turni_in_PARALLELO_non_si_mescolano(app):
     veloce = FintoRunner(giri=4, peso=7)
 
     async def _turno(runner, specie):
-        async with misura_turno(app["usage"], runner,
+        async with misura_turno(app[USAGE_KEY], runner,
                                 specie=specie, canale="catena-anthropic", modello="x"):
             await runner.chat()
 
     await asyncio.gather(_turno(lento, "chat"),
                          _turno(veloce, "analista"))
 
-    per_specie = {t["species"]: t["id"] for t in app["usage"].turns()}
-    carico_chat = app["usage"].payloads(per_specie["chat"])
-    carico_analista = app["usage"].payloads(per_specie["analista"])
+    per_specie = {t["species"]: t["id"] for t in app[USAGE_KEY].turns()}
+    carico_chat = app[USAGE_KEY].payloads(per_specie["chat"])
+    carico_analista = app[USAGE_KEY].payloads(per_specie["analista"])
 
     assert [c["results_chars"] for c in carico_chat] == [0, 1000, 2000, 3000]
     assert [c["results_chars"] for c in carico_analista] == [0, 7, 14, 21]
@@ -223,7 +223,7 @@ async def test_un_guasto_dell_archivio_NON_fa_cadere_il_turno(app):
             raise RuntimeError("disco pieno")
 
     runner = FintoRunner(giri=1)
-    rotta = {"usage": ArchivioRotto()}
+    rotta = {USAGE_KEY: ArchivioRotto()}
 
     esito = await _gira(rotta, runner)
 
@@ -241,7 +241,7 @@ async def test_gli_ARGOMENTI_non_arrivano_mai_all_archivio(app):
 
     await _gira(app, runner)
 
-    scritto = json.dumps(app["usage"].turns()[0]["tools"], ensure_ascii=False)
+    scritto = json.dumps(app[USAGE_KEY].turns()[0]["tools"], ensure_ascii=False)
 
     assert "camera" not in scritto, scritto
     assert "stanza" not in scritto, scritto
@@ -257,7 +257,7 @@ async def test_le_SEI_specie_passano_tutte(app):
     for specie in sorted(SPECIE):
         await _gira(app, FintoRunner(giri=1), specie=specie)
 
-    assert {t["species"] for t in app["usage"].turns()} == set(SPECIE)
+    assert {t["species"] for t in app[USAGE_KEY].turns()} == set(SPECIE)
 
 
 def test_i_DUE_runner_veri_espongono_il_contratto():
@@ -286,12 +286,12 @@ async def test_una_specie_INVENTATA_viene_rifiutata(app):
 
     Mutazione ESEGUITA: togliere il controllo dall'imbuto -- rossa."""
     with pytest.raises(ValueError, match="observer"):
-        async with misura_turno(app["usage"], FintoRunner(),
+        async with misura_turno(app[USAGE_KEY], FintoRunner(),
                                 specie="observer", canale="catena-anthropic",
                                 modello="x"):
             pass
 
-    assert app["usage"].turns() == []
+    assert app[USAGE_KEY].turns() == []
 
 
 class RunnerCoiToken(FintoRunner):
@@ -314,9 +314,9 @@ async def test_due_consegne_dello_stesso_giro_sono_UNA_riga(app):
     fusione per chiave -- rossa (iterations 6 invece di 3)."""
     await _gira(app, RunnerCoiToken(giri=3))
 
-    turno = app["usage"].turns()[0]
+    turno = app[USAGE_KEY].turns()[0]
     assert turno["iterations"] == 3
-    giri = app["usage"].payloads(turno["id"])
+    giri = app[USAGE_KEY].payloads(turno["id"])
     assert [g["iteration"] for g in giri] == [1, 2, 3]
     assert giri[1]["tools_chars"] == 44876 and giri[1]["input_tokens"] == 200
     assert giri[2]["cost_usd"] == 0.001
@@ -326,7 +326,7 @@ async def test_due_consegne_dello_stesso_giro_sono_UNA_riga(app):
 async def test_l_uscita_del_turno_e_la_somma_dei_giri(app):
     """Mutazione ESEGUITA: non passare `output_tokens` a `log_turn` -- rossa."""
     await _gira(app, RunnerCoiToken(giri=3))
-    assert app["usage"].turns()[0]["output_tokens"] == 21
+    assert app[USAGE_KEY].turns()[0]["output_tokens"] == 21
 
 
 @pytest.mark.asyncio
@@ -336,7 +336,7 @@ async def test_senza_token_l_uscita_del_turno_resta_NULL(app):
 
     Mutazione ESEGUITA: `sum(... or 0)` al posto del controllo sui None -- rossa."""
     await _gira(app, FintoRunner(giri=2))
-    assert app["usage"].turns()[0]["output_tokens"] is None
+    assert app[USAGE_KEY].turns()[0]["output_tokens"] is None
 
 
 class RunnerCheDichiaraIlModello(RunnerCoiToken):
@@ -361,13 +361,13 @@ async def test_il_modello_della_chat_si_MISURA_dal_giro(app):
     sa il runner, quando consegna i token del giro.
 
     Mutazione ESEGUITA: `model=modello or "ignoto"` (il vecchio) -- rossa."""
-    async with misura_turno(app["usage"], RunnerCheDichiaraIlModello(),
+    async with misura_turno(app[USAGE_KEY], RunnerCheDichiaraIlModello(),
                             specie="chat", canale="catena"):
         await RunnerCheDichiaraIlModello().chat()
-    turno = app["usage"].turns()[0]
+    turno = app[USAGE_KEY].turns()[0]
     assert turno["model"] == "qwen/qwen3.8-27b"
     # La chiave in piu' non e' una colonna del giro: la riga si scrive.
-    assert app["usage"].payloads(turno["id"])[0]["input_tokens"] == 10
+    assert app[USAGE_KEY].payloads(turno["id"])[0]["input_tokens"] == 10
 
 
 def test_i_DUE_runner_veri_consegnano_il_modello_coi_token():
@@ -396,10 +396,10 @@ async def test_il_turno_sa_quale_riga_del_registro_e_sua(app):
     vuole annotare poi quel turno (una risposta rifiutata, strato 3 degli
     attori) lo collega per identificatore, senza cercarlo per istante."""
     runner = FintoRunner(giri=1)
-    async with misura_turno(app["usage"], runner, specie="chat",
+    async with misura_turno(app[USAGE_KEY], runner, specie="chat",
                             canale="catena-anthropic", modello="sonnet") as turno:
         await runner.chat()
-    assert turno.turn_id == app["usage"].turns()[0]["id"]
+    assert turno.turn_id == app[USAGE_KEY].turns()[0]["id"]
 
 
 @pytest.mark.asyncio

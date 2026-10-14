@@ -38,6 +38,8 @@ from ..home_space.historian import home_space_zone, house_clock, house_timezone,
 from .boundary import error_response, json_object
 from .canali import PUO, RUOLI, SERVICE_SPECIES
 from .servizi import (
+    SERVICE_WINDOW_KEY,
+    SERVICES_KEY,
     STATE_AUTHORIZED,
     STATE_PENDING,
     STATE_REVOKED,
@@ -125,7 +127,7 @@ def listing(archivio, adesso: float, app) -> dict:
 
 
 def _archivio(request):
-    return request.app.get("servizi")
+    return request.app.get(SERVICES_KEY)
 
 
 async def handle_service_present(request: web.Request) -> web.Response:
@@ -139,7 +141,7 @@ async def handle_service_present(request: web.Request) -> web.Response:
     archivio = _archivio(request)
     if archivio is None:
         return error_response(503, "archivio non disponibile")
-    if not finestra_aperta(request.app.get("finestra_servizi"), adesso=time.time()):
+    if not finestra_aperta(request.app.get(SERVICE_WINDOW_KEY), adesso=time.time()):
         # Non dovrebbe arrivarci -- il confine la ferma prima -- ma una porta
         # che si difende in un posto solo e' una porta che si apre il giorno in
         # cui quel posto cambia.
@@ -163,7 +165,7 @@ async def handle_services(request: web.Request) -> web.Response:
     if archivio is None:
         return error_response(503, "archivio non disponibile")
     adesso = time.time()
-    finestra = request.app.get("finestra_servizi")
+    finestra = request.app.get(SERVICE_WINDOW_KEY)
     return web.json_response({
         "servizi": listing(archivio, adesso, request.app),
         "orologio": house_clock(house_timezone(request.app.get("home_space_store")), adesso),
@@ -174,7 +176,7 @@ async def handle_services(request: web.Request) -> web.Response:
 
 async def handle_open_window(request: web.Request) -> web.Response:
     """Apre l'accoppiamento per dieci minuti."""
-    finestra = request.app.get("finestra_servizi")
+    finestra = request.app.get(SERVICE_WINDOW_KEY)
     if finestra is None:
         return error_response(503, "finestra non disponibile")
     adesso = time.time()
@@ -187,7 +189,7 @@ async def handle_open_window(request: web.Request) -> web.Response:
 
 async def handle_close_window(request: web.Request) -> web.Response:
     """La chiude subito, senza aspettare i minuti che avanzano."""
-    chiudi_finestra(request.app.get("finestra_servizi") or {})
+    chiudi_finestra(request.app.get(SERVICE_WINDOW_KEY) or {})
     logger.info("servizi: accoppiamento chiuso")
     return web.json_response({"aperta": False, "resta_s": 0})
 

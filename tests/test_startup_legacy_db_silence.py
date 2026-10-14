@@ -31,14 +31,14 @@ async def _startup_lines(data_dir, caplog) -> list[str]:
     della conservazione: l'annuncio sta nel secondo, ma su una casa pulita
     il secondo tace, e la prova che il registro catturi qualcosa la da' il
     primo."""
-    from tests._avvio import SERVER_LOGGER, started_with
+    from tests._avvio import STARTUP_LOGGER, started_with
 
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER), \
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER), \
             caplog.at_level(logging.INFO, logger=CONSERVATION_LOGGER):
         async with started_with(data_dir):
             pass
     return [rec.getMessage() for rec in caplog.records
-            if rec.name in (SERVER_LOGGER, CONSERVATION_LOGGER)]
+            if rec.name in (STARTUP_LOGGER, CONSERVATION_LOGGER)]
 
 
 def _announced(lines) -> bool:

@@ -9,6 +9,13 @@ from aiohttp import web
 from ..chat_thread import new_subject
 from .admission import admission_refusal, gesture_refusal
 from .boundary import error_response
+from .canali import SEEN_CHANNELS_KEY
+from .credenziali import CREDENTIALS_KEY
+from .servizi import SERVICE_WINDOW_KEY, SERVICES_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+INGRESS_CIDRS_KEY = web.AppKey("supervisor_ingress_cidrs")
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +40,7 @@ def _supervisor_cidrs(request: web.Request) -> list[str]:
     l'avvio aveva scritto nel registro «nessuna rete e' fidata». Il valore di
     fabbrica ha una casa sola, `ingresso.RETE_PREDEFINITA`, e vale quando il
     campo e' vuoto, non quando e' sbagliato."""
-    return list(request.app.get("supervisor_ingress_cidrs") or [])
+    return list(request.app.get(INGRESS_CIDRS_KEY) or [])
 
 
 async def _is_supervisor_ingress(request: web.Request) -> bool:
@@ -165,8 +172,8 @@ async def _firmatario(request: web.Request):
         firma=request.headers.get(_FIRMA, ""),
         metodo=request.method, percorso=request.path,
         corpo=await request.read(),
-        servizi=request.app.get("servizi"),
-        visti=request.app.get("canali_visti"),
+        servizi=request.app.get(SERVICES_KEY),
+        visti=request.app.get(SEEN_CHANNELS_KEY),
         adesso=time.time())
 
 
@@ -202,7 +209,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     from .servizi import finestra_aperta
 
     if (request.path == ROTTA_APERTA
-            and finestra_aperta(request.app.get("finestra_servizi"),
+            and finestra_aperta(request.app.get(SERVICE_WINDOW_KEY),
                                 adesso=time.time())):
         request["auth_via"] = "accoppiamento"
         request["soggetto"] = new_subject("nessuno")
@@ -246,7 +253,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     # nessuno`, che e' cio' che la cronaca deve scrivere.
     from .credenziali import RUOLO_TURNO, riconosci
 
-    turno = riconosci(request.app.get("credenziali") or {},
+    turno = riconosci(request.app.get(CREDENTIALS_KEY) or {},
                       request.headers.get("X-HIRIS-Internal-Token"),
                       adesso=time.time())
     if turno is not None:

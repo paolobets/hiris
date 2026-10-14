@@ -16,15 +16,15 @@ Il Task 1 aveva scritto questo file sapendo gia' che sarebbe successo:
 (Task 4 di questa fetta: 'quando l'engine uscira', la chiamata restera'
 li')". Il Task 4 di questa fetta ("un bot solo") ha fatto esattamente
 questo: `ChatbotEngine` e il file che lo conteneva sono usciti per intero,
-`app["engine"]` e' diventato `app["chat_settings"]`, e lo scheduler
+`app["engine"]` e' diventato `app[CHAT_SETTINGS_KEY]`, e lo scheduler
 (APScheduler, che l'engine ospitava solo perche' doveva stare da qualche
-parte) e' diventato `app["scheduler"]`, costruito direttamente in
+parte) e' diventato `app[SCHEDULER_KEY]`, costruito direttamente in
 `_on_startup`.
 
 **Dal 03/10/2026 l'avvio gira davvero** (Tappa 1 dello sprint «Una fonte
 sola di verita'»). Prima il blocco si ritagliava dal testo di `_on_startup`
 fra due marcatori (`await ha_client.start_websocket()` e
-`app["scheduler"] = scheduler`) e si eseguiva isolato con doppi: un marcatore
+`app[SCHEDULER_KEY] = scheduler`) e si eseguiva isolato con doppi: un marcatore
 sparito -- e' successo una volta, con `ChatbotEngine` -- rompeva la prova
 senza che niente fosse cambiato. Adesso la casa dell'avvio
 (`tests/_avvio.py::RecordingHouse`) e' la casa finta comune, e una spia che
@@ -41,7 +41,8 @@ from unittest import mock
 import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import RecordingHouse, started_with
 
 
@@ -72,8 +73,8 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
             mock.patch.object(AsyncIOScheduler, "start", start), \
             mock.patch.object(ChatSettings, "load", classmethod(load)):
         async with started_with(tmp_path) as app:
-            assert isinstance(app["chat_settings"], ChatSettings)
-            assert isinstance(app["scheduler"], AsyncIOScheduler)
+            assert isinstance(app[CHAT_SETTINGS_KEY].value, ChatSettings)
+            assert isinstance(app[SCHEDULER_KEY], AsyncIOScheduler)
 
     # Il punto del pin: il websocket parte UNA volta, e PRIMA di qualunque
     # altra cosa che potrebbe dipenderne (oggi: le impostazioni e lo

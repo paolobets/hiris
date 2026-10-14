@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import logging
 
+from aiohttp import web
+
 from ...chat_thread import ChatThread, unknown_id_text
 from ...home_space.historian import home_space_zone
 from ...home_space.privacy import BEFORE_ADMIN_ONLY, body_is_admin_only
@@ -190,8 +192,8 @@ class Workshop:
         self._label_id: str | None = None
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
-        # gia' usato per UsageStore (server.py, costruzione di
-        # `app["usage"]`).
+        # gia' usato per UsageStore (startup.py, costruzione di
+        # `app[USAGE_KEY]`).
         self._read_timezone = read_timezone or (lambda: None)
 
     def _data(self, ts: float) -> str:
@@ -1201,6 +1203,9 @@ class Workshop:
         # qualcosa che c'era.
         return await self.apply(proposal["id"], actor=actor, exchange=exchange,
                                 now=now, subject=subject)
+
+
+WORKSHOP_KEY = web.AppKey("workshop", Workshop)
 
 
 def form_refusal(intent: dict, domains, helper_domains) -> str | None:

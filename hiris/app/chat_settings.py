@@ -15,6 +15,9 @@ import logging
 import os
 from dataclasses import dataclass
 
+from aiohttp import web
+
+from .live_value import LiveValue
 from .storage import write_json_atomic
 
 logger = logging.getLogger(__name__)
@@ -80,7 +83,7 @@ def file_lacks_retention_days(data_dir: str) -> bool:
     un'opzione dell'add-on, e chi aveva scelto **0** («non cancellare mai») se
     lo sarebbe ritrovato a 90 senza una scrittura all'avvio.
 
-    Il chiamante e' `server._on_startup`, subito dopo `load()`."""
+    Il chiamante e' `startup._on_startup`, subito dopo `load()`."""
     path = os.path.join(data_dir, _SETTINGS_FILE)
     try:
         with open(path, encoding="utf-8") as f:
@@ -220,3 +223,6 @@ class ChatSettings:
             "restrict_to_home": self.restrict_to_home,
             "giorni_conservazione": self.retention_days,
         })
+
+
+CHAT_SETTINGS_KEY = web.AppKey("chat_settings", LiveValue)

@@ -28,6 +28,8 @@ import logging
 import os
 from datetime import UTC, datetime
 
+from aiohttp import web
+
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..storage import write_json_atomic
 from .behavior import automation_active
@@ -479,7 +481,7 @@ class HomeSpace:
         """Le integrazioni appena annunciate da Home Assistant, al posto di
         quelle dell'ultima ricostruzione (A-11, 03/10/2026; dal Task 7 della
         Tappa 2 le annuncia l'iscrizione `config_entries/subscribe`, vedi
-        `server.integration_follower`).
+        `rounds.integration_follower`).
 
         **Perche'.** L'anagrafe si ricostruisce sugli eventi dei registri, e lo
         stato di un'integrazione (`loaded`, `setup_error`, `not_loaded`...)
@@ -649,4 +651,7 @@ class HomeSpace:
     def energy_current(self) -> bool:
         """Se la dashboard tenuta e' stata letta in questo giro dell'anagrafe."""
         return self._energy_current
+
+
+HOME_SPACE_KEY = web.AppKey("home_space_store", HomeSpace)
 

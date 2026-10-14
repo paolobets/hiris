@@ -19,10 +19,16 @@ import logging
 import secrets
 import time
 
+from aiohttp import web
+
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
+from ..home_space.reader import HOME_SPACE_KEY
 from ..keeper.delivery import notify_admins
-from ..reasoning.queue import turn_answer
+from ..live_value import LiveValue
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..states import SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
@@ -36,15 +42,17 @@ from ..steering import (
     too_soon_to_ask_again,
     turn_in_flight,
 )
+from ..usage.store import USAGE_KEY
 from . import proposer_turn
 from .analyst import evidence_of, observation_key
+from .store import OBSERVATIONS_KEY
 
 logger = logging.getLogger(__name__)
 
 #: La chiave di `app` che dice che un giro e' in corso. Lo schedulatore ha
 #: mezz'ora di `misfire_grace_time`: due giri possono partire insieme dopo una
 #: sosta dell'add-on, e senza questa guardia si pagherebbero due turni.
-IN_FLIGHT = "proponente_in_volo"
+IN_FLIGHT = web.AppKey("proponente_in_volo", LiveValue)
 
 #: La chiave della sveglia che fa di un turno del proponente un turno del
 #: GIRO: la porta ogni accodamento di `_enqueue`. Nella stessa specie stanno
@@ -82,16 +90,16 @@ async def proposer_round(app) -> dict | None:
     """Il giro: raccoglie la risposta del ponte, poi chiede per le
     osservazioni ancora aperte. Torna il resoconto, o `None` se non c'era da
     farlo."""
-    store = app.get("observations")
-    if store is None or app.get(IN_FLIGHT):
+    store = app.get(OBSERVATIONS_KEY)
+    if store is None or app[IN_FLIGHT].value:
         return None
-    app[IN_FLIGHT] = True
+    app[IN_FLIGHT].set(True)
     try:
         # Prima di tutto gli avvisi che non sono arrivati: si ritentano a ogni
         # battito, anche nei giorni senza analisi (D14, «Ritenta»).
         await _alert_high_safely(app)
         today = historian.today(
-            historian.house_timezone(app.get("home_space_store"))).isoformat()
+            historian.house_timezone(app.get(HOME_SPACE_KEY))).isoformat()
         if store.analysis(today) is None:
             return None
         # **La risposta del ponte si raccoglie PRIMA di chiedere di nuovo**:
@@ -107,7 +115,7 @@ async def proposer_round(app) -> dict | None:
                 or too_soon_to_ask_again(app, proposer_turn.PROPOSAL_TURN_KIND,
                                          wake_key=ROUND_KEY):
             return collected
-        refused = refused_problems(app.get("usage"), PROPOSER_SPECIES)
+        refused = refused_problems(app.get(USAGE_KEY), PROPOSER_SPECIES)
         route, _downgrade, runner = start(app, PROPOSER_SPECIES)
         if route == "ponte":
             return _enqueue(app, today, pending, refused)
@@ -121,7 +129,7 @@ async def proposer_round(app) -> dict | None:
                        "giro dopo", type(error).__name__, error)
         return None
     finally:
-        app[IN_FLIGHT] = False
+        app[IN_FLIGHT].set(False)
 
 
 async def _chain(app, store, day: str, pending, refused, runner) -> dict:
@@ -136,7 +144,7 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
                                             presence=presence,
                                             unbound=_unbound(app))
     answer, turn = await chain_turn(
-        runner, PROPOSER_SPECIES, usage=app.get("usage"),
+        runner, PROPOSER_SPECIES, usage=app.get(USAGE_KEY),
         max_tokens=proposer_turn.MAX_ANSWER_TOKENS,
         user_message=question, system_prompt=proposer_turn.SYSTEM,
         tools=declared.catalog_for_turn(), dispatcher=dispatcher)
@@ -144,7 +152,7 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
         pending, chain_answer(answer, turn), built=_built_in(app, exchange),
         truncated=turn.truncated, presence=presence)
     if occurrence["risposta"] and occurrence["problemi"] and not turn.truncated:
-        declare_refused(app.get("usage"), turn.turn_id, occurrence["problemi"])
+        declare_refused(app.get(USAGE_KEY), turn.turn_id, occurrence["problemi"])
     _settle(app, store, day, occurrence)
     await _alert_high_safely(app)
     return occurrence
@@ -158,8 +166,8 @@ def _enqueue(app, day: str, pending, refused) -> dict | None:
     from ..home_space.house import House
     from ..home_space.privacy import PresenceMask
 
-    home_space = app.get("home_space_store")
-    presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
+    home_space = app.get(HOME_SPACE_KEY)
+    presence = (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
                 if home_space is not None else None)
     job = proposer_turn.bridge_turn(pending, refused=refused, presence=presence,
                                     unbound=_unbound(app))
@@ -180,7 +188,7 @@ async def _collect(app, store, today: str) -> dict | None:
     gia' fatto e tace. I problemi si rivalidano a ogni lettura, finche' quel
     turno e' l'ultimo della sua specie.
     """
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     turn = (queue.latest_if_decided(proposer_turn.PROPOSAL_TURN_KIND, wake_key=ROUND_KEY)
             if queue else None)
     if turn is None:
@@ -200,14 +208,14 @@ async def _collect(app, store, today: str) -> dict | None:
     from ..home_space.privacy import PresenceMask
 
     decision = turn.get("decision") or {}
-    home_space = app.get("home_space_store")
-    presence = (PresenceMask(House.read(home_space, app.get("entity_cache")))
+    home_space = app.get(HOME_SPACE_KEY)
+    presence = (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
                 if home_space is not None else None)
     occurrence = proposer_turn.apply_outcomes(
         pending, reply, built=_built_in(app, decision.get("exchange_id")),
         presence=presence)
     if occurrence["problemi"]:
-        declare_refused(app.get("usage"), decision.get("turn_id"), occurrence["problemi"])
+        declare_refused(app.get(USAGE_KEY), decision.get("turn_id"), occurrence["problemi"])
     _settle(app, store, today, occurrence)
     await _alert_high_safely(app)
     return occurrence
@@ -217,7 +225,7 @@ def _open(app, store, day: str, *, report: bool = False) -> list[dict]:
     """Le osservazioni di `day` ancora senza esito, contro le proposte gia'
     fatte dai due archivi. Con `report`, chi salta lo scrive nel registro
     (S-26): una riga per giro, non una per osservazione."""
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     decided = proposer_turn.latest_decided(
         store.decided_proposals(),
         constructions.decided_proposals(now=time.time())
@@ -234,7 +242,7 @@ def _open(app, store, day: str, *, report: bool = False) -> list[dict]:
 def _unbound(app) -> list[dict]:
     """Le proposte del proponente in attesa e senza domanda: costruite in un
     turno la cui risposta non le ha citate (revisione, giro 61)."""
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return []
     return constructions.unbound(actor=PROPOSER_SPECIES, now=time.time())
@@ -245,7 +253,7 @@ def _built_in(app, exchange: str | None) -> frozenset[str]:
     dall'archivio delle costruzioni, e quelle gia' costruite che nessun esito
     ha citato -- citarle e' cio' che evita una seconda bozza per la stessa
     domanda (revisione, giro 61)."""
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return frozenset()
     return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES) \
@@ -275,7 +283,7 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
     still_open = {observation_key(o) for o in _open(app, store, day)}
     waiting = {key: entry for key, entry in store.decided_proposals().items()
                if entry["aperta"]}
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     beside = proposer_turn.outcomes_of(analysis)
     for outcome in occurrence["esiti"]:
         key = outcome["impronta"]
@@ -344,7 +352,7 @@ async def _alert_high(app) -> None:
     proposta non e' piu' in attesa: nessun numero di tentativi scelto da noi.
     Il livello l'ha scritto l'officina; qui non si ricalcola.
     """
-    constructions = app.get("constructions")
+    constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return
     for row in constructions.to_alert(actor=PROPOSER_SPECIES, stakes=HIGH,

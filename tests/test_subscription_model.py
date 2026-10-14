@@ -11,6 +11,7 @@ il 15 agosto 2026, girava sul piano con `haiku`.
 import pytest
 
 from hiris.app import models_store
+from hiris.app.models_store import MODELS_CONFIG_KEY
 
 ALIAS = ("haiku", "sonnet", "opus")
 
@@ -147,7 +148,7 @@ async def _start(d) -> dict:
     from tests._avvio import credential_environment, started_with
 
     async with started_with(d, credential_environment(())) as app:
-        return copy.deepcopy(app["models_config"])
+        return copy.deepcopy(app[MODELS_CONFIG_KEY].value)
 
 
 def _archivio_pre_fetta(tmp_path, modello_claude, modello_piano="sonnet"):

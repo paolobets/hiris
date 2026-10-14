@@ -23,17 +23,24 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server
 from hiris.app.home_space import house_history
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
-from hiris.app.mind import recipe_turn
+from hiris.app.mind import day_report, recipe_round, recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.startup import live_values
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
@@ -85,8 +92,8 @@ def _house() -> CasaFinta:
 
 def _app(stores, house):
     sapere, archivio = stores
-    return {"observations": archivio, "knowledge": sapere,
-            "home_space_store": AnagrafeFinta(CASA), "ha_client": house}
+    return {**live_values(), OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+            HOME_SPACE_KEY: AnagrafeFinta(CASA), HA_CLIENT_KEY: house}
 
 
 def _asked(house: CasaFinta) -> int:
@@ -109,7 +116,7 @@ async def test_niente_da_potare_ne_da_chiedere_nessuna_lettura(stores):
     Mutazione (verificata eseguendola): togliere la guardia -- rossa."""
     house = _house()
 
-    assert await server.recipe_round(_app(stores, house)) is None
+    assert await recipe_round.recipe_round(_app(stores, house)) is None
     assert _asked(house) == 0
 
 
@@ -123,7 +130,7 @@ async def test_con_una_ricetta_da_controllare_si_legge(stores):
     _with_recipe(stores[0])
     house = _house()
 
-    await server.recipe_round(_app(stores, house))
+    await recipe_round.recipe_round(_app(stores, house))
 
     assert _asked(house) == 1
 
@@ -139,8 +146,8 @@ async def test_due_giri_vicini_una_lettura_sola(stores):
     house = _house()
     app = _app(stores, house)
 
-    await server.recipe_round(app)
-    _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
+    await recipe_round.recipe_round(app)
+    _ricette, _serie, _nomi, silent, _mute = await day_report._report_ingredients(
         app, house, giorno="2026-10-03", timezone="Europe/Rome")
 
     assert _asked(house) == 1
@@ -154,11 +161,11 @@ async def test_un_guasto_non_si_ricorda(stores):
     -- rossa: la seconda lettura rende la busta ricordata invece
     dell'elenco (`assert isinstance(second, set)`)."""
     house = CasaFinta(synthetic_inputs(), silence={_LIST})
-    app = {}
+    app = live_values()
 
-    first = await server.statistic_ids_for_round(app, house)
+    first = await day_report.statistic_ids_for_round(app, house)
     house.unmute(_LIST)
-    second = await server.statistic_ids_for_round(app, house)
+    second = await day_report.statistic_ids_for_round(app, house)
 
     assert "errore" in first
     assert isinstance(second, set)
@@ -172,13 +179,13 @@ async def test_la_memoria_scade(stores):
     Mutazione (verificata eseguendola): `<=` al posto di `<` nel confronto
     dell'eta' -- rossa sul bordo."""
     house = _house()
-    app = {}
+    app = live_values()
     memory = house_history.STATISTIC_IDS_MEMORY_S
 
-    await server.statistic_ids_for_round(app, house, now=1000.0)
-    await server.statistic_ids_for_round(app, house, now=1000.0 + memory - 1)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0 + memory - 1)
     assert _asked(house) == 1
-    await server.statistic_ids_for_round(app, house, now=1000.0 + memory)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0 + memory)
     assert _asked(house) == 2
 
 
@@ -225,7 +232,7 @@ async def test_la_memoria_e_piu_breve_di_ogni_giro_che_la_usa(started_app):
     l'aggregazione notturna a orario); e la mutazione eseguita -- la memoria
     portata a 300 secondi, la cadenza del recupero -- rossa."""
     graph = _call_graph()
-    users = [job for job in started_app["scheduler"].get_jobs()
+    users = [job for job in started_app[SCHEDULER_KEY].get_jobs()
              # Un lavoro iscritto come `partial(funzione, app)` (i giri usciti
              # in `conservazione.py`, Tappa 8) si guarda nella funzione.
              if _reaches(graph, getattr(job.func, "func", job.func).__name__,
@@ -256,9 +263,9 @@ async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
                       refuse={"energy/get_prefs": {"code": "not_found",
                                                    "message": "No prefs"}})
     modello = RunnerFinto("{}")  # il modello della catena: risponde senza ricetta
-    app = {**_app(stores, house), "llm_router": modello}
+    app = {**_app(stores, house), LLM_ROUTER_KEY: modello}
 
-    await server.recipe_round(app)
+    await recipe_round.recipe_round(app)
 
     assert recipe_turn.recipes(sapere).get("dev1") is None
     assert len(modello.chiamate) == 1
@@ -281,7 +288,7 @@ async def test_due_giri_che_partono_insieme_a_memoria_vuota_leggono_una_volta():
     house = CasaFinta(synthetic_inputs(), answers={
         _LIST: lambda extra: [{"statistic_id": "sensor.prodotta"}]},
         delay={_LIST: trattieni})
-    app = {}
+    app = live_values()
 
     async def _lascia():
         for _ in range(5):

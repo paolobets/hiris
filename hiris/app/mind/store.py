@@ -37,6 +37,8 @@ import threading
 import time as _time
 import uuid
 
+from aiohttp import web
+
 from ..states import (
     AUTOMATED,
     CANCELLED,
@@ -679,7 +681,7 @@ def _migration_6(conn) -> None:
     tentativo e' avvenuto.
 
     **Un aggiornamento e' un fatto nuovo**, e senza questa colonna il freno che
-    rallenta i tentativi (`server._retry_hold`) conta i fallimenti di una
+    rallenta i tentativi (`observer_round._retry_hold`) conta i fallimenti di una
     versione gia' riparata. Misurato l'11/09/2026: quattro fallimenti sulla
     3.27.0 hanno tenuto fermo l'osservatore per ottanta minuti DOPO
     l'aggiornamento alla 3.27.1, cioe' hanno ritardato la verifica della loro
@@ -1813,7 +1815,7 @@ class ObservationsStore:
         minuti, con la casa che intanto non veniva registrata affatto. Questa
         e' la riga che serviva, e non esisteva.
 
-        **Serve anche al freno**: `server._retry_hold` conta da qui quanti
+        **Serve anche al freno**: `observer_round._retry_hold` conta da qui quanti
         fallimenti di fila ci sono stati, invece di tenere un contatore suo che
         il primo riavvio azzererebbe.
         """
@@ -2256,3 +2258,6 @@ class ObservationsStore:
         """
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now_ts)
+
+
+OBSERVATIONS_KEY = web.AppKey("observations", ObservationsStore)

@@ -14,13 +14,21 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
+from hiris.app.mind.observer_round import reconsideration_round
 from hiris.app.mind.scope import OBSERVER
 from hiris.app.mind.store import ObservationsStore
-from hiris.app.server import reconsideration_round
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
@@ -86,8 +94,8 @@ def _probes(house: CasaFinta) -> int:
 
 
 def _app(archivio, anagrafe, modello):
-    return {"observations": archivio, "home_space_store": anagrafe,
-            "llm_router": modello}
+    return {**live_values(), OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: anagrafe,
+            LLM_ROUTER_KEY: modello}
 
 
 @pytest.mark.asyncio
@@ -219,9 +227,10 @@ async def test_senza_modello_o_senza_archivio_il_giro_non_solleva(archivio):
     fermerebbe lo schedulatore, non solo questo giro."""
     anagrafe = _anagrafe([_entita("climate.x")])
 
-    assert await reconsideration_round({"observations": archivio,
-                                        "home_space_store": anagrafe}, _house()) is None
-    assert await reconsideration_round({"llm_router": _modello()}, _house()) is None
+    assert await reconsideration_round({**live_values(), OBSERVATIONS_KEY: archivio,
+                                        HOME_SPACE_KEY: anagrafe}, _house()) is None
+    assert await reconsideration_round({**live_values(),
+                                        LLM_ROUTER_KEY: _modello()}, _house()) is None
     assert await reconsideration_round({}, None) is None
 
 
@@ -270,6 +279,7 @@ async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio, faul
 
 from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
 from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.startup import live_values
 
 
 @pytest.fixture
@@ -287,9 +297,9 @@ def piano_acceso(monkeypatch):
 
 def _app_ponte_acceso(archivio, anagrafe, modello, coda):
     app = _app(archivio, anagrafe, modello)
-    app["reasoning_queue"] = coda
-    app["bridge_active"] = True
-    app["models_config"] = {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}
+    app[REASONING_QUEUE_KEY] = coda
+    app[BRIDGE_ACTIVE_KEY].set(True)
+    app[MODELS_CONFIG_KEY].set({"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}})
     return app
 
 
@@ -587,11 +597,11 @@ async def test_l_attesa_fra_un_tentativo_e_l_altro_CRESCE_coi_fallimenti(
     """
     import time
 
-    from hiris.app import server as srv
+    from hiris.app.mind import observer_round
     # La versione va scritta: il freno conta solo i fallimenti di QUESTA, e
     # una semina senza versione descriverebbe righe di un archivio piu'
     # vecchio della colonna.
-    monkeypatch.setattr(srv, "read_version", lambda: "3.99.9")
+    monkeypatch.setattr(observer_round, "read_version", lambda: "3.99.9")
     archivio.record_attempt(when_ts=time.time() - 60, outcome="non_riuscito",
                             detail="x", version="3.99.9")
     archivio.record_attempt(when_ts=time.time() - 30, outcome="non_riuscito",
@@ -645,8 +655,8 @@ async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
 
     Mutazione che la uccide: tornare `None` senza annotare.
     """
-    app = {"observations": archivio,
-           "home_space_store": _anagrafe([_entita("climate.x")])}
+    app = {**live_values(), OBSERVATIONS_KEY: archivio,
+           HOME_SPACE_KEY: _anagrafe([_entita("climate.x")])}
 
     esito = await reconsideration_round(app, _house())
 
@@ -671,7 +681,7 @@ async def test_il_piano_che_serve_l_osservatore_finisce_nel_REGISTRO_degli_esiti
     registro = OccurrenceRegistry()
     app = _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]),
                             _modello(), coda)
-    app["occurrence_registry"] = registro
+    app[OCCURRENCES_KEY] = registro
     await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],
@@ -705,7 +715,7 @@ def _entita_molte(quante):
 async def test_si_chiede_un_LOTTO_per_volta_non_la_casa_intera(archivio, coda,
                                                                piano_acceso):
     """Mutazione che la uccide: mandare al piano tutte le candidate."""
-    from hiris.app.server import SCOPE_BATCH
+    from hiris.app.mind.observer_round import SCOPE_BATCH
 
     anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH + 50))
     app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
@@ -725,7 +735,7 @@ async def test_i_lotti_successivi_partono_SENZA_aspettare_la_cadenza(
     Mutazione che la uccide: far dipendere anche i lotti successivi dalla
     cadenza -- con la riconsiderazione gia' annotata, non partirebbero mai.
     """
-    from hiris.app.server import SCOPE_BATCH
+    from hiris.app.mind.observer_round import SCOPE_BATCH
 
     anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH + 3))
     app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
@@ -754,7 +764,7 @@ async def test_un_lotto_della_campagna_in_corso_NON_cala_la_sonda(
 
     Mutazione (verificata eseguendola): misurare anche quando la campagna e'
     in corso -- rossa (`assert 17 == 0`)."""
-    from hiris.app.server import SCOPE_BATCH
+    from hiris.app.mind.observer_round import SCOPE_BATCH
 
     anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH + 3))
     app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
@@ -773,7 +783,7 @@ async def test_la_riconsiderazione_si_annota_UNA_volta_per_campagna(
         archivio, coda, piano_acceso):
     """Mutazione che la uccide: annotare a ogni lotto -- la cadenza risulterebbe
     soddisfatta dopo il primo e la casa non verrebbe mai coperta."""
-    from hiris.app.server import SCOPE_BATCH
+    from hiris.app.mind.observer_round import SCOPE_BATCH
 
     anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH + 3))
     app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
@@ -789,7 +799,7 @@ async def test_coperta_la_casa_la_campagna_si_ferma(archivio, coda, piano_acceso
     """Finita la campagna non si chiede piu' niente finche' la cadenza non
     scade: senza questa fermata l'osservatore chiederebbe al piano ogni dieci
     minuti per sempre."""
-    from hiris.app.server import SCOPE_BATCH
+    from hiris.app.mind.observer_round import SCOPE_BATCH
 
     anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH - 10))
     app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
@@ -834,8 +844,8 @@ async def test_il_freno_NON_conta_i_fallimenti_di_una_versione_precedente(
     versione."""
     import time
 
-    from hiris.app import server as srv
-    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    from hiris.app.mind import observer_round
+    monkeypatch.setattr(observer_round, "read_version", lambda: "3.27.1")
     for n in range(4):
         archivio.record_attempt(when_ts=time.time() - 60 + n, outcome="non_riuscito",
                                 detail="il vecchio difetto", version="3.27.0")
@@ -854,8 +864,8 @@ async def test_il_freno_conta_eccome_i_fallimenti_di_QUESTA_versione(
     «azzerare sempre», o il freno non esisterebbe piu'."""
     import time
 
-    from hiris.app import server as srv
-    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    from hiris.app.mind import observer_round
+    monkeypatch.setattr(observer_round, "read_version", lambda: "3.27.1")
     for n in range(2):
         archivio.record_attempt(when_ts=time.time() - 60 + n, outcome="non_riuscito",
                                 detail="guasto vivo", version="3.27.1")
@@ -870,8 +880,8 @@ async def test_ogni_tentativo_annota_la_versione_su_cui_e_avvenuto(
         archivio, coda, piano_acceso, monkeypatch):
     """Senza, il freno non potrebbe distinguere niente: la colonna serve a
     essere letta, non a esserci."""
-    from hiris.app import server as srv
-    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    from hiris.app.mind import observer_round
+    monkeypatch.setattr(observer_round, "read_version", lambda: "3.27.1")
     app = _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]),
                             _modello(), coda)
 

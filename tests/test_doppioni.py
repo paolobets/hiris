@@ -305,7 +305,7 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # ricopiava coi predefiniti accanto (ora arrivano in `scrivibili`).
 # 10 dalla Tappa 7 T10 (07/10/2026): `data_dir = '/data'` ripetuto in
 # `handlers_chat` e `chat_thread` (D-09) e' uscito -- ogni lettore chiede
-# `app["data_dir"]`, che l'avvio scrive una volta.
+# `app[DATA_DIR_KEY]`, che l'avvio scrive una volta.
 # 8 dalla Tappa 8 T4 (08/10/2026): le parole degli stati delle costruzioni e
 # delle promesse non hanno piu' una copia in JavaScript (`states.READABLE`,
 # C-10) -- la pagina riceve la frase dalla rotta.

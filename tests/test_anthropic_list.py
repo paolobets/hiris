@@ -21,7 +21,7 @@ import pytest
 
 from hiris.app.api import handlers_models
 from hiris.app.model_resolution import provenance
-from hiris.app.providers import CLAUDE
+from hiris.app.providers import CLAUDE, CLAUDE_CREDENTIAL_KEY
 
 # La fixture `client` (app vera via `create_app()`), la stessa che
 # `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.
@@ -126,7 +126,7 @@ async def test_senza_chiave_claude_api_non_ha_nessun_elenco_da_leggere(client):
     Claude API. Erano voci inerti (senza chiave quel provider non entra in
     catena), ma la perdita e' vera e questo test la inchioda invece di
     lasciarla scoprire a qualcuno."""
-    client.app["claude_api_key"] = ""
+    client.app[CLAUDE_CREDENTIAL_KEY] = ""
     resp = await client.get("/api/models?provider=claude")
     assert resp.status == 200
     voce = (await resp.json())["providers"][0]

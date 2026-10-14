@@ -48,9 +48,12 @@ import pytest
 from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
+from hiris.app.api.credenziali import CREDENTIALS_KEY
 from hiris.app.chat_thread import thread_for
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
-from hiris.app.memory.store import MemoryStore
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from hiris.app.steering import SPECIES
 
 # La fixture dell'app col confine ACCESO vive in `conftest.py` e non qui: una
@@ -503,9 +506,9 @@ def _semina_gli_archivi(app, tmp_path):
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
     memoria = MemoryStore(memoria_db)
-    app["home_space_store"] = casa
-    app["memory_store"] = memoria
-    app["entity_cache"] = SpecchioFinto([raw_state("light.cucina_1", "on"),
+    app[HOME_SPACE_KEY] = casa
+    app[MEMORY_STORE_KEY] = memoria
+    app[ENTITY_CACHE_KEY] = SpecchioFinto([raw_state("light.cucina_1", "on"),
                                          raw_state("light.cucina_2", "off")])
     return casa, memoria, memoria_db
 
@@ -534,7 +537,7 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_produzione):
 
     assert not os.environ.get("INTERNAL_TOKEN"), (
         "il segreto condiviso e' rientrato dall'ambiente")
-    assert riconosci(app["credenziali"], portata, adesso=time.time()) is not None, (
+    assert riconosci(app[CREDENTIALS_KEY], portata, adesso=time.time()) is not None, (
         "la credenziale che il ponte porta non e' viva: la sonda prendera' 401")
 
     with httpx.Client(timeout=30) as http:
@@ -579,7 +582,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
     scrittura in memoria per una diagnosi -- e la difesa costerebbe piu' di
     cio' che difende."""
     client, _coda, app, intestazioni = ponte_produzione
-    assert app.get("home_space_store") is None
+    assert app.get(HOME_SPACE_KEY) is None
 
     with httpx.Client(timeout=30) as http:
         ok, _motivo = await asyncio.to_thread(

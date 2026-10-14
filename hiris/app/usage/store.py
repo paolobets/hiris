@@ -17,6 +17,8 @@ import logging
 import secrets
 import threading
 
+from aiohttp import web
+
 from ..chat_thread import subject_from_key, subject_key_for
 from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
@@ -613,7 +615,7 @@ def log_safely(log_usage, provider: str, model: str, **fields) -> None:
     qui. Allo stesso modo il registro dei turni ha una porta,
     `UsageStore.log_turn`, e due strade che la attraversano:
     `steering.misura_turno` per la catena, il gancio del ponte
-    (`server._registra_turno_ponte`) per la CLI.
+    (`bridge_loads._registra_turno_ponte`) per la CLI.
 
     I tre scrittori chiamavano `log_usage` a mano, senza rete: un disco pieno o un archivio
     chiuso a meta' sollevava DOPO che il modello aveva risposto, e la
@@ -1279,3 +1281,6 @@ class UsageStore:
         with self._lock:
             return [row[0] for row in self._conn.execute(
                 "SELECT percorso FROM legacy_importati ORDER BY percorso")]
+
+
+USAGE_KEY = web.AppKey("usage", UsageStore)

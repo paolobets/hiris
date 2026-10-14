@@ -33,7 +33,7 @@ class RecordingHouse(fotografia_porte.FrozenHouse):
     """La casa congelata dell'avvio: il client vero sugli ingressi sintetici
     (`scripts/casa_finta.py`), che dice chi si e' iscritto ai suoi eventi.
 
-    E' la casa che l'avvio trova in `app["ha_client"]`: una prova chiede a lei
+    E' la casa che l'avvio trova in `app[HA_CLIENT_KEY]`: una prova chiede a lei
     QUALI ascoltatori l'avvio ha registrato -- e li chiama -- invece di cercare
     `add_state_listener(` nel testo di `server.py`. La firma e' quella con cui
     `_on_startup` costruisce `HAClient`.
@@ -59,7 +59,7 @@ class RecordingHouse(fotografia_porte.FrozenHouse):
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def started_app(tmp_path_factory):
     """L'app avviata sulla casa sintetica, spenta alla fine del file. La casa
-    e' una `RecordingHouse`: `app["ha_client"].registered(genere)` dice chi
+    e' una `RecordingHouse`: `app[HA_CLIENT_KEY].registered(genere)` dice chi
     l'avvio ha iscritto ai suoi eventi."""
     data_dir = str(tmp_path_factory.mktemp("avvio"))
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir,
@@ -83,13 +83,13 @@ CREDENTIAL_VARIABLES = {"subscription": "CLAUDE_CODE_OAUTH_TOKEN",
 UNREACHABLE_OLLAMA = "http://127.0.0.1:9"
 
 
-#: Il registro di `server.py`, per chi legge cio' che l'avvio scrive. Il
+#: Il registro di `startup.py`, per chi legge cio' che l'avvio scrive. Il
 #: montaggio mette `hiris` a CRITICAL durante `_on_startup` e `_on_cleanup`, e
 #: lo rimette com'era mentre l'app e' accesa. Chi vuole vedere cio' che scrive
 #: L'AVVIO stesso da' quindi il livello al FIGLIO, che vale per il figlio
-#: (`caplog.at_level(livello, logger=SERVER_LOGGER)`), e i suoi record
+#: (`caplog.at_level(livello, logger=STARTUP_LOGGER)`), e i suoi record
 #: risalgono comunque fino al gestore di `caplog`.
-SERVER_LOGGER = "hiris.app.server"
+STARTUP_LOGGER = "hiris.app.startup"
 
 
 def credential_environment(present) -> dict[str, str]:

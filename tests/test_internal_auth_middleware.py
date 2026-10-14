@@ -7,6 +7,13 @@ import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -51,12 +58,12 @@ def _make_app(tmp_path, cidrs=None):
     # queste prove guardano la STRADA, non la lista di ammissione
     # (`tests/test_admission.py`). La casa e' quella finta: il ruolo lo legge
     # il client vero da `config/auth/list`.
-    app["ha_client"] = CasaFinta(synthetic_inputs(), answers={
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs(), answers={
         "config/auth/list": lambda extra: [ADMIN_ROW]})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
+    app[CHAT_SETTINGS_KEY].set(ChatSettings())
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
     # on_startup is cleared below, so wire the CR-1 trusted-CIDR list manually.
     # Default 172.30.32.0/23 does NOT include the test client's loopback IP, so
     # X-Ingress-Path alone must not bypass auth (that is the CR-1 fix).
@@ -68,7 +75,7 @@ def _make_app(tmp_path, cidrs=None):
     # chiedere al confine cosa fa quando l'avvio non si fida di nessuno --
     # proprio il caso che l'avvio produce quando le opzioni sono tutte
     # sbagliate (`server.py`, «nessuna rete è fidata»).
-    app["supervisor_ingress_cidrs"] = (
+    app[INGRESS_CIDRS_KEY] = (
         ["172.30.32.2/32"] if cidrs is None else cidrs)
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -166,7 +173,7 @@ async def test_ingress_path_from_trusted_source_bypasses_auth(
     )
     assert resp.status == 200
     # Il ruolo l'ha detto Home Assistant: il cancello l'ha chiesto davvero.
-    house = client_trust_loopback.app["ha_client"]
+    house = client_trust_loopback.app[HA_CLIENT_KEY]
     assert ("config/auth/list", None) in house.calls
 
 
@@ -265,7 +272,7 @@ def _ingress_request_from(remote: str, trusted: list[str]):
     nessuna rete di Docker: per guardare il confine dall'indirizzo di un
     vicino serve una richiesta costruita, col suo indirizzo sorgente."""
     app = web.Application()
-    app["supervisor_ingress_cidrs"] = trusted
+    app[INGRESS_CIDRS_KEY] = trusted
     transport = MagicMock()
     transport.get_extra_info = MagicMock(
         side_effect=lambda key, default=None: (

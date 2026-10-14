@@ -25,6 +25,17 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.action.journal import JOURNAL_KEY
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -44,6 +55,7 @@ from hiris.app.home_space.tools import PROMISE_TOOL_DEF, ToolDispatcher
 from hiris.app.keeper import promise as promise_module
 from hiris.app.keeper.recipient import _REASON_LINK_PERSON
 from hiris.app.keeper.store import AgendaStore
+from hiris.app.live_value import LiveValue
 from tests._casa_sintetica import INSTANT, synthetic_inputs
 from tests.test_mcp_chat_thread import rotta as rotta_chat  # noqa: F401
 
@@ -418,14 +430,14 @@ async def rotte(aiohttp_client, tmp_path):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
     app = web.Application(middlewares=[_finto_confine])
-    app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
-    app["journal"] = Journal(os.path.join(str(tmp_path), "azioni.db"))
-    app["constructions"] = _CostruzioniVuote()
-    app["data_dir"] = data_dir
-    app["chat_settings"] = ChatSettings(name="t", system_prompt="Sei HIRIS.")
-    app["ha_client"] = CasaFinta({}, answers={"config/auth/list":
+    app[AGENDA_KEY] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    app[JOURNAL_KEY] = Journal(os.path.join(str(tmp_path), "azioni.db"))
+    app[CONSTRUCTIONS_KEY] = _CostruzioniVuote()
+    app[DATA_DIR_KEY] = data_dir
+    app[CHAT_SETTINGS_KEY] = LiveValue(ChatSettings(name="t", system_prompt="Sei HIRIS."))
+    app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list":
                                               lambda extra: _HOUSE_USERS})
-    app["ruoli"] = {"quando": 0.0, "per_id": {}}
+    app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}
     app.router.add_get("/api/agenda", handle_get_agenda)
     app.router.add_delete("/api/agenda/{id}", handle_delete_promise)
     app.router.add_post("/api/agenda/read", handle_mark_read)
@@ -434,8 +446,8 @@ async def rotte(aiohttp_client, tmp_path):
     app.router.add_get("/api/chat/history", handle_get_chat_history)
     client = await aiohttp_client(app)
     yield client
-    app["agenda"].close()
-    app["journal"].close()
+    app[AGENDA_KEY].close()
+    app[JOURNAL_KEY].close()
 
 
 def _chi(nome):
@@ -445,7 +457,7 @@ def _chi(nome):
 @pytest.mark.asyncio
 async def test_l_amministratore_vede_solo_le_sue(rotte):
     """Pin (1) e 2.2: gli amministratori NON sono esenti."""
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     paolo_id = _crea(agenda, PAOLO, 0)
     marta_id = _crea(agenda, MARTA, 1)
 
@@ -468,7 +480,7 @@ async def test_la_pagina_riceve_l_orologio_della_casa(rotte):
 
 @pytest.mark.asyncio
 async def test_delete_di_una_promessa_altrui_e_il_404_di_una_inesistente(rotte):
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     ident = _crea(agenda, PAOLO)
 
     altrui = await rotte.delete(f"/api/agenda/{ident}", headers=_chi("marta"))
@@ -487,7 +499,7 @@ async def test_delete_di_una_promessa_altrui_e_il_404_di_una_inesistente(rotte):
 
 @pytest.mark.asyncio
 async def test_segnare_letti_gli_esiti_altrui_da_la_rotta_non_segna_niente(rotte):
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     ident = _crea(agenda, PAOLO)
     agenda.concludi(ident, state="mantenuta", now=time.time())
 
@@ -500,7 +512,7 @@ async def test_segnare_letti_gli_esiti_altrui_da_la_rotta_non_segna_niente(rotte
 @pytest.mark.asyncio
 async def test_il_pallino_conta_solo_gli_esiti_del_proprio_filo(rotte):
     """2.13."""
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     for n in range(2):
         agenda.concludi(_crea(agenda, PAOLO, n), state="mantenuta", now=time.time())
     agenda.concludi(_crea(agenda, MARTA, 5), state="fallita", now=time.time())
@@ -514,7 +526,7 @@ async def test_il_pallino_conta_solo_gli_esiti_del_proprio_filo(rotte):
 @pytest.mark.asyncio
 async def test_la_cronaca_di_una_promessa_altrui_e_il_404_di_una_inesistente(rotte):
     """Pin (2): `GET /api/executions/{id}` legato a una promessa."""
-    agenda, journal = rotte.app["agenda"], rotte.app["journal"]
+    agenda, journal = rotte.app[AGENDA_KEY], rotte.app[JOURNAL_KEY]
     ident = _crea(agenda, PAOLO)
     esecuzione = journal.log(actor="schedulatore", service="light.turn_on",
                              entity=["light.studio"], executed=True, now=time.time())
@@ -539,7 +551,7 @@ async def test_la_cronaca_non_legata_a_una_promessa_e_di_chi_l_ha_fatta(rotte):
 
     Mutazione ESEGUITA: tolto il controllo sul soggetto in
     `handle_get_execution` -- rossa."""
-    journal = rotte.app["journal"]
+    journal = rotte.app[JOURNAL_KEY]
     sua = journal.log(actor="chat", service="light.turn_on", entity=["light.studio"],
                       executed=True, now=time.time(), subject=_persona("marta"))
     altrui = journal.log(actor="chat", service="light.turn_on", entity=["light.studio"],
@@ -557,7 +569,7 @@ async def test_la_cronaca_non_legata_a_una_promessa_e_di_chi_l_ha_fatta(rotte):
 
 @pytest.mark.asyncio
 async def test_le_promesse_di_prima_vanno_al_proprietario_e_a_nessun_altro(rotte):
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     orfana = _semina_orfana(agenda, adesso=time.time())
 
     marta = await (await rotte.get("/api/agenda", headers=_chi("marta"))).json()
@@ -574,7 +586,7 @@ async def test_le_promesse_di_prima_vanno_al_proprietario_e_a_nessun_altro(rotte
 async def test_le_promesse_di_prima_si_adottano_con_la_cronologia(rotte):
     """Stesso momento, stessa regola: la prima pagina che il proprietario apre
     e' la chat, e da li' passano sia la cronologia sia le promesse."""
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
     risposta = await rotte.get("/api/chat/history", headers=_chi("paolo"))
     assert risposta.status == 200
@@ -585,7 +597,7 @@ async def test_le_promesse_di_prima_si_adottano_con_la_cronologia(rotte):
 @pytest.mark.asyncio
 async def test_un_anonimo_non_adotta_le_promesse_di_prima(rotte):
     """Pin (8): `persona:-` dal pannello non e' il proprietario."""
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
     corpo = await (await rotte.get("/api/agenda", headers=_chi("anonimo"))).json()
     assert corpo["agenda"] == []
@@ -594,7 +606,7 @@ async def test_un_anonimo_non_adotta_le_promesse_di_prima(rotte):
 
 @pytest.mark.asyncio
 async def test_il_proprietario_da_un_altro_ingresso_non_adotta_le_promesse(rotte):
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     _semina_orfana(agenda, adesso=time.time())
     corpo = await (await rotte.get("/api/agenda", headers=_chi("paolo-firma"))).json()
     assert corpo["agenda"] == []
@@ -605,7 +617,7 @@ async def test_il_proprietario_da_un_altro_ingresso_non_adotta_le_promesse(rotte
 async def test_delete_non_adotta_prima_di_disdire(rotte):
     """2.11: una DELETE su un'orfana, prima di qualunque lettura, e' un 404 --
     anche per il proprietario."""
-    agenda = rotte.app["agenda"]
+    agenda = rotte.app[AGENDA_KEY]
     orfana = _semina_orfana(agenda, adesso=time.time())
     risposta = await rotte.delete(f"/api/agenda/{orfana}", headers=_chi("paolo"))
     assert risposta.status == 404
@@ -652,8 +664,9 @@ async def test_il_job_del_ponte_di_una_promessa_porta_il_filo(tmp_path, col_toke
     coda = ReasoningQueue(os.path.join(str(tmp_path), "reasoning.db"))
     try:
         ident = _crea(archivio, PAOLO)
-        app = {"bridge_active": True, "reasoning_queue": coda,
-               "models_config": {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}}
+        app = {BRIDGE_ACTIVE_KEY: LiveValue(True), REASONING_QUEUE_KEY: coda,
+               MODELS_CONFIG_KEY: LiveValue(
+                   {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}})}
         esito = await interpreta_promise(app, archivio.read(ident))
         assert esito == {"accodata": True}
 
@@ -682,7 +695,7 @@ async def test_un_anonimo_non_adotta_la_cronologia_di_prima(rotte):
     from hiris.app.chat_store import has_orphans
     from tests.test_chat_divise import _semina_orfane
 
-    data_dir = rotte.app["data_dir"]
+    data_dir = rotte.app[DATA_DIR_KEY]
     _semina_orfane(data_dir)
     corpo = await (await rotte.get("/api/chat/history", headers=_chi("anonimo"))).json()
     assert corpo["messages"] == []

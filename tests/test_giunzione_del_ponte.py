@@ -1,8 +1,7 @@
 """La giunzione: la riga del ponte + cio' che /api/mcp ha annotato = turno e
 giri nel registro. Spec «le misure complete» §4, la scrittura.
 """
-from hiris.app.server import _registra_turno_ponte
-from hiris.app.usage.bridge_loads import BridgeLoads
+from hiris.app.usage.bridge_loads import BridgeLoads, _registra_turno_ponte
 from hiris.app.usage.store import UsageStore
 
 

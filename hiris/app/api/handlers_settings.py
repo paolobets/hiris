@@ -56,17 +56,15 @@ file con la chiave vuota. Il default viaggia anche nel GET
 (`default_system_prompt`) cosi' che la pagina possa offrire "ripristina" senza
 tenerne una copia propria destinata a invecchiare.
 
-**L'aggiornamento a caldo.** Dopo il salvataggio si riassegna
-`request.app["chat_settings"]`: senza, il file su disco cambierebbe e la
-chat continuerebbe a usare i valori vecchi fino al riavvio dell'add-on -- un
-salvataggio riuscito e senza effetto, il difetto n.1 di questo prodotto sotto
-altra forma. E' lo stesso hot-update di
-`handlers_models.handle_save_models_config` e produce la stessa
-`DeprecationWarning` di aiohttp ("Changing state of started or joined
-application is deprecated") che quella riga produce gia' oggi in suite:
-aiohttp scoraggia la mutazione di `app` dopo l'avvio, ma qui non esiste un
-canale alternativo senza cambiare il tipo di `app["chat_settings"]`, letto
-per riferimento da `handlers_chat.py`. Dichiarato, non taciuto.
+**L'aggiornamento a caldo.** Dopo il salvataggio si aggiorna
+`request.app[CHAT_SETTINGS_KEY]` col suo `set`: senza, il file su disco
+cambierebbe e la chat continuerebbe a usare i valori vecchi fino al riavvio
+dell'add-on -- un salvataggio riuscito e senza effetto, il difetto n.1 di
+questo prodotto sotto altra forma. E' lo stesso aggiornamento di
+`handlers_models.handle_save_models_config`. La chiave porta un `LiveValue`
+(X-31, `live_value.py`) e non si riscrive: l'app resta quella che aiohttp ha
+congelato all'avvio, e chi legge (`handlers_chat.py`) trova il valore nuovo
+in `.value`.
 """
 from __future__ import annotations
 
@@ -74,8 +72,9 @@ import logging
 
 from aiohttp import web
 
-from ..chat_settings import DEFAULT_SYSTEM_PROMPT, MESSAGE_CAP, ChatSettings
+from ..chat_settings import CHAT_SETTINGS_KEY, DEFAULT_SYSTEM_PROMPT, MESSAGE_CAP, ChatSettings
 from ..claude_runner import THINKING_BUDGET_MIN
+from ..storage import DATA_DIR_KEY
 from .boundary import error_response, json_object
 from .soffitto import restricted_person
 
@@ -305,10 +304,10 @@ CHAT_PAGE_FIELDS = ("name", "max_chat_turns", "max_message_chars")
 
 async def handle_get_settings(request: web.Request) -> web.Response:
     """Le impostazioni in vigore ADESSO -- quelle che il prossimo turno di
-    chat leggera'. Si prendono da `app["chat_settings"]` e non dal disco:
+    chat leggera'. Si prendono da `app[CHAT_SETTINGS_KEY]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
-    settings = request.app.get("chat_settings") or ChatSettings()
+    settings = request.app[CHAT_SETTINGS_KEY].value
     payload = _payload(settings)
     if restricted_person(request):
         payload = {field: payload[field] for field in CHAT_PAGE_FIELDS}
@@ -318,7 +317,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
 async def handle_save_settings(request: web.Request) -> web.Response:
     body = await json_object(request, field="")
 
-    current = request.app.get("chat_settings") or ChatSettings()
+    current = request.app[CHAT_SETTINGS_KEY].value
     try:
         updated = validate(current, body)
     except Rejection as rejection:
@@ -328,7 +327,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         logger.info("Impostazioni chat rifiutate: %s", rejection.reason)
         return error_response(400, rejection.reason, field=rejection.field)
 
-    data_dir = request.app["data_dir"]
+    data_dir = request.app[DATA_DIR_KEY]
     try:
         updated.save(data_dir)
     except OSError as exc:
@@ -346,5 +345,5 @@ async def handle_save_settings(request: web.Request) -> web.Response:
     # Hot-update: vedi la docstring in cima al file. Senza questa riga il
     # salvataggio riesce e la chat continua a usare i valori vecchi fino al
     # riavvio.
-    request.app["chat_settings"] = updated
+    request.app[CHAT_SETTINGS_KEY].set(updated)
     return web.json_response({"ok": True, **_payload(updated)})
