@@ -374,6 +374,12 @@ def id_marker(id_: str) -> str:
 
 #: La classe di un'entita' che nessuna regola del fuori tocca.
 VISIBLE = "visibile"
+#: Le classi del fuori, nell'ordine di precedenza di `visibility_classes`. La
+#: pagina dell'albero le riceve con il loro segno (`segni_fuori` di
+#: `GET /api/home-space`, C-10): fino al 14/10/2026 il JavaScript ne teneva le
+#: chiavi in `OUTSIDE_MARK`.
+DISABLED, HIDDEN, SERVICE = "disabilitata", "nascosta", "servizio"
+OUTSIDE_CLASSES = (DISABLED, HIDDEN, SERVICE)
 
 
 def visibility_classes(entity: dict) -> tuple[tuple[str, str | None], ...]:
@@ -401,12 +407,12 @@ def visibility_classes(entity: dict) -> tuple[tuple[str, str | None], ...]:
     `includi_servizio`). La prima e' la classe (`visibility`)."""
     found: list[tuple[str, str | None]] = []
     if entity.get("disabilitata"):
-        found.append(("disabilitata", entity.get("disabilitata_da")))
+        found.append((DISABLED, entity.get("disabilitata_da")))
     if entity.get("nascosta"):
-        found.append(("nascosta", entity.get("nascosta_da")))
+        found.append((HIDDEN, entity.get("nascosta_da")))
     category = str(entity.get("categoria") or "").strip()
     if category:
-        found.append(("servizio", category))
+        found.append((SERVICE, category))
     return tuple(found)
 
 

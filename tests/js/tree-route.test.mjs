@@ -53,6 +53,11 @@ function casaCompleta(extra = {}) {
     nomi_misure: { temperature: 'temperatura', length: 'lunghezza' },
     // Le parole dei registri, dal server (`nomi_registri`, C-10).
     nomi_registri: { piani: 'Piani', aree: 'Aree', categorie: 'Categorie' },
+    // I segni del `fuori`, dal server (`segni_fuori`, C-10).
+    segni_fuori: {
+      disabilitata: '[disabilitata]', nascosta: '[nascosta in Home Assistant]',
+      servizio: '[di servizio]',
+    },
     piani: [
       {
         id: 'piano_terra', nome: 'Piano terra', livello: 0,
