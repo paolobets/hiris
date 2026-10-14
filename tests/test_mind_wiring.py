@@ -2118,3 +2118,23 @@ def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
     # E il contatore resta com'era: `valore` e' il cambio, niente media.
     assert contatore["valore"] == 1.4
     assert contatore["media"] is None
+
+
+def test_mind_view_passa_ogni_lettura_dell_app():
+    """`mind_view` costruisce `MindView` dagli oggetti dell'app, e ognuno
+    arriva: senza `type_judgments` il resoconto del giorno esce senza i
+    giudizi sui tipi, e nessun'altra prova lo vedeva (N163-2, giro 161 del
+    revisore: la mutazione `judgments=None` restava verde).
+
+    Mutazione: `judgments=None` in `mind/view.py::mind_view` -- rossa."""
+    from hiris.app.mind.view import mind_view
+
+    app = {name: object() for name in ("observations", "watcher",
+                                       "home_space_store", "entity_cache")}
+    app["type_judgments"] = REPO_JUDGMENTS
+    view = mind_view(app)
+    assert view._judgments is REPO_JUDGMENTS
+    assert view.store is app["observations"]
+    assert view.watcher is app["watcher"]
+    assert view._home_space is app["home_space_store"]
+    assert view._cache is app["entity_cache"]
