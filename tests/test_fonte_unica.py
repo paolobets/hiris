@@ -759,7 +759,7 @@ def test_un_ammissione_non_rimanda_a_una_voce_aperta():
     `SHARED_READS`; aggiunto «Voce A-41 del registro.» alla ragione di
     `version.py` in `fonte_unica_eccezioni.json`; aggiunta a quell'eccezione la
     chiave `"voci": ["A-41"]`; la voce del debito di `system_log` scritta
-    `A-03` (chiusa). Ripristini verificati con `git status`."""
+    `A-02` (chiusa). Ripristini verificati con `git status`."""
     loose = []
     for rule, per_file in _exceptions().items():
         for path, entry in per_file.items():
