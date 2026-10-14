@@ -1042,6 +1042,23 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Modelli salva con una PUT intera: fra due schede vince l'ultima — aperta il 14/10/2026
+
+`origine: voce C-21 del registro dei doppioni («Stato doppio client/server»), riletta da F11 della Chiusura sul testo del registro v1; Paolo il 14/10/2026 ha scelto di chiudere C-21 come voluta e di portare qui l'unico rischio vero che restava` · nessun documento
+
+La pagina Modelli (`static/config/models-route.js`) tiene in memoria la configurazione intera dei
+modelli, letta una volta da `GET api/models/config`, e al salvataggio la rimanda **tutta** con
+`PUT api/models/config` (`api/handlers_models.handle_save_models_config`), che la scrive com'e'
+(`save_models_config`) e rimette in vigore la catena. Se la pagina e' aperta in due schede, o se
+nel frattempo qualcuno ha cambiato la configurazione da un'altra parte, la seconda PUT riporta i
+campi che non ha toccato al valore che aveva letto lei: vince l'ultima che salva, e il cambio
+dell'altra sparisce senza che nessuno lo dica. Due strade, da scegliere quando la voce si prende:
+la PUT porta la versione che ha letto e il server rifiuta se nel frattempo e' cambiata (come fanno
+le costruzioni col «prima» riletto), oppure la pagina manda solo i campi cambiati. Gli altri casi
+di C-21 (turni contati dal server, «sospeso» uscito, pallino ed esiti con la stessa regola, i
+valori di fabbrica non piu' nel JS) sono gia' risolti, e il resto e' memoria del browser su cui
+decide sempre il server.
+
 ### Una costruzione «incerta» cambia stato dopo la verifica — aperta il 07/10/2026
 
 `origine: passaggio di ux-ui-specialist sulla pagina Costruzioni (07/10/2026, in sola lettura del codice), girato dal coordinatore; lo stato resta fermo per scelta della Tappa 7 (N84-1) finche' la Tappa 8 non decide il vocabolario; da fare alla Tappa 8 (D4)` · nessun documento
