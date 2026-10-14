@@ -181,6 +181,10 @@
     }
     #header-version { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); font-weight: 500; }
     #header-subtitle { font-size: 11.5px; color: var(--text-3); }
+    /* La riga del fuso (C-17, `clockHint` in common.js): testo secondario
+       sotto il nome, come il sottotitolo; questa pagina non carica il foglio
+       della configurazione, dove `.field-hint` ha la sua regola. */
+    #header-text .field-hint { margin: 0; font-size: 11.5px; color: var(--text-3); }
     #header-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     #conn-dot {
       display: inline-flex; align-items: center; gap: 7px;

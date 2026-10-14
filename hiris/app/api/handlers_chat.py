@@ -44,7 +44,7 @@ from ..steering import (
     start,
     with_hour,
 )
-from .boundary import error_body, error_response, json_object
+from .boundary import error_body, error_response, house_clock_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
 from .handlers_mind import mind_view
@@ -640,7 +640,9 @@ async def _enqueue_chat_job(
 
     job_id, _deadline_min = enqueue_turn(request.app, "chat", {}, context,
                                          thread=thread)
-    return web.json_response({"status": "pending", "job_id": job_id}, status=202)
+    # L'orologio della casa (C-17): l'ora della bolla appena inviata.
+    return web.json_response({"status": "pending", "job_id": job_id,
+                              "orologio": house_clock_of(request.app)}, status=202)
 
 
 async def _chain_chat_turn(app, runner, *, soggetto: dict | None,
@@ -821,7 +823,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.
     queue.resolve_downgrade(job_id, {"reply": answer, "nota": note}, time.time())
-    payload = {"status": "done", "reply": answer}
+    payload = {"status": "done", "reply": answer, "orologio": house_clock_of(request.app)}
     if note:
         payload["nota"] = note
     # Consegnata anche per questa strada (reperto C-6): la spazzata potra'
@@ -892,7 +894,8 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         # `fail_stuck_downgrades`, chiamata dallo sweep, che lo porta a
         # 'failed' -- e 'failed' esce dal ramo di errore qui sopra.
         return web.json_response({"status": "pending"})
-    payload = {"status": "done", "reply": reply}
+    # L'ora della bolla della risposta, nell'ora della casa (C-17).
+    payload = {"status": "done", "reply": reply, "orologio": house_clock_of(request.app)}
     # Gli strumenti del turno vanno nei LOG a livello debug, non nella risposta.
     #
     # Fino al 17/08/2026 finivano in `payload["debug"]["tools_called"]` e il
@@ -1129,7 +1132,8 @@ async def handle_chat(request: web.Request) -> web.Response:
         logger.debug("strumenti del turno: %s",
                      ", ".join(str(t.get("tool") or "?") for t in raw
                                if isinstance(t, dict)))
-    payload = {"response": response}
+    # L'ora delle due bolle del turno, nell'ora della casa (C-17).
+    payload = {"response": response, "orologio": house_clock_of(request.app)}
     # L'annuncio del ripiego a monte. Si compone QUI e non nel ramo che ha
     # deciso di ripiegare, perché prima della chiamata qui sopra non si sa
     # ancora CHI ha risposto -- il router ripiega a sua volta, e il primo della

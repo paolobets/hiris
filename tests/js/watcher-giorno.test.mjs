@@ -75,21 +75,6 @@ function montaConServer(opts = {}) {
   return Object.defineProperty(ctx, 'chiamate', { get: () => elenco.map((c) => c.url) });
 }
 
-// -- date locali, chieste alla pagina (`HirisWatcherShared.isoData`, la stessa
-//    che la scheda usa per «ieri»), MAI hardcoded: una data fissa scritta nel
-//    test diventerebbe falsa il giorno dopo. Fino al 14/10/2026 qui stava una
-//    copia di `isoData` (T-10); che la funzione della pagina sia giusta lo
-//    dice la prova `isoData e localOggi` piu' sotto, con un atteso calcolato
-//    in modo indipendente. --
-const CONDIVISA = loadScripts(['common.js', 'config/watcher-shared.js']).window.HirisWatcherShared;
-function giornoFa(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return CONDIVISA.isoData(d);
-}
-
-const OGGI = giornoFa(0);
-const IERI = giornoFa(1);
 
 /* Dal 20/09 gli elenchi lunghi si costruiscono al clic (spec §6): una prova
    che guarda una riga della cronaca o una piastrella deve aprire il suo
@@ -214,9 +199,9 @@ test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di a
   // Mutazione che la uccide: non appendere la coda dei cambi di attributo.
   const { corpo } = rendiResoconto(resoconto({
     cronaca: [{
-      quando_ts: 1789219800, fine_ts: null, chi: 'climate.soggiorno',
+      quando_ts: '2026-09-12T15:30:00+02:00', fine_ts: null, chi: 'climate.soggiorno',
       nome: 'Termostato Soggiorno', cosa: 'heat',
-      attributi: [{ quando_ts: 1789223400, valori: { hvac_action: 'idle' } }],
+      attributi: [{ quando_ts: '2026-09-12T16:30:00+02:00', valori: { hvac_action: 'idle' } }],
     }],
   }));
 
@@ -296,16 +281,18 @@ test('mount: la sezione 02 legge la chiave «resoconto» della rotta, e rende la
 test('mount: la pagina apre su IERI — OGGI non ha ancora un resoconto (si scrive alle 00:20)', async () => {
   // Il selettore nasce su ieri, e sono LE DUE sezioni a seguirlo. Chiedere
   // OGGI darebbe un 404 a ogni apertura della pagina, su tutt'e due.
-  // Mutazione che la uccide: `dayInput.value = localToday()`.
-  const ctx = montaConServer();
+  // Dal 14/10/2026 (C-17, passo 5) «ieri» si chiede PER NOME: quale giorno
+  // sia lo dice il server, nel fuso della casa, e la pagina lo scrive nel
+  // selettore. Mutazione che la uccide: `day || 'oggi'` in `loadReport`.
+  const ctx = montaConServer({ resoconto: { giorno: '2026-09-13', resoconto: resoconto() } });
   ctx.window.HirisWatcherRoute.mount('giorno');
   await tick(20);
 
   const report = ctx.chiamate.filter((u) => u.indexOf('api/mind/report') === 0);
   assert.equal(report.length, 1, 'una sola richiesta all\u2019apertura');
-  assert.ok(report[0].indexOf(IERI) !== -1,
-    'deve chiedere ieri (' + IERI + '), ha chiesto: ' + report[0]);
-  assert.ok(report[0].indexOf(OGGI) === -1, 'e non oggi');
+  assert.equal(report[0], 'api/mind/report?day=ieri', 'deve chiedere ieri per nome');
+  assert.equal(ctx.document.getElementById('watcher-day').value, '2026-09-13',
+    'il giorno che il server ha risolto va nel selettore');
 });
 
 
@@ -386,7 +373,7 @@ test('la scheda: il selettore si costruisce UNA volta, e il giorno scelto soprav
 
   const pannello = ctx.document.getElementById('watcher-panel-giorno');
   const campo = pannello.querySelector('input[type=date]');
-  const TRE_GIORNI_FA = giornoFa(3);
+  const TRE_GIORNI_FA = '2026-09-10';
   campo.value = TRE_GIORNI_FA;
   campo.dispatchEvent(new ctx.window.Event('change'));
   await tick(20);
@@ -426,7 +413,7 @@ function primoPiano(extra) {
     sorta: 'guasto', nome: 'Hydrawise', chi: 'log:homeassistant.components.hydrawise@x.py:447',
     cosa: 'ERROR', titolo: 'Timeout fetching hydrawise data',
     dominio: 'homeassistant.components.hydrawise',
-    volte: 1, quando_ts: 1789646396, ultimo_ts: 1789646396, fine_ts: null,
+    volte: 1, quando_ts: '2026-09-17T13:59:56+02:00', ultimo_ts: '2026-09-17T13:59:56+02:00', fine_ts: null,
   }, extra || {});
 }
 
@@ -460,19 +447,19 @@ test('seam _rendiResoconto: una riga di guasto mostra la FRASE VERA, non il live
 test('seam _rendiResoconto: un guasto ripetuto dice QUANTE volte e QUANDO l\'ultima', () => {
   // Mutazione che la uccide: ignorare `volte`/`ultimo_ts`.
   const { corpo } = rendiResoconto(resoconto({
-    primo_piano: [primoPiano({ volte: 6, quando_ts: 1789600000, ultimo_ts: 1789646396 })],
+    primo_piano: [primoPiano({ volte: 6, quando_ts: '2026-09-17T01:06:40+02:00', ultimo_ts: '2026-09-17T13:59:56+02:00' })],
   }));
 
   assert.match(corpo.textContent, /6 volte/);
-  /* L'ora nella forma della pagina, «gg/mm hh:mm» (`fmtTime`): un episodio
+  /* L'ora nella forma di tutte le pagine (`fmtInstant`, C-17): un episodio
      puo' cominciare il giorno prima e finire in quello che si guarda, e un
      secondo formato solo per il primo piano sarebbe un vocabolario in piu' per lo
-     stesso fatto. */
-  assert.match(corpo.textContent, /l’ultima alle \d\d\/\d\d \d\d:\d\d/);
+     stesso fatto. Senza l'orologio della risposta l'istante esce intero. */
+  assert.match(corpo.textContent, /l’ultima: 17\/09\/2026, 13:59/);
 });
 
 test('seam _rendiResoconto: una riga «da sapere subito» CITA lo stato e dice da quando a quando', () => {
-  /* «Allarme piano terra — triggered · dalle 03:12 alle 03:19». Scrivere «e'
+  /* «Allarme piano terra — triggered · ieri alle 03:12 → 03:19». Scrivere «e'
      scattato» sarebbe una traduzione che oggi nessuno fa: rendere gli stati
      nella lingua della casa e' una fetta sua. Mutazione che la uccide:
      tradurre lo stato, o omettere la finestra. */
@@ -481,14 +468,15 @@ test('seam _rendiResoconto: una riga «da sapere subito» CITA lo stato e dice d
       sorta: 'da_sapere_subito', nome: 'Allarme piano terra',
       chi: 'alarm_control_panel.piano_terra', cosa: 'triggered',
       titolo: undefined, dominio: undefined,
-      quando_ts: 1789646396, ultimo_ts: 1789646396, fine_ts: 1789646816,
+      quando_ts: '2026-09-17T13:59:56+02:00', ultimo_ts: '2026-09-17T13:59:56+02:00', fine_ts: '2026-09-17T14:06:56+02:00',
     })],
   }));
 
   const testo = corpo.textContent;
   assert.match(testo, /Allarme piano terra/);
   assert.match(testo, /triggered/);
-  assert.match(testo, /dalle \d\d\/\d\d \d\d:\d\d alle \d\d\/\d\d \d\d:\d\d/);
+  // La data una volta sola: la fine cade lo stesso giorno (C-17).
+  assert.match(testo, /17\/09\/2026, 13:59 → 14:06/);
 });
 
 test('seam _rendiResoconto: la RAGIONE del giudizio si legge sulla riga, quando c\'e\'', () => {
@@ -522,7 +510,7 @@ test('seam _rendiResoconto: NIENTE da dire si dice col NUMERO delle voci guardat
      tacere quando il primo piano e' vuota, o scrivere un giudizio. */
   const { corpo } = rendiResoconto(resoconto({
     primo_piano: [],
-    cronaca: [{ quando_ts: 1789219800, fine_ts: null, chi: 'light.studio',
+    cronaca: [{ quando_ts: '2026-09-12T15:30:00+02:00', fine_ts: null, chi: 'light.studio',
       nome: 'Studio', cosa: 'on' }],
   }));
 
@@ -536,7 +524,7 @@ test('seam _rendiResoconto: il primo piano ASSENTE non si legge come «niente da
      una chiave che non c'e' (un add-on partito a meta', una rotta vecchia).
      Mutazione che la uccide: `(r.primo_piano || [])`. */
   const { corpo } = rendiResoconto(resoconto({
-    cronaca: [{ quando_ts: 1789219800, fine_ts: null, chi: 'light.studio', cosa: 'on' }],
+    cronaca: [{ quando_ts: '2026-09-12T15:30:00+02:00', fine_ts: null, chi: 'light.studio', cosa: 'on' }],
   }));
 
   assert.match(corpo.textContent, /non si pu[oò] sapere/i);
@@ -579,7 +567,7 @@ test('il primo piano: un episodio che il server NON ha marcato resta fuori, qual
      Mutazione che la uccide: pescare dalla cronaca invece che dalil primo piano. */
   const { corpo } = rendiResoconto(resoconto({
     primo_piano: [],
-    cronaca: [{ quando_ts: 1789219800, fine_ts: null, genere: 'sicurezza',
+    cronaca: [{ quando_ts: '2026-09-12T15:30:00+02:00', fine_ts: null, genere: 'sicurezza',
       chi: 'alarm_control_panel.piano_terra', nome: 'Allarme piano terra',
       cosa: 'disarmed' }],
   }));
@@ -653,7 +641,7 @@ test("seam _rendiResoconto: le parti si leggono nell'ordine in cui arrivano", ()
 function cronacaDi(quante) {
   const voci = [];
   for (let i = 0; i < quante; i++) {
-    voci.push({ quando_ts: 1789219800 + i * 60, fine_ts: null,
+    voci.push({ quando_ts: '2026-09-12T15:' + String(30 + (i % 30)).padStart(2, '0') + ':00+02:00', fine_ts: null,
       chi: 'light.stanza_' + i, nome: 'Stanza ' + i, cosa: 'on' });
   }
   return voci;
@@ -712,24 +700,4 @@ test('seam _rendiResoconto: le forme stanno dietro un bottone, non in colonna', 
   assert.match(corpo.textContent, /8 forme/);
   const apri = [...corpo.querySelectorAll('button')].filter((b) => /Vedi tutte \(8\)/.test(b.textContent))[0];
   assert.ok(apri, 'le forme sono ancora disegnate tutte');
-});
-
-/* T-10: `isoData` e `localOggi` della pagina, contro un atteso che NON viene
-   da loro. Le date fisse coprono lo zero davanti a mese e giorno (gennaio, il
-   5) e i due numeri pieni (dicembre, il 25); il giorno di oggi si confronta
-   con `Intl.DateTimeFormat` in `en-CA`, che scrive AAAA-MM-GG nel fuso
-   locale: un calcolo diverso, della piattaforma, non una copia.
-   Mutazioni ESEGUITE (14/10/2026): `pad2` di `common.js` che non aggiunge
-   lo zero -- rossa («2026-1-5»); `getMonth()` senza il +1 -- rossa
-   («2026-00-05»); `localOggi` sulla data UTC (`toISOString().slice(0, 10)`)
-   -- rossa con TZ=America/Los_Angeles alle 00:57 UTC («2026-10-14» contro
-   «2026-10-13»), VERDE con TZ=UTC: quella mutazione si vede solo dove fuso
-   e ora spostano il giorno, ed e' scritto qui perche' non si creda il
-   contrario. */
-test('isoData e localOggi: la data locale in AAAA-MM-GG, contro un calcolo indipendente', () => {
-  assert.equal(CONDIVISA.isoData(new Date(2026, 0, 5)), '2026-01-05');
-  assert.equal(CONDIVISA.isoData(new Date(2026, 11, 25, 23, 59)), '2026-12-25');
-  const oggi = new Intl.DateTimeFormat('en-CA',
-    { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  assert.equal(CONDIVISA.localOggi(), oggi);
 });

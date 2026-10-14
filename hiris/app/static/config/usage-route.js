@@ -140,7 +140,7 @@
   }
 
   function bar(u) {
-    var da = fmtDateTime(u.last_reset);
+    var da = fmtInstant(u.last_reset, u.orologio, 'dal');
     return '<div class="usage-bar">'
       + '<div class="usage-when" role="group" aria-label="Da quando contare">'
       + '<button class="btn btn-ghost' + (state.daAncora ? ' active' : '') + '" '
@@ -151,7 +151,7 @@
       + '<div class="usage-reset-block">'
       + '<button class="btn btn-ghost" id="usage-reset">Riparti da adesso</button>'
       + '<div class="hint">Non cancella niente: sposta solo il punto da cui contare.'
-      + (da ? ' Adesso conta da ' + escHtml(da) + '.' : '') + '</div>'
+      + (da ? ' Adesso conta ' + escHtml(da) + '.' : '') + '</div>'
       + '</div></div>';
   }
 
@@ -316,7 +316,7 @@
     }
 
     var timezone = u.timezone_known
-      ? 'Giorni e orari nel fuso della casa (' + escHtml(u.timezone) + ').'
+      ? 'Giorni e orari nel fuso della casa (' + escHtml((u.orologio || {}).fuso) + ').'
       : 'Il fuso della casa non è ancora noto: i giorni sono contati in UTC.';
 
     outlet.innerHTML = '<h1 class="page-title">Consumi</h1>'

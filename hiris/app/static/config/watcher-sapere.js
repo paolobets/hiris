@@ -59,12 +59,9 @@ window.HirisWatcherSapere = (function () {
   var judgmentField = S.judgmentField;
   var appendMarkedText = S.appendMarkedText;
   var firstSentenceTruncated = S.firstSentenceTruncated;
-  var fmtWhenFull = S.fmtWhenFull;
   var fmtCount = S.fmtCount;
   var fmtDays = S.fmtDays;
   var fmtHours = S.fmtHours;
-  var fmtDateOnly = S.fmtDateOnly;
-  var fmtDayMonth = S.fmtDayMonth;
 
   /* I campi del sapere, detti come li direbbe una persona.
 
@@ -412,7 +409,7 @@ window.HirisWatcherSapere = (function () {
     if (g.da === 'correzione') {
       var wrap = el('span', 'jr-provenance');
       wrap.appendChild(el('span', 'agent-badge badge-on',
-        'Corretto da ' + (g.chi || '—') + ' il ' + (fmtDateOnly(g.quando_ts) || '—')));
+        'Corretto da ' + (g.chi || '—') + ' il ' + (fmtDay(g.quando_ts, true) || '—')));
       if (rifaLaCronaca(g.campo)) {
         wrap.appendChild(el('span', 'field-hint', 'La cronaca dei giorni passati si rifà da sola.'));
       }
@@ -420,7 +417,7 @@ window.HirisWatcherSapere = (function () {
     }
     if (g.da === 'altro') {
       return el('span', 'agent-badge badge-warn',
-        'Modificata a mano il ' + (fmtDayMonth(g.quando_ts) || '—') + ' da ' + (g.chi || 'qualcun altro'));
+        'Modificata a mano il ' + (fmtDay(g.quando_ts) || '—') + ' da ' + (g.chi || 'qualcun altro'));
     }
     return el('span', 'field-hint', 'dal seme');
   }
@@ -694,8 +691,13 @@ window.HirisWatcherSapere = (function () {
     });
   }
 
+  /* L'orologio della casa dell'ultima risposta (C-17): «oggi» e «ieri»
+     degli istanti che arrivano nell'ora della casa. */
+  var clock = null;
+
   function renderKnowledge(body, sapere) {
     chronicle = (sapere && sapere.cronaca) || null;
+    clock = (sapere && sapere.orologio) || null;
     var nonCapito = (sapere && sapere.non_capito) || [];
     var giudizi = (sapere && sapere.giudizi) || [];
     var domande = (sapere && sapere.domande_aperte) || [];
@@ -730,7 +732,8 @@ window.HirisWatcherSapere = (function () {
         riga.appendChild(el('div', 'sc-row-why', r.valore || ''));
         var coda = [];
         if (r.chi) coda.push('L’ha scritto ' + r.chi + '.');
-        if (r.quando_ts) coda.push('Il ' + fmtWhenFull(r.quando_ts) + '.');
+        var quando = fmtInstant(r.quando_ts, clock, 'il');
+        if (quando) coda.push(quando.charAt(0).toUpperCase() + quando.slice(1) + '.');
         if (coda.length) riga.appendChild(el('div', 'field-hint', coda.join(' ')));
         body.appendChild(riga);
       });
@@ -803,6 +806,7 @@ window.HirisWatcherSapere = (function () {
       if (notice) line(corpo, notice, TONE_PROBLEM);
       var heading = renderKnowledge(corpo, occurrence.corpo);
       if (focusCorrections && heading && typeof heading.focus === 'function') heading.focus();
+      return occurrence.corpo.orologio;
     }, function () {
       clearEl(corpo);
       renderKnowledgeError(corpo, null, reload);

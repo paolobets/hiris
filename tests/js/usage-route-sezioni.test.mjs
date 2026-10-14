@@ -24,7 +24,7 @@ const RISPOSTA = {
   partial_cost: true,
   rate_limit_errors: 3,
   last_reset: '2026-07-14T09:22:00Z',
-  timezone: 'Europe/Rome',
+  orologio: { fuso: 'Europe/Rome', adesso: '2026-10-14T10:00:00+02:00' },
   timezone_known: true,
   sections: [
     {
@@ -177,7 +177,7 @@ const RISPOSTA_SOLO_ABBONAMENTO = {
   partial_cost: false,
   rate_limit_errors: 0,
   last_reset: '2026-07-14T09:22:00Z',
-  timezone: 'Europe/Rome',
+  orologio: { fuso: 'Europe/Rome', adesso: '2026-10-14T10:00:00+02:00' },
   timezone_known: true,
   sections: [{
     provider: 'subscription', label: 'Piano Claude Max', unit: 'turni', cost_included: true,

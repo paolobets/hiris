@@ -68,20 +68,6 @@ window.HirisWatcherShared = (function () {
 
   /* ------------------------------------------------------------- i formati */
 
-  function isoData(d) {
-    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-  }
-
-  function ieriLocale() {
-    var d = new Date();
-    d.setDate(d.getDate() - 1);
-    return isoData(d);
-  }
-
-  /* L'analisi e' di OGGI, non di ieri: legge i resoconti fino a ieri e parla
-     adesso. Il selettore del giorno governa il resoconto, non lei. */
-  function localOggi() { return isoData(new Date()); }
-
   /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `isoDay` arriva dal
      valore di `<input type=date>`, sempre `AAAA-MM-GG` per specifica HTML. */
   function ggMmAaaa(isoDay) {
@@ -90,42 +76,11 @@ window.HirisWatcherShared = (function () {
     return parts[2] + '/' + parts[1] + '/' + parts[0];
   }
 
-  function fmtTime(ts) {
-    if (ts == null) return null;
-    var d = new Date(ts * 1000);
-    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ' ' +
-      pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
-
-  /* Data CON l'anno, a differenza di `fmtTime` («gg/mm hh:mm»): un episodio
-     vive dentro il giorno che si sta guardando, una decisione dello scope o un
-     obiettivo possono essere di mesi fa -- «e' datato, e la sua storia conta»
-     (spec §11, conseguenza 1). Fuso del BROWSER, come tutto il resto della
-     pagina. */
-  function fmtWhenFull(ts) {
-    if (ts == null) return null;
-    var d = new Date(ts * 1000);
-    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' +
-      pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
-
-  /* Solo la DATA (senza l'ora): `correzione` la vuole con l'anno
-     («Corretto da Paolo il gg/mm/aaaa», forma approvata punto 4) -- `fmtWhenFull`
-     porta anche l'ora, che li' e' un dato in piu' da leggere. */
-  function fmtDateOnly(ts) {
-    if (ts == null) return null;
-    var d = new Date(ts * 1000);
-    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
-  }
-
-  /* Solo giorno/mese, SENZA anno: `altro` la vuole cosi' («Modificata a mano
-     il gg/mm da {chi}», forma approvata punto 4) -- un'asimmetria scritta
-     apposta nella forma approvata, non un refuso. */
-  function fmtDayMonth(ts) {
-    if (ts == null) return null;
-    var d = new Date(ts * 1000);
-    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1);
-  }
+  /* Gli istanti dell'osservatore arrivano nell'ora della casa (C-17,
+     `MindView._in_house_hour`) e si mostrano con la famiglia di `common.js`
+     (`fmtInstant`, `fmtHour`, `fmtDay`): fino al 14/10/2026 qui vivevano
+     `fmtTime`, `fmtWhenFull`, `fmtDateOnly`, `fmtDayMonth` e il giorno di
+     oggi e di ieri (`localOggi`, `ieriLocale`), tutti col fuso del browser. */
 
   /* Secondi -> «7 giorni» / «84 ore», virgola italiana, al massimo un
      decimale: la finestra e la cadenza arrivano in secondi float
@@ -162,7 +117,7 @@ window.HirisWatcherShared = (function () {
   }
 
   /* Secondi -> «3 minuti» / «2 ore» / «35 giorni». E' una DURATA, non un
-     istante: `fmtWhenFull` risponde a «che giorno era», qui la domanda e' «da
+     istante: `fmtInstant` risponde a «che giorno era», qui la domanda e' «da
      quanto». Stessa famiglia di `fmtHours`/`fmtDays` qui sopra, stessa virgola
      italiana.
 
@@ -184,8 +139,14 @@ window.HirisWatcherShared = (function () {
     return fmtDays(seconds);
   }
 
-  function fmtAgo(ts) {
-    return fmtDuration(Math.max(0, Date.now() / 1000 - ts)) + ' fa';
+  /* Da quanto, in secondi, fino a un istante ISO: una durata, che e' la
+     stessa in ogni fuso, quindi qui l'orologio del browser e' giusto. */
+  function secondsSince(iso) {
+    return Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  }
+
+  function fmtAgo(iso) {
+    return fmtDuration(secondsSince(iso)) + ' fa';
   }
 
   /* ------------------------------------------- i soggetti grezzi, letti */
@@ -542,9 +503,12 @@ window.HirisWatcherShared = (function () {
     pannello.appendChild(riga);
     return {
       riga: riga,
-      segna: function (adesso) {
-        var d = adesso || new Date();
-        quando.textContent = 'Letto alle ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+      /* `clock` e' l'orologio della risposta appena letta (C-17): l'ora
+         della lettura e' quella della casa, come ogni altra ora della pagina.
+         Una lettura senza risposta non ha un'ora da dire. */
+      segna: function (clock) {
+        var hour = fmtHour(clock && clock.adesso);
+        quando.textContent = hour ? 'Letto alle ' + hour : '';
       }
     };
   }
@@ -558,10 +522,8 @@ window.HirisWatcherShared = (function () {
     describeWatchedSubject: describeWatchedSubject, parseSubjectPrefix: parseSubjectPrefix,
     judgmentField: judgmentField, appendMarkedText: appendMarkedText,
     firstSentenceTruncated: firstSentenceTruncated,
-    isoData: isoData, ieriLocale: ieriLocale, localOggi: localOggi,
-    ggMmAaaa: ggMmAaaa, fmtTime: fmtTime, fmtWhenFull: fmtWhenFull,
+    ggMmAaaa: ggMmAaaa,
     fmtDays: fmtDays, fmtHours: fmtHours, fmtCount: fmtCount, fmtPercent: fmtPercent,
-    fmtDuration: fmtDuration, fmtAgo: fmtAgo,
-    fmtDateOnly: fmtDateOnly, fmtDayMonth: fmtDayMonth
+    fmtDuration: fmtDuration, fmtAgo: fmtAgo, secondsSince: secondsSince
   };
 })();

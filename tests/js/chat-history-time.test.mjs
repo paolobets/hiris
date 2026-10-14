@@ -14,8 +14,9 @@ import { fintoFetch } from './helpers/fetch.mjs';
    gia' l'ora vera in colonna (`timestamp`), scritta da `append()` a ogni
    turno -- bastava restituirla, non inventare una seconda fonte. Il client
    (chat/agents.js::applyHistory, chat/messages.js::appendMsg) la usa per
-   disegnare le bolle ripristinate; un invio VIVO (chat/send.js) resta
-   timbrato con "adesso", perche' e' proprio adesso che nasce.
+   disegnare le bolle ripristinate; un invio VIVO (chat/send.js) prende
+   l'ora dall'orologio della risposta del server. Dal 14/10/2026 (C-17)
+   l'ora arriva nell'ora della casa, e la bolla ne mostra le cifre.
 
    Questi due test pinnano ENTRAMBE le meta' della cura: la migliore (l'ora
    vera, quando c'e') e il minimo accettabile come difesa (nessuna ora
@@ -53,8 +54,8 @@ function setup(t) {
 
 test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ricaricamento", async (t) => {
   const { window, document } = setup(t);
-  // In epoca, come ogni istante degli archivi (G-14): 2020-01-01T03:15:00Z.
-  const timestampFisso = 1577848500;
+  // Nell'ora della casa, come lo manda la rotta (C-17).
+  const timestampFisso = '2020-01-01T04:15:00+01:00';
   fintoFetch(window, {
     'api/chat/history': { messages: [{ role: 'user', content: 'ciao', timestamp: timestampFisso }] },
   });
@@ -64,7 +65,7 @@ test("un messaggio ripristinato mostra l'ora VERA del server, non quella del ric
   const timeEl = document.querySelector('.msg-time');
   assert.ok(timeEl, 'la bolla ripristinata deve avere un elemento .msg-time');
 
-  const atteso = new Date(timestampFisso * 1000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const atteso = '04:15';
   const adesso = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   // Precondizione anti-coincidenza: se per puro caso l'ora reale del test
   // combaciasse con quella (fissa, del 2020) del timestamp, l'assert sotto

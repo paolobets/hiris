@@ -19,7 +19,7 @@ from aiohttp import web
 
 from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
-from ..home_space.historian import home_space_zone, house_timezone
+from ..home_space.historian import home_space_zone, house_clock, house_timezone, instant_out
 from ..home_space.house import House
 from ..home_space.reader import TABLES
 from ..home_space.render import render_entity
@@ -122,6 +122,15 @@ def _tree_entity(house: House, entry, translations: dict, zone):
 
 
 
+def _kept_in_house_hour(kept: dict | None, zone) -> dict | None:
+    """Un oggetto che porta `letto_il` (la replica conservata, l'esito del
+    confronto), con quell'istante nell'ora della casa (C-17). Una copia: chi
+    lo tiene in memoria non cambia."""
+    if not kept or "letto_il" not in kept:
+        return kept
+    return {**kept, "letto_il": instant_out(kept["letto_il"], zone)}
+
+
 async def handle_get_home_space(request: web.Request) -> web.Response:
     store = request.app.get("home_space_store")
     if store is None:
@@ -167,6 +176,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
                               "conservato": None},
             "plance": {"lette_il": None, "non_disponibili": None, "conservato": None,
                        "voci": []},
+            "orologio": house_clock(None),
         })
     home_space = store.read()
     unavailable = store.unavailable()
@@ -182,9 +192,14 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     house = House.read(store, request.app.get("entity_cache"))
     translations = await read_for_house(request.app.get("state_translations"),
                                         store.reference_frame())
-    zone = home_space_zone(house_timezone(store))
+    timezone = house_timezone(store)
+    zone = home_space_zone(timezone)
     return web.json_response({
-        "anagrafe_letta_il": store.updated_at(),
+        # Ogni istante di questa risposta esce nell'ora della casa (C-17, D3
+        # della Tappa 4): la pagina ne mostra le cifre, non le converte. E
+        # `orologio` le dice che giorno e' oggi, e in che fuso.
+        "orologio": house_clock(timezone),
+        "anagrafe_letta_il": instant_out(store.updated_at(), zone),
         # I registri che non hanno risposto all'ultima lettura. Senza questo
         # campo una casa senza piani e un registro dei piani caduto sarebbero
         # la stessa schermata.
@@ -192,7 +207,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # E per ognuno, quando e' stata letta la copia che l'anagrafe tiene al
         # suo posto (`HomeSpace.unavailable_since`, S-36): `None` se quel
         # registro non ha mai risposto e la tabella e' vuota.
-        "non_disponibili_letti_il": store.unavailable_since(),
+        "non_disponibili_letti_il": {name: instant_out(at, zone)
+                                     for name, at in store.unavailable_since().items()},
         # Le tabelle esposte, non quelle interne (`reader.INTERNAL_TABLES`, B-50).
         "conteggi": {key: len(home_space[key]) for key in TABLES if key in home_space},
         # Il sistema di riferimento della casa: unita', fuso, valuta, lingua,
@@ -230,9 +246,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
-        "confronto": request.app.get("tree_comparison"),
+        "confronto": _kept_in_house_hour(request.app.get("tree_comparison"), zone),
         "comportamento": {
-            "letto_il": store.behavior_loaded_at(),
+            "letto_il": instant_out(store.behavior_loaded_at(), zone),
             "conteggi": behavior_counts,
             # Il campo che conta di piu': quante voci HIRIS conosce solo di
             # nome. Le automazioni scritte a mano non stanno nei file, e di
@@ -251,15 +267,15 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # dell'ultima rilettura, altrimenti perche' non e' stata
             # sostituita e di quando e'. Lo stesso oggetto che il nucleo
             # dice a parole.
-            "conservato": store.behavior_kept(),
+            "conservato": _kept_in_house_hour(store.behavior_kept(), zone),
         },
         "plance": {
-            "lette_il": store.dashboards_loaded_at(),
+            "lette_il": instant_out(store.dashboards_loaded_at(), zone),
             # Le plance/percorsi che l'ultima lettura non e' riuscita a
             # risolvere -- stesso principio di "non_disponibili" sopra,
             # applicato alle plance invece che ai registri.
             "non_disponibili": store.unavailable_dashboards(),
-            "conservato": store.dashboards_kept(),
+            "conservato": _kept_in_house_hour(store.dashboards_kept(), zone),
             # Titolo e percorso soltanto (D3): li sceglie il lettore,
             # `behavior.reread_dashboards`, la casa di questo fatto.
             "voci": store.dashboards(),

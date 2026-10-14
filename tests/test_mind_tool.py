@@ -80,14 +80,28 @@ def _body(response) -> dict:
     return json.loads(response.body)
 
 
+#: Cio' che la rotta porta in piu' per la PAGINA, e non e' una lettura del
+#: cervello. Lista di ammissione, con la ragione: un campo nuovo solo nella
+#: rotta deve passare di qui, scritto.
+PAGE_ONLY = {
+    "orologio": "il fuso e l'adesso della casa, con cui la pagina dice «oggi» "
+                "(C-17): il modello ha l'ora nel nucleo",
+    "giorno": "quale giorno la pagina ha chiesto per nome (`?day=ieri`, C-17): "
+              "lo strumento chiede sempre una data",
+}
+
+
 async def _route(app, what: str, day: str | None) -> dict:
-    """La rotta che la pagina chiama per ogni `cosa` che ha una rotta."""
+    """La rotta che la pagina chiama per ogni `cosa` che ha una rotta, senza
+    cio' che porta solo per la pagina (`PAGE_ONLY`)."""
     query = {"day": day} if day else {}
     if what in ("scope", "obiettivo"):
         body = _body(await handle_watching(_Richiesta(app)))
+        body = {key: value for key, value in body.items() if key not in PAGE_ONLY}
         return body if what == "scope" else {"obiettivo": body["obiettivo"]}
     handler = {"resoconti": handle_report, "analisi": handle_analysis}[what]
     body = _body(await handler(_Richiesta(app, query)))
+    body = {key: value for key, value in body.items() if key not in PAGE_ONLY}
     return body if what == "analisi" else (body if not day else {"resoconto": body["resoconto"]})
 
 

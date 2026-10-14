@@ -44,13 +44,17 @@ function fixtureHtml() {
    conta le chiamate: e' con quel conto che si misura il carico pigro. Ogni
    rotta risponde un corpo vuoto: qui conta QUALE scheda chiede, non cosa
    rende. `chiamate` e' l'elenco vivo degli indirizzi chiesti. */
+/* L'orologio della casa che ogni rotta dell'osservatore manda (C-17): il
+   «Letto alle» della cornice e' l'ora della casa, non quella del browser. */
+const OROLOGIO = { fuso: 'Europe/Rome', adesso: '2026-10-14T01:00:00+02:00' };
+
 function monta() {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const elenco = fintoFetch(ctx.window, {
-    'api/mind/report': {},
-    'api/mind/knowledge': {},
-    'api/mind/analysis': {},
-    'api/mind/watching': {},
+    'api/mind/report': { orologio: OROLOGIO },
+    'api/mind/knowledge': { orologio: OROLOGIO },
+    'api/mind/analysis': { orologio: OROLOGIO },
+    'api/mind/watching': { orologio: OROLOGIO },
   });
   return Object.defineProperty(ctx, 'chiamate', { get: () => elenco.map((c) => c.url) });
 }
@@ -517,7 +521,7 @@ test('la cornice: a dati arrivati ogni pannello dice quando li ha letti, e offre
   ctx.window.HirisWatcherRoute.mount('giorno');
   await tick(0);
   const pannello = ctx.document.getElementById('watcher-panel-giorno');
-  assert.match(pannello.textContent, /Letto alle \d\d:\d\d/);
+  assert.match(pannello.textContent, /Letto alle 01:00/);
   const aggiorna = Array.from(pannello.querySelectorAll('button'))
     .find((b) => b.textContent === 'Aggiorna');
   assert.ok(aggiorna, 'manca «Aggiorna»: senza, non c’e’ nessun modo di rileggere');

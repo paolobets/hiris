@@ -281,9 +281,10 @@ async def test_sapere_porta_giudizi_ORIGINE_quando(tmp_path):
         assert per_chiave[("tipo", "binary_sensor.occupancy", "genere")] == {
             "soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",
             "campo": "genere", "valore": "presenza", "da": "correzione",
-            "chi": AUTORE_STORICO, "quando_ts": 5.0}
+            "chi": AUTORE_STORICO, "quando_ts": "1970-01-01T00:00:05+00:00"}
         persona = per_chiave[("tipo", "person", "genere")]
-        assert (persona["da"], persona["valore"], persona["quando_ts"]) == ("seme", "presenza", 1.0)
+        assert (persona["da"], persona["valore"], persona["quando_ts"]) == (
+            "seme", "presenza", "1970-01-01T00:00:01+00:00")
     finally:
         s.close()
 

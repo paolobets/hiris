@@ -45,7 +45,7 @@
           var r = await fetch('api/chat/reply/' + encodeURIComponent(jobId));
           var data = await r.json();
           if (data.status === 'done') {
-            window.HirisChatMessages.updateBubble(placeholderRow, data.reply || '');
+            window.HirisChatMessages.updateBubble(placeholderRow, data.reply || '', data.orologio);
             /* Il ripiego si annuncia (decisione del proprietario, 13 agosto):
                quando il turno passa dal piano a forfait a un provider a
                consumo, la risposta lo dice. Il campo e' FACOLTATIVO e la
@@ -175,6 +175,9 @@
         body: JSON.stringify({ message: text }),
       });
       var data = await r.json();
+      /* L'ora della bolla appena inviata la dice il server, nell'ora della
+         casa (C-17): e' adesso, ma l'adesso della casa. */
+      window.HirisChatMessages.stamp(userRow, data.orologio);
       if (r.status === 202 && data.status === 'pending' && data.job_id) {
         /* Da qui in poi il turno vive sul server: il messaggio dell'utente e'
            gia' in cronologia e la risposta ci finira' da sola. L'indicatore lo
@@ -206,7 +209,8 @@
         window.HirisChatAgents.checkTurnLimit();
         return;
       }
-      window.HirisChatMessages.updateBubble(pending, data.response || data.error || 'Errore sconosciuto');
+      window.HirisChatMessages.updateBubble(pending, data.response || data.error || 'Errore sconosciuto',
+        data.orologio);
       /* Vedi la gemella nel ramo del poll, sopra. Qui il ripiego e' quello a
          monte: il piano non poteva ricevere il turno (niente token, o tetto
          giornaliero pieno) e la catena ha risposto sincrona. */

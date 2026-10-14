@@ -57,8 +57,10 @@ window.HirisServicesRoute = (function () {
     return 'per meno di un minuto';
   }
 
-  function quando(ts) {
-    return ts ? fmtDateTime(ts * 1000) : '';
+  /* Gli istanti arrivano nell'ora della casa (C-17): se ne mostrano le
+     cifre, con l'orologio dell'ultima lettura. */
+  function quando(iso) {
+    return fmtInstant(iso, stato.dati && stato.dati.orologio, 'il');
   }
 
   function righe(sezione) {
@@ -211,7 +213,7 @@ window.HirisServicesRoute = (function () {
        presenta, quindi non e' un fatto. Il fatto e' il codice. */
     riga.appendChild(el('div', 'sc-row-title', 'Si presenta come «' + r.nome + '»'));
     riga.appendChild(el('div', 'sc-row-why',
-      'da ' + r.indirizzo + ' · arrivato il ' + quando(r.visto_ts)));
+      'da ' + r.indirizzo + ' · arrivato ' + quando(r.visto_ts)));
 
     var codice = el('div', 'service-code', r.codice);
     riga.appendChild(codice);
@@ -352,7 +354,7 @@ window.HirisServicesRoute = (function () {
       riga.appendChild(testa);
       riga.appendChild(el('div', 'sc-row-why',
         ruoloDetto(r.ruolo) + ' · ' + (r.specie || '') +
-        ' · accoppiato il ' + quando(r.deciso_ts)));
+        ' · accoppiato ' + quando(r.deciso_ts)));
       var azioni = el('div', 'jr-actions');
       var revoca = el('button', 'btn btn-ghost btn-ghost-danger', 'Revoca');
       revoca.type = 'button';
@@ -403,7 +405,7 @@ window.HirisServicesRoute = (function () {
       riga.appendChild(testa);
       riga.appendChild(el('div', 'sc-row-why',
         (r.ruolo ? 'aveva il ruolo ' + r.ruolo + ' · ' : 'mai approvato · ') +
-        'revocato il ' + quando(r.deciso_ts)));
+        'revocato ' + quando(r.deciso_ts)));
       if (stato.aperto === r.chiave) {
         riga.appendChild(pannello(r));
       } else {
@@ -443,6 +445,11 @@ window.HirisServicesRoute = (function () {
     if (!outlet) return;
     outlet.innerHTML = '';
     intestazione(outlet);
+    var istanti = [];
+    Object.keys((stato.dati && stato.dati.servizi) || {}).forEach(function (sezione) {
+      righe(sezione).forEach(function (r) { istanti.push(r.visto_ts, r.deciso_ts); });
+    });
+    clockHint(outlet.querySelector('.page-title'), stato.dati && stato.dati.orologio, istanti);
 
     var avviso = el('p', 'sc-desc', stato.messaggio || '');
     avviso.setAttribute('aria-live', 'polite');

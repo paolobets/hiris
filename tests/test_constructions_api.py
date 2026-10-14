@@ -732,3 +732,22 @@ def test_esisteva_chiede_il_prima_letto(gesto):
                                "prima": None})["esisteva"] is False
     assert construction_words({"dominio": "automation", "gesto": gesto,
                                "prima": {"alias": "x"}})["esisteva"] is True
+
+
+@pytest.mark.asyncio
+async def test_la_data_di_nascita_esce_nell_ora_della_casa_dalle_due_porte():
+    """C-17: `creata_ts` arriva alla pagina in ISO con l'offset della casa (la
+    pagina ne mostra le cifre), dalla lista e dalla singola, e la lista resta
+    ordinata sull'istante. Il nome non cambia: la rinomina e' T7."""
+    from tests._anagrafe_finta import AnagrafeFinta
+
+    # 13/10/2026 22:30 UTC: le 00:30 del 14 a Roma.
+    righe = [{"id": "a", "stato": "in_attesa", "creata_ts": 1791930600.0},
+             {"id": "b", "stato": "in_attesa", "creata_ts": 1791930000.0}]
+    app = _app(FintoArchivio(righe))
+    app["home_space_store"] = AnagrafeFinta(cornice={"fuso": "Europe/Rome"})
+    lista = _corpo(await handle_get_constructions(FintaRichiesta(app)))["constructions"]
+    assert [(c["id"], c["creata_ts"]) for c in lista] == [
+        ("a", "2026-10-14T00:30:00+02:00"), ("b", "2026-10-14T00:20:00+02:00")]
+    singola = _corpo(await handle_get_construction(FintaRichiesta(app, ident="a")))
+    assert singola["construction"]["creata_ts"] == "2026-10-14T00:30:00+02:00"

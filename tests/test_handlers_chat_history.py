@@ -91,10 +91,12 @@ async def test_get_chat_history_returns_the_real_timestamp_not_read_time(tmp_pat
 
     resp = await handle_get_chat_history(request)
     data = json.loads(resp.body)
-    # In epoca, come ogni istante degli archivi (G-14, Tappa 8): l'ora
-    # della scrittura, non quella della lettura.
-    assert isinstance(data["messages"][0]["timestamp"], float)
-    assert abs(data["messages"][0]["timestamp"] - time.time()) < 60
+    # L'ora della scrittura, non quella della lettura: dall'archivio in
+    # epoca (G-14), alla pagina nell'ora della casa, con l'offset (C-17).
+    from datetime import datetime
+    scritto = datetime.fromisoformat(data["messages"][0]["timestamp"])
+    assert scritto.utcoffset() is not None
+    assert abs(scritto.timestamp() - time.time()) < 60
 
 
 @pytest.mark.asyncio

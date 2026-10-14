@@ -92,12 +92,12 @@ window.HirisWatcherLavoro = (function () {
   var describeWatchedSubject = S.describeWatchedSubject;
   var parseSubjectPrefix = S.parseSubjectPrefix;
   var ggMmAaaa = S.ggMmAaaa;
-  var fmtWhenFull = S.fmtWhenFull;
   var fmtDays = S.fmtDays;
   var fmtHours = S.fmtHours;
   var fmtCount = S.fmtCount;
   var fmtDuration = S.fmtDuration;
   var fmtAgo = S.fmtAgo;
+  var secondsSince = S.secondsSince;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
 
   /* I tre autori possibili di una decisione dello scope (`author` in
@@ -148,7 +148,7 @@ window.HirisWatcherLavoro = (function () {
     body.appendChild(quote);
     body.appendChild(el('p', 'field-hint', objective.scritto_ts == null
       ? 'Obiettivo di fabbrica: nessuno l’ha ancora scritto.'
-      : 'Scritto il ' + fmtWhenFull(objective.scritto_ts) + '.'));
+      : 'Scritto ' + fmtInstant(objective.scritto_ts, clock, 'il') + '.'));
 
     /* **E si può scrivere.** Fino al 14/09/2026 `set_objective` non aveva
        nessun chiamante -- né rotta, né campo, né strumento in chat -- e sulla
@@ -291,7 +291,7 @@ window.HirisWatcherLavoro = (function () {
        17/08/2026» -- e uno spazio dentro l'etichetta sarebbe una spaziatura
        scritta nel testo invece che nel foglio. */
     var ts = v.quando;
-    if (ts != null) riga.appendChild(el('div', 'field-hint', opts.whenPrefix + ' ' + fmtWhenFull(ts)));
+    if (ts != null) riga.appendChild(el('div', 'field-hint', fmtInstant(ts, clock, opts.whenPrefix)));
     if (d.secondary) riga.appendChild(el('div', 'field-hint text-mono', d.secondary));
     /* Un motivo che manca si dice, non si tace: una decisione senza il suo
        perche' e' esattamente cio' che questa pagina esiste per non avere. */
@@ -634,7 +634,7 @@ window.HirisWatcherLavoro = (function () {
     }
     var grid = el('div', 'stat-grid');
     var tiles = [
-      ['Ultima volta', r.quando_ts != null ? fmtWhenFull(r.quando_ts) : 'data non disponibile'],
+      ['Ultima volta', fmtInstant(r.quando_ts, clock) || 'data non disponibile'],
       ['Memoria di Home Assistant, misurata', r.finestra_s != null ? fmtDays(r.finestra_s) : 'non misurata'],
       ['Cadenza', r.cadenza_s != null ? 'ogni ' + fmtHours(r.cadenza_s) : 'nessuna']
     ];
@@ -664,8 +664,7 @@ window.HirisWatcherLavoro = (function () {
      sarebbe un dato dedotto spacciato per uno letto. */
   function _sinceWhen(tentativi, inizio, run) {
     if (inizio + run === tentativi.length) return ' — più indietro di così non si vede';
-    return ', da ' + fmtDuration(
-      Math.max(0, Date.now() / 1000 - tentativi[inizio + run - 1].quando_ts));
+    return ', da ' + fmtDuration(secondsSince(tentativi[inizio + run - 1].quando_ts));
   }
 
   /* L'esito di un tentativo lo legge il server (`attempt_out`,
@@ -737,10 +736,10 @@ window.HirisWatcherLavoro = (function () {
     var attesa = !!last.in_attesa;
 
     if (attesa && run === 0) {
-      line(body, 'In corso da ' + fmtDuration(Math.max(0, Date.now() / 1000 - last.quando_ts)) +
+      line(body, 'In corso da ' + fmtDuration(secondsSince(last.quando_ts)) +
         ': la domanda è partita verso il piano, e la risposta non è ancora arrivata.', TONE_CALM);
     } else if (attesa) {
-      line(body, 'In corso da ' + fmtDuration(Math.max(0, Date.now() / 1000 - last.quando_ts)) +
+      line(body, 'In corso da ' + fmtDuration(secondsSince(last.quando_ts)) +
         ', ma i ' + run + ' tentativi di fila non sono riusciti' +
         _sinceWhen(tentativi, inizio, run) + '. L’ultimo fallito: ' +
         (tentativi[inizio].dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
@@ -754,7 +753,7 @@ window.HirisWatcherLavoro = (function () {
       var troncato = inizio + run === tentativi.length;
       var almeno = troncato ? 'almeno ' : '';
       line(body, 'Sta fallendo da ' + almeno +
-        fmtDuration(Math.max(0, Date.now() / 1000 - tentativi[inizio + run - 1].quando_ts)) +
+        fmtDuration(secondsSince(tentativi[inizio + run - 1].quando_ts)) +
         ': ' + almeno + run + ' tentativi di fila non sono riusciti' +
         (troncato ? ' — più indietro di così non si vede' : '') + '. L’ultimo, ' +
         fmtAgo(last.quando_ts) + ': ' + (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
@@ -782,7 +781,7 @@ window.HirisWatcherLavoro = (function () {
           item.appendChild(el('span', 'agent-badge ' + attemptBadge(t),
             t.esito_leggibile || t.esito));
           item.appendChild(el('span', 'field-hint',
-            fmtWhenFull(t.quando_ts) + ' · ' + fmtAgo(t.quando_ts)));
+            fmtInstant(t.quando_ts, clock)));
           item.appendChild(el('span', null, t.dettaglio || ''));
           list.appendChild(item);
         });
@@ -837,8 +836,13 @@ window.HirisWatcherLavoro = (function () {
 
   /* La scheda intera, dal payload di `GET /api/mind/watching` (vedi il
      commento di testa per le cinque cose e i tre stati). */
+  /* L'orologio della casa dell'ultima risposta (C-17): gli istanti dello
+     scope arrivano nell'ora della casa, e «oggi» e «ieri» li dice lui. */
+  var clock = null;
+
   function renderScope(body, payload) {
     var p = payload || {};
+    clock = p.orologio || null;
     var archiveMissing = p.obiettivo == null;
     /* L'ordine e' quello della spec §4D, e non e' un gusto: l'obiettivo e'
        la voce del proprietario, i tre numeri sono la risposta breve alla
@@ -876,6 +880,7 @@ window.HirisWatcherLavoro = (function () {
       clearEl(corpo);
       if (!occurrence.ok) { renderWatchingError(corpo, occurrence.status, reload); return; }
       renderScope(corpo, occurrence.corpo);
+      return occurrence.corpo.orologio;
     }, function () {
       clearEl(corpo);
       renderWatchingError(corpo, null, reload);

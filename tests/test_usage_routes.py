@@ -143,8 +143,19 @@ def test_un_modello_senza_prezzo_esce_con_costo_NULLO(app):
 
 def test_il_fuso_si_dichiara(app):
     corpo = _corpo(_chiama(handle_usage, app))
-    assert corpo["timezone"] == ROMA
+    assert corpo["orologio"]["fuso"] == ROMA
     assert corpo["timezone_known"] is True
+
+
+def test_l_ancora_esce_nell_ora_della_casa(app):
+    """C-17: la pagina mostra le cifre dell'istante, non lo converte. L'ancora
+    deve arrivare con l'offset della casa, e con l'orologio accanto."""
+    app["usage"].sposta_anchor(T21)
+    corpo = _corpo(_chiama(handle_usage, app))
+    assert corpo["last_reset"] == "2026-08-21T17:00:00+02:00"
+    assert corpo["orologio"]["adesso"].endswith(("+01:00", "+02:00"))
+    assert _corpo(_chiama(handle_reset_usage, app))["last_reset"].endswith(
+        ("+01:00", "+02:00"))
 
 
 # ── il caso vero di «non si misura» ─────────────────────────────────────────

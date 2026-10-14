@@ -115,7 +115,7 @@ function sapereFinto(extra) {
 function giudizio(extra) {
   return Object.assign({
     soggetto_genere: 'entita', soggetto: 'binary_sensor.occupancy', campo: 'genere',
-    valore: 'presenza', da: 'seme', chi: 'seme del repo', quando_ts: 1787000000,
+    valore: 'presenza', da: 'seme', chi: 'seme del repo', quando_ts: '2026-08-17T22:53:20+02:00',
   }, extra || {});
 }
 
@@ -180,7 +180,7 @@ test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', 
   const { corpo } = rendiSapere(sapereFinto({ non_capito: [
     { specie: 'dispositivo', soggetto: 'dev1', campo: 'ricetta_non_capita',
       valore: 'non ho capito cosa misura', provenienza: 'dedotto',
-      chi: 'modello (ponte)', quando_ts: 1787000000 },
+      chi: 'modello (ponte)', quando_ts: '2026-08-17T22:53:20+02:00' },
   ] }));
   const testo = corpo.textContent;
   assert.ok(testo.indexOf('non ho capito cosa misura') < testo.indexOf('177'),
@@ -264,7 +264,7 @@ test('mount: una correzione di PRIMA mostra il suo autore «proprietario», la d
   // 2026-09-26 §3) l'origine si chiama `correzione` e l'autore e' `chi`: le
   // righe scritte prima portano «proprietario», e per loro e' vero.
   const g = giudizio({
-    da: 'correzione', chi: 'proprietario', quando_ts: 1787000000,
+    da: 'correzione', chi: 'proprietario', quando_ts: '2026-08-17T22:53:20+02:00',
     campo: 'da_sapere_subito', valore: 'si',
   });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
@@ -298,7 +298,7 @@ test('mount: una correzione di PRIMA mostra il suo autore «proprietario», la d
 test('seam _rendiSapere: una riga «da: altro» mostra il badge di avviso, giorno/mese SENZA anno, e chi', () => {
   // Mutazione che la uccide: usare `badge-on` anche per «altro», o scrivere
   // l'anno (la forma approvata lo vuole SOLO per «proprietario»).
-  const g = giudizio({ da: 'altro', chi: 'qualcun altro', quando_ts: 1787000000, campo: 'riposo' });
+  const g = giudizio({ da: 'altro', chi: 'qualcun altro', quando_ts: '2026-08-17T22:53:20+02:00', campo: 'riposo' });
   const { corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
   const badge = corpo.querySelector('.agent-badge.badge-warn');
   assert.ok(badge, 'la riga «altro» porta il badge di avviso');
@@ -470,7 +470,7 @@ test('mount: scelto tipo/entità, la scelta guida soggetto_genere', async () => 
 test('seam _rendiSapere: una riga «da: correzione» dice anche che la cronaca dei giorni passati si rifà da sola (forma approvata, punto 3)', () => {
   // Mutazione che la uccide: non scrivere questa frase, o scriverla solo
   // come notifica transitoria invece che accanto al badge della riga.
-  const g = giudizio({ da: 'correzione', chi: 'Paolo', quando_ts: 1787000000 });
+  const g = giudizio({ da: 'correzione', chi: 'Paolo', quando_ts: '2026-08-17T22:53:20+02:00' });
   const { corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
   const badge = corpo.querySelector('.agent-badge.badge-on');
   assert.ok(badge, 'il badge «corretto da Paolo» esiste');

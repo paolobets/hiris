@@ -110,7 +110,8 @@ async def test_osservate_porta_il_perche_e_l_autore_di_ogni_voce():
     voce = _corpo(r)["watching"][0]
     assert voce["motivo"] == "scalda la casa"
     assert voce["autore"] == "observer"
-    assert voce["quando"] == 1787000000.0
+    # Nell'ora della casa (C-17): questa app non ha anagrafe, quindi UTC.
+    assert voce["quando"] == "2026-08-17T20:53:20+00:00"
 
 
 @pytest.mark.asyncio
@@ -150,7 +151,8 @@ async def test_la_pagina_dice_quando_si_ricambiera_idea_e_perche_allora():
 
     corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
 
-    assert corpo["riconsiderazione"] == ultima
+    # L'istante nell'ora della casa (C-17): senza anagrafe, UTC.
+    assert corpo["riconsiderazione"] == {**ultima, "quando_ts": "2026-08-17T20:53:20+00:00"}
 
 
 @pytest.mark.asyncio
@@ -306,7 +308,10 @@ async def test_la_pagina_porta_i_TENTATIVI_non_solo_i_giri_riusciti():
     corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
 
     # Ogni tentativo esce intero, con la sua lettura accanto (G-25).
-    assert [{k: t[k] for k in tentativi[0]} for t in corpo["tentativi"]] == tentativi
+    # Gli istanti nell'ora della casa (C-17): senza anagrafe, UTC.
+    assert [{k: t[k] for k in tentativi[0]} for t in corpo["tentativi"]] == [
+        {**tentativi[0], "quando_ts": "2026-09-11T09:10:44+00:00"},
+        {**tentativi[1], "quando_ts": "2026-09-11T09:00:44+00:00"}]
     assert corpo["riconsiderazione"] is None, (
         "un tentativo fallito non e' una riconsiderazione: se lo fosse, la "
         "cadenza scadrebbe come se la casa fosse stata ripensata davvero")
@@ -547,7 +552,7 @@ async def test_la_SERIE_dei_resoconti_porta_l_obiettivo_di_ogni_giorno(tmp_path)
         r = await handle_report(_richiesta({"observations": archivio}))
         serie = json.loads(r.text)["resoconti"]
         assert serie[0]["obiettivo"] == {"testo": "spendere meno di sera",
-                                         "scritto_ts": 1.0}
+                                         "scritto_ts": "1970-01-01T00:00:01+00:00"}
     finally:
         archivio.close()
 
@@ -874,7 +879,7 @@ async def test_le_righe_NON_CAPITE_viaggiano_con_chi_e_quando():
     assert riga["soggetto"] == "dev1"
     assert riga["valore"] == "non ho capito cosa misura"
     assert riga["chi"] == "modello (ponte)"
-    assert riga["quando_ts"] == 1787000000.0
+    assert riga["quando_ts"] == "2026-08-17T20:53:20+00:00"
 
 
 @pytest.mark.asyncio
@@ -1255,8 +1260,8 @@ async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
              "observations": archivio}))
         corpo = _corpo(r)
         dentro = [v for v in corpo["watching"] if v["soggetto"] == "climate.camera_t"]
-        assert [v.get("quando") for v in dentro] == [1787000000.0]
-        assert [v.get("quando") for v in corpo["fuori"]] == [1787000001.0]
+        assert [v.get("quando") for v in dentro] == ["2026-08-17T20:53:20+00:00"]
+        assert [v.get("quando") for v in corpo["fuori"]] == ["2026-08-17T20:53:21+00:00"]
         for voce in corpo["watching"] + corpo["fuori"]:
             assert not {"da_quando_ts", "deciso_ts"} & set(voce), voce
     finally:
@@ -1333,6 +1338,6 @@ async def test_il_sapere_consegna_le_RICETTE_intere(tmp_path):
             "dispositivo": "inv", "nome": "Inverter", "ricetta": ricetta,
             "entita": ["sensor.immessa", "sensor.prodotta"],
             "scritta_contro": contro, "chi": "modello (ponte)",
-            "quando_ts": 1789000000.0}]
+            "quando_ts": "2026-09-10T00:26:40+00:00"}]
     finally:
         sapere.close()

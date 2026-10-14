@@ -22,7 +22,8 @@ const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
    ogni test cambia UN campo, cosi' l'asserzione parla di quel campo solo. */
 function casaLetta(modifiche = {}) {
   return Object.assign({
-    anagrafe_letta_il: '2026-08-10T09:00:00',
+    orologio: { fuso: 'Europe/Rome', adesso: '2026-08-10T15:00:00+02:00' },
+    anagrafe_letta_il: '2026-08-10T09:00:00+02:00',
     non_disponibili: [],
     conteggi: { piani: 2, aree: 7, dispositivi: 31, entita: 190 },
     // Le parole dei registri le manda il server (`nomi_registri`, C-10).
@@ -30,13 +31,13 @@ function casaLetta(modifiche = {}) {
       entita: 'Entità', categorie: 'Categorie' },
     piani: [],
     comportamento: {
-      letto_il: '2026-08-10T09:01:00',
+      letto_il: '2026-08-10T09:01:00+02:00',
       conteggi: { automazione: 12, script: 3 },
       senza_corpo: 0,
       problemi: [],
       corpi_non_letti: {},
     },
-    plance: { lette_il: '2026-08-10T09:02:00', non_disponibili: [], voci: [] },
+    plance: { lette_il: '2026-08-10T09:02:00+02:00', non_disponibili: [], voci: [] },
   }, modifiche);
 }
 
@@ -93,7 +94,7 @@ const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded
 
 /* Monta la pagina con le due risposte date e restituisce il testo reso.
    `common.js` PRIMA di `config/dashboard.js`, come fa davvero
-   config.html: dal collaudo 3.22 (A10) dashboard.js chiama `fmtDateTime`
+   config.html: dal collaudo 3.22 (A10) dashboard.js chiama `fmtInstant` (C-17)
    (le tre "Letta/Letto/Lette il"), condivisa con la pagina Consumi. */
 async function rendi(casa, nucleo = NUCLEO_VUOTO) {
   const ctx = loadScripts(['common.js', 'config/dashboard.js'], { html: HTML });
@@ -357,31 +358,18 @@ test('nessun link morto: la home non porta piu\' a #/nuovo ne\' a #/gateway', as
   }
 });
 
-test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette il" mostrano la data italiana, non l’ISO grezzo in UTC', async () => {
+test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette" mostrano l’ora della casa, non l’ISO grezzo', async () => {
   // Misurato dal vivo: «Letta il 2026-09-07T05:13:52+00:00.», due righe
-  // sopra «Adesso sono le 08:29... (fuso Europe/Rome)» nel nucleo -- la
-  // stessa distanza di due ore che l'Osservatore dichiara altrove.
-  // `fmtDateTime` (common.js) e' un global bare: si legge da
-  // `globalThis`, come gia' fa `globalThis.loadUsage()` in
-  // chat-usage-widget.test.mjs (il ponte di loadScripts() specchia su
-  // `window` solo le assegnazioni `window.X = ...`, non le dichiarazioni
-  // di funzione di primo livello).
+  // sopra «Adesso sono le 08:29... (fuso Europe/Rome)» nel nucleo. Dal
+  // 14/10/2026 (C-17) l'istante arriva nell'ora della casa e la pagina ne
+  // mostra le cifre: «oggi» lo dice `orologio.adesso`, non il browser.
   const casa = casaLetta();
   const { testo } = await rendi(casa);
 
-  const attesoAnagrafe = globalThis.fmtDateTime(casa.anagrafe_letta_il);
-  const attesoComportamento = globalThis.fmtDateTime(casa.comportamento.letto_il);
-  const attesoPlance = globalThis.fmtDateTime(casa.plance.lette_il);
-  assert.ok(attesoAnagrafe && attesoComportamento && attesoPlance,
-    'precondizione: fmtDateTime deve produrre qualcosa di leggibile per questa fixture');
-
-  assert.doesNotMatch(testo, /2026-08-10T09:00:00/, 'l’ISO grezzo dell’anagrafe non deve comparire');
-  assert.doesNotMatch(testo, /2026-08-10T09:01:00/, 'l’ISO grezzo del comportamento non deve comparire');
-  assert.doesNotMatch(testo, /2026-08-10T09:02:00/, 'l’ISO grezzo delle plance non deve comparire');
-
-  assert.ok(testo.indexOf('Letta il ' + attesoAnagrafe) >= 0, 'anagrafe: data formattata da fmtDateTime');
-  assert.ok(testo.indexOf('Letto il ' + attesoComportamento) >= 0, 'comportamento: data formattata da fmtDateTime');
-  assert.ok(testo.indexOf('Lette il ' + attesoPlance) >= 0, 'plance: data formattata da fmtDateTime');
+  assert.doesNotMatch(testo, /2026-08-10T09:0/, 'l’ISO grezzo non deve comparire');
+  assert.ok(testo.includes('Letta oggi alle 09:00.'), testo);
+  assert.ok(testo.includes('Letto oggi alle 09:01.'), testo);
+  assert.ok(testo.includes('Lette oggi alle 09:02.'), testo);
 });
 
 /* La replica conservata (`conservato`, G-16; Tappa 9, F5, D2): l'ultima
@@ -389,7 +377,7 @@ test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette il" mostrano la data italia
    leggono i numeri, al posto di «Letto il», e nessuna frase «tutto a posto»
    accompagna numeri di una lettura precedente. */
 test('una replica conservata lo dice al posto di «Letto il», e non afferma «tutto a posto»', async () => {
-  const prima = '2026-10-03T12:20:00+00:00';
+  const prima = '2026-08-03T12:20:00+02:00';
   const casa = casaLetta({
     comportamento: { ...casaLetta().comportamento, letto_il: prima,
       conservato: { motivo: 'Home Assistant non le ha ancora caricate', letto_il: prima } },
@@ -397,12 +385,11 @@ test('una replica conservata lo dice al posto di «Letto il», e non afferma «t
       conservato: { motivo: 'nessuna plancia leggibile', letto_il: prima } },
   });
   const { testo } = await rendi(casa);
-  const quando = globalThis.fmtDateTime(prima);
   assert.ok(testo.includes('L’ultima lettura non è riuscita: questi numeri sono quelli di una ' +
-    'lettura precedente, del ' + quando + '.'), testo);
+    'lettura precedente, del 03/08, 12:20.'), testo);
   assert.ok(testo.includes('L’ultima lettura non è riuscita: queste plance sono quelle di una ' +
-    'lettura precedente, del ' + quando + '.'), testo);
-  assert.doesNotMatch(testo, /Letto il|Lette il/, 'la data della replica non si presenta come una lettura riuscita');
+    'lettura precedente, del 03/08, 12:20.'), testo);
+  assert.doesNotMatch(testo, /Letto |Lette /, 'la data della replica non si presenta come una lettura riuscita');
   for (const frase of FRASI_TUTTO_A_POSTO.slice(1)) {
     assert.doesNotMatch(testo, frase, `«tutto a posto» su una replica conservata: ${frase}`);
   }

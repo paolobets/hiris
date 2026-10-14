@@ -304,14 +304,121 @@ function fmtEuro(n, decimals) {
     { minimumFractionDigits: 2, maximumFractionDigits: max });
 }
 
-/* Data e ora nel formato italiano, l'unico che il prodotto usa a schermo.
-   Restituisce stringa vuota su un valore assente o illeggibile, cosi' chi
-   chiama puo' decidere se scrivere un trattino o niente -- e non finisce mai
-   con un `Invalid Date` stampato addosso all'utente. */
-function fmtDateTime(v) {
-  if (!v) return '';
-  var d = new Date(v);
-  return isNaN(d.getTime()) ? '' : d.toLocaleString('it-IT');
+/* ------------------------------------------------------ l'ora della casa */
+
+/* C-17 (Tappa 4, Task 4, passi 4-6). Il server manda ogni istante in ISO con
+   l'offset della CASA (`historian.instant_out`, decisione D3 del 05/10/2026),
+   e la pagina **non converte**: mostra le cifre della stringa. Fino al
+   14/10/2026 ogni pagina passava da `new Date(...)`, cioe' dal fuso del
+   BROWSER: Paolo in viaggio a New York leggeva le 08:30 di un'automazione
+   partita alle 14:30 a casa sua, e le pagine avevano sei funzioni di formato
+   diverse (`fmtDateTime` qui, `fmtTime`/`fmtWhenFull`/`fmtDateOnly`/
+   `fmtDayMonth` dell'osservatore, `fmtAbsolute` degli Impegni, `fmtData`
+   delle Costruzioni, `fmtWhen` dei Ricordi, i due orari della chat). Ne resta
+   una famiglia, qui.
+
+   La forma (parere di `ux-ui-specialist`, 14/10/2026,
+   `chiusura/c17-ux.md`): 24 ore, senza secondi; «oggi alle 14:30» e «ieri
+   alle 14:30» quando «oggi» lo dice il server; altrimenti «12/10, 14:30», con
+   l'anno solo se diverso da quello DELLA CASA («12/10/2025, 14:30").
+
+   `clock` e' `orologio` della risposta (`historian.house_clock`):
+   `{fuso, adesso}`, e le cifre di `adesso` sono «oggi» nel fuso della casa.
+   Una risposta senza orologio non sa che giorno e' oggi: l'istante esce
+   intero, con l'anno, e non mente. */
+var INSTANT_DIGITS = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/* Le cifre di un istante, senza convertirle. `null` per tutto cio' che non e'
+   un ISO con l'offset: un epoch, un testo senza fuso, un `null`. */
+function instantDigits(iso) {
+  var m = INSTANT_DIGITS.exec(typeof iso === 'string' ? iso : '');
+  if (!m) return null;
+  return { year: m[1], month: m[2], day: m[3], hour: m[4] + ':' + m[5],
+           date: m[1] + '-' + m[2] + '-' + m[3], offset: m[6] };
+}
+
+/* Il giorno prima di un giorno `AAAA-MM-GG`: calendario puro, in UTC per non
+   incontrare il cambio d'ora del browser. Nessun fuso entra nel conto. */
+function dayBefore(date) {
+  var p = date.split('-');
+  return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] - 1)).toISOString().slice(0, 10);
+}
+
+/* «14:30». */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dalle pagine dell'osservatore e dalla chat
+function fmtHour(iso) {
+  var d = instantDigits(iso);
+  return d ? d.hour : '';
+}
+
+/* Solo la data: «12/10/2026» con `withYear`, «12/10» senza. Le due forme
+   approvate dell'osservatore (punto 4: «Corretto da Paolo il gg/mm/aaaa»,
+   «Modificata a mano il gg/mm») e la data delle Costruzioni. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta dall'osservatore e dalle Costruzioni
+function fmtDay(iso, withYear) {
+  var d = instantDigits(iso);
+  if (!d) return '';
+  return d.day + '/' + d.month + (withYear ? '/' + d.year : '');
+}
+
+/* L'istante intero. `article` accorda la frase che lo precede, e davanti a
+   «oggi» e «ieri» l'articolo cade: `'il'` («Letta il 12/10, 14:30» / «Letta
+   oggi alle 14:30»), `'del'` («la copia del 12/10, 14:30» / «la copia di oggi
+   alle 14:30»), `'dal'` («Conta dal 12/10, 14:30» / «Conta da ieri alle
+   14:30»); nessuno per l'istante nudo. Stringa vuota su un valore assente o
+   illeggibile: chi chiama decide se scrivere un trattino o niente, e non
+   compare mai `Invalid Date`. */
+var ARTICLE_BEFORE_TODAY = { il: '', del: 'di ', dal: 'da ' };
+
+/* «oggi» o «ieri» della casa per un istante, o '' per ogni altro giorno e
+   senza orologio: le cifre di `clock.adesso` SONO oggi (C-17). La sola
+   regola del prodotto per dire «oggi» e «ieri» di un istante. */
+function houseDayName(iso, clock) {
+  var d = instantDigits(iso);
+  var now = instantDigits(clock && clock.adesso);
+  if (!d || !now) return '';
+  if (d.date === now.date) return 'oggi';
+  return d.date === dayBefore(now.date) ? 'ieri' : '';
+}
+
+function fmtInstant(iso, clock, article) {
+  var d = instantDigits(iso);
+  if (!d) return '';
+  var name = houseDayName(iso, clock);
+  if (name) return (article ? ARTICLE_BEFORE_TODAY[article] : '') + name + ' alle ' + d.hour;
+  var now = instantDigits(clock && clock.adesso);
+  var year = now && now.year === d.year ? '' : '/' + d.year;
+  return (article ? article + ' ' : '') + d.day + '/' + d.month + year + ', ' + d.hour;
+}
+
+/* Il browser legge questo istante con un altro offset? Si confronta l'offset
+   NELL'ISTANTE (parere UX, punto 2), non il nome del fuso: Lisbona e Londra
+   hanno nomi diversi e lo stesso orologio, e due fusi che cambiano l'ora in
+   settimane diverse sono uguali in un istante e diversi in un altro. */
+function offsetDiffers(iso) {
+  var d = instantDigits(iso);
+  if (!d) return false;
+  var house = d.offset === 'Z' ? 0
+    : (d.offset[0] === '-' ? -1 : 1) * (+d.offset.slice(1, 3) * 60 + +d.offset.slice(4, 6));
+  return -new Date(iso).getTimezoneOffset() !== house;
+}
+
+/* Una riga sola per pagina, in testo secondario sotto il titolo (parere UX,
+   punto 2), e solo quando il browser sta in un altro fuso: «Gli orari sono
+   quelli della casa (Europe/Rome), non del tuo dispositivo.». `title` e' il
+   titolo della pagina, `instants` gli istanti che la pagina mostra (oltre ad
+   `adesso`). Un id, non una classe: e' l'appiglio per non scriverla due volte
+   quando la pagina ridisegna. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da ogni pagina che mostra orari
+function clockHint(title, clock, instants) {
+  if (!title || !title.parentNode || !clock || !clock.fuso) return;
+  if (title.parentNode.querySelector('#clock-hint')) return;
+  var far = [clock.adesso].concat(instants || []).some(offsetDiffers);
+  if (!far) return;
+  var hint = el('p', 'field-hint',
+    'Gli orari sono quelli della casa (' + clock.fuso + '), non del tuo dispositivo.');
+  hint.id = 'clock-hint';
+  title.parentNode.insertBefore(hint, title.nextSibling);
 }
 
 /* Collaudo 3.22 (C5): «Richieste 99 · Token input 7.20M · Costo € 0,00»
@@ -487,12 +594,12 @@ async function loadUsage() {
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
     _setUsageText('u-cost', isSubscriptionOnly(d.sections) ? SUBSCRIPTION_ONLY_COST_LABEL : fmtEuro(d.cost_eur));
-    var when = fmtDateTime(d.last_reset);
+    var when = fmtInstant(d.last_reset, d.orologio, 'il');
     /* «Conta da», non «Azzerato il»: dalla fetta «i consumi, per modello»
        il pulsante sposta un'ancora e non cancella piu' niente, e `last_reset`
        porta l'istante di quell'ancora. Dire «azzerato» descriverebbe un gesto
        che il prodotto non compie piu'. */
-    if (when) _setUsageText('usage-last-reset', 'Conta da ' + when);
+    if (when) _setUsageText('usage-last-reset', 'Conta dal ' + when);
     return true;
   } catch(e) {
     console.error('loadUsage failed', e);

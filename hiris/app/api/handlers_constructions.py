@@ -39,6 +39,7 @@ from aiohttp import web
 from ..action.construction.workshop import ARTICOLO_DETERMINATIVO
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
+from ..home_space.historian import home_space_zone, house_timezone, instant_out
 from ..mind import automate_turn
 from ..states import PENDING, SUSPENDED
 from .boundary import error_response, occurrence_out
@@ -71,7 +72,18 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     total = store.count(now=time.time(), pending_only=pending_only) + (
         observations.count_proposals(pending_only=pending_only)
         if observations is not None else 0)
-    return web.json_response({"constructions": rows, "total": total, "shown": len(rows)})
+    return web.json_response({"constructions": [_born_in_house_hour(request.app, row)
+                                                for row in rows],
+                              "total": total, "shown": len(rows)})
+
+
+def _born_in_house_hour(app, row: dict) -> dict:
+    """`creata_ts` nell'ora della casa (C-17): la pagina ne mostra le cifre
+    (la data nel «Rimetto ... com'era il 12/10/2026»). Si converte all'uscita,
+    dopo l'ordinamento: dentro il server l'istante resta un numero, e
+    `_both_queues` ordina su quello. Il nome non cambia (la rinomina e' T7)."""
+    zone = home_space_zone(house_timezone(app.get("home_space_store")))
+    return {**row, "creata_ts": instant_out(row.get("creata_ts"), zone)}
 
 
 #: Chi applica una proposta. Le costruibili le scrive HIRIS in Home Assistant
@@ -203,9 +215,10 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     if row is None:
         return error_response(404, _NOT_FOUND)
     return web.json_response(
-        {"construction": {**await _out(request.app, row, approved_services(request.app)),
-                          **construction_words(row),
-                          "sospesa": _construction_suspended(row)}})
+        {"construction": _born_in_house_hour(request.app, {
+            **await _out(request.app, row, approved_services(request.app)),
+            **construction_words(row),
+            "sospesa": _construction_suspended(row)})})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:

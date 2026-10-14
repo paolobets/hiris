@@ -1088,6 +1088,12 @@ _MUTE_VOLUTE = {
     # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `action/verification.py`
     # stanno in una riga sola, e non sono state decise per quell'ambito.
     ("loro", "action"), ("nostro", "action"),
+    # `orologio (keeper)` e' il battito dello schedulatore (-> `sweeper`). In
+    # `api/` `orologio` e' la CHIAVE JSON dell'orologio della casa che le
+    # risposte portano alle pagine (C-17, 14/10/2026: `{fuso, adesso}`,
+    # `historian.house_clock`), passata per nome a `error_response`: valore
+    # di dominio, italiano come `giorno` e `fuso` accanto. Senso diverso.
+    ("orologio", "api"),
     # `("verifica", "casa")` e' USCITA il 02/09, e la ragione va letta perche'
     # riguarda tutto questo insieme: l'unica occorrenza del pezzo `verifica`
     # in `home_space/` non era un identificatore di `home_space/` -- era il PERCORSO

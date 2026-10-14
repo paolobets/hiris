@@ -105,27 +105,16 @@ window.HirisAgendaRoute = (function () {
 
   /* ── Date e ore (guida §4): sempre da `quando`, mai da `quando_detto`
      -- quello e' gia' dentro la `frase` verbatim. Gli istanti arrivano in
-     ISO con l'offset (`render.render_promise`, C-32, 13/10/2026), la stessa
-     forma che riceve il modello; si mostrano ancora nel fuso del browser di
-     chi guarda (C-17 decide se passare all'ora della casa). ──── */
+     ISO con l'offset della casa (`render.render_promise`, C-32), e dal
+     14/10/2026 (C-17) se ne mostrano le cifre (`fmtInstant`, common.js):
+     «oggi» lo dice `orologio`, che arriva con la stessa risposta, non il
+     browser. Fino ad allora qui c'erano `isToday`/`fmtAbsolute`, nel fuso del
+     browser. `epochOf` resta per ordinare e per «tra 20 minuti», che sono
+     durate: un'ora e' un'ora in ogni fuso. ──── */
+  var clock = null;
+
   function epochOf(instant) {
     return Date.parse(instant) / 1000;
-  }
-
-  function fmtAbsoluteTime(d) {
-    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
-
-  function isToday(d) {
-    var hour = new Date();
-    return d.getFullYear() === hour.getFullYear() && d.getMonth() === hour.getMonth() &&
-      d.getDate() === hour.getDate();
-  }
-
-  function fmtAbsolute(instant) {
-    var d = new Date(instant);
-    var hour = fmtAbsoluteTime(d);
-    return isToday(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
   }
 
   /* Intl.RelativeTimeFormat, API nativa (nessuna libreria, nessun build
@@ -289,7 +278,7 @@ window.HirisAgendaRoute = (function () {
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
     var body = el('div');
-    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando) + ' · ' + fmtRelative(p.quando)));
+    body.appendChild(el('div', 'field-hint', fmtInstant(p.quando, clock) + ' · ' + fmtRelative(p.quando)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
     body.appendChild(phrase);
@@ -350,7 +339,7 @@ window.HirisAgendaRoute = (function () {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
-    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando)));
+    line.appendChild(el('div', 'field-hint', fmtInstant(p.quando, clock)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
@@ -540,6 +529,9 @@ window.HirisAgendaRoute = (function () {
     }).then(function (data) {
       var all = data.agenda || [];
       pageStates = data.stati || {};
+      clock = data.orologio || null;
+      clockHint(document.querySelector('#route-outlet .page-title'), clock,
+        all.map(function (p) { return p.quando; }));
       var pending = all.filter(function (p) { return p.sospesa === true; });
       var history = all.filter(function (p) { return p.sospesa !== true; });
       /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:

@@ -31,8 +31,6 @@ window.HirisWatcherGiorno = (function () {
   var retryButton = S.retryButton;
   var describeWatchedSubject = S.describeWatchedSubject;
   var ggMmAaaa = S.ggMmAaaa;
-  var ieriLocale = S.ieriLocale;
-  var fmtTime = S.fmtTime;
   var fmtCount = S.fmtCount;
   var fmtPercent = S.fmtPercent;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
@@ -115,7 +113,7 @@ window.HirisWatcherGiorno = (function () {
     return S.createDisclosure('Dettaglio', 'Chiudi', function (panel) {
       if (r.dominio) panel.appendChild(el('div', 'field-hint', r.dominio));
       if (r.volte > 1) {
-        panel.appendChild(el('div', 'field-hint', 'la prima alle ' + fmtTime(r.quando_ts)));
+        panel.appendChild(el('div', 'field-hint', 'la prima: ' + fmtInstant(r.quando_ts, clock)));
       }
       /* L'identificativo grezzo e BASTA: per una voce di registro porta gia'
          dentro di se' la posizione nel sorgente, e `describeWatchedSubject`
@@ -126,13 +124,13 @@ window.HirisWatcherGiorno = (function () {
     });
   }
 
-  /* Quando, e in che forma: un episodio ha una finestra («dalle 03:12 alle
+  /* Quando, e in che forma: un episodio ha una finestra («ieri alle 03:12 →
      03:19»), una condizione ricorrente ha un'ultima volta. Sono due domande
-     diverse e non si dicono con la stessa frase. */
+     diverse e non si dicono con la stessa frase. Le ore sono quelle della
+     casa (C-17), nella forma di tutte le pagine (`fmtInstant`). */
   function primoPianoWhen(r) {
-    if (r.volte > 1) return 'l’ultima alle ' + fmtTime(r.ultimo_ts);
-    if (r.fine_ts) return 'dalle ' + fmtTime(r.quando_ts) + ' alle ' + fmtTime(r.fine_ts);
-    return 'dalle ' + fmtTime(r.quando_ts) + ', ancora in corso';
+    if (r.volte > 1) return 'l’ultima: ' + fmtInstant(r.ultimo_ts, clock);
+    return fmtSpan(r.quando_ts, r.fine_ts);
   }
 
   /* **Tre stati, non due.** Un elenco vuoto e' «ho guardato e non c'era
@@ -275,7 +273,22 @@ window.HirisWatcherGiorno = (function () {
     return riga;
   }
 
-  function renderReport(body, report) {
+  /* L'orologio della casa dell'ultima risposta (C-17): gli istanti del
+     resoconto arrivano nell'ora della casa, e «oggi» e «ieri» li dice lui. */
+  var clock = null;
+
+  /* Un intervallo: «ieri alle 03:12 → 03:19», con la data una volta sola
+     quando la fine cade lo stesso giorno; «→ in corso» senza fine. */
+  function fmtSpan(from, to) {
+    if (!to) return fmtInstant(from, clock) + ' → in corso';
+    var a = instantDigits(from);
+    var b = instantDigits(to);
+    return fmtInstant(from, clock) + ' → ' +
+      (a && b && a.date === b.date ? fmtHour(to) : fmtInstant(to, clock));
+  }
+
+  function renderReport(body, report, orologio) {
+    clock = orologio || null;
     /* **Il giorno si DICE.** La scheda mostra sempre UN giorno solo, ma il
        selettore lo cambia: senza la data scritta qui, chi lo ha appena
        cambiato leggerebbe dei numeri senza sapere a quando si riferiscono. */
@@ -394,7 +407,7 @@ window.HirisWatcherGiorno = (function () {
      riscaldamento parte alle 15:30, la casa e' calda alle 16:30». */
   function chronicleLine(v) {
     var riga = el('div', 'sc-row');
-    var quando = fmtTime(v.quando_ts) + (v.fine_ts ? ' → ' + fmtTime(v.fine_ts) : ' → in corso');
+    var quando = fmtSpan(v.quando_ts, v.fine_ts);
     /* `describeWatchedSubject` torna un OGGETTO (primary/secondary/technical),
        non una stringa: concatenarlo scriverebbe «[object Object]» nella riga.
        `technical` significa che il nome amichevole non c'era -- lo si
@@ -441,20 +454,28 @@ window.HirisWatcherGiorno = (function () {
      risposte. */
   var reportGeneration = 0;
 
-  function loadReport(body, day) {
+  /* Senza un giorno scelto si chiede «ieri» PER NOME, e il server risponde
+     quale giorno e' (`giorno`), nel fuso della casa (C-17, passo 5): fino al
+     14/10/2026 la pagina lo calcolava col fuso del browser, e a New York,
+     all'01:00 di Roma, chiedeva il giorno sbagliato. Il giorno che torna va
+     nel selettore (`campo`). La promessa si risolve con l'orologio della
+     risposta, per il «Letto alle» della scheda. */
+  function loadReport(body, day, campo) {
     var myGeneration = ++reportGeneration;
     clearEl(body);
     line(body, 'Caricamento…', TONE_CALM);
-    function reload() { return loadReport(body, day); }
-    var giorno = day || ieriLocale();
-    return read('api/mind/report?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
+    function reload() { return loadReport(body, day, campo); }
+    return read('api/mind/report?day=' + encodeURIComponent(day || 'ieri')).then(function (occurrence) {
       if (myGeneration !== reportGeneration) return;
       clearEl(body);
+      var corpo = occurrence.corpo || {};
+      if (campo && corpo.giorno) campo.value = corpo.giorno;
       if (!occurrence.ok) {
-        renderReportError(body, occurrence.status, reload, occurrence.corpo);
-        return;
+        renderReportError(body, occurrence.status, reload, corpo);
+        return corpo.orologio;
       }
-      renderReport(body, occurrence.corpo.resoconto || {});
+      renderReport(body, corpo.resoconto || {}, corpo.orologio);
+      return corpo.orologio;
     }, function () {
       if (myGeneration !== reportGeneration) return;
       clearEl(body);
@@ -485,7 +506,6 @@ window.HirisWatcherGiorno = (function () {
     dayInput.id = 'watcher-day';
     dayLabel.setAttribute('for', dayInput.id);
     dayField.appendChild(dayLabel);
-    dayInput.value = ieriLocale();
     dayInput.style.cssText = 'display:block;padding:6px 8px;border-radius:8px;min-height:38px;box-sizing:border-box';
     dayField.appendChild(dayInput);
     controls.appendChild(dayField);
@@ -500,7 +520,7 @@ window.HirisWatcherGiorno = (function () {
     corpo.appendChild(resoconto);
 
     dayInput.addEventListener('change', function () {
-      loadReport(resoconto, dayInput.value || null);
+      loadReport(resoconto, dayInput.value || null, dayInput);
     });
     return { campo: dayInput, resoconto: resoconto };
   }
@@ -511,7 +531,7 @@ window.HirisWatcherGiorno = (function () {
   function carica(corpo, giorno) {
     var comandi = bandaDi(corpo);
     if (giorno) comandi.campo.value = giorno;
-    return loadReport(comandi.resoconto, comandi.campo.value || null);
+    return loadReport(comandi.resoconto, comandi.campo.value || null, comandi.campo);
   }
 
   return {

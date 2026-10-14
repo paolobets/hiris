@@ -382,7 +382,10 @@ async def test_poll_route_pending_then_done(tmp_path):
 
         poll2 = await client.get(f"/api/chat/reply/{job_id}")
         assert poll2.status == 200
-        assert (await poll2.json()) == {"status": "done", "reply": "ecco la risposta"}
+        fatto = await poll2.json()
+        # L'ora della bolla, nell'ora della casa (C-17): c'e' sempre.
+        assert set(fatto.pop("orologio")) == {"fuso", "adesso"}
+        assert fatto == {"status": "done", "reply": "ecco la risposta"}
 
 
 @pytest.mark.asyncio
@@ -562,7 +565,9 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
     # L'insieme ESATTO, non «`debug` non c'e'»: un test scritto come «X non
     # c'e'» lascia rientrare X sotto un altro nome (lezione gia' pagata su
     # `test_models_api`). E gli ARGOMENTI erano la parte peggiore: per
-    # `remember` sono il testo del ricordo.
+    # `remember` sono il testo del ricordo. L'orologio della casa (C-17) c'e'
+    # sempre, e non dice niente del turno.
+    assert set(body.pop("orologio")) == {"fuso", "adesso"}
     assert body == {
         "status": "done",
         "reply": "Preso nota: la caldaia perde.",
@@ -590,6 +595,7 @@ async def test_poll_route_decision_senza_tools_called_non_porta_debug(tmp_path):
         poll = await client.get(f"/api/chat/reply/{job_id}")
         body = await poll.json()
 
+    assert set(body.pop("orologio")) == {"fuso", "adesso"}  # C-17
     assert body == {"status": "done", "reply": "ciao anche a te"}
     assert "debug" not in body
 
@@ -619,6 +625,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
     # produrre la stessa forma, altrimenti la presenza o assenza della chiave
     # racconterebbe da sola se il turno ha usato strumenti -- cioe' meta' del
     # fatto che si e' deciso di non scrivere in chat.
+    assert set(body.pop("orologio")) == {"fuso", "adesso"}  # C-17
     assert body == {"status": "done", "reply": "Sono le tre."}
 
 
@@ -1389,6 +1396,7 @@ async def test_alla_scadenza_il_turno_passa_alla_catena_e_la_risposta_arriva_sul
                           model="sonnet")
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
+    assert set(body.pop("orologio")) == {"fuso", "adesso"}  # C-17
     assert body == {"status": "done", "reply": "sync reply"}
     kwargs = runner.ultima
     # La cronologia del job CONTIENE GIA' il turno dell'utente: passarla intera
@@ -1474,6 +1482,7 @@ async def test_il_ripiego_a_valle_si_annuncia_e_la_nota_resta_sul_job(tmp_path):
         secondo = await (await client.get("/api/chat/reply/" + jid)).json()
     atteso = ("Il Piano Claude Max non ha risposto in tempo: ha risposto "
               "OpenRouter, a consumo.")
+    assert set(primo.pop("orologio")) == {"fuso", "adesso"}  # C-17
     assert primo == {"status": "done", "reply": "sync reply", "nota": atteso}
     assert secondo["nota"] == atteso
 

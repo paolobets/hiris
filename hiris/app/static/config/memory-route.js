@@ -73,19 +73,13 @@ window.HirisMemoryRoute = (function () {
 
   /* L'istante arriva in ISO 8601 con l'offset della casa (`detto_il`: lo
      converte la resa del ricordo, `render.render_memory`, la stessa per la
-     pagina e per il modello; dall'08 all'11/10/2026 qui arrivava l'epoca):
-     l'utente legge l'ora locale. `null` se manca o non è un testo
-     interpretabile — si dichiara "data non disponibile", non se ne inventa
+     pagina e per il modello; dall'08 all'11/10/2026 qui arrivava l'epoca).
+     Dal 14/10/2026 (C-17) se ne mostrano le cifre (`fmtInstant`, common.js),
+     con l'`orologio` della stessa risposta: fino ad allora qui c'era
+     `toLocaleString`, cioe' l'ora del browser. Stringa vuota se manca o non
+     e' un istante -- si dichiara "data non disponibile", non se ne inventa
      una. */
-  function fmtWhen(iso) {
-    var t = typeof iso === 'string' && iso ? Date.parse(iso) : NaN;
-    if (isNaN(t)) return null;
-    try {
-      return new Date(t).toLocaleString('it-IT', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
-    } catch { return new Date(t).toLocaleString(); }
-  }
+  var clock = null;
 
   function formatInterval(r) {
     var u = r.unita ? ' ' + r.unita : '';
@@ -312,7 +306,7 @@ window.HirisMemoryRoute = (function () {
 
     var head = el('div');
     head.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px';
-    var when = fmtWhen(r.detto_il);
+    var when = fmtInstant(r.detto_il, clock);
     head.appendChild(el('span', 'field-hint', (when || 'data non disponibile') + (r.detto_da ? ' · ' + r.detto_da : '')));
     if (r.forza) head.appendChild(el('span', 'agent-badge badge-off', MODALITY_LABELS[r.forza] || r.forza));
     if (r.corretto_da_utente) head.appendChild(el('span', 'agent-badge badge-on', 'corretto da te'));
@@ -461,6 +455,9 @@ window.HirisMemoryRoute = (function () {
       return r.json();
     }).then(function (data) {
       if (!data.available) { renderUnavailable(list); return; }
+      clock = data.orologio || null;
+      clockHint(document.querySelector('#route-outlet .page-title'), clock,
+        (data.memories || []).map(function (r) { return r.detto_il; }));
       renderList(list, data, load);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);
