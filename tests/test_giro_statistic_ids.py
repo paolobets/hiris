@@ -31,7 +31,7 @@ from hiris.app import server
 from hiris.app.home_space import house_history
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
-from hiris.app.mind import recipe_turn
+from hiris.app.mind import recipe_round, recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
 from tests._anagrafe_finta import AnagrafeFinta
@@ -109,7 +109,7 @@ async def test_niente_da_potare_ne_da_chiedere_nessuna_lettura(stores):
     Mutazione (verificata eseguendola): togliere la guardia -- rossa."""
     house = _house()
 
-    assert await server.recipe_round(_app(stores, house)) is None
+    assert await recipe_round.recipe_round(_app(stores, house)) is None
     assert _asked(house) == 0
 
 
@@ -123,7 +123,7 @@ async def test_con_una_ricetta_da_controllare_si_legge(stores):
     _with_recipe(stores[0])
     house = _house()
 
-    await server.recipe_round(_app(stores, house))
+    await recipe_round.recipe_round(_app(stores, house))
 
     assert _asked(house) == 1
 
@@ -139,7 +139,7 @@ async def test_due_giri_vicini_una_lettura_sola(stores):
     house = _house()
     app = _app(stores, house)
 
-    await server.recipe_round(app)
+    await recipe_round.recipe_round(app)
     _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
         app, house, giorno="2026-10-03", timezone="Europe/Rome")
 
@@ -258,7 +258,7 @@ async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
     modello = RunnerFinto("{}")  # il modello della catena: risponde senza ricetta
     app = {**_app(stores, house), "llm_router": modello}
 
-    await server.recipe_round(app)
+    await recipe_round.recipe_round(app)
 
     assert recipe_turn.recipes(sapere).get("dev1") is None
     assert len(modello.chiamate) == 1

@@ -17,6 +17,7 @@ import pytest
 from hiris.app import steering
 from hiris.app.claude_runner import RunnerBackendError
 from hiris.app.llm_router import LLMRouter
+from hiris.app.mind import analyst_round
 from hiris.app.usage.store import UsageStore
 from tests._runner_finto import RunnerFinto
 
@@ -130,7 +131,6 @@ async def test_l_analista_sulla_catena_non_legge_la_frase_del_router(tmp_path):
 
     Mutazione ESEGUITA: `analyst_round` che passa `answer` invece di
     `chain_answer(answer, turn)` -- rossa (il motivo torna «non JSON»)."""
-    from hiris.app import server
     from hiris.app.mind.store import ObservationsStore
     from tests.test_mind_analyst_round import _resoconto
 
@@ -142,7 +142,7 @@ async def test_l_analista_sulla_catena_non_legge_la_frase_del_router(tmp_path):
         app = {"observations": store, "llm_router": router,
                "bridge_active": False}
 
-        esito = await server.analyst_round(app)
+        esito = await analyst_round.analyst_round(app)
 
         assert router.last_unanswered is True
         assert esito["problemi"] == [steering.NO_ANSWER_REASON]

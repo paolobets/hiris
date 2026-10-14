@@ -22,10 +22,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import SCADENZA_LONTANA
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.agent import runner as ponte
 from hiris.app.keeper import exchange
-from hiris.app.mind import proposer_round
+from hiris.app.mind import analyst_round, observer_round, proposer_round, recipe_round
 from hiris.app.mind.store import ObservationsStore
 from tests.test_agent_runner_inaddon import _ProcFelice
 from tests.test_mind_analyst_turn import _serie
@@ -122,7 +122,7 @@ def test_l_osservatore_sul_ponte_usa_il_modello_del_proprietario(tmp_path):
     rossa (`KeyError: 'model'`)."""
     app = _app(tmp_path)
     try:
-        server._enqueue_scope_turn(app, app["observations"], _casa(),
+        observer_round._enqueue_scope_turn(app, app["observations"], _casa(),
                                    reason="prova", window_s=None,
                                    lotto={"climate.camera_t"}, annota=False,
                                    campagna_ts=0.0)
@@ -140,9 +140,9 @@ def test_ricette_analista_attuatore_e_promessa_portano_il_modello(tmp_path):
     app = _app(tmp_path)
     try:
         accodamenti = {
-            "ricette": lambda: server._enqueue_recipe_turn(
+            "ricette": lambda: recipe_round._enqueue_recipe_turn(
                 app, CASA, "dev1", objective="risparmiare"),
-            "analista": lambda: server._enqueue_analyst_turn(
+            "analista": lambda: analyst_round._enqueue_analyst_turn(
                 app, _serie(), "2026-10-05"),
             "promessa": lambda: exchange._enqueue_to_bridge(
                 app, {"id": "p1", "frase": "dimmi", "domanda": "guarda"}),

@@ -27,6 +27,7 @@ from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.historian import house_timezone, local_date
 from ..home_space.house import House
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
+from ..mind.view import mind_view
 from ..model_resolution import downgrade_note
 from ..providers import SUBSCRIPTION
 
@@ -47,7 +48,6 @@ from ..steering import (
 from .boundary import error_body, error_response, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
-from .handlers_mind import mind_view
 from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)

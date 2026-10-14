@@ -39,7 +39,7 @@ cancello di `tests/test_prove_non_leggono_il_testo.py`).
 Rosso letto il 04/10/2026 sul codice di prima (`06fcd59`), con le funzioni
 dei giri chieste allo schedulatore: `observer._area_names`,
 `observer.house_lines`, `recipe_turn._device_entities`, `_device_name`,
-`devices_to_ask`, `_named_recipes`, `server.reconsideration_round` (l'anagrafe
+`devices_to_ask`, `_named_recipes`, `observer_round.reconsideration_round` (l'anagrafe
 intera per `measure_memory_window`) e `server._report_ingredients`.
 
 Mutazioni ESEGUITE il 13/10/2026 (F7, criterio 6), ripristino verificato con
@@ -280,13 +280,15 @@ async def test_nessun_attore_scorre_l_anagrafe(started_app):
 @pytest.mark.asyncio
 async def test_la_derivazione_non_si_e_svuotata(started_app):
     """Le due prove della derivazione. I campi chiesti al lettore ci sono
-    tutti quelli che le copie leggevano; i giri del server trovati comprendono
-    quelli che compongono la casa; e una funzione piantata che scorre
-    l'anagrafe e ne legge un campo si vede, senza toccare la prova."""
+    tutti quelli che le copie leggevano; le funzioni guardate comprendono i
+    giri che compongono la casa (dal 14/10/2026 le ricette e lo scope vivono
+    in `mind/`, e li' li trova la cartella, non il grafo dei lavori); e una
+    funzione piantata che scorre l'anagrafe e ne legge un campo si vede, senza
+    toccare la prova."""
     fields = anagrafe_fields()
     assert {"area_id", "dispositivo_id", "translation_key", "nome", "classe",
             "unita", "piano_id"} <= fields
-    rounds = {key.split("::")[1] for key in round_functions(started_app)}
+    rounds = {key.split("::")[1] for key in actor_functions(started_app)}
     assert {"_report_ingredients", "recipe_round",
             "reconsideration_round"} <= rounds, sorted(rounds)
     planted = ast.parse(

@@ -15,10 +15,10 @@ import json
 
 import pytest
 
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.home_space import historian
+from hiris.app.mind import analyst_round, compute
 from hiris.app.mind import analyst_turn as at
-from hiris.app.mind import compute
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from tests._runner_finto import RunnerFinto
@@ -135,7 +135,7 @@ async def test_sulla_catena_l_analista_riceve_il_catalogo_e_il_guardiano(casa):
     Mutazione ESEGUITA (06/10/2026): il giro della catena che non passa gli
     strumenti -- rossa."""
     app, _store, modello = casa
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     nomi = [d["name"] for d in modello.ultima["tools"]]
     assert nomi == list(steering.SPECIES[steering.ANALYST_SPECIES].tools_for_turn())
     assert isinstance(modello.ultima["dispatcher"], at.AnalystDispatcher)
@@ -146,7 +146,7 @@ async def test_sulla_catena_le_LETTURE_vengono_dal_registro_delle_chiamate(casa)
     """Mutazione ESEGUITA (06/10/2026): il giro che non passa le chiamate del
     turno ad `apply_analysis` -- rossa (nessuna lettura nell'analisi)."""
     app, store, _modello = casa
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert store.analysis(_oggi(app))["letture"] == [
         {"tool": "history", "input": {"riferimento": "sensor.prelievo"}}]
 
@@ -181,7 +181,7 @@ def test_sul_ponte_le_letture_hanno_il_nome_NUDO(casa):
     arrivano -- rossa (`mcp__hiris__history`)."""
     app, store, _modello = casa
     app["reasoning_queue"] = _CodaRisposta(_oggi(app))
-    raccolto = server._collect_analyst_turn(app, store, _oggi(app))
+    raccolto = analyst_round._collect_analyst_turn(app, store, _oggi(app))
     assert raccolto["analisi"]["letture"] == [
         {"tool": "history", "input": {"riferimento": "sensor.prelievo"}},
         {"tool": "ToolSearch", "input": {"query": "x"}}]

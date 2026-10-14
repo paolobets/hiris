@@ -24,9 +24,9 @@ import json
 
 import pytest
 
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.home_space import historian
-from hiris.app.mind import analyst_turn
+from hiris.app.mind import analyst_round, analyst_turn
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
@@ -84,15 +84,15 @@ async def test_accodamento_e_raccolta_vedono_la_stessa_serie(app, monkeypatch):
     monkeypatch.setattr(analyst_turn, "bridge_turn", _bridge)
     monkeypatch.setattr(analyst_turn, "apply_analysis", _apply)
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
-    monkeypatch.setattr(server, "enqueue_turn", lambda app, species, wake, job: ("j", 5))
-    monkeypatch.setattr(server, "turn_in_flight", lambda app, kind: False)
-    await server.analyst_round(app)
+    monkeypatch.setattr(analyst_round, "enqueue_turn", lambda app, species, wake, job: ("j", 5))
+    monkeypatch.setattr(analyst_round, "turn_in_flight", lambda app, kind: False)
+    await analyst_round.analyst_round(app)
 
     app["reasoning_queue"] = _Queue({
         "status": "decided", "wake": {"giorno": today},
         "decision": {"reply": json.dumps({"osservazioni": []}), "tools_called": [],
                      "outcome": "riuscito"}})
-    server._collect_analyst_turn(app, app["observations"], today)
+    analyst_round._collect_analyst_turn(app, app["observations"], today)
 
     assert seen["accodamento"][0]["serie"], "la derivazione non ha composto nessuna serie"
     assert seen["accodamento"][1], "la derivazione non ha composto nessuna memoria"

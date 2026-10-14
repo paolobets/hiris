@@ -14,8 +14,9 @@ import json
 
 import pytest
 
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.home_space import historian
+from hiris.app.mind import analyst_round
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
@@ -73,13 +74,13 @@ async def test_sulla_CATENA_il_rifiuto_si_scrive_e_torna_nella_domanda(casa):
     modello = _modello(_RIFIUTATA, json.dumps({"osservazioni": []}))
     app["llm_router"] = modello
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     riga = app["usage"].turns(species=steering.ANALYST_SPECIES)[0]
     assert riga["outcome"] == steering.REFUSED
     assert any(_PROBLEMA in p for p in riga["problems"])
     assert _PROBLEMA not in modello.chiamate[0]["user_message"]
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert _PROBLEMA in modello.chiamate[1]["user_message"]
     assert app["observations"].analysis(_oggi(app)) is not None
 
@@ -88,7 +89,7 @@ async def test_sulla_CATENA_il_rifiuto_si_scrive_e_torna_nella_domanda(casa):
 async def test_una_risposta_buona_NON_si_segna_rifiutata(casa):
     app = casa
     app["llm_router"] = _modello(json.dumps({"osservazioni": []}))
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert app["usage"].turns()[0]["outcome"] == "riuscito"
 
 
@@ -117,7 +118,7 @@ def test_sul_PONTE_il_raccoglitore_scrive_il_rifiuto_sulla_riga_del_turno(casa):
         "status": "decided", "wake": {"giorno": _oggi(app)},
         "decision": {"reply": _RIFIUTATA, "tools_called": [],
                      "outcome": "riuscito", "turn_id": ident}})
-    server._collect_analyst_turn(app, app["observations"], _oggi(app))
+    analyst_round._collect_analyst_turn(app, app["observations"], _oggi(app))
     riga = app["usage"].turns()[0]
     assert riga["outcome"] == steering.REFUSED
     assert any(_PROBLEMA in p for p in riga["problems"])
@@ -137,10 +138,10 @@ async def test_sul_PONTE_la_domanda_accodata_porta_i_problemi(casa, monkeypatch)
     steering.declare_refused(app["usage"], ident, [_PROBLEMA])
     accodati = []
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
-    monkeypatch.setattr(server, "enqueue_turn",
+    monkeypatch.setattr(analyst_round, "enqueue_turn",
                         lambda app, specie, wake, job: accodati.append(job) or ("j", 5))
-    monkeypatch.setattr(server, "turn_in_flight", lambda app, kind: False)
-    await server.analyst_round(app)
+    monkeypatch.setattr(analyst_round, "turn_in_flight", lambda app, kind: False)
+    await analyst_round.analyst_round(app)
     assert _PROBLEMA in accodati[0]["history"][0]["content"]
 
 

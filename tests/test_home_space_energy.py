@@ -32,7 +32,7 @@ from hiris.app.home_space import energy
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import live_mirror
-from hiris.app.mind import recipe_turn
+from hiris.app.mind import recipe_round, recipe_turn
 from tests._runner_finto import RunnerFinto
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -418,7 +418,7 @@ def test_role_derivation_holds_the_facts_of_task_2_5():
     assert {("battery", "stat_soc"), ("water", "stat_energy_from")} <= set(energy.ROLES)
 
 
-# -- il giro vero: `server.recipe_round` --------------------------------------
+# -- il giro vero: `recipe_round.recipe_round` --------------------------------------
 
 def _questions(runner: RunnerFinto) -> list[str]:
     """Le domande ricevute dal modello finto, in ordine."""
@@ -431,7 +431,6 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
 
     Mutazione ESEGUITA: `recipe_round` che non passa `energy=` ad `ask` --
     rossa (la domanda senza il blocco)."""
-    from hiris.app import server
     from hiris.app.mind.knowledge import KnowledgeStore
     from hiris.app.mind.store import ObservationsStore
 
@@ -449,7 +448,7 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
                "home_space_store": _store(tmp_path), "ha_client": house,
                "entity_cache": _cache(), "llm_router": runner}
 
-        _run(server.recipe_round(app))
+        _run(recipe_round.recipe_round(app))
 
         assert len(_questions(runner)) == 1
         assert "- sensor.inverter_prelievo: prelievo [kWh]" in _questions(runner)[0]
@@ -648,7 +647,6 @@ def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
 
     Mutazione ESEGUITA: `recipe_round` che non passa la dashboard a
     `recipes_to_repair` -- rossa (0 domande)."""
-    from hiris.app import server
     from hiris.app.mind.store import ObservationsStore
 
     sapere = _knowledge(tmp_path)
@@ -664,8 +662,8 @@ def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
                       live_mirror(_cache().all_states()))
         _write(sapere, house)
 
-        _run(server.recipe_round(app))
-        _run(server.recipe_round(app))
+        _run(recipe_round.recipe_round(app))
+        _run(recipe_round.recipe_round(app))
 
         assert len(_questions(runner)) == 1
         assert "- sensor.inverter_prelievo: prelievo [kWh]" in _questions(runner)[0]
@@ -688,7 +686,6 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
     import json
     import time
 
-    from hiris.app import server
     from hiris.app.reasoning.queue import ReasoningQueue
 
     casa, dashboard = _home(tmp_path)
@@ -701,7 +698,7 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
         app = {"reasoning_queue": coda,
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
-        server._enqueue_recipe_turn(app, casa, "inv", objective="risparmiare",
+        recipe_round._enqueue_recipe_turn(app, casa, "inv", objective="risparmiare",
                                     with_series=SERIES, energy=dashboard,
                                     repair=back["inv"])
         taken = coda.claim(time.time())
@@ -711,7 +708,7 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
         coda.submit(taken["job_id"], taken["nonce"], {"reply": json.dumps(RECIPE)},
                     time.time())
 
-        outcome = server._collect_recipe_turn(app, sapere, casa)
+        outcome = recipe_round._collect_recipe_turn(app, sapere, casa)
 
         assert outcome["scritta"]
         assert sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD).source == against

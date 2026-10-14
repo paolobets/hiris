@@ -16,9 +16,8 @@ import json
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space import historian
-from hiris.app.mind import analyst
+from hiris.app.mind import analyst, analyst_round
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
 from tests._runner_finto import RunnerFinto
@@ -173,7 +172,7 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
         modello = _modello_ripetitore()
         app = {"observations": store, "llm_router": modello, "bridge_active": False}
 
-        await server.analyst_round(app)
+        await analyst_round.analyst_round(app)
 
         assert len(modello.chiamate) == 1
         assert '"giorni": ["2026-09-16"]' in modello.ultima["user_message"]

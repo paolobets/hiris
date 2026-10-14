@@ -28,13 +28,12 @@ from __future__ import annotations
 
 import pytest
 
-from hiris.app import server
 from hiris.app.api.handlers_home_space import _tree
 from hiris.app.home_space.ha_vocabulary import has_statistics
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import build_home_space
 from hiris.app.home_space.topology import live_mirror
-from hiris.app.mind import observer, recipe_turn
+from hiris.app.mind import observer, observer_round, recipe_turn
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._avvio import started_app  # noqa: F401
@@ -202,6 +201,6 @@ async def test_il_giro_delle_condizioni_consegna_l_elenco_al_watcher(started_app
             if _reaches(graph, getattr(job.func, "func", job.func).__name__,
                         "hold_watcher_statistic_ids")]
     assert jobs == ["hiris_mind_conditions"]
-    await server.hold_watcher_statistic_ids(started_app, started_app["ha_client"])
+    await observer_round.hold_watcher_statistic_ids(started_app, started_app["ha_client"])
     assert started_app["watcher"]._statistic_ids == frozenset(
         synthetic_inputs()["statistic_ids"])

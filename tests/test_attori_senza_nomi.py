@@ -23,6 +23,7 @@ import pytest
 from hiris.app.home_space.house import House
 from hiris.app.home_space.privacy import PresenceMask, person_bound
 from hiris.app.home_space.topology import Mirror
+from hiris.app.mind import analyst_round
 from hiris.app.mind import analyst_turn as at
 from hiris.app.reasoning.queue import ReasoningQueue
 from tests._anagrafe_finta import AnagrafeFinta
@@ -282,7 +283,6 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
 
     Mutazione ESEGUITA (06/10/2026): il raccoglitore senza filtro -- rossa
     (il segnaposto non e' un entity_id, e l'analisi si rifiuta)."""
-    from hiris.app import server
     from hiris.app.home_space import historian
     from hiris.app.mind.store import ObservationsStore
 
@@ -305,7 +305,7 @@ def test_sul_PONTE_il_rimetti_col_segnaposto_torna_id(tmp_path, monkeypatch):
     try:
         app = {"observations": store, "reasoning_queue": _Coda(),
                "home_space_store": AnagrafeFinta()}
-        raccolto = server._collect_analyst_turn(app, store, oggi)
+        raccolto = analyst_round._collect_analyst_turn(app, store, oggi)
         assert raccolto["analisi"]["rimetti"] == [
             {"id": "sensor.iphone_di_paolo_batteria",
              "perche": "la batteria spiega il calo"}]
@@ -335,7 +335,7 @@ async def test_il_giro_della_catena_copre_la_domanda_con_la_maschera_del_GUARDIA
 
     Mutazione ESEGUITA (06/10/2026): il giro che non passa `presence` a
     `build_question` -- rossa."""
-    from hiris.app import server, steering
+    from hiris.app import steering
     from hiris.app.mind.store import ObservationsStore
 
     maschera = object()
@@ -369,7 +369,7 @@ async def test_il_giro_della_catena_copre_la_domanda_con_la_maschera_del_GUARDIA
                         "unita": "kWh", "copertura": 1.0}]})
 
         modello = RunnerFinto(AssertionError("la domanda e' None: il turno non parte"))
-        await server.analyst_round({"observations": store, "llm_router": modello,
+        await analyst_round.analyst_round({"observations": store, "llm_router": modello,
                                     "bridge_active": False})
     finally:
         store.close()

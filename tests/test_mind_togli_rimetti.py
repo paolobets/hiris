@@ -24,7 +24,7 @@ from hiris.app.home_space.house import (
     House,
 )
 from hiris.app.home_space.topology import Mirror
-from hiris.app.mind import analyst
+from hiris.app.mind import analyst, analyst_round
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
 from hiris.app.mind.store import ObservationsStore
 from tests._anagrafe_finta import AnagrafeFinta
@@ -374,7 +374,6 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     """Il collegamento: senza la chiamata in `analyst_round.write_analysis` il
     `rimetti` validato dal Task 3.5 finirebbe nell'archivio e basta, e lo
     scope non cambierebbe mai."""
-    from hiris.app import server
     from hiris.app.home_space import historian
 
     archivio.replace_report("2026-09-15", {
@@ -385,10 +384,11 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
     archivio.decide_scope("sensor.vicino", inside=False, reason="e' del vicino", author=OWNER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _modello_rimettitore(),
-                                "bridge_active": False,
-                                "home_space_store": _anagrafe("sensor.pioggia", "sensor.vicino"),
-                                "entity_cache": _specchio("sensor.pioggia", "sensor.vicino")})
+    await analyst_round.analyst_round({
+        "observations": archivio, "llm_router": _modello_rimettitore(),
+        "bridge_active": False,
+        "home_space_store": _anagrafe("sensor.pioggia", "sensor.vicino"),
+        "entity_cache": _specchio("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
     assert (scope["sensor.pioggia"]["dentro"], scope["sensor.pioggia"]["autore"]) == (
@@ -417,7 +417,6 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
 
     Mutazione ESEGUITA (07/10/2026): `bring_back` senza il filtro -- rossa
     (`sensor.inventato` entra nello scope con autore analista)."""
-    from hiris.app import server
     from hiris.app.home_space import historian
 
     archivio.replace_report("2026-09-15", {
@@ -427,7 +426,7 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
+    await analyst_round.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
                                 "bridge_active": False,
                                 "home_space_store": _anagrafe("sensor.pioggia"),
                                 "entity_cache": _specchio("sensor.pioggia")})
@@ -446,7 +445,6 @@ async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
     """G74-1 dal giro intero: l'anagrafe mai letta e nessuna cache, come
     all'avvio con Home Assistant irraggiungibile. L'analisi si archivia, il
     «rimetti» dice che la casa non si e' potuta leggere, lo scope resta."""
-    from hiris.app import server
     from hiris.app.home_space import historian
 
     archivio.replace_report("2026-09-15", {
@@ -456,7 +454,7 @@ async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
+    await analyst_round.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
                                 "bridge_active": False, "home_space_store": _anagrafe()})
 
     assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER

@@ -106,6 +106,18 @@ _RESIDUI_NOTI: frozenset[str] = frozenset({
     # dichiarato: chiudere anche quelle vorrebbe dire ricostruire il testo del
     # docstring intero, e il guadagno non vale la macchina.
     "log_entries",
+    # I giri del cervello arrivati da `server.py` il 14/10/2026 (Chiusura, F8
+    # passo 2), spostati senza cambiare una riga: portano nomi italiani della
+    # radice non ancora convertita (`letto`, `porta`, `versione`, ...), e le
+    # stesse parole stanno nella loro prosa come italiano vero («una terza
+    # porta», «si annota», «il fondamento si legge QUI»). Non sono residui di
+    # una rinomina: sono parole italiane che sono ANCHE nomi. Usciranno da qui
+    # da sole quando la rinomina (a sviluppo fermo, CLAUDE.md) tradurra' quei
+    # nomi, e l'uguaglianza esatta lo dira'. `dashboard` («la dashboard
+    # Energia») e `watcher` («consegnato al watcher») sono inglese tecnico,
+    # come `logger` e `runner`.
+    "annota", "dashboard", "fondamento", "letto", "lotto", "porta", "scritta",
+    "versione", "watcher",
 })
 
 

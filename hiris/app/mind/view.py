@@ -374,3 +374,19 @@ def _with_outcomes(analysis: dict) -> dict:
         outcome = by_key.get(observation_key(observation))
         seen.append({**observation, "esito": outcome} if outcome else observation)
     return {**analysis, "osservazioni": seen}
+
+
+def mind_view(app) -> MindView:
+    """Le letture del cervello di questa app: l'UNICO punto che le costruisce,
+    per le rotte di `api/handlers_mind.py`, per lo strumento `mind`
+    (`handlers_chat.create_tool_dispatcher`) e per i giri del cervello che
+    chiedono i nomi dei dispositivi. Sta accanto a `MindView` dal 14/10/2026
+    (F8 passo 2): prima stava fra le rotte, e i giri che l'hanno raggiunta in
+    `mind/` avrebbero importato una rotta (N161-1).
+
+    Si costruisce a ogni richiesta, ed e' gratis: tiene solo riferimenti agli
+    oggetti dell'app, che possono nascere dopo questa rotta (l'osservatore
+    parte all'avvio, a meta')."""
+    return MindView(store=app.get("observations"), watcher=app.get("watcher"),
+                    home_space=app.get("home_space_store"), cache=app.get("entity_cache"),
+                    judgments=app.get("type_judgments"))

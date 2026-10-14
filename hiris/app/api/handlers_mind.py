@@ -45,23 +45,9 @@ from ..mind.judgments import (
 from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
 from ..mind.store import READING_RETENTION_S
-from ..mind.view import MindView
+from ..mind.view import mind_view
 from .boundary import error_response, json_object
 from .soffitto import subject_name
-
-
-def mind_view(app) -> MindView:
-    """Le letture del cervello di questa app: l'UNICO punto che le costruisce,
-    per le rotte qui sotto, per lo strumento `mind`
-    (`handlers_chat.create_tool_dispatcher`) e per i giri del server che
-    chiedono i nomi dei dispositivi.
-
-    Si costruisce a ogni richiesta, ed e' gratis: tiene solo riferimenti agli
-    oggetti dell'app, che possono nascere dopo questa rotta (l'osservatore
-    parte all'avvio, a meta')."""
-    return MindView(store=app.get("observations"), watcher=app.get("watcher"),
-                    home_space=app.get("home_space_store"), cache=app.get("entity_cache"),
-                    judgments=app.get("type_judgments"))
 
 
 async def handle_watching(request: web.Request) -> web.Response:

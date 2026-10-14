@@ -22,7 +22,7 @@ La cura e' quella che il prodotto usa gia' un piano piu' sotto: **l'impronta**.
 L'analisi porta il proprio fondamento, e il giro chiede «c'e' gia' un'analisi
 SU QUESTO fondamento?».
 
-Queste sono le prime prove che fanno girare `server.analyst_round` per intero:
+Queste sono le prime prove che fanno girare `analyst_round.analyst_round` per intero:
 prima d'ora nessuna toccava i giri dello schedulatore, ed e' anche per questo
 che il difetto ha potuto vivere.
 """
@@ -32,8 +32,8 @@ import types
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space import historian
+from hiris.app.mind import analyst_round
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from tests._runner_finto import RunnerFinto
@@ -76,7 +76,7 @@ async def test_un_giorno_senza_analisi_FA_un_turno_e_scrive_il_fondamento(casa):
     dopo non saprebbe su cosa era stata scritta)."""
     app, store, modello = casa
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1
     # Il giorno si calcola **come lo calcola il giro** (fuso della casa), non
@@ -108,7 +108,7 @@ async def test_l_analisi_porta_l_istante_dell_orologio_del_giro(casa, monkeypatc
     fermo = float(int(time.time())) - 600.0
     monkeypatch.setattr(analyst_round, "time", types.SimpleNamespace(time=lambda: fermo))
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     oggi = historian.today(historian.house_timezone(None)).isoformat()
     (scritto,) = store._conn.execute(
@@ -125,9 +125,9 @@ async def test_lo_STESSO_fondamento_non_fa_girare_niente(casa):
     35.000 token)."""
     app, _store, modello = casa
 
-    await server.analyst_round(app)
-    await server.analyst_round(app)
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
+    await analyst_round.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1
 
@@ -140,12 +140,12 @@ async def test_un_resoconto_RECUPERATO_rifa_l_analisi(casa):
     Mutazione: tenere il vecchio confronto (`analysis(oggi) is not None`) --
     rossa (il giorno recuperato non entra in nessuna analisi, mai)."""
     app, store, modello = casa
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert len(modello.chiamate) == 1
 
     store.replace_report("2026-09-14", _resoconto("2026-09-14"))
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert len(modello.chiamate) == 2, "il resoconto recuperato non ha fatto rifare l'analisi"
 
 
@@ -158,11 +158,11 @@ async def test_un_giorno_RIFATTO_rifa_l_analisi(casa):
     Mutazione: mettere nel fondamento i soli giorni e non quando sono stati
     scritti -- rossa (un giorno rifatto e' invisibile)."""
     app, store, modello = casa
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     store.replace_report("2026-09-16", _resoconto("2026-09-16"))
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     assert len(modello.chiamate) == 2, "un giorno rifatto non ha fatto rifare l'analisi"
 
 
@@ -175,12 +175,12 @@ async def test_l_analisi_rifatta_SOSTITUISCE_e_non_si_accoda(casa):
     Mutazione: scrivere l'analisi senza aggiornare il fondamento -- rossa (il
     giro rifarebbe l'analisi a ogni ora, per sempre)."""
     app, store, modello = casa
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     store.replace_report("2026-09-14", _resoconto("2026-09-14"))
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
     conteggio = len(modello.chiamate)
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == conteggio, (
         "dopo aver rifatto l'analisi il giro ha chiesto di nuovo: il fondamento "
@@ -232,7 +232,7 @@ async def test_un_turno_SCADUTO_non_blocca_l_analista_per_sempre(casa):
     app, _store, modello = casa
     app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=1.0)
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1, (
         "un turno scaduto ha bloccato l'analista: e' il difetto del 17-21/09")
@@ -248,7 +248,7 @@ async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
     app, _store, modello = casa
     app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=_t.time() + 600)
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 0
 
@@ -321,7 +321,7 @@ async def test_una_risposta_di_UN_ALTRO_GIORNO_non_blocca_l_analista(casa):
     app, _store, modello = casa
     app["reasoning_queue"] = _CodaConRispostaINACCETTABILE()
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1, (
         "un turno di un altro giorno ha impedito l'analisi di oggi: e' il "
@@ -345,7 +345,7 @@ async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
     # Si guarda il RACCOGLITORE, non il giro: dal giro non si distinguerebbe
     # «non ho raccolto niente» da «ho raccolto un esito vuoto», e una prova che
     # non distingue i due casi resta verde anche senza la guardia.
-    raccolto = server._collect_analyst_turn(app, store, _oggi(app))
+    raccolto = analyst_round._collect_analyst_turn(app, store, _oggi(app))
 
     assert raccolto is None, (
         "un turno «pending» ha prodotto un esito: e' l'esito finto «il modello "
@@ -389,7 +389,7 @@ def test_un_turno_FALLITO_dal_ponte_non_e_una_risposta(casa):
                                          reply="[runner non disponibile]",
                                          outcome="fallito")
 
-    raccolto = server._collect_analyst_turn(app, store, _oggi(app))
+    raccolto = analyst_round._collect_analyst_turn(app, store, _oggi(app))
 
     assert raccolto is not None and raccolto["risposta"] is False
 
@@ -401,7 +401,7 @@ async def test_un_turno_FALLITO_dal_ponte_non_blocca_il_giro(casa):
                                          reply="[runner non disponibile]",
                                          outcome="fallito")
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1, "un turno fallito dal ponte ha fermato il giro"
 
@@ -415,7 +415,7 @@ async def test_un_RIFIUTO_non_si_rilegge_all_infinito(casa):
     app, _store, modello = casa
     app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200, reply=_RIFIUTABILE)
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 1, "una risposta rifiutata ha fermato il giro"
 
@@ -429,6 +429,6 @@ async def test_dopo_un_RIFIUTO_non_si_richiede_a_ogni_giro(casa):
     app, _store, modello = casa
     app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 60, reply=_RIFIUTABILE)
 
-    await server.analyst_round(app)
+    await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 0

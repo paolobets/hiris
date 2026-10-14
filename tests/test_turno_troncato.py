@@ -25,12 +25,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hiris.app import server, steering
+from hiris.app import steering
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.claude_runner import _TRUNCATION_NOTICE, ClaudeRunner
 from hiris.app.home_space import historian
 from hiris.app.llm_router import LLMRouter
-from hiris.app.mind import analyst_turn, observer, proposer_turn
+from hiris.app.mind import analyst_round, analyst_turn, observer, proposer_turn
 from hiris.app.mind import recipe_turn as rt
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
@@ -302,7 +302,7 @@ async def test_l_analista_troncato_non_scrive_l_analisi(tmp_path):
         runner = _troncato(json.dumps({"osservazioni": []}))
         app = {"observations": store, "llm_router": runner, "bridge_active": False}
 
-        esito = await server.analyst_round(app)
+        esito = await analyst_round.analyst_round(app)
 
         assert len(runner.chiamate) == 1
         assert esito["problemi"] == [steering.TRUNCATED_REASON]

@@ -738,7 +738,19 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("backends", "backends", frozenset()),
     ("memory", "memory", frozenset()),
     ("usage", "usage", frozenset()),
-    ("mind", "mind", frozenset()),
+    # `mind` riceve il 14/10/2026 i giri del cervello usciti da `server.py`
+    # (Chiusura, F8 passo 2): spostati SENZA una riga cambiata, quindi con i
+    # nomi italiani della radice, che non e' ancora convertita. Rinominarli
+    # nello stesso commit lo renderebbe uno spostamento con dentro altro; la
+    # rinomina ha la sua regola (CLAUDE.md, «Il debito dichiarato»: a
+    # sviluppo fermo, in un commit di sola rinomina). Misurato col dry-run il
+    # 14/10/2026: `esito` e `casa` in `analyst_round.py`; `annota`, `letto`,
+    # `porta`, `versione` in `observer_round.py`; `campo` ed `esito` in
+    # `recipe_round.py`. E `porta -> actuator` sarebbe una traduzione SBAGLIATA
+    # (li' `porta` e' la strada del turno, ponte o catena): non e' un giro da
+    # fare di sfuggita.
+    ("mind", "mind", frozenset({Path("analyst_round.py"), Path("observer_round.py"),
+                                Path("recipe_round.py")})),
     ("action", "action", frozenset({Path("construction/composer.py")})),
     ("home_space/behavior.py", "home_space", frozenset()),
     ("home_space/historian.py", "home_space", frozenset()),
@@ -1128,6 +1140,10 @@ _MUTE_PROVVISORIE = {
     # portatore in un ambito che la scrive. Il senso *subscription* resta
     # irraggiungibile per costruzione, com'e' scritto accanto alla sua riga.
     ("fuori", "radice"), ("riga", "radice"),
+    # `riga` arriva in `mind` il 14/10/2026 con i giri spostati da `server.py`
+    # (F8 passo 2): la stessa parola muta della radice, che ha cambiato
+    # cartella. Si decide con la rinomina di quei file (vedi `_SORVEGLIATI`).
+    ("riga", "mind"),
 }
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE
