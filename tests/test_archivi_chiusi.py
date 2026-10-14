@@ -28,6 +28,8 @@ import sys
 
 import pytest
 
+from hiris.app import startup
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -135,7 +137,7 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     che non c'è farebbe cadere la pulizia, e con lei le chiusure che seguono.
 
     Fino al 03/10/2026 si cercava `if "nome" in app:` nel testo; adesso si
-    CHIAMA lo spegnimento vero (`server._on_cleanup`) su un'app a cui manca
+    CHIAMA lo spegnimento vero (`startup._on_cleanup`) su un'app a cui manca
     un archivio alla volta. Lo spegnimento non deve cadere, e deve chiudere
     tutti gli altri. (Il sapere puo' anche esserci e valere `None`: quel
     caso ha la sua guardia, `app.get(...) is not None`, e la sua prova in
@@ -146,12 +148,11 @@ async def test_la_chiusura_e_GUARDATA_sulla_presenza():
     `_on_cleanup` -- rossa (`KeyError: 'usage'`)."""
     from unittest.mock import MagicMock
 
-    from hiris.app import server
 
     nomi = sorted(archivi_aperti())
     for mancante in nomi:
         presenti = {nome: MagicMock() for nome in nomi if nome != mancante}
-        await server._on_cleanup({**presenti, "ha_client": CasaFinta({})})
+        await startup._on_cleanup({**presenti, "ha_client": CasaFinta({})})
         aperti = [nome for nome, archivio in presenti.items()
                   if not archivio.close.called]
         assert not aperti, (

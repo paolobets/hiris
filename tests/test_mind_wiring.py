@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server
+from hiris.app import startup
 from hiris.app.home_space import historian
 from hiris.app.home_space.rounds import integration_follower
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
@@ -37,7 +37,7 @@ from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.storage import archive_name
 from tests._anagrafe_finta import AnagrafeFinta
-from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
+from tests._avvio import STARTUP_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests._specchio_finto import SpecchioFinto, raw_state
@@ -61,7 +61,7 @@ def _job(app, job_id: str):
 
 
 def _server_lines(caplog) -> list[str]:
-    return [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
+    return [r.getMessage() for r in caplog.records if r.name == STARTUP_LOGGER]
 
 
 #: Il registro della conservazione: la potatura e' uscita da `server.py`
@@ -402,7 +402,7 @@ async def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_f
     Mutazione ESEGUITA (03/10/2026): la riga del fuso spostata FUORI dal
     try -- rossa (`RuntimeError` esce dal lavoro)."""
     with mock.patch.dict(started_app, {"home_space_store": _ArchivioCasaCheSolleva()}), \
-            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+            caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         await _job(started_app, "hiris_mind_aggregation")()  # non deve sollevare
 
     assert any(
@@ -438,15 +438,15 @@ async def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, cap
         """La riparazione d'avvio scriverebbe gia' ieri e l'altro ieri: qui
         si guarda cio' che scrive il giro della notte, e lui solo."""
 
-    with mock.patch.object(server, "reaggregate_last_two_days", _no_repair):
+    with mock.patch.object(startup, "reaggregate_last_two_days", _no_repair):
         async with started_with(tmp_path) as app:
             assert app["observations"].reports(limit=5) == []
             with mock.patch.dict(app, {"home_space_store": None}), \
-                caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+                caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
                 await _job(app, "hiris_mind_aggregation")()
             ieri = (historian.today(None) - timedelta(days=1)).isoformat()
             avvisi = [r.getMessage() for r in caplog.records
-                      if r.name == SERVER_LOGGER and r.levelno >= logging.WARNING]
+                      if r.name == STARTUP_LOGGER and r.levelno >= logging.WARNING]
             assert not avvisi, avvisi
             assert [r["giorno"] for r in app["observations"].reports(limit=5)] == [ieri]
 
@@ -564,10 +564,10 @@ async def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp
         ricevuto["home_space_store"] = casa
         ricevuto["anagrafe"] = casa.read() if casa is not None else None
 
-    with mock.patch.object(server, "reaggregate_last_two_days", _spia):
+    with mock.patch.object(startup, "reaggregate_last_two_days", _spia):
         async with started_with(tmp_path) as app:
             assert ricevuto.get("home_space_store") is not None
-            assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
+            assert isinstance(ricevuto["home_space_store"], startup.HomeSpace)
             assert ricevuto["home_space_store"] is app["home_space_store"]
     # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
     # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
@@ -1337,7 +1337,7 @@ def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path
                     "component.binary_sensor.entity_component.gas.name": "Gas"}}),
         }
 
-        asyncio.run(server.prime_state_translations(app))
+        asyncio.run(startup.prime_state_translations(app))
 
         riga = sapere.get("tipo", "binary_sensor.gas", "significato")
         assert riga.value == "Gas"
@@ -1358,7 +1358,7 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
                "state_translations": _CacheTraduzioni(
                    {"lette": False, "motivo": "HA non ha risposto"})}
 
-        asyncio.run(server.prime_state_translations(app))
+        asyncio.run(startup.prime_state_translations(app))
 
         assert sapere.summary()["totale"] == 0
     finally:
@@ -1372,7 +1372,7 @@ def test_senza_sapere_la_lettura_delle_traduzioni_non_si_rompe(tmp_path):
            "state_translations": _CacheTraduzioni(
                {"lette": True, "lingua": "it", "risorse": {}})}
 
-    esito = asyncio.run(server.prime_state_translations(app))
+    esito = asyncio.run(startup.prime_state_translations(app))
 
     assert esito["lette"] is True
 
@@ -1834,8 +1834,8 @@ async def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(started_app, cap
         chiamate.append((app, ha_client))
         return "2026-08-23"
 
-    with mock.patch.object(server, "backfill_one_report", _finta), \
-            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with mock.patch.object(startup, "backfill_one_report", _finta), \
+            caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         await _job(started_app, "hiris_mind_backfill")()
 
     assert chiamate == [(started_app, started_app["ha_client"])], (

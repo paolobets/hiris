@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server
+from hiris.app import server, startup
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES
 from hiris.app.mind.facts import genre_for
@@ -169,10 +169,10 @@ def test_sapere_che_NON_si_apre_NON_ferma_avvio_e_la_salute_dice_l_errore(tmp_pa
     def _refuse(path):
         raise sqlite3.OperationalError("unable to open database file")
 
-    monkeypatch.setattr(server, "KnowledgeStore", _refuse)
+    monkeypatch.setattr(startup, "KnowledgeStore", _refuse)
     app = {}
-    with caplog.at_level(logging.ERROR, logger=server.logger.name):
-        server._open_knowledge(app, str(tmp_path))
+    with caplog.at_level(logging.ERROR, logger=startup.logger.name):
+        startup._open_knowledge(app, str(tmp_path))
     assert app["knowledge"] is None
     assert app["type_judgments"] is tv.REPO_JUDGMENTS
     status = app["type_judgments_status"]
@@ -194,9 +194,9 @@ def test_seme_che_solleva_CHIUDE_archivio_e_torna_al_seme(tmp_path, monkeypatch)
         opened.append(_BrokenStore(path))
         return opened[-1]
 
-    monkeypatch.setattr(server, "KnowledgeStore", _open)
+    monkeypatch.setattr(startup, "KnowledgeStore", _open)
     app = {}
-    server._open_knowledge(app, str(tmp_path))
+    startup._open_knowledge(app, str(tmp_path))
     assert app["knowledge"] is None
     assert [store.closed for store in opened] == [True]
     assert "RuntimeError: disco pieno" in app["type_judgments_status"]["perche"]
@@ -204,7 +204,7 @@ def test_seme_che_solleva_CHIUDE_archivio_e_torna_al_seme(tmp_path, monkeypatch)
 
 def test_sapere_che_si_apre_arriva_in_app_seminato(tmp_path):
     app = {}
-    server._open_knowledge(app, str(tmp_path))
+    startup._open_knowledge(app, str(tmp_path))
     try:
         assert isinstance(app["knowledge"], KnowledgeStore)
         assert app["type_judgments_status"]["stato"] == "sapere"
@@ -227,7 +227,7 @@ def test_chiusura_regge_il_sapere_assente():
 
     house = CasaFinta(synthetic_inputs())
 
-    asyncio.run(server._on_cleanup({"knowledge": None, "ha_client": house}))
+    asyncio.run(startup._on_cleanup({"knowledge": None, "ha_client": house}))
 
     assert house.calls == []
 

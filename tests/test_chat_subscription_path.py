@@ -950,16 +950,16 @@ async def test_gli_avvisi_del_ponte_vengono_STAMPATI_e_non_solo_composti(tmp_pat
     `logger.debug(_notice)` -- rossa."""
     import logging
 
-    from tests._avvio import SERVER_LOGGER, credential_environment, started_with
+    from tests._avvio import STARTUP_LOGGER, credential_environment, started_with
 
     attesi = _bridge_notices(True, False)
     assert attesi, "lo stato preparato deve avere qualcosa da dire"
     _models_config_with_bridge(tmp_path, True)
-    with caplog.at_level(logging.DEBUG, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.DEBUG, logger=STARTUP_LOGGER):
         async with started_with(tmp_path, credential_environment(())):
             pass
     avvisi = [r.getMessage() for r in caplog.records
-              if r.name == SERVER_LOGGER and r.levelno == logging.WARNING]
+              if r.name == STARTUP_LOGGER and r.levelno == logging.WARNING]
     mancanti = [a for a in attesi if a not in avvisi]
     assert not mancanti, (
         "gli avvisi si compongono e non finiscono piu' nel registro come "

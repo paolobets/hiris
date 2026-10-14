@@ -22,7 +22,7 @@ La casa e' `CasaFinta` (`scripts/casa_finta.py`): il client VERO di Home
 Assistant, col solo trasporto sostituito, che risponde dagli ingressi
 congelati nella forma grezza di Home Assistant (Tappa 2, Task 4, 03/10/2026:
 prima era `FrozenHouse`, che imitava i metodi pubblici a mano). L'app si monta
-chiamando `server._on_startup`, cioe' l'avvio vero: archivi, giudizi dei
+chiamando `startup._on_startup`, cioe' l'avvio vero: archivi, giudizi dei
 tipi, traduzioni, registro dei servizi, guasti, tutto cablato come in
 produzione, in una cartella dati temporanea. Il nucleo esce da
 `compose_briefing` e gli strumenti da `create_tool_dispatcher`, gli unici due
@@ -116,7 +116,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import casa
 from casa_finta import NOWHERE, CasaFinta
 
-from hiris.app import claude_runner, server
+from hiris.app import claude_runner, server, startup
 from hiris.app.agent import prompts as bridge_prompts
 from hiris.app.api import handlers_chat, handlers_home_space, soffitto
 from hiris.app.home_space import briefing, house_query, queries, topology
@@ -348,7 +348,7 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
         return FrozenHouse(inputs)
 
     with mock.patch.dict(os.environ, _environment(data_dir)), \
-            mock.patch.object(server, "HAClient", house_class or frozen):
+            mock.patch.object(startup, "HAClient", house_class or frozen):
         app = server.create_app()
         # Zitto SOLO mentre l'avvio e lo spegnimento girano: chi usa l'app nel
         # mezzo (le prove con `caplog`) deve vedere i log di `hiris.*` al
@@ -358,7 +358,7 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
         try:
             quiet.setLevel(logging.CRITICAL)
             try:
-                await asyncio.wait_for(server._on_startup(app), timeout=STARTUP_TIMEOUT_S)
+                await asyncio.wait_for(startup._on_startup(app), timeout=STARTUP_TIMEOUT_S)
                 # L'avvio intero: anche la prima connessione e cio' che ha
                 # rimandato. Un'app consegnata prima avrebbe le riletture
                 # della prima connessione in volo mentre la si usa.
@@ -370,7 +370,7 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
         finally:
             quiet.setLevel(logging.CRITICAL)
             try:
-                await asyncio.wait_for(server._on_cleanup(app), timeout=STARTUP_TIMEOUT_S)
+                await asyncio.wait_for(startup._on_cleanup(app), timeout=STARTUP_TIMEOUT_S)
             finally:
                 quiet.setLevel(level)
 

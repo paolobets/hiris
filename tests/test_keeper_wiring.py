@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, create_autospec
 import pytest
 import pytest_asyncio
 
-from hiris.app import server
+from hiris.app import startup
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
@@ -189,7 +189,7 @@ async def test_il_cleanup_chiude_promesse_e_cronaca():
         "journal": cronaca_finta,
     }
 
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     promesse_finte.close.assert_called_once()
     cronaca_finta.close.assert_called_once()
@@ -202,7 +202,7 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
     `archivio_memoria` qui sotto."""
     app = {"ha_client": CasaFinta({})}
-    await server._on_cleanup(app)  # non deve sollevare
+    await startup._on_cleanup(app)  # non deve sollevare
 
 
 @pytest.mark.asyncio
@@ -225,7 +225,7 @@ async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
         "memory_store": archivio_memoria_finto,
     }
 
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     archivio_memoria_finto.close.assert_called_once()
     assert archivio_casa_finto.mock_calls == []

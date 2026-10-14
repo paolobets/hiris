@@ -29,7 +29,7 @@ import pytest
 import pytest_asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from hiris.app import server
+from hiris.app import startup
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
@@ -89,17 +89,17 @@ async def startup_steps(tmp_path_factory):
     sostituiscono: l'avvio fa esattamente cio' che fa senza di loro."""
     steps: list[tuple[str, frozenset | None]] = []
     spies = (
-        mock.patch.object(server, "_open_knowledge",
-                          _recorded(steps, "knowledge", server._open_knowledge)),
+        mock.patch.object(startup, "_open_knowledge",
+                          _recorded(steps, "knowledge", startup._open_knowledge)),
         mock.patch.object(EntityCache, "load",
                           _recorded(steps, "entity_cache", EntityCache.load)),
         mock.patch.object(Watcher, "rebuild_conditions",
                           _recorded(steps, "rebuild_conditions",
                                     Watcher.rebuild_conditions)),
-        mock.patch.object(server, "watch_system_conditions",
+        mock.patch.object(startup, "watch_system_conditions",
                           _recorded(steps, "watch_system_conditions",
                                     conditions_round.watch_system_conditions)),
-        mock.patch.object(server, "reaggregate_last_two_days",
+        mock.patch.object(startup, "reaggregate_last_two_days",
                           _recorded(steps, "reaggregate",
                                     day_report.reaggregate_last_two_days, app_keys=True)),
         mock.patch.object(ConstructionStore, "risana",
@@ -209,17 +209,17 @@ async def test_a_failing_startup_repair_does_not_stop_startup(tmp_path, caplog):
     `logger.warning` del ramo d'errore tolto -- rossa."""
     import logging
 
-    from tests._avvio import SERVER_LOGGER
+    from tests._avvio import STARTUP_LOGGER
 
     async def broken(app, ha_client, **kwargs):
         raise RuntimeError("riparazione rotta")
 
-    with mock.patch.object(server, "reaggregate_last_two_days", broken), \
-            caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with mock.patch.object(startup, "reaggregate_last_two_days", broken), \
+            caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             RecordingHouse) as app:
             assert callable(app["recompute_chain"])
-    lines = [r.getMessage() for r in caplog.records if r.name == SERVER_LOGGER]
+    lines = [r.getMessage() for r in caplog.records if r.name == STARTUP_LOGGER]
     assert any(line.startswith("cervello:")
                and "RuntimeError: riparazione rotta" in line for line in lines), lines
 
@@ -474,7 +474,7 @@ async def test_a_reference_change_rereads_the_state_words(started_app):
         rebuilds = [c for c in spawned if c.cr_code.co_name == "_fra_poco"
                     and "rebuild" in c.cr_code.co_names]
         assert len(rebuilds) == 1, [c.cr_code.co_qualname for c in spawned]
-        with (mock.patch.object(server, "after_rebuild", primed),
+        with (mock.patch.object(startup, "after_rebuild", primed),
               mock.patch("asyncio.sleep", mock.AsyncMock())):
             await rebuilds[0]
     finally:
@@ -537,7 +537,7 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
         recomputed.append(app)
         return real(app)
 
-    with mock.patch.object(server, "_recompute_chain", spy):
+    with mock.patch.object(startup, "_recompute_chain", spy):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             RecordingHouse) as app:
             assert app["llm_router"] is not None

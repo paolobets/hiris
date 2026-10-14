@@ -16,7 +16,7 @@ pinnavano. Vedi la nota in fondo al file: cadevano per costruzione, e cio'
 che provavano era gia' un no-op nel prodotto.
 
 ``_submit_chat_reply`` is a closure built by ``consegna._chat_reply_submitter``
-(called from ``server._on_startup``), published as
+(called from ``startup._on_startup``), published as
 ``app["submit_chat_reply"]``. Fino al 03/10/2026 la si
 ritagliava dal testo di ``_on_startup`` e la si eseguiva con le sue variabili
 libere ricopiate a mano; adesso l'app si avvia davvero

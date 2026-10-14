@@ -26,7 +26,7 @@ AMMESSI: dict[str, str] = {
     "api/handlers_models.py": (
         "gli elenchi dei modelli dai provider (Anthropic, OpenAI, OpenRouter, "
         "Ollama), per la pagina Modelli"),
-    "server.py": "il controllo d'avvio dell'indirizzo di Ollama, un provider",
+    "startup.py": "il controllo d'avvio dell'indirizzo di Ollama, un provider",
 }
 
 

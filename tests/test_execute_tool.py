@@ -149,7 +149,7 @@ def test_un_app_SENZA_la_chiave_costruisce_il_dispatcher_sul_SOLO_SEME():
     strutturale D3 (`tests/test_judgments_passed_in_production.py`) guarda il
     **keyword**, non il valore, quindi quella ricaduta non era fissata da
     nessuna prova. In produzione non scatta mai -- l'avvio scrive sempre la
-    chiave, anche quando il sapere non si apre (`server._open_knowledge` mette
+    chiave, anche quando il sapere non si apre (`startup._open_knowledge` mette
     il solo seme, spec §8) -- ma il `.get` esiste perche' le prove costruiscono
     `app` a mano, e **questa e' la prova che dichiara cosa deve fare**: il solo
     seme del repo, mai `None`, mai un `KeyError`.

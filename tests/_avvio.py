@@ -83,13 +83,13 @@ CREDENTIAL_VARIABLES = {"subscription": "CLAUDE_CODE_OAUTH_TOKEN",
 UNREACHABLE_OLLAMA = "http://127.0.0.1:9"
 
 
-#: Il registro di `server.py`, per chi legge cio' che l'avvio scrive. Il
+#: Il registro di `startup.py`, per chi legge cio' che l'avvio scrive. Il
 #: montaggio mette `hiris` a CRITICAL durante `_on_startup` e `_on_cleanup`, e
 #: lo rimette com'era mentre l'app e' accesa. Chi vuole vedere cio' che scrive
 #: L'AVVIO stesso da' quindi il livello al FIGLIO, che vale per il figlio
-#: (`caplog.at_level(livello, logger=SERVER_LOGGER)`), e i suoi record
+#: (`caplog.at_level(livello, logger=STARTUP_LOGGER)`), e i suoi record
 #: risalgono comunque fino al gestore di `caplog`.
-SERVER_LOGGER = "hiris.app.server"
+STARTUP_LOGGER = "hiris.app.startup"
 
 
 def credential_environment(present) -> dict[str, str]:

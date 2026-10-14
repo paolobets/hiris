@@ -37,7 +37,7 @@ import time
 import pytest
 from aiohttp import web
 
-from hiris.app import server
+from hiris.app import server, startup
 from hiris.app.action import installation
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.proxy import ha_client
@@ -456,7 +456,7 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     Mutazione: aspettarla dentro l'avvio -- rossa (il client non parte)."""
     monkeypatch.setenv("HIRIS_NON_ADMIN_ACCESS", "true")
     app = server.create_app()
-    app.on_startup.remove(server._on_startup)
+    app.on_startup.remove(startup._on_startup)
     ha = _filo_appeso("frontend/update_panel")
     app["ha_client"] = ha
     app["chat_settings"] = ChatSettings()
@@ -573,7 +573,7 @@ async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
     assert _nucleo(ha), "precondizione: la sincronia e' appesa su update_panel"
 
     start = time.monotonic()
-    await server._on_cleanup(app)
+    await startup._on_cleanup(app)
 
     assert time.monotonic() - start < 1.0, "la chiusura ha aspettato la sincronia appesa"
     assert app["installation_task"].done()
@@ -598,5 +598,5 @@ def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
     l'ordine dei due e' un fatto, e si pinna."""
     app = server.create_app()
     hooks = list(app.on_startup)
-    assert server._on_startup in hooks and installation.start_installation in hooks
-    assert hooks.index(installation.start_installation) > hooks.index(server._on_startup)
+    assert startup._on_startup in hooks and installation.start_installation in hooks
+    assert hooks.index(installation.start_installation) > hooks.index(startup._on_startup)

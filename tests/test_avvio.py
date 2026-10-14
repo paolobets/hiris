@@ -25,7 +25,7 @@ async def test_l_app_avviata_ha_i_lavori_periodici_e_gli_archivi(started_app):
     un'app vuota: `get_job` torna `None`, e `None == None` e' verde.
 
     Mutazione ESEGUITA: cambiato l'id del lavoro `hiris_mind_aggregation` in
-    `server._on_startup` -- rossa."""
+    `startup._on_startup` -- rossa."""
     _SEEN.append(started_app)
     jobs = {job.id for job in started_app["scheduler"].get_jobs()}
     assert len(jobs) >= 10, jobs

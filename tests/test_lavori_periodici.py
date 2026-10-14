@@ -14,7 +14,7 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
+from hiris.app import startup
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -67,7 +67,7 @@ async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_a
     chiamata a `watch_system_conditions`)."""
     job = _job(started_app, "hiris_mind_conditions")
     assert str(job.trigger) == "interval[0:10:00]"
-    with mock.patch.object(server, "watch_system_conditions",
+    with mock.patch.object(startup, "watch_system_conditions",
                            mock.AsyncMock()) as watched:
         await job.func()
     watched.assert_awaited_once()
@@ -79,7 +79,7 @@ async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_
     sempre senza che nessuno rileggesse le loro tracce."""
     job = _job(started_app, "hiris_mind_automation_traces")
     assert str(job.trigger) == "interval[0:02:00]"
-    with mock.patch.object(server, "watch_automation_outcomes",
+    with mock.patch.object(startup, "watch_automation_outcomes",
                            mock.AsyncMock()) as watched:
         await job.func()
     watched.assert_awaited_once()
@@ -90,7 +90,7 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
     pochi minuti, non alla prossima notte."""
     job = _job(started_app, "hiris_entity_cache_reload")
     assert str(job.trigger) == "interval[0:02:00]"
-    with mock.patch.object(server, "reload_entity_inventory",
+    with mock.patch.object(startup, "reload_entity_inventory",
                            mock.AsyncMock()) as reloaded:
         await job.func()
     reloaded.assert_awaited_once()
@@ -165,7 +165,7 @@ async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):
 
     Mutazione ESEGUITA: tolta la chiamata all'avvio -- rossa."""
     watched = mock.AsyncMock()
-    with mock.patch.object(server, "watch_system_conditions", watched):
+    with mock.patch.object(startup, "watch_system_conditions", watched):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)):
             pass
     assert watched.await_count >= 1

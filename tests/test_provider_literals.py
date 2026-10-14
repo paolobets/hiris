@@ -37,7 +37,7 @@ AMMESSI_PY = {
         "il nome del MODULO Python dell'SDK, che si sonda per le sue eccezioni",
     ("agent/runner.py", "claude"):
         "il nome dell'eseguibile della CLI del ponte, fuori dall'immagine",
-    ("server.py", "ollama"):
+    ("startup.py", "ollama"):
         "la chiave fittizia che l'endpoint compatibile OpenAI di Ollama chiede",
 }
 

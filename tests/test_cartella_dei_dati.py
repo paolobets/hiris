@@ -4,7 +4,7 @@ Fino alla Tappa 8 si leggeva in quattro forme -- `app["data_dir"]`,
 `app.get("data_dir")`, `app.get("data_dir", "/data")`, e una guardia `if not
 data_dir` a valle -- che divergevano sulla stringa vuota e sull'app che non
 l'aveva: una forma ripiegava sulla cartella di produzione, un'altra taceva.
-L'avvio la scrive per prima (`server._on_startup`, da `HIRIS_DATA_DIR`), e
+L'avvio la scrive per prima (`startup._on_startup`, da `HIRIS_DATA_DIR`), e
 da li' in poi c'e' sempre: un ripiego non protegge niente, nasconde
 un'app montata male.
 

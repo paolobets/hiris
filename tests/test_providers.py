@@ -21,7 +21,7 @@ from unittest import mock
 import pytest
 
 from hiris.app.providers import providers_in_chain
-from tests._avvio import SERVER_LOGGER, UNREACHABLE_OLLAMA
+from tests._avvio import STARTUP_LOGGER, UNREACHABLE_OLLAMA
 
 
 def _runners(router):
@@ -204,7 +204,7 @@ async def test_l_avvio_dichiara_nel_registro_chi_resta_fuori_dalla_catena(tmp_pa
 
     Mutazione ESEGUITA (03/10/2026): tolto il `logger.info` di «FUORI dalla
     catena» -- rossa (`IndexError`: la frase non c'e')."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"],
                             credentials=("claude", "openrouter")):
             pass
@@ -220,7 +220,7 @@ async def test_l_avvio_non_scrive_niente_quando_non_c_e_niente_da_dichiarare(tmp
     """La vecchia prova guardava che il blocco isolato non scrivesse NIENTE;
     sull'avvio intero si guarda che non scriva la frase di chi e' fuori (il
     resto dell'avvio scrive le sue)."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",)):
             pass
     assert "FUORI dalla catena" not in caplog.text
@@ -466,7 +466,7 @@ async def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_model
     - `if _risponde["ollama"]:` (la verifica) -> `if local_model_url:` --
       rossa (la verifica parte senza un modello, e il registro lo dice);
     - `read_model=_local_model` -> `read_model=_model_of("openai")` -- rossa."""
-    with caplog.at_level(logging.INFO, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",),
                             ollama_url=UNREACHABLE_OLLAMA) as (app, _chains):
             local = app["llm_router"]._backend_map()["ollama"]
@@ -491,7 +491,7 @@ async def test_con_un_modello_scelto_la_raggiungibilita_si_verifica(tmp_path, ca
 
     Mutazione ESEGUITA (03/10/2026): la guardia della verifica resa
     `if False:` (la verifica non parte mai) -- rossa."""
-    with caplog.at_level(logging.WARNING, logger=SERVER_LOGGER):
+    with caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["ollama"], ollama_url=UNREACHABLE_OLLAMA,
                             ollama_model="llama3.1:8b"):
             pass
