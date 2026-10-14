@@ -3653,7 +3653,7 @@ async def _on_startup(app: web.Application) -> None:
     openai_runner = None
     if openai_api_key and _credentials[OPENAI.id]:
         openai_runner = OpenAICompatRunner(
-            base_url="https://api.openai.com/v1",
+            base_url=OPENAI.api_base,
             api_key=openai_api_key,
             read_model=_model_of(OPENAI.id),
             log_usage=app["usage"].log,
