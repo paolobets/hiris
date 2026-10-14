@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
-import { fintoFetch } from './helpers/fetch.mjs';
+import { fintoFetch, maiRisposta } from './helpers/fetch.mjs';
 
 process.env.TZ = 'America/New_York';
 
@@ -123,3 +123,49 @@ test('Il giorno: chiede «ieri» per nome e scrive nel selettore il giorno della
   rigaFuso(ctx.document);
 });
 
+/* La chat: le bolle ripristinate mostrano le cifre dell'ora della casa, e
+   una bolla viva prende l'ora dall'orologio della risposta, non da
+   `new Date()` del browser (a New York sarebbe «18:30» e «19:00»). */
+const CHAT_HTML = `<!doctype html><body><div id="app"><aside id="sidebar"></aside>
+  <main id="main"><header id="header"><div id="header-text">
+    <div id="header-title">HIRIS <span id="header-version"></span></div>
+    <div id="header-subtitle">sotto</div></div>
+    <div id="agent-pill"><span id="ap-avatar"></span><span id="ap-name"></span></div>
+    <div id="conn-dot"></div></header>
+  <div id="messages"><div id="welcome"><span id="welcome-hello">Ciao</span></div></div>
+  <button id="delete-conv-btn"></button>
+  <div id="input-area"><textarea id="input"></textarea><button id="send-btn"></button></div>
+  <div id="turn-counter" style="display:none"></div><div id="conv-notice" hidden></div>
+  <div id="session-ended-msg" style="display:none"></div></main></div></body>`;
+const CHAT = ['common.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
+  'chat/conversations.js', 'chat/send.js', 'pending-badge.js'];
+
+function apriChat(t) {
+  const ctx = loadScripts(CHAT, { html: CHAT_HTML });
+  t.after(() => { ctx.window.HirisChatMessages.stopAllWaits(); ctx.dom.window.close(); });
+  return ctx;
+}
+
+test('Chat: la cronologia mostra le ore della casa, e la riga del fuso sotto il nome', async (t) => {
+  const ctx = apriChat(t);
+  fintoFetch(ctx.window, {
+    'api/chat/history': { turni: 1, orologio: OROLOGIO,
+      messages: [{ role: 'user', content: 'ciao', timestamp: OGGI }] },
+  });
+  await ctx.window.HirisChatAgents.restore();
+  assert.equal(ctx.document.querySelector('.msg-time').textContent, '00:30');
+  const riga = rigaFuso(ctx.document);
+  assert.equal(riga.previousSibling, ctx.document.getElementById('header-subtitle'));
+});
+
+test('Chat: una bolla viva prende l’ora dall’orologio della risposta', async (t) => {
+  const ctx = apriChat(t);
+  fintoFetch(ctx.window, {
+    'POST api/chat': { response: 'eccomi', orologio: OROLOGIO },
+    'GET api/pending': maiRisposta,
+    'GET api/chat/conversations': maiRisposta,
+  });
+  await ctx.window.HirisChatSend.send('ci sei?');
+  const ore = [...ctx.document.querySelectorAll('.msg-time')].map((e) => e.textContent);
+  assert.deepEqual(ore, ['01:00', '01:00'], 'la domanda e la risposta, nell’ora della casa');
+});

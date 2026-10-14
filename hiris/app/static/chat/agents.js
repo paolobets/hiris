@@ -177,6 +177,10 @@
            al momento del disegno -- vedi chat/messages.js::appendMsg. */
         window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content, true, m.timestamp);
       });
+      /* Le ore delle bolle sono quelle della casa (C-17): col browser in un
+         altro fuso lo dice una riga sotto il nome, una volta sola. */
+      clockHint(document.getElementById('header-subtitle'), data.orologio,
+        msgs.map(function (m) { return m.timestamp; }));
       /* C-15: i turni li conta il server, con la funzione del tetto. Contarli
          qui sui `messages` diceva meno del vero oltre il trentesimo turno:
          la storia arriva tagliata a 30 coppie, il tetto conta tutto. */

@@ -42,23 +42,20 @@
   function idle() { return inFlight; }
   function activeId() { return active; }
 
-  /* «oggi», «ieri», poi gg-mm, nel fuso di chi guarda. `ultimo_messaggio` si
-     mostra cosi' com'e': dopo una ripresa e' l'ora della ripresa (serve alla
-     regola delle due ore del server), e inventarne un'altra direbbe una data
-     che nessuno ha scritto. Una data illeggibile non diventa «oggi».
-     Arriva in epoca, come ogni istante degli archivi (G-14, Tappa 8). */
-  function relativeDay(epoch, now) {
-    if (typeof epoch !== 'number' || !isFinite(epoch)) return '';
-    var d = new Date(epoch * 1000);
-    var n = now || new Date();
-    var today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
-    var day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    /* `round` e non `floor`: nei giorni del cambio d'ora la mezzanotte dista
-       23 o 25 ore dalla precedente. */
-    var diff = Math.round((today - day) / 86400000);
-    if (diff === 0) return 'oggi';
-    if (diff === 1) return 'ieri';
-    return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1);
+  /* «oggi», «ieri», poi gg-mm, nel giorno DELLA CASA (C-17, 14/10/2026):
+     `ultimo_messaggio` arriva nell'ora della casa e «oggi» lo dice
+     l'orologio della stessa risposta (`houseDayName`, common.js); fino ad
+     allora si calcolava nel fuso del browser. `ultimo_messaggio` si mostra
+     cosi' com'e': dopo una ripresa e' l'ora della ripresa (serve alla regola
+     delle due ore del server), e inventarne un'altra direbbe una data che
+     nessuno ha scritto. Una data illeggibile non diventa «oggi». */
+  var clock = null;
+
+  function relativeDay(iso, orologio) {
+    var d = instantDigits(iso);
+    if (!d) return '';
+    return houseDayName(iso, orologio === undefined ? clock : orologio) ||
+      d.day + '-' + d.month;
   }
 
   /* Chi decide se i comandi delle conversazioni si possono premere: uno solo,
@@ -113,10 +110,8 @@
     title.textContent = String(row.titolo == null ? '' : row.titolo);
     var when = document.createElement('time');
     when.className = 'conv-when';
-    /* `datetime` vuole una data leggibile dalla macchina: l'ISO dell'epoca. */
-    if (relativeDay(row.ultimo_messaggio)) {
-      when.setAttribute('datetime', new Date(row.ultimo_messaggio * 1000).toISOString());
-    }
+    /* `datetime` vuole una data leggibile dalla macchina: l'ISO stesso. */
+    if (relativeDay(row.ultimo_messaggio)) when.setAttribute('datetime', row.ultimo_messaggio);
     when.textContent = relativeDay(row.ultimo_messaggio);
     btn.appendChild(title);
     btn.appendChild(when);
@@ -153,6 +148,7 @@
         var r = await fetch(BASE);
         if (!r.ok) throw new Error('conversazioni: ' + r.status);
         var data = await r.json();
+        clock = data.orologio || null;
         render(Array.isArray(data.conversations) ? data.conversations : []);
         hideNotice();
       } catch (e) {

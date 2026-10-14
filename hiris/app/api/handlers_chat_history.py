@@ -9,7 +9,8 @@ from ..chat_store import (
     resume_conversation,
 )
 from ..chat_thread import adopt_if_owner, request_thread, unknown_id_text
-from .boundary import error_response
+from ..home_space.historian import home_space_zone, house_timezone, instant_out
+from .boundary import error_response, house_clock_of
 from .handlers_chat import PENDING_REPLY_ERROR
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET /api/chat/history`
@@ -29,6 +30,11 @@ from .handlers_chat import PENDING_REPLY_ERROR
 # Il corpo del 404, uno solo per «non esiste» e «non e' tuo» (security 6.3):
 # due corpi diversi direbbero a chi prova gli id quali sono di qualcun altro.
 _CONVERSATION_NOT_FOUND = unknown_id_text("nessuna conversazione")
+
+
+def _house_zone(request: web.Request):
+    """Il fuso della casa, in cui escono gli istanti della chat (C-17)."""
+    return home_space_zone(house_timezone(request.app.get("home_space_store")))
 
 
 def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
@@ -66,6 +72,10 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # modello (`handlers_chat.py`) non passa questo argomento: resta
     # `{role, content}`, il formato che l'API del modello si aspetta.
     messages = load_history(data_dir, thread=thread, days=giorni, include_timestamp=True)
+    # C-17 (14/10/2026): l'archivio restituisce l'epoca (G-14), la pagina
+    # riceve l'ora della casa e ne mostra le cifre, come ogni altra pagina.
+    zone = _house_zone(request)
+    messages = [{**m, "timestamp": instant_out(m.get("timestamp"), zone)} for m in messages]
     # C-15 (Chiusura, 13/10/2026): i turni li conta il server, con la STESSA
     # funzione con cui `handle_chat` applica il tetto (`max_turns_reached`).
     # La pagina li contava sui `messages` qui sopra, che sono tagliati a 30
@@ -73,7 +83,8 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # trentesimo turno il contatore diceva meno del vero, e il tetto arrivava
     # prima di quanto mostrava.
     return web.json_response({"messages": messages,
-                              "turni": count_user_turns(data_dir, thread=thread)})
+                              "turni": count_user_turns(data_dir, thread=thread),
+                              "orologio": house_clock_of(request.app)})
 
 
 async def handle_list_conversations(request: web.Request) -> web.Response:
@@ -85,7 +96,13 @@ async def handle_list_conversations(request: web.Request) -> web.Response:
     await adopt_if_owner(request.app, request, thread)
     rows = list_conversations(request.app["data_dir"], thread=thread,
                               days=request.app["chat_settings"].retention_days)
-    return web.json_response({"conversations": rows})
+    # «oggi», «ieri» della barra laterale: li dice l'orologio della casa
+    # (C-17), sulle cifre di `ultimo_messaggio` nell'ora della casa.
+    zone = _house_zone(request)
+    return web.json_response({
+        "conversations": [{**r, "ultimo_messaggio": instant_out(r["ultimo_messaggio"], zone)}
+                          for r in rows],
+        "orologio": house_clock_of(request.app)})
 
 
 async def handle_new_conversation(request: web.Request) -> web.Response:

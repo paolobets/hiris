@@ -6,23 +6,19 @@
 (function() {
   var state = window.HirisChatState;
 
-  function nowHHMM() {
-    return new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  }
-
   /* Collaudo 3.22, C4 ("la chat inventa l'ora dei messaggi"): l'ora di una
      bolla RIPRISTINATA dalla cronologia non e' "adesso" -- e' quella in cui
-     il messaggio e' stato scritto davvero, che il server adesso manda in
-     `timestamp` (`GET api/chat/history`, vedi chat_store.py). Se manca (una
-     cronologia che per qualunque ragione arrivasse senza quel campo -- non
-     succede oggi, ma questa funzione non deve indovinare comunque), l'ora
-     resta VUOTA: mai un `nowHHMM()` di ripiego, che sarebbe esattamente la
-     stessa bugia che questa fetta corregge, solo spostata di una riga.
-     Arriva in epoca, come ogni istante degli archivi (G-14, Tappa 8): una
-     forma diversa non si indovina, e l'ora resta vuota. */
-  function fmtHistoryTime(epoch) {
-    if (typeof epoch !== 'number' || !isFinite(epoch)) return '';
-    return new Date(epoch * 1000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+     il messaggio e' stato scritto davvero, che il server manda in
+     `timestamp` (`GET api/chat/history`). Dal 14/10/2026 (C-17) arriva
+     nell'ora della casa, e la bolla ne mostra le cifre (`fmtHour`,
+     common.js): l'ora della casa, non del browser. Una bolla VIVA prende la
+     sua dall'orologio della risposta del server (`stamp`), non da
+     `new Date()`: il browser puo' stare in un altro fuso. Senza un istante
+     leggibile l'ora resta VUOTA -- mai un'ora di ripiego, che sarebbe la
+     stessa bugia spostata di una riga. */
+  function stamp(row, clock) {
+    var timeEl = row && row.querySelector('.msg-time');
+    if (timeEl && !timeEl.textContent) timeEl.textContent = fmtHour(clock && clock.adesso);
   }
 
   function formatContent(text) {
@@ -34,13 +30,13 @@
 
   /* `isHistory`/`timestamp` esistono SOLO per chi ripristina la cronologia
      (chat/agents.js::applyHistory): un invio vivo (chat/send.js) chiama
-     `appendMsg(role, text)` con due argomenti, e l'ora resta "adesso" --
-     legittimamente, perche' e' proprio adesso che quel messaggio nasce. */
+     `appendMsg(role, text)` con due argomenti, e l'ora la scrive `stamp`
+     quando il server risponde. */
   function appendMsg(role, text, isHistory, timestamp) {
     if (!state.hasMessages) { state.els.welcome.style.display = 'none'; state.hasMessages = true; }
     var row = document.createElement('div');
     row.className = 'msg-row ' + role;
-    var time = isHistory ? fmtHistoryTime(timestamp) : nowHHMM();
+    var time = isHistory ? fmtHour(timestamp) : '';
     var content = formatContent(text);
     if (role === 'assistant') {
       row.innerHTML =
@@ -56,7 +52,7 @@
     return row;
   }
 
-  function updateBubble(row, text) {
+  function updateBubble(row, text, clock) {
     if (!row) return;
     /* Era la bolla dell'attesa: ferma cronometro e cambi d'etichetta prima di
        scriverci dentro la risposta vera. */
@@ -111,8 +107,7 @@
         }, WAIT_THRESHOLDS.uscitaRegioneLive);
       }
     }
-    var timeEl = row.querySelector('.msg-time');
-    if (timeEl && !timeEl.textContent) timeEl.textContent = nowHHMM();
+    stamp(row, clock);
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
   }
 
@@ -331,6 +326,7 @@
   window.HirisChatMessages = {
     appendMsg: appendMsg,
     updateBubble: updateBubble,
+    stamp: stamp,
     appendNote: appendNote,
     showThinking: showThinking,
     waitSafeOnServer: waitSafeOnServer,

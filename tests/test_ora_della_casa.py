@@ -134,3 +134,53 @@ def test_a_whole_reading_goes_out_in_the_house_hour():
     once = historian.instants_out(reading, zone)
     assert historian.instants_out(once, zone) == once, "due volte non cambia niente"
 
+
+# -- La chat: le bolle e la barra delle conversazioni -------------------------
+
+@pytest.mark.asyncio
+async def test_the_chat_sends_its_instants_in_the_house_hour(tmp_path):
+    """La cronologia e l'elenco delle conversazioni: l'archivio restituisce
+    l'epoca (G-14), la rotta l'ora della casa con l'orologio accanto.
+    Mutazione ESEGUITA (14/10/2026): tolta la conversione in
+    `handle_list_conversations` -- rossa, `ultimo_messaggio` torna l'epoca."""
+    import json
+    from unittest.mock import MagicMock
+
+    from aiohttp.test_utils import make_mocked_request
+
+    from hiris.app.api.handlers_chat_history import (
+        handle_get_chat_history,
+        handle_list_conversations,
+    )
+    from hiris.app.chat_settings import ChatSettings
+    from hiris.app.chat_store import _get_store, append_messages, close_all_stores
+    from hiris.app.chat_thread import thread_for
+
+    close_all_stores()
+    try:
+        append_messages([{"role": "user", "content": "ciao"}], str(tmp_path),
+                        thread=thread_for(None, None))
+        valori = {"data_dir": str(tmp_path), "chat_settings": ChatSettings(),
+                  "home_space_store": _casa()}
+        app = MagicMock()
+        app.__getitem__ = MagicMock(side_effect=lambda k: valori.get(k))
+        app.get = MagicMock(side_effect=lambda k, d=None: valori.get(k, d))
+
+        storia = json.loads((await handle_get_chat_history(
+            make_mocked_request("GET", "/api/chat/history", app=app))).body)
+        assert ROME_ISO.match(storia["messages"][0]["timestamp"])
+        assert storia["orologio"]["fuso"] == ROMA
+
+        # Un istante fermo che a Roma cambia giorno: le 22:30 UTC del 13 sono
+        # le 00:30 del 14. (Dopo la cronologia: la sessione non e' piu'
+        # fresca, e la cronologia non la leggerebbe.)
+        store = _get_store(str(tmp_path))
+        store._conn.execute("UPDATE chat_sessions SET last_msg_at = ?",
+                            ("2026-10-13T22:30:00Z",))
+        store._conn.commit()
+        elenco = json.loads((await handle_list_conversations(
+            make_mocked_request("GET", "/api/chat/conversations", app=app))).body)
+        assert elenco["conversations"][0]["ultimo_messaggio"] == "2026-10-14T00:30:00+02:00"
+        assert elenco["orologio"]["fuso"] == ROMA
+    finally:
+        close_all_stores()

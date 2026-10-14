@@ -482,8 +482,9 @@ async def test_chat_debug_tools_called_returns_objects(client):
     # `None` e faceva esplodere il frontend DOPO che la risposta era gia'
     # comparsa -- non puo' piu' esistere: non c'e' piu' nessuna voce da
     # comporre. Dal 13/10/2026 (M-31) non c'e' piu' nemmeno `debug`: il
-    # ragionamento esteso che portava non aveva un lettore.
-    assert set(data) == {"response"}
+    # ragionamento esteso che portava non aveva un lettore. Dal 14/10/2026
+    # (C-17) porta l'orologio della casa, per l'ora delle due bolle.
+    assert set(data) == {"response", "orologio"}
 
 
 # test_list_tasks_api_empty, che viveva qui, e' cancellato dalla fetta E3
