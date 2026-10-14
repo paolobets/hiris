@@ -18,7 +18,7 @@ import pytest
 
 from hiris.app import server
 from hiris.app.agent import runner
-from hiris.app.mind import judgments
+from hiris.app.mind import day_report, judgments
 
 
 def _forma(oggetto: dict, vocabolario: tuple[str, ...]) -> None:
@@ -58,8 +58,8 @@ async def test_la_riparazione_fatta_e_sollevata(monkeypatch):
         patch.setattr(server, "_reaggregate_days", _sollevata)
         with pytest.raises(RuntimeError):
             await server.reaggregate_last_two_days(app, None)
-    _forma(app["ultima_riparazione"], server.REPAIR_STATES)
+    _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)
 
     monkeypatch.setattr(server, "_write_missing_reports", _nessun_resoconto)
     await server.reaggregate_last_two_days(app, None)
-    _forma(app["ultima_riparazione"], server.REPAIR_STATES)
+    _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)

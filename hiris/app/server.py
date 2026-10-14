@@ -95,6 +95,7 @@ from .mind import analyst_turn, recipe_turn, report
 from .mind import store as mind_store
 from .mind.analyst_round import ANALYST_DAYS, analyst_inputs, write_analysis
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
+from .mind.day_report import REPAIR_DONE, REPAIR_RAISED
 from .mind.facts import (
     aggregate_day,
     chronicle_is_stale,
@@ -1087,15 +1088,6 @@ async def _write_missing_reports(app, ha_client, days, timezone, *,
                 "cervello: resoconto di %s non scritto durante la riparazione "
                 "(%s: %s)", day, type(error).__name__, error)
     return scritti
-
-
-#: Il vocabolario chiuso di `stato` in `app["ultima_riparazione"]` (C-30): la
-#: forma comune degli oggetti diagnostici di `/api/health`, che aprono tutti
-#: con `stato` e `perche` (come `agent/runner.INIT_STATES` e
-#: `mind/judgments.SNAPSHOT_STATES`). Fino alla Chiusura la chiave era
-#: `oggetti`.
-REPAIR_DONE, REPAIR_RAISED = "fatta", "sollevata"
-REPAIR_STATES = (REPAIR_DONE, REPAIR_RAISED)
 
 
 async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None:
