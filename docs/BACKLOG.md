@@ -1044,7 +1044,7 @@ va corretto, in un posto solo.
 
 ### La credenziale del ponte vive quanto il turno — aperta il 14/10/2026
 
-`origine: F3b della Chiusura (S-24 del registro dei doppioni), accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/server.py::_intestazioni_ponte` · `hiris/app/api/credenziali.py`
+`origine: F3b della Chiusura (S-24 del registro dei doppioni), accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/agent/bridge_governor.py::_intestazioni_ponte` · `hiris/app/api/credenziali.py`
 
 Il ponte chiama `/api/mcp` con una credenziale coniata al claim del turno. La credenziale dura 600 s
 e si rinnova a meta' vita, quindi al claim vive almeno 300 s; la scadenza predefinita di un turno
