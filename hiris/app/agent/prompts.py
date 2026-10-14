@@ -30,10 +30,11 @@ from ..steering import compose_system, fence_context
 # `handlers_chat._build_system_prompt`) nomina gli strumenti, e qui non ci
 # sono. Per questo la smentita sta DOPO la persona -- e' il motivo per cui
 # l'ordine di composizione conta -- e nomina gli strumenti PER NEGARLI,
-# `execute` compreso. `BASE_TOOL_RULES`, la meta' di BASE che ORDINA di
-# chiamarli, su questo ramo non viene emessa affatto (vedi
-# `build_chat_messages`): un ordine non emesso e' una difesa, una frase che lo
-# contraddice e' una speranza.
+# `execute` compreso. Le regole che ORDINANO di chiamarli
+# (`claude_runner.TOOL_RULES`) su questo ramo non vengono emesse affatto:
+# `steering.compose_base` le compone per gli strumenti del turno, e un turno
+# senza strumenti riceve la sola identita'. Un ordine non emesso e' una
+# difesa, una frase che lo contraddice e' una speranza.
 #
 # Cio' che il testo dice del guardare e' ancorato al TURNO («in questa
 # conversazione», «in questo turno») e non a un'ora: la fotografia della casa
@@ -147,8 +148,8 @@ _CONTESTO_ASSENTE = (
 
 # Fix della review totale della fetta (m-2): questa istruzione diceva
 # «Rispondi SEMPRE in italiano». Era l'UNICA istruzione di lingua che il ponte
-# riceveva -- "Rispondi nella lingua dell'utente" viveva in
-# `BASE_TOOL_RULES`, la meta' che il ponte non emette -- e imponeva al
+# riceveva -- "Rispondi nella lingua dell'utente" viveva allora fra le regole
+# degli strumenti, che il ponte senza strumenti non emette -- e imponeva al
 # ponte una lingua che il percorso sincrono non impone: un utente che scrive
 # in inglese riceveva inglese di la' e italiano di qua. Ora quella riga sta in
 # `BASE_IDENTITY` (vedi il commento del taglio in claude_runner.py) e arriva
