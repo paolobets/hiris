@@ -587,7 +587,16 @@ una per una, coi loro casi, quando la tappa le tocca.
    dell'osservatore e del refactor degli agenti si sarebbero potute chiudere solo facendo quei
    lavori dentro la Chiusura. L'elenco delle trasferite lo approva Paolo, voce per voce.)*
 2. La sonda di parità sulla casa vera dà zero disaccordi su tutte le domande.
-3. Il cancello è attivo nel pre-push e nella CI, senza eccezioni.
+3. Il cancello è attivo nel pre-push e nella CI, senza eccezioni: nessuna eccezione rimanda a una
+   voce aperta del registro, e `scripts/doppioni_noti.json` è vuoto. Restano solo le
+   **ammissioni**, le liste che enunciano il cancello (`CLAUDE.md`, «Un cancello CHIEDE il suo
+   elenco»): ognuna resta per scelta, con la sua ragione scritta, e la ragione non cita una voce
+   aperta. Un'eccezione che porta la voce aperta che la chiuderà è un **debito**, e lo sprint si
+   chiude quando non ne resta nessuno. Lo verificano `tests/test_censimento.py` e
+   `tests/test_fonte_unica.py`. *(Cambiato il 13/10/2026, D2 della Chiusura, decisa da Paolo:
+   prima diceva soltanto «senza eccezioni», e delle 14 eccezioni di quel giorno 6 erano liste di
+   ammissione, fra cui `GET /api/misure`, che serve alle batterie: zero righe avrebbe voluto dire
+   toglierla.)*
 4. La batteria della chat non è peggiorata né in risposte giuste, né in token, né in tempi; i costi
    fissi del §1.4 sono scesi dei valori fissati alla tappa 0.
 5. La batteria degli attori dà almeno i risultati di partenza, senza turni troncati.
