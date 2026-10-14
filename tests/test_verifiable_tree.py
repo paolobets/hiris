@@ -44,13 +44,13 @@ from aiohttp import web
 
 from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.rounds import tree_comparison_round
 from hiris.app.home_space.topology import (
     choose_sample,
     compare_with_home_assistant,
     hierarchy,
     tree_areas,
 )
-from hiris.app.server import tree_comparison_round
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_briefing import compose
 

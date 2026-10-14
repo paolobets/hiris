@@ -30,8 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
 from hiris.app.api.handlers_home_space import compose_briefing
+from hiris.app.home_space.rounds import reread_ha_problems
 from hiris.app.home_space.topology import PROBLEM_SEVERITY
-from hiris.app.server import reread_ha_problems
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_briefing import compose
 

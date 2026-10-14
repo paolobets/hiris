@@ -35,7 +35,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space import historian, registry_follower
-from hiris.app.mind import day_report, realignment
+from hiris.app.mind import conditions_round, day_report, realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache
@@ -97,7 +97,7 @@ async def startup_steps(tmp_path_factory):
                                     Watcher.rebuild_conditions)),
         mock.patch.object(server, "watch_system_conditions",
                           _recorded(steps, "watch_system_conditions",
-                                    server.watch_system_conditions)),
+                                    conditions_round.watch_system_conditions)),
         mock.patch.object(server, "reaggregate_last_two_days",
                           _recorded(steps, "reaggregate",
                                     day_report.reaggregate_last_two_days, app_keys=True)),
@@ -393,8 +393,9 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
 
     house = started_app["ha_client"]
     # Due moduli creano i compiti degli ascoltatori di topologia: lo specchio
-    # in `server.py`, la ricostruzione in `home_space/registry_follower.py`.
-    with (mock.patch.object(server, "_spawn", capture),
+    # in `mind/realignment.py`, la ricostruzione in
+    # `home_space/registry_follower.py`.
+    with (mock.patch.object(realignment, "_spawn", capture),
           mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("riconnessione")
@@ -463,7 +464,7 @@ async def test_a_reference_change_rereads_the_state_words(started_app):
         spawned.append(coroutine)
 
     house = started_app["ha_client"]
-    with (mock.patch.object(server, "_spawn", capture),
+    with (mock.patch.object(realignment, "_spawn", capture),
           mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
             listener("core_config_updated")

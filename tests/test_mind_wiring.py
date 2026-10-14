@@ -28,12 +28,13 @@ from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.home_space import historian
+from hiris.app.home_space.rounds import integration_follower
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
-from hiris.app.mind import day_report, facts
+from hiris.app.mind import conditions_round, day_report, facts
+from hiris.app.mind.conditions_round import watch_system_conditions
 from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
-from hiris.app.server import integration_follower, watch_system_conditions
 from hiris.app.storage import archive_name
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
@@ -783,7 +784,7 @@ def test_fake_automation_watcher_matches_watcher_watch_automation_outcome():
 
 
 def test_without_a_watcher_the_traces_round_returns_none():
-    result = asyncio.run(server.watch_automation_outcomes({}, _traces_house({})))
+    result = asyncio.run(conditions_round.watch_automation_outcomes({}, _traces_house({})))
     assert result is None
 
 
@@ -796,7 +797,7 @@ def test_no_marked_automation_reads_no_trace():
     solo scritta nel docstring.)"""
     watcher = _FakeAutomationWatcher([])
     client = _traces_house({})
-    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes({"watcher": watcher}, client))
     assert result == 0
     assert watcher.calls == []
     assert _traces_asked(client) == []
@@ -828,7 +829,7 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 3
     assert [c[:2] for c in watcher.calls] == [
@@ -857,7 +858,7 @@ def test_the_title_is_the_name_the_house_gives_at_the_outcome():
          "automation.senza_nome": "1771346155971"},
         names={"automation.luci_sera": "Luci della sera (rinominata)"})}
 
-    asyncio.run(server.watch_automation_outcomes(app, client))
+    asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert {c[0]: c[2] for c in watcher.calls} == {
         "automation.luci_sera": "Luci della sera (rinominata)",
@@ -889,7 +890,7 @@ def test_a_not_triggered_trace_is_not_forwarded():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -919,7 +920,7 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
     app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0,
            "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -956,7 +957,7 @@ def test_a_failed_read_for_one_automation_does_not_stop_the_others():
         "automation.rotta": "1771346155970",
         "automation.buona": "1771346155971"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 1
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
@@ -990,7 +991,7 @@ def test_marked_automations_are_read_in_one_connection():
         "automation.b": "1771346155971",
         "automation.c": "1771346155972"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert len(client.connections) == 1
     assert client.connections == [("ws", (_TRACE_LIST, _TRACE_LIST, _TRACE_LIST))]
@@ -1015,8 +1016,8 @@ def test_a_silent_batch_writes_nothing_and_keeps_every_cursor(caplog):
                "automation.a": "1771346155970",
                "automation.b": "1771346155971"})}
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
-        result = asyncio.run(server.watch_automation_outcomes(app, client))
+    with caplog.at_level(logging.WARNING, logger="hiris.app.mind.conditions_round"):
+        result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -1053,7 +1054,7 @@ def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert _traces_asked(client) == ["1771346155970"]
     assert result == 1
@@ -1091,7 +1092,7 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
         "automation.scritta_a_mano": None,
         "automation.buona": "1771346155971"})}
 
-    result = asyncio.run(server.watch_automation_outcomes(app, client))
+    result = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     assert _traces_asked(client) == ["1771346155971"]
     assert result == 1
@@ -1120,9 +1121,9 @@ def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.scritta_a_mano": None})}
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.mind.conditions_round"):
         for _ in range(3):
-            asyncio.run(server.watch_automation_outcomes(app, client))
+            asyncio.run(conditions_round.watch_automation_outcomes(app, client))
 
     levels = [r.levelname for r in caplog.records
               if "non si risolve dallo specchio" in r.getMessage()]
@@ -1151,12 +1152,12 @@ def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
     seeing = _automation_mirror({"automation.luci_sera": "1771346155970"})
     app = {"watcher": watcher, "entity_cache": blind}
 
-    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
-        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.mind.conditions_round"):
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # cieco
         app["entity_cache"] = seeing
-        asyncio.run(server.watch_automation_outcomes(app, client))   # risolve
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # risolve
         app["entity_cache"] = blind
-        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco di nuovo
+        asyncio.run(conditions_round.watch_automation_outcomes(app, client))   # cieco di nuovo
 
     levels = [r.levelname for r in caplog.records
               if "non si risolve dallo specchio" in r.getMessage()]
@@ -1188,7 +1189,7 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.luci_sera": None})}
 
-    blind_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    blind_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert blind_round == 0
     assert _traces_asked(client) == []
     assert "automation.luci_sera" not in app.get("automation_trace_cursors", {})
@@ -1196,7 +1197,7 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
     # Lo specchio arriva: la traccia gia' conservata da HA e' NUOVA per il
     # cursore, e il fatto si scrive adesso invece di essere perso per sempre.
     app["entity_cache"] = _automation_mirror({"automation.luci_sera": "1771346155970"})
-    seeing_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    seeing_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert seeing_round == 1
     assert _traces_asked(client) == ["1771346155970"]
 
@@ -1248,11 +1249,11 @@ def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.rotta": "1771346155970"})}
 
-    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    first_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert first_round == 1  # il "finished" iniziale non chiude niente; l'"error" apre
     assert store.count == 1
 
-    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    second_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert second_round == 0
     assert store.count == 1
 
@@ -1283,11 +1284,11 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
     app = {"watcher": watcher,
            "entity_cache": _automation_mirror({"automation.guarita": "1771346155970"})}
 
-    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    first_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert first_round == 2  # apre e chiude nello stesso giro
     assert store.count == 2
 
-    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    second_round = asyncio.run(conditions_round.watch_automation_outcomes(app, client))
     assert second_round == 0
     assert store.count == 2
 

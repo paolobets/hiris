@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 
 from hiris.app.home_space.house_history import read_errors
+from hiris.app.mind.conditions_round import watch_system_conditions
 from hiris.app.proxy.ha_client import SHAPE
-from hiris.app.server import watch_system_conditions
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_mind_wiring import _announced, _OsservatoreFinto
 

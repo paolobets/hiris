@@ -33,10 +33,11 @@ from casa_finta import CasaFinta
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.rounds import integration_follower
 from hiris.app.home_space.topology import rebuild
 from hiris.app.keeper.recipient import recipients_for
+from hiris.app.mind.conditions_round import watch_system_conditions
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import integration_follower, watch_system_conditions
 from tests._casa_sintetica import synthetic_inputs
 
 

@@ -347,7 +347,7 @@ def test_file_non_cancellabile_lo_dichiara_e_non_solleva(tmp_path, caplog):
 # ---------------------------------------------------------------------------
 # `home_assistant_folder` — sopravvive alla card: i suoi test si sono SPOSTATI
 # qui, non cancellati. La usano anche la rilettura del comportamento
-# (`server.behavior_reader`) e il sigillo dei segreti
+# (`rounds.behavior_reader`) e il sigillo dei segreti
 # (`redaction.home_assistant_seal`). Fino al 03/10/2026 questi tre test
 # guardavano la copia di `server`, `_find_ha_config_dir` (A-40).
 # ---------------------------------------------------------------------------

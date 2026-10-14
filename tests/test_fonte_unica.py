@@ -193,7 +193,7 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         ("le statistiche orarie della storia (`read_bands`, dal Task 13 della "
          "Tappa 3); il resoconto del giorno le chiede a `read_bands` (A-41)")),
     "problems": (
-        "server.py",
+        "home_space/rounds.py",
         ("`reread_ha_problems`, il giro dei 5 minuti: il giro delle condizioni "
          "riusa `app[\"ha_problems\"]` (A-02, chiusa al Task 5)")),
     "statistic_ids": (
@@ -289,7 +289,7 @@ SHARED_READS: dict[str, dict[str, tuple[str | None, str]]] = {
              "delle `person`, accanto agli stati letti per intero")),
     },
     "extract_from_target": {
-        "server.py": (
+        "home_space/rounds.py": (
             None,
             ("`tree_comparison_round` chiede a Home Assistant di risolvere le "
              "aree e confronta la risposta con l'albero dell'anagrafe: e' la "

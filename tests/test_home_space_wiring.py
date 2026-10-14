@@ -21,14 +21,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hiris.app.home_space.reader import HomeSpace
-from hiris.app.mind.realignment import disconnection_recorder
+from hiris.app.home_space.rounds import schedule_behavior_reread
+from hiris.app.mind.realignment import disconnection_recorder, mirror_reload_listener
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import (
-    mirror_reload_listener,
-    schedule_behavior_reread,
-    schedule_registry_rebuild,
-)
+from hiris.app.server import schedule_registry_rebuild
 from tests._casa_sintetica import synthetic_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
