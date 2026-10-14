@@ -168,7 +168,7 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(reco
     # doppio qui non lo impone, quindi lo impone il test.
     args, kwargs = batti.await_args
     assert len(args) == 1 and isinstance(args[0], float), (
-        "la chiusura deve passare un istante (`_time.time()`), non chiamare "
+        "la chiusura deve passare un istante (`time.time()`), non chiamare "
         "`batti` a vuoto")
     assert not kwargs
 
