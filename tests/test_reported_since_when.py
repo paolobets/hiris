@@ -9,6 +9,8 @@ La fondamenta 3 e' il cuore di questo file: se lo stato esce da un punto di
 risposte diverse a seconda di come ci si arriva. I punti sono quattro, e il
 test che li CONTA e' quello che impedisce al sesto di nascere senza.
 """
+from datetime import UTC, datetime
+
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import _to_minimal
 
@@ -72,4 +74,7 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     assert len(righe) == 6
     for riga in righe:
         assert riga["stato"] == "22.4"
-        assert riga["ultimo_cambio"].startswith("2026-08-24T11:00:00"), riga
+        # L'istante, non la stringa: la resa lo scrive nel fuso della
+        # macchina, e sul PC (Europe/Rome) esce "13:00:00+02:00" (14/10/2026).
+        assert (datetime.fromisoformat(riga["ultimo_cambio"])
+                == datetime(2026, 8, 24, 11, tzinfo=UTC)), riga
