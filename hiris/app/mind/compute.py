@@ -283,7 +283,7 @@ async def compute(arguments: dict, *, ha, house, now: float,
     silent: dict = {}
     if series_ids:
         silent = silent_entities(house, series_ids) or {}
-        report = await read_bands(ha, series_ids, query)
+        report = await read_bands(ha, series_ids, query.start, query.end)
         if "errore" in report:
             refusal = unread_series(str(report["errore"]))
             silent = {**{e: refusal for e in series_ids}, **silent}

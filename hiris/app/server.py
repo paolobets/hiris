@@ -68,7 +68,12 @@ from .home_space.historian import (
     local_date,
 )
 from .home_space.house import House
-from .home_space.house_history import statistic_ids_for_round
+from .home_space.house_history import (
+    read_bands,
+    read_log,
+    read_traces,
+    statistic_ids_for_round,
+)
 from .home_space.privacy import PresenceMask
 from .home_space.reader import HomeSpace
 from .home_space.redaction import home_assistant_folder
@@ -463,10 +468,10 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             "integrazioni non e' ancora arrivato dall'iscrizione "
             "(config_entries/subscribe) -- giro saltato")
         return None
-    log_report = await ha_client.system_log()
+    log_report = await read_log(ha_client)
     if "errore" in log_report:
         logger.warning(
-            "cervello: condizioni di sistema non lette, system_log() ha "
+            "cervello: condizioni di sistema non lette, il registro degli errori ha "
             "fallito (%s) -- giro saltato", log_report["errore"])
         return None
     return watcher.watch_system(
@@ -727,9 +732,8 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
         resolved.append((entity_id, automation_id))
     if not resolved:
         return written
-    report = await ha_client.traces(
-        list(dict.fromkeys(("automation", automation_id)
-                           for _entity_id, automation_id in resolved)))
+    report = await read_traces(ha_client, list(dict.fromkeys(
+        ("automation", automation_id) for _entity_id, automation_id in resolved)))
     # La casa di questo giro, per i nomi (A-18): letta una volta.
     house = House.read(app.get("home_space_store"), cache)
     if "errore" in report:
@@ -1429,9 +1433,9 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     # (`mind/flatline.py`). La finestra si allunga di `HISTORY_DAYS` e le
     # sorelle entrano nella stessa richiesta: nessuna richiesta in piu'.
     history_start_ts = da_ts - HISTORY_DAYS * 86400
-    report = await ha_client.hourly_statistics(
-        lette, datetime.fromtimestamp(history_start_ts, tz=UTC).isoformat(),
-        datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
+    report = await read_bands(
+        ha_client, lette, datetime.fromtimestamp(history_start_ts, tz=UTC),
+        datetime.fromtimestamp(a_ts, tz=UTC))
     if "errore" in report:
         # **Un guasto delle statistiche non e' un resoconto senza misure.** Si
         # scrivono le ricette senza serie: ogni misura esce «non calcolabile»

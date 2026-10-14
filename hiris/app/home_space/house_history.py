@@ -1393,13 +1393,17 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
     return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
 
 
-async def read_bands(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
-    """Le statistiche orarie di Home Assistant nella finestra: `{"serie"}` o la
-    busta del guasto, intera (`read_failure`). L'unica lettura delle fasce
-    orarie: la chiedono i valori di `history` e la ricetta al volo
-    (`mind/compute.py`)."""
-    answer = await ha.hourly_statistics(
-        entity_ids, query.start.isoformat(), query.end.isoformat())
+async def read_bands(ha, entity_ids: list[str], start: datetime, end: datetime) -> dict:
+    """Le statistiche orarie di Home Assistant fra `start` e `end`: `{"serie"}`
+    o la busta del guasto, intera (`read_failure`). L'unica lettura delle
+    fasce orarie: la chiedono i valori di `history`, la ricetta al volo
+    (`mind/compute.py`) e il resoconto del giorno (`server._report_ingredients`,
+    A-41: fino al 14/10/2026 leggeva da se').
+
+    La finestra sono due istanti e non una `HistoryQuery`: il resoconto ne
+    calcola una sua (il giorno e la sua storia), che non nasce da una
+    domanda."""
+    answer = await ha.hourly_statistics(entity_ids, start.isoformat(), end.isoformat())
     if not isinstance(answer, dict) or "serie" not in answer:
         return read_failure(answer, "le statistiche orarie non sono arrivate")
     return {"serie": answer["serie"]}
@@ -1458,7 +1462,8 @@ async def read_values(ha, query: HistoryQuery, chosen: Chosen, mirror: Mirror) -
               else {"serie": {}, "troncato": False})
     if "errore" in detail:
         return detail
-    bands = await read_bands(ha, band_ids, query) if band_ids else {"serie": {}}
+    bands = (await read_bands(ha, band_ids, query.start, query.end) if band_ids
+             else {"serie": {}})
     if "errore" in bands:
         return bands
     return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
@@ -1489,6 +1494,25 @@ def run_key(cache, ident: str, entry: Callable[[str], dict | None]) -> tuple[str
     unique_id = (entry(ident) or {}).get("unique_id")
     key = unique_id or object_id
     return ("script", str(key)) if key else None
+
+
+async def read_traces(ha, keys: list[tuple[str, str]]) -> dict:
+    """Le esecuzioni recenti delle chiavi date (`run_key`), in una raffica:
+    `{"tracce", "non_letti"}` grezze, come Home Assistant le conserva, o la
+    busta del guasto, intera (`read_failure`). Nessuna chiave, nessuna
+    domanda.
+
+    L'unica lettura delle tracce: la chiedono le esecuzioni di `history`
+    (`read_runs`, che le sigilla prima di farne righe) e il giro degli esiti
+    delle automazioni (`server.watch_automation_outcomes`, A-41: fino al
+    14/10/2026 leggeva da se'), che ne guarda solo `run_id`, l'esito e
+    l'inizio."""
+    if not keys:
+        return {"tracce": {}, "non_letti": {}}
+    answer = await ha.traces(keys)
+    if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
+        return read_failure(answer, "le esecuzioni non sono arrivate")
+    return answer
 
 
 async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
@@ -1525,9 +1549,9 @@ async def read_runs(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
         return run_detail(query, chosen,
                           sanitize_structure(answer["traccia"], seal=seal))
     wanted = [key for key in keys.values() if key is not None]
-    answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
-    if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
-        return read_failure(answer, "le esecuzioni non sono arrivate")
+    answer = await read_traces(ha, wanted)
+    if "errore" in answer:
+        return answer
     traces = {name: sanitize_structure(runs, seal=seal)
               for name, runs in answer["tracce"].items()}
     return run_rows(query, chosen, traces=traces,
@@ -1572,6 +1596,20 @@ def sealed_log(entries: list, seal) -> list[dict]:
     return sealed
 
 
+async def read_log(ha) -> dict:
+    """Il registro degli errori di Home Assistant, grezzo: `{"voci"}` o la
+    busta del guasto, intera (`read_failure`).
+
+    L'unica lettura del registro: la chiedono gli errori di `history`
+    (`read_errors`, che sigilla le voci prima di farne righe) e il giro delle
+    condizioni (`server.watch_system_conditions`, A-41: fino al 14/10/2026
+    leggeva da se'), che passa le voci all'osservatore com'erano."""
+    answer = await ha.system_log()
+    if not isinstance(answer, dict) or not isinstance(answer.get("voci"), list):
+        return read_failure(answer, "il registro di Home Assistant non ha risposto")
+    return answer
+
+
 async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> dict:
     """Il registro degli errori di Home Assistant, sigillato, nelle righe di
     `error_rows`. Non guarda la casa: gli errori si chiedono anche con
@@ -1581,9 +1619,9 @@ async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> d
     `system_log/list` e' `require_admin` in Home Assistant (la fonte sta in
     `privacy.ADMIN_ONLY_HISTORY_KINDS`): chi lo chiama ha GIA' deciso che puo'
     -- nella chat, `ToolDispatcher._history` col cancello di quell'insieme."""
-    answer = await ha.system_log()
-    if not isinstance(answer.get("voci"), list):
-        return read_failure(answer, "il registro di Home Assistant non ha risposto")
+    answer = await read_log(ha)
+    if "errore" in answer:
+        return answer
     return error_rows(query, sealed_log(answer["voci"], seal), manifest)
 
 
