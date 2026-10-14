@@ -533,4 +533,24 @@ def test_la_domanda_porta_la_misura_di_partenza_coi_nomi_della_resa():
     testo = _domanda(_promessa_chiedi(istantanea=[
         {"id": "sensor.camera_t", "stato": "21.4", "unita": "°C",
          "quando": "2026-10-11T10:00:00+02:00"}]))
-    assert "Quando me l'hai chiesto, sensor.camera_t era 21.4 °C" in testo
+    assert ("Quando me l'hai chiesto (2026-10-11T10:00:00+02:00), sensor.camera_t "
+            "era 21.4 °C") in testo
+
+
+def test_la_domanda_porta_il_nome_e_l_istante_della_misura():
+    """D-19 (scelta di Paolo, 14/10/2026): la misura porta gia' il nome e
+    l'istante; la domanda del risveglio li lasciava fuori, e il modello
+    leggeva un id e un numero senza sapere di cosa ne' di quando.
+
+    Mutazione ESEGUITA: la riga di prima (solo id, stato e unita') -- rossa."""
+    from hiris.app.keeper.exchange import _domanda
+
+    testo = _domanda(_promessa_chiedi(istantanea=[
+        {"id": "sensor.camera_t", "nome": "Temperatura camera", "stato": "21.4",
+         "unita": "°C", "quando": "2026-10-11T10:00:00+02:00"},
+        {"id": "light.senza_nome", "stato": "on"}]))
+    assert ("Quando me l'hai chiesto (2026-10-11T10:00:00+02:00), Temperatura camera "
+            "(sensor.camera_t) era 21.4 °C") in testo
+    # Senza nome e senza istante la riga resta quella di prima, mai «None».
+    assert "Quando me l'hai chiesto, light.senza_nome era on" in testo
+    assert "None" not in testo

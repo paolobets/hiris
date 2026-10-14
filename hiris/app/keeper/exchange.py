@@ -351,18 +351,25 @@ def _system_prompt() -> str:
 def _domanda(promise: dict) -> str:
     """La domanda, con l'istantanea di partenza accanto.
 
-    Di ogni voce dell'istantanea si rendono l'entita', lo stato e l'unita':
-    senza, «e' aumentata» non ha un termine di paragone e il modello se lo
-    inventerebbe. L'istantanea porta anche l'istante (`quando`) e il resto
-    della resa corta dell'entita' (`render.render_entity`): qui non si
-    rendono.
+    Di ogni voce dell'istantanea si rendono il nome e l'id dell'entita', lo
+    stato con la sua unita' e l'istante della misura (`quando`, nell'ora della
+    casa): senza, «e' aumentata» non ha un termine di paragone e il modello se
+    lo inventerebbe, e un «21» senza il quando non dice di quanto tempo fa.
+    Nome e istante sono entrati il 14/10/2026 (D-19, scelta di Paolo): la
+    misura li portava gia', e la domanda li lasciava fuori. Il resto della
+    resa corta dell'entita' (`render.render_entity`) qui non si rende.
     """
     righe = ["Me l'hai chiesto cosi': «{}».".format(promise["frase"]),
              "Quello che devi guardare: {}".format(promise["domanda"])]
     for measurement in promise.get("istantanea") or []:
+        identifier = measurement.get("id")
+        name = measurement.get("nome")
+        who = f"{name} ({identifier})" if name and name != identifier else identifier
+        when = f" ({measurement['quando']})" if measurement.get("quando") else ""
         righe.append(
-            "Quando me l'hai chiesto, {} era {}{} (misurato allora, non adesso).".format(
-                measurement.get("id"),
+            "Quando me l'hai chiesto{}, {} era {}{} (misurato allora, non adesso).".format(
+                when,
+                who,
                 measurement.get("stato"),
                 (" " + measurement["unita"]) if measurement.get("unita") else "",
             )
