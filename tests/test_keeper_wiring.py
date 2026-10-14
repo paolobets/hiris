@@ -31,6 +31,7 @@ from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
 from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.keeper import sweeper
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
@@ -259,7 +260,7 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
     app = {"data_dir": str(tmp_path), "ha_client": None, "servizi": None,
            "ruoli": {"quando": 0.0, "per_id": {}}}
     try:
-        collaboratori = server._promise_delivery(app)
+        collaboratori = sweeper._promise_delivery(app)
         assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling",
                                       "owner_thread"}
         assert collaboratori["write_to_thread"](paolo, "Esito della promessa «x»: y") is True

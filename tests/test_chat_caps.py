@@ -386,7 +386,7 @@ async def test_409_takes_precedence_when_both_conditions_true(tmp_path):
     fosse controllato per primo, questo turno partirebbe verso la catena mentre
     il ponte ne ha ancora uno in volo -- e quello, quando arriva, si scrive in
     cronologia da solo (`_submit_chat_reply`, costruita da
-    `server._chat_reply_submitter`). Due risposte in volo
+    `consegna._chat_reply_submitter`). Due risposte in volo
     sulla stessa conversazione, che e' esattamente cio' che questa guardia
     esiste per impedire: la seconda arriverebbe in una cronologia che la prima
     sta per riscrivere."""

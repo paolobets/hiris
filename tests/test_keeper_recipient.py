@@ -24,6 +24,7 @@ from casa_finta import CasaFinta
 
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space.reference import slugify as _slugify
+from hiris.app.keeper import sweeper
 from hiris.app.keeper.recipient import (
     _REASON_HA_DOWN,
     Recipients,
@@ -534,7 +535,6 @@ async def test_al_risveglio_col_registro_dei_servizi_fresco_nessuna_lettura():
 
     Mutazione (verificata eseguendola): rimettere `ha.get_services()` al
     posto del registro -- rossa (`assert 1 == 0`)."""
-    from hiris.app import server
     from hiris.app.action.registry import ServiceRegistry
 
     ha = _house(states=[_person_state(USER_ID, ["device_tracker.telefono_uno"])],
@@ -544,7 +544,7 @@ async def test_al_risveglio_col_registro_dei_servizi_fresco_nessuna_lettura():
     before = _services_read(ha)
     app = {"ha_client": ha, "service_registry": registry}
 
-    esito = await server._promise_delivery(app)["recipients"](
+    esito = await sweeper._promise_delivery(app)["recipients"](
         {"specie": "persona", "id": USER_ID})
 
     assert _services_read(ha) - before == 0

@@ -26,9 +26,8 @@ from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
-from hiris.app.reasoning.consegna import consegna
+from hiris.app.reasoning.consegna import _chat_reply_submitter, consegna
 from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.server import _chat_reply_submitter
 from tests._casa_sintetica import synthetic_inputs
 from tests._runner_finto import RunnerFinto
 

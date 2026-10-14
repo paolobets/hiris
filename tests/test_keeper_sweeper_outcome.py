@@ -32,6 +32,7 @@ from hiris.app.chat_store import (
     load_history,
 )
 from hiris.app.chat_thread import ChatThread, new_subject
+from hiris.app.keeper import sweeper
 from hiris.app.keeper.promise import (
     DELIVERY_TITLE,
     MAX_SERVICES_PER_PROMISE,
@@ -855,7 +856,7 @@ async def test_l_errore_di_home_assistant_entra_nella_chat_ripulito(archivio, ca
 # apra il pannello non si chiude nel dubbio se Home Assistant dice chi e' il
 # proprietario -- uno e uno solo. La adotta lo stesso archivio
 # (`AgendaStore.adopt_orphans`) e prosegue con le regole di sempre. I
-# collaboratori veri del montaggio (`server._promise_delivery`): il soffitto
+# collaboratori veri del montaggio (`sweeper._promise_delivery`): il soffitto
 # e il proprietario si leggono dagli utenti di Home Assistant (finti), la
 # chat e' vera su disco.
 # ---------------------------------------------------------------------------
@@ -865,10 +866,9 @@ _MARTA = _ha_user("marta", admin=False)
 
 
 def _orologio_montato(archivio, cartella, app, *, porta, turno=None, recapito=None):
-    from hiris.app import server
 
     app["data_dir"] = cartella
-    veri = server._promise_delivery(app)
+    veri = sweeper._promise_delivery(app)
     return Sweeper(
         archivio, execute=porta,
         interpreta=turno or TurnoFinto({"avvisare": False, "testo": "x"}),

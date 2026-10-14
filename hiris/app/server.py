@@ -49,7 +49,7 @@ from .api.shell import _compute_build_stamp, _read_static_pages, _security_heade
 # modulo di `mind/`, che non importa questo file.
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_store import open_store as open_chat_store
-from .chat_thread import SyncTurnsInFlight, thread_for
+from .chat_thread import SyncTurnsInFlight
 from .conservazione import (
     cancella_residui,
     decidi_vault,
@@ -78,7 +78,7 @@ from .home_space.topology import (
 )
 from .keeper.exchange import interpreta_promise
 from .keeper.store import AgendaStore
-from .keeper.sweeper import Sweeper
+from .keeper.sweeper import Sweeper, _promise_delivery
 from .memory.store import MemoryStore
 from .mind import report
 from .mind.analyst_round import analyst_round
@@ -119,51 +119,10 @@ from .providers import (
 from .proxy.entity_cache import EntityCache
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
+from .reasoning.consegna import _chat_reply_submitter
 
 logger = logging.getLogger(__name__)
 
-
-
-def _promise_delivery(app) -> dict:
-    """I collaboratori con cui l'orologio consegna l'esito di una
-    promessa (spec 2026-09-26 §2.4): chiusure su `app`, lette a ogni
-    risveglio -- l'orologio non sa ne' di Home Assistant ne' della chat.
-
-    - `recipients`: `recipients_for` sul client di Home Assistant di ADESSO
-      e sul registro dei servizi dell'app (A-04: i `notify` da li', non da una
-      lettura propria di `/api/services`);
-    - `write_to_thread`: `chat_store.append_assistant_line` nella cartella
-      dell'add-on (filtra i veleni, rifiuta un filo assente);
-    - `ceiling`: `api/soffitto.py::ceiling_at_wake`, il soffitto di chi ha
-      chiesto riletto al risveglio;
-    - `owner_thread`: il filo del pannello del proprietario, se Home
-      Assistant ne dice uno solo (`api/soffitto.py::sole_owner`) -- a chi
-      l'orologio da' una promessa orfana che si sveglia prima che lui apra
-      il pannello.
-    """
-    from .api.soffitto import ceiling_at_wake, sole_owner
-    from .chat_store import append_assistant_line
-    from .keeper.recipient import recipients_for
-
-    async def _recipients(subject):
-        return await recipients_for(subject, app.get("ha_client"),
-                                    app.get("service_registry"))
-
-    def _write(thread, content, *, quoted=None):
-        return append_assistant_line(content, app["data_dir"], thread=thread,
-                                     quoted=quoted)
-
-    async def _ceiling(subject):
-        return await ceiling_at_wake(app, subject)
-
-    async def _owner_thread():
-        # Il filo lo calcola `thread_for`, come per ogni richiesta dal
-        # pannello (`ingress`): due calcoli dello stesso filo sono due fili.
-        owner = await sole_owner(app)
-        return thread_for(owner, "ingress") if owner else None
-
-    return {"recipients": _recipients, "write_to_thread": _write,
-            "ceiling": _ceiling, "owner_thread": _owner_thread}
 
 
 def _open_knowledge(app, data_dir: str) -> None:
@@ -215,89 +174,6 @@ def _open_knowledge(app, data_dir: str) -> None:
         logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')", seeded)
     app["knowledge"] = knowledge
     app["type_judgments"], app["type_judgments_status"] = build_judgments(knowledge)
-
-
-def _chat_reply_submitter(app, data_dir: str):
-    """La consegna del ponte per i turni `kind="chat"`, pubblicata
-    dall'avvio in `app["submit_chat_reply"]`.
-
-    Viveva annidata in `_on_startup`; e' una funzione di modulo dal
-    03/10/2026 (Tappa 1 dello sprint «Una fonte sola di verita'», D1) perche'
-    le prove la possano costruire su un'app e una cartella loro invece di
-    ritagliarla dal testo. Stesso codice, chiamata dallo stesso punto.
-    """
-    # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
-    # jobs — writes the runner's reply into chat_store instead of actuating
-    # the house. Fetta «le chat divise»: la risposta va nel filo del job
-    # (`thread`, letto dalla coda da `reasoning/consegna`) -- la
-    # cronologia di chi ha scritto, non una sola per tutti.
-    from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
-    from .chat_store import append_messages as _append_chat_messages
-    from .chat_thread import ChatThread
-
-    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:
-        if not reply_text:
-            return
-        # Final-review Fix 3 (Slice 4b): mirror the sync path's persistence
-        # guard (handlers_chat.py) so a reply that arrived via the async
-        # runner gets the same treatment as one from the local runner.
-        if _is_toxic_chat_reply(reply_text):
-            # Drop silently from the history, same as the sync path: the next
-            # turn must not inherit a poisoned/leaked history. There's no
-            # HTTP response here to carry a visible error (the caller already
-            # got a 202 long ago) -- the poll route's chat_reply_skipped
-            # handling is the user-facing side of this.
-            #
-            # Rilievo R1 della revisione indipendente sul tratto
-            # `v3.22.2..HEAD`: la guardia sopra non deve tacere due volte.
-            # Fino a questa correzione un turno del ponte tornato con uno dei
-            # cinque sentinella d'errore (`chat_store.BRIDGE_SENTINELS`)
-            # spariva qui senza lasciare NIENTE nel registro degli esiti --
-            # non e' la stessa cosa di "non l'ho interrogato" (`occurrence()
-            # is None`): il ponte ha risposto, e ha risposto con un
-            # fallimento. Confondere le due e' la stessa contraddizione da
-            # cui e' nato il Task 6 (Modelli che diceva «non l'hai ancora
-            # usato» con turni riusciti in `consumo_giorno`), spostata dal
-            # successo al fallimento. Il testo del sentinella non e' una
-            # causa nota (nessun codice HTTP, nessuna credenziale, nessun
-            # modello) -- e' `family="altro"`, come ogni guasto che il
-            # prodotto misura senza inventarne il perche'.
-            registry = app.get("occurrence_registry")
-            if registry is not None:
-                registry.fallimento(
-                    SUBSCRIPTION.id, family="altro", code=None,
-                    message=reply_text, durata_s=0.0)
-            return
-        # Task 6 (collaudo-3.22, indagine-abbonamento.md): QUI, e non prima
-        # -- e non in `agent/runner.py::_logga_uso`, dove parte gia' Consumi.
-        # Il ponte non passa mai da `LLMRouter.chat()` (l'unico chiamante di
-        # `.successo(...)` fino a questa fetta): la pagina Modelli non aveva
-        # nessun modo di sapere che il ponte avesse MAI risposto, e diceva
-        # «non l'hai ancora usato» a un proprietario con 105 turni riusciti
-        # da fine agosto (`GET /api/usage`, `last_use` di oggi).
-        #
-        # `_logga_uso` (che alimenta Consumi) e' PIU' A MONTE di questo punto:
-        # gira dentro `_invoca`, prima che il chiamante guardi `invocation.rc`
-        # o `occurrence.has_result` -- un turno con `rc != 0` o senza evento
-        # finale puo' comunque avere un `usage` non vuoto (il conteggio dei
-        # token puo' arrivare anche su un esito d'errore) e farebbe scrivere
-        # un successo su un turno che non lo e' stato. Qui invece il successo
-        # e' un fatto GIA' accertato: siamo dopo il filtro di tossicita' che
-        # scarta i cinque sentinella d'errore del ponte
-        # (`chat_store.BRIDGE_SENTINELS`) e dopo il controllo «reply non
-        # vuota» -- se il codice arriva a questa riga, e' perche' sta per
-        # scrivere in cronologia una risposta vera, la stessa che l'utente
-        # sta per leggere. E' anche il motivo per cui NON sta in
-        # `reasoning/consegna` (proposta dell'audit L3 dell'agosto
-        # scorso, H2): li' la guardia e' solo «reply non vuota», che i
-        # sentinella la superano -- registrare il successo li' avrebbe
-        # sostituito la bugia di oggi con la bugia opposta.
-        registry = app.get("occurrence_registry")
-        if registry is not None:
-            registry.successo(SUBSCRIPTION.id)
-        _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,
-                              thread=thread)
-    return _submit_chat_reply
 
 
 #: Quanto l'avvio aspetta che Home Assistant confermi l'iscrizione prima di
