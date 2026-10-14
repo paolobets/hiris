@@ -1087,20 +1087,23 @@ def test_nessun_file_del_prodotto_esce_dal_censimento_dei_simboli():
 
 # ── Le eccezioni non crescono da sole (revisione indipendente del 02/10/2026) ─
 
-#: Le eccezioni AMMESSE, per nome, ognuna con la voce del registro che la
-#: giustifica. L'unico errore del rilevatore (`get_config`, chiamato via
-#: `getattr`) e' uscito il 06/10/2026: dal riallineamento il client manda
-#: `get_config` anche sul websocket di lunga vita, e il rilevatore lo vede.
-#: E' una lista di ammissione: non
-#: ricopia il file delle eccezioni, enuncia il cancello. Chiude per difetto:
-#: un'eccezione nuova, o una che cambia voce, si decide QUI, davanti a tutti.
+#: Le eccezioni AMMESSE, per nome. L'unico errore del rilevatore
+#: (`get_config`, chiamato via `getattr`) e' uscito il 06/10/2026: dal
+#: riallineamento il client manda `get_config` anche sul websocket di lunga
+#: vita, e il rilevatore lo vede. E' una lista di ammissione: non ricopia il
+#: file delle eccezioni, enuncia il cancello. Chiude per difetto: un'eccezione
+#: nuova si decide QUI, davanti a tutti. La ragione sta nel file, una volta
+#: sola.
 #:
 #: Prima c'erano un tetto e un prefisso libero («Falso positivo»), e bastava
 #: scrivere quelle due parole -- o citare una voce aperta qualunque -- per
-#: passare (eseguito dal revisore il 02/10/2026).
-ADMITTED_EXCEPTIONS = {
-    ("rotta-solo-test", "/api/misure"): "M-22",
-}
+#: passare (eseguito dal revisore il 02/10/2026). Fino al 13/10/2026 ogni
+#: eccezione citava la voce aperta che l'avrebbe chiusa; con D2 della Chiusura
+#: (decisa da Paolo) un'eccezione resta solo come ammissione, e non rimanda a
+#: una voce aperta del registro.
+ADMITTED_EXCEPTIONS = frozenset({
+    ("rotta-solo-test", "/api/misure"),
+})
 
 
 def _written_exceptions():
@@ -1126,37 +1129,25 @@ def test_le_eccezioni_del_censimento_hanno_un_tetto():
         f"dall'ammissione: {sorted(set(ADMITTED_EXCEPTIONS) - written)}")
 
 
-def test_ogni_eccezione_cita_una_voce_aperta_del_registro_o_si_dichiara_falso_positivo():
-    """Un'eccezione e' un debito: o e' scritta nel registro dei doppioni, come
-    voce APERTA, o e' un errore del rilevatore e lo dice. Stessa forma di
-    `test_fonte_unica.py`.
+def test_nessuna_eccezione_rimanda_a_una_voce_aperta():
+    """D2 della Chiusura (Paolo, 13/10/2026): un'eccezione resta solo come
+    ammissione, con la sua ragione, e la ragione non rimanda a una voce
+    APERTA del registro -- quella sarebbe un debito, e un debito si chiude,
+    non si ammette. Le voci chiuse si possono nominare: sono storia. Chi
+    sono le voci aperte lo dice `test_fonte_unica.open_entries_cited`, per
+    le due famiglie di eccezioni.
 
-    Mutazioni ESEGUITE, tutte rosse col nome dell'eccezione: tolta «Voce
-    M-61» dalla ragione di `operable_domains` (eccezione guarita il 13/10/2026,
-    con M-61); la stessa ragione riscritta
-    «Serve. Voce X-12 del registro.» (aperta, ma un'altra); la ragione di
-    `actuator_round` riscritta «Falso positivo: fidati di me, serve.»."""
-    import re
+    Mutazione ESEGUITA (14/10/2026), rossa col nome dell'eccezione: aggiunta
+    «Voce A-41 del registro.» (aperta quel giorno) alla ragione di
+    `/api/misure`. Ripristino verificato con `git status`."""
+    from tests.test_fonte_unica import open_entries_cited
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-    import registro
-
-    still_open = {entry.id for entry in registro.read_entries(registro.REGISTER)
-                  if not entry.closed}
-    assert still_open, "il registro non ha voci aperte: la prova non guarda niente"
     loose = []
     for category, name, reason in _written_exceptions():
-        expected = ADMITTED_EXCEPTIONS.get((category, name))
-        cited = set(re.findall(r"\b[A-Z]-\d{2}\b", reason))
-        if expected is None:
-            if cited:
-                loose.append(f"{category}/{name} (falso positivo che cita {sorted(cited)})")
-        elif cited != {expected} or expected not in still_open:
-            loose.append(f"{category}/{name} (cita: {sorted(cited) or 'niente'}, "
-                         f"ammessa per {expected})")
-    assert not loose, (
-        "eccezioni che non citano una voce APERTA del registro e non si "
-        "dichiarano falso positivo: " + "; ".join(loose))
+        # Una ragione vuota la ferma gia' `censimento.read_exceptions`.
+        if cited := open_entries_cited(reason):
+            loose.append(f"{category}/{name}: rimanda alle voci aperte {sorted(cited)}")
+    assert not loose, "; ".join(loose)
 
 
 # -- Le colonne (Tappa 8, Task 5) ------------------------------------------------

@@ -1,5 +1,5 @@
 {
  "rotta-solo-test": {
-  "/api/misure": "La leggono gli attrezzi di misura (scripts/misure.py, scripts/batteria_attori.py), che il rilevatore non conta fra i chiamanti: dichiarazione D5 della Tappa 0. Voce M-22 del registro."
+  "/api/misure": "La leggono gli attrezzi di misura (scripts/misure.py, scripts/batteria_attori.py), che il rilevatore non conta fra i chiamanti. Resta per scelta: dichiarazione D5 della Tappa 0, confermata da Paolo il 13/10/2026 (D2 della Chiusura)."
  }
 }

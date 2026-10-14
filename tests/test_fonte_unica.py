@@ -14,8 +14,8 @@ l'albero del codice e conta, fuori dai moduli che ne sono proprietari,
 chiamante.** Per le letture non si contano piu' le occorrenze fuori da
 `proxy/`: ogni lettura ha il suo proprietario, scritto in `READ_OWNERS` con la
 ragione, e un secondo modulo che la chiama e' un rosso -- a meno che
-`SHARED_READS` non lo ammetta per iscritto, con la ragione e la voce APERTA del
-registro che lo chiudera'. Le due mappe sono liste di AMMISSIONE; l'insieme
+`SHARED_READS` non lo ammetta per iscritto, con la ragione. Le due mappe sono
+liste di AMMISSIONE; l'insieme
 delle letture che devono comparirci si CHIEDE a `HAClient`. Si guarda tutto
 `hiris/app/` tranne il client stesso: anche lo specchio e le traduzioni (che
 stanno in `proxy/`) sono chiamanti, e lo specchio e' il proprietario di
@@ -23,10 +23,11 @@ stanno in `proxy/`) sono chiamanti, e lo specchio e' il proprietario di
 `read_registry("entita")` e `read_registry("etichette")` nell'officina sono
 due domande diverse, e il conto per nome le confondeva.
 
-**Le eccezioni delle altre due regole sono le copie che il registro conosce**
-(`fonte_unica_eccezioni.json`): per ogni file, QUALE nome e quante volte, con
-le voci del registro che lo spiegano -- oppure, dove il letterale vuol dire
-un'altra cosa, il motivo scritto. Un conto che SALE e' un doppione nuovo. Un
+**Le eccezioni delle altre due regole sono ammissioni**
+(`fonte_unica_eccezioni.json`): per ogni file, QUALE nome e quante volte, e il
+motivo scritto per cui quel letterale vuol dire un'altra cosa. Una copia nota
+non ci entra piu' (D2 della Chiusura, decisa da Paolo il 13/10/2026): nessuna
+eccezione rimanda a una voce aperta del registro. Un conto che SALE e' un doppione nuovo. Un
 conto che SCENDE e' una copia guarita, e va tolta dall'elenco nello stesso
 commit. Si conta per (file, nome) e non per file: una copia guarita e una nuova nello stesso file si
 compenserebbero, e il cancello resterebbe verde.
@@ -80,6 +81,7 @@ import functools
 import inspect
 import json
 import pathlib
+import re
 import sys
 import textwrap
 
@@ -254,32 +256,44 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
 }
 
 #: R1 stretto: i SECONDI moduli che chiamano una lettura, ammessi per iscritto.
-#: Per ognuno la voce del registro che lo chiudera' (deve essere APERTA) e la
-#: ragione. Lista di AMMISSIONE: una voce si toglie quando il secondo chiamante
-#: smette, e la prova lo pretende.
-SHARED_READS: dict[str, dict[str, tuple[str, str]]] = {
+#: Per ognuno `(voce, ragione)`. Lista di AMMISSIONE: una riga si toglie quando
+#: il secondo chiamante smette, e la prova lo pretende.
+#:
+#: Le forme sono due, e la prova le tiene distinte (D2 della Chiusura, decisa
+#: da Paolo il 13/10/2026):
+#: - `voce` e' `None`: un'**ammissione**. Il secondo chiamante resta per
+#:   scelta, e la ragione lo dice senza rimandare a una voce aperta del
+#:   registro;
+#: - `voce` e' l'id di una voce APERTA: un **debito**, che quella voce
+#:   chiudera'. E' un'eccezione nel senso del criterio 3 della spec (§8): lo
+#:   sprint si chiude quando non ne resta nessuno.
+SHARED_READS: dict[str, dict[str, tuple[str | None, str]]] = {
     # `action/construction/workshop.py` (A-15) e' uscita il 07/10/2026
     # (Tappa 7, Task 3): `_reread` legge il registro delle entita'.
     "get_states": {
         "keeper/recipient.py": (
-            "A-03",
+            None,
             ("D4 della Tappa 2 (03/10/2026, «restano», con la condizione di "
              "Paolo: nessun dato sensibile ai modelli): `recipients_for` cerca "
              "le `person` per `user_id`, che lo specchio trattiene come "
-             "credenziale. Prova: `tests/test_specchio_per_id.py`.")),
+             "credenziale (`entity_cache._CREDENTIAL_ATTRIBUTES`). Prova: "
+             "`tests/test_specchio_per_id.py`.")),
     },
     "read_registry": {
         "keeper/recipient.py": (
-            "A-03",
+            None,
             ("la stessa ricerca di `recipients_for` (D4): entita' e dispositivi "
              "delle `person`, accanto agli stati letti per intero")),
     },
     "extract_from_target": {
         "server.py": (
-            "A-08",
-            ("`tree_comparison_round` verifica l'albero dell'anagrafe contro "
-             "Home Assistant: e' la sorveglianza della copia che A-08 descrive "
-             "(anagrafe e specchio non coordinati)")),
+            None,
+            ("`tree_comparison_round` chiede a Home Assistant di risolvere le "
+             "aree e confronta la risposta con l'albero dell'anagrafe: e' la "
+             "sorveglianza delle due fonti della casa (i registri e gli stati, "
+             "unite in `House`), voluta da Paolo il 13/10/2026. La lettura del "
+             "proprietario risolve il bersaglio di un servizio: un'altra "
+             "domanda")),
     },
     # Le tre qui sotto hanno la stessa radice, R13 della spec: le letture
     # degli strumenti sono metodi privati di un oggetto che nasce a ogni turno
@@ -677,8 +691,8 @@ def test_r1_la_mappa_dice_il_vero():
     Mutazione ESEGUITA (04/10/2026): proprietario di `panels` scritto
     `server.py` -- rossa qui (`il proprietario server.py non la chiama`) e in
     R1 (`chiamata da panel_visibility.py`). Mutazione ESEGUITA: la voce di un
-    secondo chiamante scritta `A-02` (chiusa) -- rossa nella prova delle voci
-    aperte."""
+    secondo chiamante scritta `A-02` (chiusa) -- rossa in
+    `test_un_ammissione_non_rimanda_a_una_voce_aperta`."""
     callers = callers_by_read(violations())
     stale = [f"`{name}`: il proprietario {owner} non la chiama"
              for name, (owner, _reason) in sorted(READ_OWNERS.items())
@@ -704,26 +718,80 @@ def test_r1_un_secondo_modulo_e_rosso():
          "una seconda lettura della stessa cosa, non ammessa in SHARED_READS")]
 
 
-def test_ogni_eccezione_cita_una_voce_aperta_del_registro():
+@functools.cache
+def _open_entries() -> frozenset[str]:
+    """Le voci APERTE del registro dei doppioni, chieste a `registro.py`."""
     import registro
-    open_ids = {entry.id for entry in registro.read_entries(REGISTER) if not entry.closed}
-    assert len(open_ids) > 50, "il registro letto e' quasi vuoto: il lettore si e' rotto"
-    entries = [(rule, path, entry) for rule, per_file in _exceptions().items()
-               for path, entry in per_file.items()]
-    # Un'eccezione e' una copia nota (e cita le sue voci) oppure non e' un
-    # doppione (e dice perche'): una delle due, mai nessuna e mai entrambe.
-    unexplained = [f"{rule}: {path}" for rule, path, entry in entries
-                   if bool(entry.get("voci")) == bool(entry.get("non_e_un_doppione"))]
-    assert all(entry["conti"] for _rule, _path, entry in entries), "eccezioni senza conti"
-    assert not unexplained, f"eccezioni senza voce del registro ne' motivo: {unexplained}"
-    cited = {voice for _rule, _path, entry in entries for voice in entry.get("voci", ())}
-    # Anche l'elenco dei doppioni noti di `doppioni.py` cita il registro: e'
-    # lo stesso patto, e si verifica nello stesso punto.
-    cited |= set(json.loads(KNOWN_DUPLICATES.read_text(encoding="utf-8")).values())
-    # E i secondi chiamanti di R1 stretto: ognuno cita la voce che lo chiudera'.
-    cited |= {voice for extra in SHARED_READS.values() for voice, _reason in extra.values()}
-    orphans = sorted(cited - open_ids)
-    assert not orphans, f"eccezioni che citano voci chiuse o inesistenti: {orphans}"
+    entries = registro.read_entries(REGISTER)
+    # La derivazione non si e' rotta: un registro letto vuoto darebbe «nessuna
+    # voce citata» con la stessa faccia di un registro chiuso. Si guardano
+    # tutte le voci, non le aperte: alla fine dello sprint le aperte sono zero.
+    assert entries, "il registro letto e' vuoto: il lettore si e' rotto"
+    return frozenset(entry.id for entry in entries if not entry.closed)
+
+
+def open_entries_cited(text: str) -> set[str]:
+    """Le voci APERTE del registro che un testo nomina.
+
+    D2 della Chiusura (Paolo, 13/10/2026): un'ammissione dice la sua ragione,
+    e non rimanda a una voce aperta -- una voce aperta e' un debito, e
+    un'eccezione che la cita e' un'eccezione che aspetta di guarire. Le voci
+    CHIUSE si possono nominare: sono storia. Lo chiede anche
+    `tests/test_censimento.py`, per le eccezioni del censimento."""
+    return {entry for entry in _open_entries()
+            if re.search(rf"(?<![\w-]){re.escape(entry)}(?![\w-])", text)}
+
+
+def test_un_ammissione_non_rimanda_a_una_voce_aperta():
+    """D2 della Chiusura: la regola si capovolge. Fino al 13/10/2026 ogni
+    eccezione doveva citare una voce APERTA del registro; ora un'eccezione e'
+    un'**ammissione** -- resta per scelta, con la ragione scritta -- e non
+    rimanda a una voce aperta.
+
+    - In `fonte_unica_eccezioni.json` la sola forma e' l'ammissione: i conti e
+      `non_e_un_doppione`. La copia nota (`voci`) non c'e' piu': un doppione
+      si toglie, non si elenca.
+    - In `SHARED_READS` un'ammissione ha `voce = None`; un debito porta la sua
+      voce, e quella voce deve essere aperta (chiusa, la riga esce).
+
+    Mutazioni ESEGUITE (14/10/2026), tutte rosse col nome dell'eccezione:
+    aggiunto «(A-41)» alla ragione dell'ammissione di `recipients_for` in
+    `SHARED_READS`; aggiunto «Voce A-41 del registro.» alla ragione di
+    `version.py` in `fonte_unica_eccezioni.json`; aggiunta a quell'eccezione la
+    chiave `"voci": ["A-41"]`; la voce del debito di `system_log` scritta
+    `A-02` (chiusa). Ripristini verificati con `git status`."""
+    loose = []
+    for rule, per_file in _exceptions().items():
+        for path, entry in per_file.items():
+            where = f"{rule}: {path}"
+            if set(entry) != {"conti", "non_e_un_doppione"} or not entry["conti"]:
+                loose.append(f"{where} non ha la forma dell'ammissione (i conti e "
+                             f"`non_e_un_doppione`), ha {sorted(entry)}")
+            elif cited := open_entries_cited(entry["non_e_un_doppione"]):
+                loose.append(f"{where} rimanda alle voci aperte {sorted(cited)}")
+    for name, extra in sorted(SHARED_READS.items()):
+        for module, (voice, reason) in sorted(extra.items()):
+            where = f"SHARED_READS[{name!r}][{module!r}]"
+            if voice is None and (cited := open_entries_cited(reason)):
+                loose.append(f"{where}: un'ammissione che rimanda alle voci "
+                             f"aperte {sorted(cited)}")
+            elif voice is not None and voice not in _open_entries():
+                loose.append(f"{where}: il debito cita {voice}, che non e' una "
+                             "voce aperta -- chiusa, la riga esce")
+    assert not loose, "\n".join(loose)
+
+
+def test_nessun_doppione_e_noto():
+    """`scripts/doppioni_noti.json` e' vuoto dalla F2 della Chiusura, e resta
+    vuoto (D2): un doppione nuovo si toglie, non entra nell'elenco dei noti.
+    Il cancello `doppioni.py --noti` ferma gia' un doppione che NON e' in
+    elenco; questa prova ferma quello che ci viene scritto.
+
+    Mutazione ESEGUITA (14/10/2026): scritta nel file l'impronta
+    `{"regex:prova": "A-41"}` -- rossa, con l'impronta nel messaggio.
+    Ripristino verificato con `git status`."""
+    known = json.loads(KNOWN_DUPLICATES.read_text(encoding="utf-8"))
+    assert known == {}, f"doppioni scritti come noti: {sorted(known)}"
 
 
 #: D-36 (06/10/2026): **il resoconto di un giorno ha UNA strada che lo
