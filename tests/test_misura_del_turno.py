@@ -16,39 +16,47 @@ import pytest
 from hiris.app.claude_runner import _misura_corrente
 from hiris.app.steering import SPECIE, misura_turno
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 
 
-class FintoRunner:
+class FintoRunner(RunnerFinto):
     """Un runner che si comporta come i veri sul contratto della misura:
-    espone `last_tool_calls` e chiama il raccoglitore della ContextVar a ogni
-    giro. **Non conta i giri**: li conta la misura, guardando quante volte il
-    gancio ha scattato — un contatore qui sarebbe una seconda verita' sullo
-    stesso numero."""
+    chiama il raccoglitore della ContextVar a ogni giro, e lascia scritto
+    `last_tool_calls` (in `dopo`). **Non conta i giri**: li conta la misura,
+    guardando quante volte il gancio ha scattato — un contatore qui sarebbe
+    una seconda verita' sullo stesso numero.
+
+    Sovrascrive `chat` solo per i giri: il resto -- azzerare i `last_*`,
+    registrare la chiamata, lasciare `dopo`, rispondere o sollevare -- e' il
+    `chat` del genitore, chiamato in fondo."""
 
     def __init__(self, giri: int = 2, strumenti=None, esplode: bool = False,
                  peso: int = 9000):
-        self.last_tool_calls = [{"tool": n, "input": {"stanza": "camera"}}
-                                for n in (strumenti or ["search", "view"])]
+        super().__init__(
+            RuntimeError("il modello non ha risposto") if esplode else "fatto",
+            dopo={"last_tool_calls": [{"tool": n, "input": {"stanza": "camera"}}
+                                      for n in (strumenti or ["search", "view"])]})
         self._giri = giri
-        self._esplode = esplode
         self._peso = peso
 
-    async def chat(self):
+    def consegne(self, giro: int) -> list[dict]:
+        """Cio' che il runner consegna al raccoglitore in quel giro."""
+        return [{"tools_chars": 44876, "guide_chars": 6200,
+                 "core_chars": 6518, "history_chars": 1000,
+                 # cresce a ogni giro: è il punto della misura
+                 "results_chars": self._peso * (giro - 1),
+                 "tools_sent": 16, "prefix_hash": "abc123"}]
+
+    async def chat(self, **kwargs):
         for giro in range(1, self._giri + 1):
             # Come i runner veri: il raccoglitore si legge dalla ContextVar
             # della chiamata, non da un attributo dell'oggetto.
             raccoglitore = _misura_corrente()
             if raccoglitore is not None:
-                raccoglitore(giro, {
-                    "tools_chars": 44876, "guide_chars": 6200,
-                    "core_chars": 6518, "history_chars": 1000,
-                    # cresce a ogni giro: è il punto della misura
-                    "results_chars": self._peso * (giro - 1),
-                    "tools_sent": 16, "prefix_hash": "abc123"})
+                for pesi in self.consegne(giro):
+                    raccoglitore(giro, pesi)
             await asyncio.sleep(0)
-        if self._esplode:
-            raise RuntimeError("il modello non ha risposto")
-        return "fatto"
+        return await super().chat(**kwargs)
 
 
 @pytest.fixture()
@@ -87,7 +95,7 @@ async def test_la_catena_registra_gli_argomenti(app):
 
     Mutazione ESEGUITA: `misura_turno` che non passa `tool_args` -- rossa."""
     runner = FintoRunner(giri=1)
-    runner.last_tool_calls = [
+    runner.dopo["last_tool_calls"] = [
         {"tool": "search", "input": {"tipo": "light"}},
         {"tool": "execute", "input": {"data": {"code": "1234"}}},
         {"tool": "view"}]
@@ -290,22 +298,14 @@ class RunnerCoiToken(FintoRunner):
     """Come i runner veri dopo la fetta «le misure complete»: DUE consegne
     per giro -- i caratteri prima della chiamata, i token dopo la risposta."""
 
-    async def chat(self):
-        for giro in range(1, self._giri + 1):
-            raccoglitore = _misura_corrente()
-            if raccoglitore is not None:
-                raccoglitore(giro, {
-                    "tools_chars": 44876, "guide_chars": 6200,
-                    "core_chars": 6518, "history_chars": 1000,
-                    "results_chars": 0, "tools_sent": 16,
-                    "prefix_hash": "abc123"})
-                raccoglitore(giro, {"input_tokens": 100 * giro,
-                                    "output_tokens": 7,
-                                    "cache_read_tokens": 900,
-                                    "cache_write_tokens": 0,
-                                    "cache_ttl": None, "cost_usd": 0.001})
-            await asyncio.sleep(0)
-        return "fatto"
+    def consegne(self, giro: int) -> list[dict]:
+        return [{"tools_chars": 44876, "guide_chars": 6200,
+                 "core_chars": 6518, "history_chars": 1000,
+                 "results_chars": 0, "tools_sent": 16,
+                 "prefix_hash": "abc123"},
+                {"input_tokens": 100 * giro, "output_tokens": 7,
+                 "cache_read_tokens": 900, "cache_write_tokens": 0,
+                 "cache_ttl": None, "cost_usd": 0.001}]
 
 
 @pytest.mark.asyncio
@@ -341,15 +341,16 @@ async def test_senza_token_l_uscita_del_turno_resta_NULL(app):
 
 class RunnerCheDichiaraIlModello(RunnerCoiToken):
     """Come i runner veri dopo la 3.70.1: la consegna dei token porta anche
-    il modello che ha risposto davvero (`effective_model`)."""
+    il modello che ha risposto davvero (`effective_model`). Un giro solo."""
 
-    async def chat(self):
-        raccoglitore = _misura_corrente()
-        raccoglitore(1, {"tools_chars": 1, "guide_chars": 1, "core_chars": 1,
-                         "history_chars": 1, "results_chars": 0})
-        raccoglitore(1, {"input_tokens": 10, "output_tokens": 2,
-                         "model": "qwen/qwen3.8-27b"})
-        return "fatto"
+    def __init__(self):
+        super().__init__(giri=1)
+
+    def consegne(self, giro: int) -> list[dict]:
+        return [{"tools_chars": 1, "guide_chars": 1, "core_chars": 1,
+                 "history_chars": 1, "results_chars": 0},
+                {"input_tokens": 10, "output_tokens": 2,
+                 "model": "qwen/qwen3.8-27b"}]
 
 
 @pytest.mark.asyncio

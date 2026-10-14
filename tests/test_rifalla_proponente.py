@@ -21,11 +21,13 @@ from hiris.app.mind import proposer_turn as pt
 from hiris.app.mind.analyst import evidence_of, observation_key
 from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import PRIORITY_CHAT, ReasoningQueue
+from tests._runner_finto import RunnerFinto
 from tests.test_proponente import (
     _INTENZIONE_BUONA,
     OGGI,
     _id_nato,
     _Modello,
+    _strumenti,
     casa,  # noqa: F401 -- la fixture, la stessa del giro
     osservazioni,
 )
@@ -77,11 +79,11 @@ async def test_il_secondo_giro_vede_la_forma_SCARTATA_e_la_richiesta(casa):
     await redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA)
     await redo.redo(casa, casa["observations"], _proposta(casa, ident), "un'ora prima")
 
-    seconda = casa["llm_router"].domande[1]
+    seconda = casa["llm_router"].chiamate[1]["user_message"]
     assert "[0] Scaldabagno" in seconda, "l'osservazione non e' arrivata"
     assert "Abbassa il termostato di notte" in seconda, "la forma scartata non c'e'"
     assert RICHIESTA in seconda and "un'ora prima" in seconda
-    assert "propose" in casa["llm_router"].strumenti[1]
+    assert "propose" in _strumenti(casa["llm_router"], 1)
     riga = _proposta(casa, ident)
     assert riga["testo"] == "Spegni lo scaldabagno alle 22"
     assert riga["perche"] == "un'ora prima costa meno"
@@ -171,19 +173,13 @@ async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
     ident = _manuale(casa)
     partito, libera = asyncio.Event(), asyncio.Event()
 
-    class _Lento:
-        def __init__(self):
-            self.chiamate = 0
-            self.last_tool_calls: list = []
+    async def _lento(runner, **_kwargs):
+        # Il primo turno si ferma finche' la prova non lo libera.
+        if len(runner.chiamate) == 1:
+            partito.set()
+            await libera.wait()
 
-        async def chat(self, **_kwargs):
-            self.chiamate += 1
-            if self.chiamate == 1:
-                partito.set()
-                await libera.wait()
-            return _esiti(esito="niente", perche="x")
-
-    casa["llm_router"] = _Lento()
+    casa["llm_router"] = RunnerFinto(_esiti(esito="niente", perche="x"), turno=_lento)
     primo = asyncio.create_task(
         redo.redo(casa, casa["observations"], _proposta(casa, ident), RICHIESTA))
     await asyncio.wait_for(partito.wait(), 5)
@@ -193,7 +189,7 @@ async def test_sulla_CATENA_due_pressioni_ravvicinate_fanno_UN_turno_solo(casa):
     libera.set()
     await primo
 
-    assert casa["llm_router"].chiamate == 1
+    assert len(casa["llm_router"].chiamate) == 1
     assert ident not in casa[redo.CHAIN_IN_FLIGHT], "finita la richiesta, si libera"
 
 

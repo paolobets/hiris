@@ -21,6 +21,7 @@ from hiris.app.home_space import historian
 from hiris.app.mind import analyst
 from hiris.app.mind import analyst_turn as at
 from hiris.app.mind.store import ObservationsStore
+from tests._runner_finto import RunnerFinto
 
 
 def _osservazione(**extra):
@@ -134,14 +135,9 @@ def test_senza_memoria_ogni_osservazione_e_NUOVA():
     assert esito["analisi"]["osservazioni"][0]["novita"] == "nuova"
 
 
-class _ModelloCheRipete:
-    def __init__(self):
-        self.domande = []
-
-    async def chat(self, **kwargs):
-        self.domande.append(kwargs["user_message"])
-        return json.dumps({"osservazioni": [
-            {"quale": 0, "cosa": "di nuovo il prelievo", "spiegato": None}]})
+def _modello_ripetitore() -> RunnerFinto:
+    return RunnerFinto(json.dumps({"osservazioni": [
+        {"quale": 0, "cosa": "di nuovo il prelievo", "spiegato": None}]}))
 
 
 def _resoconto(giorno, copertura=1.0):
@@ -174,13 +170,13 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
         # `test_la_memoria_e_UNA_VOCE_per_impronta_con_i_giorni_e_l_ESITO`, sui
         # dizionari di `proposals()`: la firma di `add_proposal` cambia con lo
         # strato 4 (`stakes`), e questa prova non deve legarsi a lei.
-        modello = _ModelloCheRipete()
+        modello = _modello_ripetitore()
         app = {"observations": store, "llm_router": modello, "bridge_active": False}
 
         await server.analyst_round(app)
 
-        assert len(modello.domande) == 1
-        assert '"giorni": ["2026-09-16"]' in modello.domande[0]
+        assert len(modello.chiamate) == 1
+        assert '"giorni": ["2026-09-16"]' in modello.ultima["user_message"]
         oggi = historian.today(historian.house_timezone(None)).isoformat()
         assert store.analysis(oggi)["osservazioni"] == []
     finally:

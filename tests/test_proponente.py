@@ -26,6 +26,7 @@ from hiris.app.mind.analyst import evidence_of, observation_key
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
 
@@ -70,25 +71,31 @@ class _Officina:
         return {"proposta_id": nata["id"], "anteprima": "anteprima"}
 
 
-class _Modello:
+class _Modello(RunnerFinto):
     """Il modello dal lato del giro: esegue i passi che gli si danno -- le
     chiamate di strumento col dispatcher del turno, poi la risposta -- e tiene
-    cio' che gli strumenti gli hanno risposto."""
+    cio' che gli strumenti gli hanno risposto. Sottoclasse solo per tenere i
+    passi e i risultati: `chat` e' quella di `RunnerFinto`."""
 
     def __init__(self, *turni):
+        super().__init__(turno=self._passo)
         self.turni = list(turni)
-        self.domande: list[str] = []
         self.risultati: list[dict] = []
-        self.strumenti: list[list[str]] = []
-        self.last_tool_calls: list = []
 
-    async def chat(self, **kwargs):
-        self.domande.append(kwargs["user_message"])
-        self.strumenti.append([d["name"] for d in kwargs.get("tools") or []])
+    async def _passo(self, runner, **kwargs):
         chiamate, risposta = self.turni.pop(0)
         for nome, argomenti in chiamate:
             self.risultati.append(await kwargs["dispatcher"].dispatch(nome, argomenti))
         return risposta(self.risultati) if callable(risposta) else risposta
+
+
+def _strumenti(modello, quale=0) -> list[str]:
+    """I nomi degli strumenti offerti alla chiamata `quale`."""
+    return [d["name"] for d in modello.chiamate[quale].get("tools") or []]
+
+
+def _domande(modello) -> list[str]:
+    return [c["user_message"] for c in modello.chiamate]
 
 
 @pytest.fixture()
@@ -136,7 +143,7 @@ async def test_l_officina_RIFIUTA_dentro_il_turno_il_modello_corregge(casa):
 
     modello = app["llm_router"]
     # Gli strumenti sulla catena vengono dalla dichiarazione del mestiere.
-    assert "propose" in modello.strumenti[0] and "execute" not in modello.strumenti[0]
+    assert "propose" in _strumenti(modello) and "execute" not in _strumenti(modello)
     assert "errore" in modello.risultati[0]
     assert esito["problemi"] == []
     accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
@@ -213,7 +220,7 @@ async def test_una_COSTRUITA_di_una_risposta_RIFIUTATA_si_cita_non_si_rifa(casa)
 
     ident = _id_nato(app["llm_router"].risultati)
     assert primo["problemi"] and secondo["problemi"] == []
-    assert ident in app["llm_router"].domande[1]
+    assert ident in _domande(app["llm_router"])[1]
     (riga,) = app["constructions"].list(now=time.time())
     assert (riga["id"], riga["impronta"]) == (ident, observation_key(osservazioni()[0]))
     assert app["constructions"].unbound(actor=steering.PROPOSER_SPECIES,
@@ -378,7 +385,7 @@ async def test_un_giro_dopo_non_RICHIEDE_cio_che_ha_un_esito(casa):
     app["llm_router"] = _Modello(([], _risposta_manuale()))
     await pr.proposer_round(app)
     assert await pr.proposer_round(app) is None
-    assert len(app["llm_router"].domande) == 1
+    assert len(app["llm_router"].chiamate) == 1
 
 
 def _decisa(osservazione, *, aperta, by_hand, creata_ts=1.0, ident="p1", **prova):
@@ -454,7 +461,7 @@ async def test_chi_SALTA_una_domanda_lo_scrive_nel_registro(casa, caplog):
     with caplog.at_level("INFO", logger="hiris.app.mind.proposer_round"):
         await pr.proposer_round(app)
 
-    assert "[0] Scaldabagno" not in app["llm_router"].domande[0]
+    assert "[0] Scaldabagno" not in _domande(app["llm_router"])[0]
     assert any(observation_key(riga) in r.getMessage()
                and "stessa prova" in r.getMessage() for r in caplog.records)
 
@@ -488,7 +495,7 @@ async def test_una_COSTRUITA_porta_impronta_e_prova_e_non_torna(casa):
     # Un'analisi nuova con la stessa osservazione: in attesa, non si richiede.
     app["observations"].replace_analysis(OGGI, {"osservazioni": osservazioni()[:1]})
     assert await pr.proposer_round(app) is None
-    assert len(app["llm_router"].domande) == 1
+    assert len(app["llm_router"].chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -513,7 +520,7 @@ async def test_una_COSTRUITA_SUPERA_la_proposta_a_mano_in_attesa(casa):
 
     await pr.proposer_round(app)
 
-    assert "[0] Scaldabagno" in app["llm_router"].domande[0]
+    assert "[0] Scaldabagno" in _domande(app["llm_router"])[0]
     (proposta,) = app["observations"].proposals()
     assert proposta["id"] == manuale and proposta["stato"] == "superata"
 
@@ -541,7 +548,7 @@ async def test_un_secondo_A_MANO_non_duplica_e_non_si_richiede_a_ogni_giro(casa)
     assert [p["id"] for p in app["observations"].proposals()] == [manuale]
     accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
     assert accanto[0]["proposta_id"] == manuale
-    assert len(app["llm_router"].domande) == 1
+    assert len(app["llm_router"].chiamate) == 1
 
 
 # -- Il ponte ------------------------------------------------------------------

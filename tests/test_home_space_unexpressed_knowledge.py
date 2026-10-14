@@ -28,6 +28,7 @@ from hiris.app.home_space.topology import Mirror, live_first
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
 from tests._house_translations import house_translations
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 _REGISTRI = {
     # `labels` porta i label_id (slug), MAI i nomi: e' cosi' che Home Assistant
@@ -179,14 +180,6 @@ def test_deduci_unita_da_un_area_usa_la_fonte_viva(casa):
 
 # --- la stessa risposta da tutte le porte ---------------------------------
 
-class _SpecchioFinto:
-    loaded = True
-
-    def all_states(self):
-        return [{"id": "sensor.frigo_temp", "state": "4", "unit": "C",
-                 "name": "Temperatura frigo"}]
-
-
 @pytest.mark.asyncio
 async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
         aiohttp_client, tmp_path):
@@ -215,7 +208,8 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     app = web.Application()
     app["memory_store"] = memoria
     app["home_space_store"] = casa_archivio
-    app["entity_cache"] = _SpecchioFinto()
+    app["entity_cache"] = SpecchioFinto([raw_state(
+        "sensor.frigo_temp", "4", "Temperatura frigo", unit_of_measurement="C")])
     app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     client = await aiohttp_client(app)
 

@@ -12,6 +12,7 @@ from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts
 from hiris.app.api import handlers_chat
 from hiris.app.steering import SPECIES, house_hour, with_hour
+from tests._runner_finto import RunnerFinto
 from tests.test_chat_briefing import _build_chat_client, _semina_casa
 
 
@@ -40,7 +41,7 @@ async def test_la_chat_sincrona_porta_l_ora_nel_messaggio_e_non_nel_contesto(
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
 
-    kwargs = runner.chat.call_args.kwargs
+    kwargs = runner.ultima
     assert kwargs["user_message"].startswith("ciao\n\nAdesso sono le")
     assert "Adesso sono le" not in kwargs["context_str"]
     # In cronologia resta la frase di chi ha scritto, non l'ora del turno.
@@ -70,7 +71,7 @@ async def test_il_dispatcher_riceve_la_frase_senza_l_ora(
     resp = await client.post("/api/chat", json={"message": "ciao"})
     assert resp.status == 200
     assert frasi == ["ciao"]
-    assert runner.chat.call_args.kwargs["user_message"].startswith("ciao\n\nAdesso sono le")
+    assert runner.ultima["user_message"].startswith("ciao\n\nAdesso sono le")
 
 
 def test_il_ponte_mette_l_ora_dopo_la_conversazione():
@@ -89,19 +90,16 @@ def test_il_ponte_mette_l_ora_dopo_la_conversazione():
 async def test_la_promessa_sulla_catena_porta_l_ora_nella_domanda():
     from hiris.app.keeper.exchange import interpreta_promise
 
-    chiamato_con = {}
+    async def _conclude(_runner, **kwargs):
+        await kwargs["dispatcher"].dispatch(
+            "conclude", {"avvisare": False, "testo": "niente"})
 
-    class _Runner:
-        async def chat(self, **kwargs):
-            chiamato_con.update(kwargs)
-            await kwargs["dispatcher"].dispatch(
-                "conclude", {"avvisare": False, "testo": "niente"})
-
-    await interpreta_promise({"llm_router": _Runner()},
+    modello = RunnerFinto(turno=_conclude)
+    await interpreta_promise({"llm_router": modello},
                              {"id": "p1", "frase": "dimmi", "domanda": "guarda",
                               "istantanea": []})
-    assert "\n\nAdesso sono le" in chiamato_con["user_message"]
-    assert "Adesso sono le" not in chiamato_con["context_str"]
+    assert "\n\nAdesso sono le" in modello.ultima["user_message"]
+    assert "Adesso sono le" not in modello.ultima["context_str"]
 
 
 def test_la_promessa_sul_ponte_porta_l_ora_nel_job(monkeypatch):

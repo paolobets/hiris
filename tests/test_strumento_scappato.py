@@ -24,6 +24,7 @@ from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG, OpenAICo
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.llm_router import LLMRouter
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 _TOOLS = [{"name": "search", "description": "cerca",
@@ -80,8 +81,10 @@ async def test_il_router_dice_lo_strumento_scappato_di_chi_ha_risposto():
 
 @pytest.mark.asyncio
 async def test_il_router_senza_nessuno_che_risponde_non_eredita_il_segnale():
-    primo = MagicMock()
-    primo.chat = AsyncMock(side_effect=RuntimeError("giu'"))
+    # Il backend che cade lascia scritto il segnale sull'oggetto: il router
+    # non deve ereditarlo (prima lo faceva il MagicMock, che rispondeva un
+    # valore vero a qualunque attributo).
+    primo = RunnerFinto(RuntimeError("giu'"), dopo={"last_tool_leaked": True})
     router = LLMRouter(claude=primo, model_chain=["claude"])
     ClaudeRunner(api_key="sk-prova").last_tool_leaked = True
     await router.chat(user_message="ciao", model="auto", max_tokens=4096)
@@ -113,16 +116,6 @@ def test_ogni_runner_espone_il_segnale():
         assert hasattr(classe, "last_tool_leaked"), f"{nome} non espone `last_tool_leaked`"
 
 
-class _Scappato:
-    def __init__(self):
-        self.last_tool_leaked = True
-        self.last_truncated = False
-        self.last_tool_calls = []
-
-    async def chat(self, **kwargs):
-        return TOOL_LEAK_USER_MSG
-
-
 @pytest.fixture()
 def consumi(tmp_path):
     archivio = UsageStore(str(tmp_path / "consumi.db"))
@@ -134,7 +127,7 @@ def consumi(tmp_path):
 async def test_il_registro_dei_turni_scrive_lo_strumento_scappato(consumi):
     """Mutazione eseguita: `misura_turno` che non legge il segnale -- rossa
     («riuscito»)."""
-    runner = _Scappato()
+    runner = RunnerFinto(TOOL_LEAK_USER_MSG, dopo={"last_tool_leaked": True})
     async with steering.misura_turno(consumi, runner, specie=steering.ANALYST_SPECIES,
                                      canale="catena"):
         await runner.chat()

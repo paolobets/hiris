@@ -24,6 +24,7 @@ import pytest
 from hiris.app import steering
 from hiris.app.claude_runner import BASE_TOOL_RULES, ClaudeRunner
 from hiris.app.home_space.tools import TOOLS
+from tests._runner_finto import RunnerFinto
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 
@@ -152,17 +153,6 @@ async def test_la_chat_riceve_le_regole_intere_byte_per_byte():
 
 # -- la partenza unica ----------------------------------------------------------
 
-class _Runner:
-    """Un runner che risponde e tiene cio' che ha ricevuto."""
-
-    def __init__(self):
-        self.ricevuto = None
-
-    async def chat(self, **kwargs):
-        self.ricevuto = kwargs
-        return "ok"
-
-
 @pytest.mark.asyncio
 async def test_un_mestiere_senza_strumenti_non_puo_riceverne():
     """L'elenco d'ammissione: l'attuatore non tocca la casa, e un turno che
@@ -172,12 +162,12 @@ async def test_un_mestiere_senza_strumenti_non_puo_riceverne():
     rossa, il runner riceve `execute`."""
     from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
-    runner = _Runner()
+    runner = RunnerFinto()
     execute = [d for d in KNOWLEDGE_TOOLS if d["name"] == "execute"]
     with pytest.raises(ValueError, match="execute"):
         await steering.chain_turn(runner, steering.PROPOSER_SPECIES, usage=None,
                                   max_tokens=64, user_message="?", tools=execute)
-    assert runner.ricevuto is None
+    assert runner.chiamate == []
 
 
 @pytest.mark.asyncio
@@ -185,12 +175,12 @@ async def test_la_promessa_riceve_i_suoi_strumenti_e_non_altri():
     from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
     from hiris.app.keeper.exchange import promise_tools
 
-    runner = _Runner()
+    runner = RunnerFinto()
     answer, turn = await steering.chain_turn(
         runner, steering.PROMISE_SPECIES, usage=None, max_tokens=64,
         user_message="?", tools=promise_tools())
     assert answer == "ok" and turn.truncated is False
-    assert runner.ricevuto["max_tokens"] == 64
+    assert runner.ultima["max_tokens"] == 64
     with pytest.raises(ValueError, match="execute"):
         await steering.chain_turn(runner, steering.PROMISE_SPECIES, usage=None,
                                   max_tokens=64, user_message="?",
@@ -205,7 +195,7 @@ def test_la_partenza_dichiara_il_ripiego_solo_se_il_turno_parte(monkeypatch):
     monkeypatch.setattr(steering, "declare_downgrade",
                         lambda app, *, agent, reason: dichiarati.append((agent, reason)))
 
-    runner = _Runner()
+    runner = RunnerFinto()
     assert steering.start({"claude_runner": runner}, "analista") == ("catena", "tetto", runner)
     assert dichiarati == [("analista", "tetto")]
     assert steering.start({}, "analista") == ("catena", "tetto", None)

@@ -33,7 +33,6 @@ import pathlib
 import re
 import sys
 import time
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import web
@@ -43,6 +42,8 @@ from hiris.app.action import installation
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.proxy import ha_client
 from hiris.app.proxy.ha_client import HAClient
+from tests._runner_finto import RunnerFinto
+from tests._specchio_finto import SpecchioFinto
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -459,13 +460,10 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     ha = _filo_appeso("frontend/update_panel")
     app["ha_client"] = ha
     app["chat_settings"] = ChatSettings()
-    runner = AsyncMock()
-    runner.last_tool_calls = []
-    runner.last_unanswered = False
-    app["claude_runner"] = runner
+    app["claude_runner"] = RunnerFinto()
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
-    app["entity_cache"] = MagicMock()
+    app["entity_cache"] = SpecchioFinto()
 
     client = await asyncio.wait_for(aiohttp_client(app), timeout=5)
     resp = await client.get("/api/health")

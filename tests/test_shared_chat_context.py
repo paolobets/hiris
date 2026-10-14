@@ -35,6 +35,7 @@ from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.chat_thread import ChatThread
 from hiris.app.memory.store import MemoryStore
+from tests._runner_finto import RunnerFinto
 from tests.test_chat_briefing import _semina_casa
 
 # Fetta «le chat divise»: le sessioni precedenti sono quelle del filo per cui
@@ -269,7 +270,6 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
 
     import os
-    from unittest.mock import AsyncMock
 
     from aiohttp import web
     from aiohttp.test_utils import TestClient, TestServer
@@ -297,10 +297,7 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
     def _app(tmp_sub, *, ponte_attivo):
         data_dir = str(tmp_sub / "data")
         os.makedirs(data_dir, exist_ok=True)
-        runner = AsyncMock()
-        runner.chat = AsyncMock(return_value="risposta sincrona")
-        runner.last_tool_calls = []
-        runner.last_unanswered = False
+        runner = RunnerFinto("risposta sincrona")
         app = web.Application(middlewares=[_finto_confine])
         app["llm_router"] = runner
         app["claude_runner"] = runner
@@ -332,7 +329,7 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
     async with TestClient(TestServer(app_sync)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 200
-    contesto_sincrono = runner_sync.chat.call_args.kwargs["context_str"]
+    contesto_sincrono = runner_sync.ultima["context_str"]
     sezione_sincrona = _sezione_chi_parla(contesto_sincrono)
 
     assert sezione_ponte.startswith("## Chi ti sta parlando")

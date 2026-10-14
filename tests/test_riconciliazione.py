@@ -32,10 +32,11 @@ from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.recipe_turn import ANSWER_FIELDS, DECLINED_FIELD
 from hiris.app.mind.reconciliation import reconcile, what_to_forget
 from hiris.app.mind.store import ObservationsStore
-from hiris.app.proxy.entity_cache import _to_minimal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta, Refused
+
+from tests._specchio_finto import SpecchioFinto
 
 READ_AT = "2026-10-08T06:00:00+00:00"
 
@@ -63,7 +64,7 @@ SCOPE = ["climate.soggiorno", "switch.presa", "sensor.sparita", "sun.sun",
 
 
 def _house(*, unavailable=(), readable=True) -> House:
-    mirror = live_mirror([_to_minimal(row) for row in STATES])
+    mirror = live_mirror(SpecchioFinto(STATES).all_states())
     if not readable:
         mirror = Mirror(readable=False)
     return House(build_home_space(REGISTRIES), mirror, unavailable)
@@ -148,14 +149,6 @@ async def test_senza_client_non_e_avviato():
     assert await ha_running(None) is False
 
 
-class _Cache:
-    """Uno specchio caricato, con le righe nella forma di `all_states`."""
-    loaded = True
-
-    def all_states(self):
-        return [_to_minimal(row) for row in STATES]
-
-
 @pytest.fixture
 def archivi(tmp_path):
     store = ObservationsStore(str(tmp_path / "osservazioni.db"))
@@ -180,7 +173,7 @@ def archivi(tmp_path):
 async def test_la_riconciliazione_scrive_sugli_archivi_e_lo_dice(archivi, caplog):
     store, knowledge, home_space = archivi
     app = {"observations": store, "knowledge": knowledge, "home_space_store": home_space,
-           "entity_cache": _Cache(), "ha_client": _Client({"state": "RUNNING"})}
+           "entity_cache": SpecchioFinto(STATES), "ha_client": _Client({"state": "RUNNING"})}
 
     with caplog.at_level(logging.INFO, logger="hiris.app.mind.reconciliation"):
         await reconcile(app)
@@ -197,7 +190,7 @@ async def test_la_riconciliazione_scrive_sugli_archivi_e_lo_dice(archivi, caplog
 async def test_a_casa_non_avviata_gli_archivi_restano_e_il_log_dice_perche(archivi, caplog):
     store, knowledge, home_space = archivi
     app = {"observations": store, "knowledge": knowledge, "home_space_store": home_space,
-           "entity_cache": _Cache(), "ha_client": _Client({"state": "STARTING"})}
+           "entity_cache": SpecchioFinto(STATES), "ha_client": _Client({"state": "STARTING"})}
 
     with caplog.at_level(logging.INFO, logger="hiris.app.mind.reconciliation"):
         await reconcile(app)

@@ -12,7 +12,6 @@ risponde `text/event-stream` -- rossa (`text/event-stream` nel Content-Type).
 """
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -25,6 +24,8 @@ from tests._casa_sintetica import synthetic_inputs
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from tests._runner_finto import RunnerFinto
+
 
 @pytest.fixture(autouse=True)
 def reset_chat_stores():
@@ -35,10 +36,7 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    mock_runner = AsyncMock()
-    mock_runner.chat = AsyncMock(return_value="risposta di prova")
-    mock_runner.last_tool_calls = []
-    mock_runner.last_unanswered = False
+    mock_runner = RunnerFinto("risposta di prova")
     app["ha_client"] = CasaFinta(synthetic_inputs())
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner

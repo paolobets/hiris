@@ -33,6 +33,7 @@ from hiris.app.chat_store import close_all_stores
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
 from tests._casa_sintetica import synthetic_inputs
+from tests._runner_finto import RunnerFinto
 
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/"}
 #: Gli utenti di Home Assistant, righe grezze di `config/auth/list` (la forma
@@ -1330,21 +1331,21 @@ def test_nello_statico_non_ci_sono_segreti():
 
 # --- H-1: il turno di una promessa porta il soffitto di chi l'ha chiesta ------
 
-class _RunnerCheLegge:
+async def _legge_registro(runner, **kwargs):
     """Chiede il registro e le tracce, poi conclude: cio' che un modello
-    farebbe se glielo si chiedesse in una promessa."""
+    farebbe se glielo si chiedesse in una promessa. Le risposte degli
+    strumenti restano in `runner.risposte`."""
+    d = kwargs["dispatcher"]
+    runner.risposte.append(await d.dispatch("history", {"cosa": "errori"}))
+    runner.risposte.append(await d.dispatch(
+        "history", {"cosa": "esecuzioni", "riferimento": "automation.luci"}))
+    await d.dispatch("conclude", {"avvisare": False, "testo": "fatto"})
 
-    def __init__(self):
-        self.risposte = []
-        self.contesto = None
 
-    async def chat(self, **kwargs):
-        self.contesto = kwargs.get("context_str")
-        d = kwargs["dispatcher"]
-        self.risposte.append(await d.dispatch("history", {"cosa": "errori"}))
-        self.risposte.append(await d.dispatch(
-            "history", {"cosa": "esecuzioni", "riferimento": "automation.luci"}))
-        await d.dispatch("conclude", {"avvisare": False, "testo": "fatto"})
+def _runner_lettore() -> RunnerFinto:
+    runner = RunnerFinto(turno=_legge_registro)
+    runner.risposte = []
+    return runner
 
 
 @pytest.mark.asyncio
@@ -1358,7 +1359,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
     from hiris.app.chat_thread import ChatThread
     from hiris.app.keeper.exchange import interpreta_promise
 
-    ha, runner = _house(), _RunnerCheLegge()
+    ha, runner = _house(), _runner_lettore()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "fra un'ora guarda il registro",
@@ -1378,7 +1379,7 @@ async def test_la_promessa_dell_amministratore_legge_come_prima():
     from hiris.app.chat_thread import ChatThread
     from hiris.app.keeper.exchange import interpreta_promise
 
-    ha, runner = _house(), _RunnerCheLegge()
+    ha, runner = _house(), _runner_lettore()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
@@ -1561,7 +1562,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
     from hiris.app.keeper.exchange import interpreta_promise
 
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
-    ha, runner = _house(), _RunnerCheLegge()
+    ha, runner = _house(), _runner_lettore()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
@@ -1573,7 +1574,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
     assert set(_asked(ha)) <= {"config/auth/list"}, "solo chi e' la persona"
 
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
-    ha2, runner2 = _house(), _RunnerCheLegge()
+    ha2, runner2 = _house(), _runner_lettore()
     app2 = {"llm_router": runner2, "ha_client": ha2}
     prepara_ruoli(app2)
     await interpreta_promise(app2, promessa)
@@ -1592,7 +1593,7 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
     from hiris.app.keeper.store import AgendaStore
     from hiris.app.keeper.sweeper import Sweeper
 
-    ha, runner = _house(), _RunnerCheLegge()
+    ha, runner = _house(), _runner_lettore()
     app = {"llm_router": runner, "ha_client": ha}
     prepara_ruoli(app)
     agenda = AgendaStore(str(tmp_path / "promesse.db"))

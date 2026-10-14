@@ -14,8 +14,8 @@ import pytest
 from hiris.app.home_space import tools
 from hiris.app.home_space.house_query import page_rows
 from hiris.app.home_space.tools import CharCap, ToolDispatcher
-from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.usage.giro import pesa_in_caratteri
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_knowledge_tools import _semina_casa
 
 #: Le sorgenti di un lettore multimediale: l'attributo `source_list` di Home
@@ -31,22 +31,16 @@ def _lettori(quanti: int) -> dict:
                         "disabilitata": 0, "nascosta": 0} for n in range(quanti)]}
 
 
-class _Specchio:
-    loaded = True
-
-    def __init__(self, quanti: int) -> None:
-        self._stati = [_to_minimal({"entity_id": f"media_player.lettore_{n}", "state": "on",
-                                    "attributes": {"friendly_name": f"Lettore {n}",
-                                                   "source_list": _SORGENTI}})
-                       for n in range(quanti)]
-
-    def all_states(self) -> list[dict]:
-        return self._stati
+def _specchio(quanti: int) -> SpecchioFinto:
+    """Lo specchio VERO, coi lettori accesi e le loro sorgenti."""
+    return SpecchioFinto(raw_state(f"media_player.lettore_{n}", "on", f"Lettore {n}",
+                                   source_list=_SORGENTI)
+                         for n in range(quanti))
 
 
 def _dispatcher(tmp_path, quanti: int) -> ToolDispatcher:
     return ToolDispatcher(_semina_casa(tmp_path, casa=_lettori(quanti), comportamento=[]),
-                          None, cache=_Specchio(quanti))
+                          None, cache=_specchio(quanti))
 
 
 @pytest.mark.asyncio
@@ -236,16 +230,16 @@ def _storia_sonde(tmp_path):
         _ADESSO,
         _CASA,
         _history_dispatcher,
-        _history_mirror,
         _house,
-        _riga,
+        _righe_grezze,
         _voce,
     )
     casa = copy.deepcopy(_CASA)
     casa["entita"] += [_voce(eid, f"Sonda {eid[-2:]}", "cucina") for eid in _SONDE]
-    specchio = _history_mirror()
-    specchio._righe += [_riga(eid, "20", unit="°C", state_class="measurement")
-                        for eid in _SONDE]
+    specchio = SpecchioFinto([
+        *_righe_grezze(),
+        *[raw_state(eid, "20", unit_of_measurement="°C", state_class="measurement")
+          for eid in _SONDE]])
     # Un punto prima della finestra: la serie c'e', ma nella finestra non e'
     # successo niente, e i soggetti si ordinano per id, pari e dispari
     # alternati (`house_history._activity`).

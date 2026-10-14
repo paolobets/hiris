@@ -33,6 +33,7 @@ import pytest
 from hiris.app.home_space import historian
 from hiris.app.mind.proposer_round import proposer_round
 from hiris.app.mind.store import ObservationsStore
+from tests._runner_finto import RunnerFinto
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
 
@@ -370,15 +371,16 @@ def test_l_attuatore_non_tocca_MAI_home_assistant():
             "decisione va scritta in `AMMESSI` con la sua ragione")
 
 
-class _FintoModello:
-    def __init__(self):
-        self.chiamate = 0
+async def _cede_passo(runner, **kwargs):
+    # Il turno cede il controllo una volta: e' cio' che lascia partire il
+    # secondo giro mentre il primo e' ancora dentro `chat()`.
+    await asyncio.sleep(0)
 
-    async def chat(self, **kwargs):
-        self.chiamate += 1
-        await asyncio.sleep(0)
-        return json.dumps({"esiti": [{"osservazione": 0, "esito": "niente",
-                                      "perche": "guardato"}]})
+
+def _finto_modello() -> RunnerFinto:
+    return RunnerFinto(json.dumps({"esiti": [{"osservazione": 0, "esito": "niente",
+                                              "perche": "guardato"}]}),
+                       turno=_cede_passo)
 
 
 @pytest.mark.asyncio
@@ -391,7 +393,7 @@ async def test_due_giri_insieme_non_fanno_DUE_turni(tmp_path):
     Mutazione: togliere la guardia -- rossa (due chiamate al modello).
     """
     store = ObservationsStore(str(tmp_path / "oss.db"))
-    modello = _FintoModello()
+    modello = _finto_modello()
     app = {"observations": store, "llm_router": modello, "bridge_active": False}
     try:
         store.replace_analysis(OGGI, {
@@ -402,7 +404,7 @@ async def test_due_giri_insieme_non_fanno_DUE_turni(tmp_path):
 
         await asyncio.gather(proposer_round(app), proposer_round(app))
 
-        assert modello.chiamate == 1
+        assert len(modello.chiamate) == 1
     finally:
         store.close()
 
@@ -432,16 +434,12 @@ async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     officina = _OfficinaCheConta()
 
-    class _Modello:
-        chiamate = 0
+    modello = RunnerFinto(json.dumps({"esiti": [
+        {"osservazione": 0, "esito": "a_mano",
+         "testo": "Sposta la lavatrice nel pomeriggio",
+         "perche": "costa meno"}]}))
 
-        async def chat(self, **kwargs):
-            return json.dumps({"esiti": [
-                {"osservazione": 0, "esito": "a_mano",
-                 "testo": "Sposta la lavatrice nel pomeriggio",
-                 "perche": "costa meno"}]})
-
-    app = {"observations": store, "llm_router": _Modello(), "bridge_active": False,
+    app = {"observations": store, "llm_router": modello, "bridge_active": False,
            "workshop": officina}
     try:
         store.replace_analysis(OGGI, {

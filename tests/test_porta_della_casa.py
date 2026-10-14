@@ -9,7 +9,7 @@ from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA
 from hiris.app.memory.store import MemoryStore
-from hiris.app.proxy.entity_cache import _to_minimal
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_briefing import _CASA as _CASA_BRIEFING
 from tests.test_house_query import BRIDGE_CAP_CHARS
 
@@ -281,22 +281,16 @@ def _big_home() -> dict:
     }
 
 
-class _BigMirror:
-    """Lo specchio vero (`_to_minimal`): nomi lunghi, stati, istanti, e le
-    capacita' che fanno uscire `capacita`."""
-    loaded = True
-
-    def __init__(self, home: dict):
-        self._rows = [_to_minimal({
-            "entity_id": e["id"],
-            "state": "unavailable" if e["piattaforma"] == "hydrawise" else "on",
-            "last_changed": "2026-09-29T07:11:00.123456+00:00",
-            "attributes": {"friendly_name": e["id"].split(".")[1].replace("_", " ").title(),
-                           "supported_features": 31, "device_class": e["classe"]}})
-            for e in home["entita"] if not e["disabilitata"]]
-
-    def all_states(self):
-        return self._rows
+def _big_mirror(home: dict) -> SpecchioFinto:
+    """Lo specchio vero: nomi lunghi, stati, istanti (coi microsecondi, come
+    li manda Home Assistant), e le capacita' che fanno uscire `capacita`."""
+    return SpecchioFinto([
+        {**raw_state(e["id"],
+                     "unavailable" if e["piattaforma"] == "hydrawise" else "on",
+                     e["id"].split(".")[1].replace("_", " ").title(),
+                     supported_features=31, device_class=e["classe"]),
+         "last_changed": "2026-09-29T07:11:00.123456+00:00"}
+        for e in home["entita"] if not e["disabilitata"]])
 
 
 @pytest.fixture
@@ -304,7 +298,7 @@ def big_door(tmp_path):
     home = _big_home()
     casa = _semina_casa(tmp_path, casa=home, comportamento=[])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
-    yield ToolDispatcher(casa, memoria, cache=_BigMirror(home))
+    yield ToolDispatcher(casa, memoria, cache=_big_mirror(home))
     memoria.close()
 
 

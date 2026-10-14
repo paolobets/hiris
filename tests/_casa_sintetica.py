@@ -29,7 +29,10 @@ from __future__ import annotations
 INSTANT = "2026-10-01T10:00:00+00:00"
 
 
-def _state(entity_id: str, state: str, name: str, **attributes) -> dict:
+def raw_state(entity_id: str, state: str, name: str = "", **attributes) -> dict:
+    """Una riga di `GET /api/states`, nella forma grezza di Home Assistant.
+    La usano anche lo specchio delle prove (`tests/_specchio_finto.py`) e chi
+    gli da' le sue righe."""
     return {"entity_id": entity_id, "state": state,
             "attributes": {"friendly_name": name, **attributes},
             "last_changed": INSTANT, "last_updated": INSTANT}
@@ -102,27 +105,27 @@ def synthetic_inputs() -> dict:
              "loggers": [], "requirements": []}],
     }
     states = [
-        _state("sensor.sensore_a_temperatura", "21.5", "Sensore A Temperatura",
+        raw_state("sensor.sensore_a_temperatura", "21.5", "Sensore A Temperatura",
                unit_of_measurement="°C", device_class="temperature",
                state_class="measurement"),
-        _state("sensor.sensore_a_umidita", "48", "Sensore A Umidita",
+        raw_state("sensor.sensore_a_umidita", "48", "Sensore A Umidita",
                unit_of_measurement="%", device_class="humidity",
                state_class="measurement"),
-        _state("sensor.sensore_b_potenza", "120", "Sensore B Potenza",
+        raw_state("sensor.sensore_b_potenza", "120", "Sensore B Potenza",
                unit_of_measurement="W", device_class="power", state_class="measurement"),
-        _state("light.luce_uno", "on", "Luce uno"),
-        _state("switch.presa_uno", "off", "Sensore B Presa"),
-        _state("binary_sensor.porta_uno", "unavailable", "Sensore C Porta",
+        raw_state("light.luce_uno", "on", "Luce uno"),
+        raw_state("switch.presa_uno", "off", "Sensore B Presa"),
+        raw_state("binary_sensor.porta_uno", "unavailable", "Sensore C Porta",
                device_class="door"),
-        _state("sensor.contatore_uno", "1532.4", "Sensore C Contatore",
+        raw_state("sensor.contatore_uno", "1532.4", "Sensore C Contatore",
                unit_of_measurement="kWh", device_class="energy",
                state_class="total_increasing"),
-        _state("sensor.sensore_b_segnale", "-61", "Sensore B Segnale",
+        raw_state("sensor.sensore_b_segnale", "-61", "Sensore B Segnale",
                unit_of_measurement="dBm", device_class="signal_strength",
                state_class="measurement"),
-        _state("number.sensore_b_soglia", "30", "Sensore B Soglia"),
-        _state("sensor.sensore_c_riserva", "3", "Sensore C Riserva"),
-        _state("automation.automazione_uno", "on", "Automazione uno",
+        raw_state("number.sensore_b_soglia", "30", "Sensore B Soglia"),
+        raw_state("sensor.sensore_c_riserva", "3", "Sensore C Riserva"),
+        raw_state("automation.automazione_uno", "on", "Automazione uno",
                id="auto_uno", last_triggered=None),
     ]
     return {

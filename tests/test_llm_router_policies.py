@@ -1,21 +1,13 @@
 import pytest
 
 from hiris.app.llm_router import LLMRouter
-
-
-class _R:
-    def __init__(self, name):
-        self.name = name
-        self.calls = []
-
-    async def chat(self, **kw):
-        self.calls.append(kw)
-        return self.name
+from tests._runner_finto import RunnerFinto
 
 
 def _router():
+    # Ogni runner risponde il suo nome: la risposta dice chi e' stato chiesto.
     return LLMRouter(
-        claude=_R("claude"), ollama=_R("ollama"),
+        claude=RunnerFinto("claude"), ollama=RunnerFinto("ollama"),
         model_chain=["claude", "ollama"])
 
 
@@ -105,6 +97,6 @@ def test_la_catena_scarta_i_nomi_sconosciuti_conservando_l_ordine():
     # la tabella non conosce non entra nella catena, e gli altri restano
     # nell'ordine dato -- vale ora per `model_chain`, l'unica catena rimasta.
     r = LLMRouter(
-        claude=_R("claude"), ollama=_R("ollama"),
+        claude=RunnerFinto("claude"), ollama=RunnerFinto("ollama"),
         model_chain=["bogus", "ollama", "claude", "also_bogus"])
     assert r._chat_policy == ["ollama", "claude"]

@@ -18,11 +18,11 @@ import ast
 import re
 from collections import Counter
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from hiris.app import providers
+from tests._runner_finto import RunnerFinto
 from tests.test_api import client  # noqa: F401
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
@@ -127,13 +127,6 @@ SESTO = providers.Provider(
 )
 
 
-def _runner(risposta):
-    r = MagicMock()
-    r.chat = AsyncMock(return_value=risposta)
-    r.last_tool_calls = []
-    return r
-
-
 @pytest.mark.asyncio
 async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, monkeypatch):
     """La tabella si allunga di una riga, e nient'altro cambia: il sesto
@@ -155,7 +148,7 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
     app = client.app
     app["sesto_api_key"] = "una-chiave"
     app["claude_api_key"] = "sk-test"
-    router = LLMRouter(claude=_runner("da claude"), sesto=_runner("dal sesto"),
+    router = LLMRouter(claude=RunnerFinto("da claude"), sesto=RunnerFinto("dal sesto"),
                        model_chain=["claude"])
     app["llm_router"] = router
     app["recompute_chain"] = lambda: _recompute_chain(app)

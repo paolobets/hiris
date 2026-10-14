@@ -33,6 +33,8 @@ from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import live_mirror
 from hiris.app.mind import recipe_turn
+from tests._runner_finto import RunnerFinto
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 
 def _run(coroutine):
@@ -98,11 +100,10 @@ UNITS = {"sensor.inverter_prelievo": "kWh", "sensor.inverter_immissione": "kWh",
          "sensor.lavatrice_energia": "kWh"}
 
 
-class _Cache:
-    """La cache dello stato, nella forma di `entity_cache.all_states`."""
-
-    def all_states(self) -> list[dict]:
-        return [{"id": eid, "state": "1", "unit": unit} for eid, unit in UNITS.items()]
+def _cache() -> SpecchioFinto:
+    """Lo specchio vero dello stato, con le unita' vive di `UNITS`."""
+    return SpecchioFinto([raw_state(eid, "1", unit_of_measurement=unit)
+                          for eid, unit in UNITS.items()])
 
 
 def _store(tmp_path) -> HomeSpace:
@@ -113,7 +114,7 @@ def _store(tmp_path) -> HomeSpace:
 
 def _house(store: HomeSpace) -> House:
     """La casa del giro: l'anagrafe del negozio e lo specchio vivo."""
-    return House(store.read(), live_mirror(_Cache().all_states()))
+    return House(store.read(), live_mirror(_cache().all_states()))
 
 
 def _roles(answer) -> dict[str, str]:
@@ -419,15 +420,9 @@ def test_role_derivation_holds_the_facts_of_task_2_5():
 
 # -- il giro vero: `server.recipe_round` --------------------------------------
 
-class _Runner:
-    """Il modello finto: ricorda la domanda e risponde «niente da misurare»."""
-
-    def __init__(self):
-        self.questions: list[str] = []
-
-    async def chat(self, *, user_message, **_kwargs):
-        self.questions.append(user_message)
-        return '{"why": "prova", "steps": []}'
+def _questions(runner: RunnerFinto) -> list[str]:
+    """Le domande ricevute dal modello finto, in ordine."""
+    return [call["user_message"] for call in runner.chiamate]
 
 
 def test_recipe_round_asks_with_dashboard(tmp_path):
@@ -448,15 +443,16 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
         house = CasaFinta({"energy_prefs": PREFS}, answers={
             "recorder/list_statistic_ids": lambda extra: [
                 {"statistic_id": "sensor.inverter_prelievo"}]})
-        runner = _Runner()
+        # Il modello finto risponde «niente da misurare».
+        runner = RunnerFinto('{"why": "prova", "steps": []}')
         app = {"observations": archivio, "knowledge": sapere,
                "home_space_store": _store(tmp_path), "ha_client": house,
-               "entity_cache": _Cache(), "llm_router": runner}
+               "entity_cache": _cache(), "llm_router": runner}
 
         _run(server.recipe_round(app))
 
-        assert len(runner.questions) == 1
-        assert "- sensor.inverter_prelievo: prelievo [kWh]" in runner.questions[0]
+        assert len(_questions(runner)) == 1
+        assert "- sensor.inverter_prelievo: prelievo [kWh]" in _questions(runner)[0]
         assert _asked(house) == 1
     finally:
         sapere.close()
@@ -635,22 +631,13 @@ def test_failed_rewrite_keeps_recipe_and_does_not_loop(tmp_path):
         sapere.close()
 
 
-class _Writer(_Runner):
-    """Il modello finto che risponde con una ricetta valida."""
-
-    async def chat(self, *, user_message, **_kwargs):
-        import json
-        self.questions.append(user_message)
-        return json.dumps(RECIPE)
-
-
 def _round_app(tmp_path, runner, sapere, archivio):
     house = CasaFinta({"energy_prefs": PREFS}, answers={
         "recorder/list_statistic_ids": lambda extra: [
             {"statistic_id": s} for s in sorted(SERIES)]})
     return {"observations": archivio, "knowledge": sapere,
             "home_space_store": _store(tmp_path), "ha_client": house,
-            "entity_cache": _Cache(), "llm_router": runner}
+            "entity_cache": _cache(), "llm_router": runner}
 
 
 def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
@@ -669,18 +656,20 @@ def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
     try:
         archivio.decide_scope("sensor.inverter_prelievo", inside=True,
                               reason="prova", author="prova")
-        runner = _Writer()
+        import json
+        # Il modello finto risponde con una ricetta valida.
+        runner = RunnerFinto(json.dumps(RECIPE))
         app = _round_app(tmp_path, runner, sapere, archivio)
         house = House(app["home_space_store"].read(),
-                      live_mirror(_Cache().all_states()))
+                      live_mirror(_cache().all_states()))
         _write(sapere, house)
 
         _run(server.recipe_round(app))
         _run(server.recipe_round(app))
 
-        assert len(runner.questions) == 1
-        assert "- sensor.inverter_prelievo: prelievo [kWh]" in runner.questions[0]
-        assert "Riscrivila coi ruoli" in runner.questions[0]
+        assert len(_questions(runner)) == 1
+        assert "- sensor.inverter_prelievo: prelievo [kWh]" in _questions(runner)[0]
+        assert "Riscrivila coi ruoli" in _questions(runner)[0]
         fact = sapere.get("dispositivo", "inv", recipe_turn.RECIPE_FIELD)
         assert fact.source.startswith(recipe_turn.DASHBOARD_SOURCE)
     finally:
@@ -774,7 +763,7 @@ def test_il_ruolo_arriva_alla_resa_dalla_casa_letta_e_da_quella_del_giro(tmp_pat
 
     store = _store(tmp_path)
     store.hold_energy(energy.declared_roles(PREFS))
-    letta = House.read(store, _Cache())
+    letta = House.read(store, _cache())
     giro = letta.with_statistics({"sensor.inverter_prelievo"})
     for casa in (letta, giro):
         riga = render_entity(casa, "sensor.inverter_prelievo", "media")

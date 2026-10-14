@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -7,6 +7,7 @@ from hiris.app.claude_runner import (
     _current_tool_calls,
 )
 from hiris.app.llm_router import LLMRouter
+from tests._runner_finto import RunnerFinto
 
 
 def _runners(router):
@@ -17,24 +18,14 @@ def _runners(router):
 
 @pytest.fixture
 def mock_runner():
-    runner = MagicMock()
-    runner.chat = AsyncMock(return_value="response text")
-    runner.last_tool_calls = []
-    runner.total_input_tokens = 10
-    runner.total_output_tokens = 5
-    runner.total_requests = 1
-    runner.total_cost_usd = 0.001
-    runner.total_rate_limit_errors = 0
-    runner.usage_last_reset = "2026-04-22T00:00:00Z"
-    runner.reset_usage = MagicMock()
-    return runner
+    return RunnerFinto("response text")
 
 
 @pytest.mark.asyncio
 async def test_router_chat_delegates_to_runner(mock_runner):
     router = LLMRouter(claude=mock_runner, model_chain=["claude"])
     result = await router.chat(user_message="hello", system_prompt="sys")
-    mock_runner.chat.assert_awaited_once()
+    assert len(mock_runner.chiamate) == 1
     assert result == "response text"
 
 
@@ -74,21 +65,18 @@ def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_run
 
 @pytest.mark.asyncio
 async def test_router_chat_fallback_on_exception(mock_runner):
-    failing_runner = MagicMock()
-    failing_runner.chat = AsyncMock(side_effect=Exception("backend down"))
-    mock_ollama = MagicMock()
-    mock_ollama.chat = AsyncMock(return_value="ollama fallback")
+    failing_runner = RunnerFinto(Exception("backend down"))
+    mock_ollama = RunnerFinto("ollama fallback")
     router = LLMRouter(claude=failing_runner, ollama=mock_ollama, model_chain=["claude", "ollama"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "ollama fallback"
-    failing_runner.chat.assert_awaited_once()
-    mock_ollama.chat.assert_awaited_once()
+    assert len(failing_runner.chiamate) == 1
+    assert len(mock_ollama.chiamate) == 1
 
 
 @pytest.mark.asyncio
 async def test_router_chat_all_fail_returns_error_message(mock_runner):
-    failing_runner = MagicMock()
-    failing_runner.chat = AsyncMock(side_effect=Exception("down"))
+    failing_runner = RunnerFinto(Exception("down"))
     router = LLMRouter(claude=failing_runner, model_chain=["claude"])
     result = await router.chat(user_message="hello", model="auto")
     assert "non disponibili" in result
@@ -108,27 +96,22 @@ async def test_router_chat_fails_over_on_runner_backend_error(mock_runner):
     the next configured backend and returns ITS reply, not a degraded string.
     Fails on the pre-fix code, where chat() swallowed the API error into a
     returned string and the fallback loop never ran."""
-    failing_runner = MagicMock()
-    failing_runner.chat = AsyncMock(
-        side_effect=RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco.")
-    )
-    mock_ollama = MagicMock()
-    mock_ollama.chat = AsyncMock(return_value="ollama fallback")
+    failing_runner = RunnerFinto(
+        RunnerBackendError("Errore temporaneo del servizio AI. Riprova tra poco."))
+    mock_ollama = RunnerFinto("ollama fallback")
     router = LLMRouter(claude=failing_runner, ollama=mock_ollama, model_chain=["claude", "ollama"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "ollama fallback"
-    failing_runner.chat.assert_awaited_once()
-    mock_ollama.chat.assert_awaited_once()
+    assert len(failing_runner.chiamate) == 1
+    assert len(mock_ollama.chiamate) == 1
 
 
 @pytest.mark.asyncio
 async def test_router_chat_all_backends_raise_returns_last_friendly_message(mock_runner):
     """Every backend raises RunnerBackendError -> router returns the LAST
     failure's friendly_message (no exception propagates to the caller)."""
-    first = MagicMock()
-    first.chat = AsyncMock(side_effect=RunnerBackendError("Errore Claude, riprova."))
-    second = MagicMock()
-    second.chat = AsyncMock(side_effect=RunnerBackendError("Crediti OpenRouter esauriti."))
+    first = RunnerFinto(RunnerBackendError("Errore Claude, riprova."))
+    second = RunnerFinto(RunnerBackendError("Crediti OpenRouter esauriti."))
     router = LLMRouter(claude=first, openrouter=second, model_chain=["claude", "openrouter"])
     result = await router.chat(user_message="hello", model="auto")
     assert result == "Crediti OpenRouter esauriti."
@@ -150,46 +133,38 @@ async def test_router_chat_all_backends_raise_returns_last_friendly_message(mock
 
 @pytest.mark.asyncio
 async def test_router_routes_openrouter_prefix_colon(mock_runner):
-    or_runner = MagicMock()
-    or_runner.chat = AsyncMock(return_value="from openrouter")
-    or_runner.last_tool_calls = []
+    or_runner = RunnerFinto("from openrouter")
     router = LLMRouter(openrouter=or_runner, model_chain=["openrouter"])
     result = await router.chat(
         user_message="hi",
         model="openrouter:meta-llama/llama-3.3-70b-instruct:free",
     )
     assert result == "from openrouter"
-    or_runner.chat.assert_awaited_once()
+    assert len(or_runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
 async def test_router_routes_openrouter_prefix_slash(mock_runner):
-    or_runner = MagicMock()
-    or_runner.chat = AsyncMock(return_value="from openrouter")
-    or_runner.last_tool_calls = []
+    or_runner = RunnerFinto("from openrouter")
     router = LLMRouter(openrouter=or_runner, model_chain=["openrouter"])
     result = await router.chat(
         user_message="hi",
         model="openrouter/anthropic/claude-sonnet-4-6",
     )
     assert result == "from openrouter"
-    or_runner.chat.assert_awaited_once()
+    assert len(or_runner.chiamate) == 1
 
 
 @pytest.mark.asyncio
 async def test_router_claude_prefix_skips_openrouter(mock_runner):
     """Plain 'claude-*' must still route to Claude runner, not OpenRouter."""
-    claude_runner = MagicMock()
-    claude_runner.chat = AsyncMock(return_value="from claude")
-    claude_runner.last_tool_calls = []
-    or_runner = MagicMock()
-    or_runner.chat = AsyncMock()
-    or_runner.last_tool_calls = []
+    claude_runner = RunnerFinto("from claude")
+    or_runner = RunnerFinto()
     router = LLMRouter(claude=claude_runner, openrouter=or_runner,
                        model_chain=["claude", "openrouter"])
     result = await router.chat(user_message="hi", model="claude-sonnet-4-6")
     assert result == "from claude"
-    or_runner.chat.assert_not_awaited()
+    assert or_runner.chiamate == []
 
 
 # Tappa 7 T9 (M-07): `test_router_strategy_includes_openrouter_in_chain` e'
@@ -221,10 +196,6 @@ def test_openrouter_runner_init(tmp_path):
 # morta e' morto anche lui.
 
 
-class _Dummy:
-    async def chat(self, **k): return "ok"
-
-
 # fetta E4 Task 7 ("un bot solo"): la modalita' "automatic" e' uscita insieme
 # all'ultimo chiamante che passava mode="automatic" (chatbot_engine.py, uscito
 # al Task 4) -- con lei sono uscite la seconda policy (automatic_policy) e
@@ -249,7 +220,7 @@ class _Dummy:
 
 
 def test_model_chain_sets_single_chain_for_both_modes():
-    claude, ollama = _Dummy(), _Dummy()
+    claude, ollama = RunnerFinto(), RunnerFinto()
     r = LLMRouter(claude=claude, ollama=ollama, model_chain=["ollama", "claude"])
     # un'unica policy (chat_policy), nell'ordine dato dalla catena
     assert _runners(r) == [ollama, claude]
@@ -290,7 +261,7 @@ def test_una_catena_esplicitamente_vuota_non_ripiega_sull_ordine_di_strategia():
     OGNI provider costruito: la pagina avrebbe detto «la catena e' vuota, HIRIS
     non puo' rispondere» mentre la chat rispondeva. E' la regola `legacy`
     appena tolta, rientrata da un'altra porta."""
-    claude, ollama = _Dummy(), _Dummy()
+    claude, ollama = RunnerFinto(), RunnerFinto()
     r = LLMRouter(claude=claude, ollama=ollama, model_chain=[])
     assert r._chat_policy == []
     assert _runners(r) == []
@@ -307,7 +278,7 @@ def test_senza_catena_il_router_non_si_costruisce():
     in `LLMRouter.__init__` -> rosso con «DID NOT RAISE <class 'TypeError'>».
     Ripristinato, `git diff hiris/app/llm_router.py` senza la mutazione."""
     with pytest.raises(TypeError):
-        LLMRouter(claude=_Dummy(), ollama=_Dummy())
+        LLMRouter(claude=RunnerFinto(), ollama=RunnerFinto())
 
 
 def test_un_provider_che_la_tabella_non_conosce_non_entra_nel_router():
@@ -321,7 +292,7 @@ def test_un_provider_che_la_tabella_non_conosce_non_entra_nel_router():
     'TypeError'>». Ripristinato, `git diff hiris/app/llm_router.py` senza la
     mutazione."""
     with pytest.raises(TypeError, match="bogus"):
-        LLMRouter(claude=_Dummy(), bogus=_Dummy(), model_chain=["claude"])
+        LLMRouter(claude=RunnerFinto(), bogus=RunnerFinto(), model_chain=["claude"])
 
 
 @pytest.mark.asyncio
@@ -329,7 +300,7 @@ async def test_niente_in_catena_non_e_una_risposta_che_invita_a_riprovare():
     """«Tutti i provider AI non disponibili. Riprova tra poco» dice che il
     guasto e' transitorio. Con la catena vuota non lo e': non c'e' niente da
     aspettare, c'e' qualcosa da mettere in catena."""
-    r = LLMRouter(claude=_Dummy(), model_chain=[])
+    r = LLMRouter(claude=RunnerFinto(), model_chain=[])
     risposta = await r.chat(model="auto")
     assert "catena" in risposta.lower()
     assert "riprova" not in risposta.lower()
@@ -356,19 +327,15 @@ async def test_un_turno_finisce_con_la_catena_con_cui_e_partito():
     from hiris.app.claude_runner import RunnerBackendError
     from hiris.app.llm_router import LLMRouter
 
-    class _Rotto:
-        async def chat(self, **k):
-            # La PUT arriva ESATTAMENTE adesso: fra il primo tentativo e il
-            # ripiego. E' l'istante scomodo, ed e' per questo che la finta lo
-            # sceglie invece di aspettare che capiti.
-            router._chat_policy = []
-            raise RunnerBackendError("giu'")
+    async def _rompe_presto(_runner, **_k):
+        # La PUT arriva ESATTAMENTE adesso: fra il primo tentativo e il
+        # ripiego. E' l'istante scomodo, ed e' per questo che la finta lo
+        # sceglie invece di aspettare che capiti.
+        router._chat_policy = []
+        raise RunnerBackendError("giu'")
 
-    class _Buono:
-        async def chat(self, **k):
-            return "risposta"
-
-    router = LLMRouter(claude=_Rotto(), openrouter=_Buono(),
+    router = LLMRouter(claude=RunnerFinto(turno=_rompe_presto),
+                       openrouter=RunnerFinto("risposta"),
                        model_chain=["claude", "openrouter"])
     assert await router.chat(model="auto") == "risposta"
     # E il turno DOPO usa la catena nuova: la scrittura non e' andata persa,
@@ -400,12 +367,10 @@ async def test_il_ripiego_scrive_chi_ha_rifiutato_e_chi_ha_risposto():
     """Un turno che ripiega lascia DUE fatti, non uno: il primo ha rifiutato,
     il secondo ha risposto. Prima di questa fetta ne lasciava zero."""
     registro, _ = _registro_fermo()
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+    rotto = RunnerFinto(RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
         family="credenziale", code=402))
-    buono = MagicMock()
-    buono.chat = AsyncMock(return_value="risposta")
+    buono = RunnerFinto("risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"], registry=registro)
 
@@ -424,15 +389,16 @@ async def test_il_registro_distingue_openai_da_openrouter():
     `OpenAICompatRunner`, quindi un rifiuto di OpenRouter finirebbe scritto
     sulla riga di OpenAI -- un difetto silenzioso dentro la funzione nata per
     toglierne uno. Le due finte sono di classi che si somigliano APPOSTA."""
-    class _Compat:
-        async def chat(self, **k):
-            raise RunnerBackendError("giu'", family="modello", code=404)
+    # Sottoclassi solo per il NOME della classe: e' la mutazione da prendere.
+    class _Compat(RunnerFinto):
+        pass
 
     class _Router(_Compat):
         pass
 
     registro, _ = _registro_fermo()
-    router = LLMRouter(openai=_Compat(), openrouter=_Router(),
+    giu = RunnerBackendError("giu'", family="modello", code=404)
+    router = LLMRouter(openai=_Compat(giu), openrouter=_Router(giu),
                        model_chain=["openrouter"], registry=registro)
     await router.chat(model="auto")
 
@@ -450,8 +416,7 @@ async def test_un_guasto_che_non_e_un_RunnerBackendError_si_registra_lo_stesso()
     provider che esplode in modo imprevisto deve comparire nella pagina come
     uno che ha rifiutato, non come uno di cui non si sa niente."""
     registro, _ = _registro_fermo()
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=TypeError("firma cambiata"))
+    rotto = RunnerFinto(TypeError("firma cambiata"))
     router = LLMRouter(claude=rotto, model_chain=["claude"], registry=registro)
     await router.chat(model="auto")
 
@@ -467,10 +432,8 @@ async def test_chi_non_e_stato_interrogato_non_compare_nel_registro():
     risponde, il secondo non viene nemmeno chiamato -- e sulla sua riga non
     deve comparire niente."""
     registro, _ = _registro_fermo()
-    buono = MagicMock()
-    buono.chat = AsyncMock(return_value="risposta")
-    mai = MagicMock()
-    mai.chat = AsyncMock(return_value="mai chiamato")
+    buono = RunnerFinto("risposta")
+    mai = RunnerFinto("mai chiamato")
     router = LLMRouter(claude=buono, ollama=mai,
                        model_chain=["claude", "ollama"], registry=registro)
     await router.chat(model="auto")
@@ -485,12 +448,10 @@ async def test_quaranta_turni_di_rifiuto_si_leggono_come_quaranta():
     buttando via una chiamata a messaggio da settimane». L'orologio avanza
     SOLO quando lo dice il test."""
     registro, adesso = _registro_fermo()
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=RunnerBackendError(
+    rotto = RunnerFinto(RunnerBackendError(
         "Errore temporaneo del servizio AI. Riprova tra poco.",
         family="credenziale", code=402))
-    buono = MagicMock()
-    buono.chat = AsyncMock(return_value="risposta")
+    buono = RunnerFinto("risposta")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"], registry=registro)
     for _ in range(40):
@@ -506,10 +467,8 @@ async def test_senza_registro_il_router_funziona_come_prima():
     """`registro=None` e' il ramo di libreria (e di ogni test che non parla di
     esiti): il ciclo di ripiego non deve cambiare comportamento, ne' esplodere
     su un `None`."""
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
-    buono = MagicMock()
-    buono.chat = AsyncMock(return_value="risposta")
+    rotto = RunnerFinto(RunnerBackendError("giu'"))
+    buono = RunnerFinto("risposta")
     router = LLMRouter(claude=rotto, ollama=buono, model_chain=["claude", "ollama"])
     assert await router.chat(model="auto") == "risposta"
 
@@ -525,8 +484,7 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
 
     passi = iter([100.0, 108.0])
     registro, _ = _registro_fermo()
-    rotto = MagicMock()
-    rotto.chat = AsyncMock(side_effect=RunnerBackendError("giu'"))
+    rotto = RunnerFinto(RunnerBackendError("giu'"))
     router = LLMRouter(claude=rotto, model_chain=["claude"], registry=registro)
     with patch.object(modulo.time, "monotonic", lambda: next(passi)):
         await router.chat(model="auto")
@@ -538,12 +496,10 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
 def _falls_after(*strumenti):
     """Un backend che chiama `strumenti` e poi cade: il runner vero azzera le
     chiamate all'ingresso e le accoda per giro, nella ContextVar condivisa."""
-    async def _chat(**_kwargs):
+    async def _turno(_runner, **_kwargs):
         _current_tool_calls.set([{"tool": nome, "input": {}} for nome in strumenti])
         raise RunnerBackendError("Errore temporaneo del servizio AI.")
-    runner = MagicMock()
-    runner.chat = AsyncMock(side_effect=_chat)
-    return runner
+    return RunnerFinto(turno=_turno)
 
 
 @pytest.mark.asyncio
@@ -555,12 +511,11 @@ async def test_il_ripiego_si_ferma_dopo_uno_strumento_che_scrive():
 
     Mutazione ESEGUITA il 13/10/2026: il controllo tolto -- rossa, il
     secondo backend chiamato."""
-    secondo = MagicMock()
-    secondo.chat = AsyncMock(return_value="rifatto")
+    secondo = RunnerFinto("rifatto")
     router = LLMRouter(claude=_falls_after("search", "execute"), ollama=secondo,
                        model_chain=["claude", "ollama"])
     risposta = await router.chat(user_message="accendi", model="auto")
-    secondo.chat.assert_not_awaited()
+    assert secondo.chiamate == []
     assert "`execute`" in risposta and "`search`" not in risposta
     assert router.last_unanswered is True
 
@@ -568,8 +523,7 @@ async def test_il_ripiego_si_ferma_dopo_uno_strumento_che_scrive():
 @pytest.mark.asyncio
 async def test_dopo_sole_letture_il_ripiego_resta():
     """Le letture si possono rifare: il ripiego resta quello di prima."""
-    secondo = MagicMock()
-    secondo.chat = AsyncMock(return_value="risposta")
+    secondo = RunnerFinto("risposta")
     router = LLMRouter(claude=_falls_after("search", "history"), ollama=secondo,
                        model_chain=["claude", "ollama"])
     assert await router.chat(user_message="com'e'", model="auto") == "risposta"

@@ -25,6 +25,7 @@ from hiris.app.home_space.privacy import PresenceMask, person_bound
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst_turn as at
 from hiris.app.reasoning.queue import ReasoningQueue
+from tests._runner_finto import RunnerFinto
 
 _NAMES = ("paolo", "giulia")
 
@@ -372,11 +373,8 @@ async def test_il_giro_della_catena_copre_la_domanda_con_la_maschera_del_GUARDIA
                         "operazione": "somma_periodo", "valore": 1.0,
                         "unita": "kWh", "copertura": 1.0}]})
 
-        class _Modello:
-            async def chat(self, **kwargs):
-                raise AssertionError("la domanda e' None: il turno non parte")
-
-        await server.analyst_round({"observations": store, "llm_router": _Modello(),
+        modello = RunnerFinto(AssertionError("la domanda e' None: il turno non parte"))
+        await server.analyst_round({"observations": store, "llm_router": modello,
                                     "bridge_active": False})
     finally:
         store.close()

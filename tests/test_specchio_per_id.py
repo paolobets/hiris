@@ -465,15 +465,3 @@ _PLANTED_SCANS = (
      "            states[eid] = entry\n"
      "    return states\n"),
 )
-
-
-def test_the_by_id_base_of_the_fake_mirrors_has_the_real_signatures():
-    """Le finte dello specchio delle prove rispondono per id da
-    `tests/_mirror_by_id.py`: con le firme dello specchio vero, o una finta
-    accetterebbe domande che il vero rifiuta."""
-    import inspect
-
-    from tests._mirror_by_id import MirrorById
-    for name in ("get", "states_for"):
-        assert (inspect.signature(getattr(MirrorById, name))
-                == inspect.signature(getattr(EntityCache, name))), name

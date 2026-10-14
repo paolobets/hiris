@@ -21,23 +21,11 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import EntityCache
 from tests._casa_sintetica import synthetic_inputs
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 from casa_finta import CasaFinta
-
-
-class _CacheFinta:
-    """Sostituto minimo di `EntityCache` per i test: stessa forma di
-    `all_states()` (lista di dict con chiave "id", non "entity_id") e
-    stessa bandiera `loaded` che governa `inventory_is_readable()`."""
-
-    def __init__(self, stati: list[dict], *, pronta: bool = True) -> None:
-        self._stati = stati
-        self.loaded = pronta
-
-    def all_states(self) -> list[dict]:
-        return self._stati
 
 
 @pytest.mark.asyncio
@@ -178,7 +166,7 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     app = web.Application()
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria
-    app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
+    app["entity_cache"] = SpecchioFinto([raw_state("light.cucina", "on")])
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
 
@@ -573,10 +561,10 @@ async def test_api_casa_una_classe_che_non_c_e_non_si_scrive_null(aiohttp_client
     })
     app = web.Application()
     app["home_space_store"] = archivio
-    app["entity_cache"] = _CacheFinta([
-        {"id": "light.cucina", "state": "on", "name": "Faretti"},
-        {"id": "sensor.frigo", "state": "4", "name": "Frigo", "unit": "°C",
-         "device_class": "temperature"}])
+    app["entity_cache"] = SpecchioFinto([
+        raw_state("light.cucina", "on", "Faretti"),
+        raw_state("sensor.frigo", "4", "Frigo", unit_of_measurement="°C",
+                  device_class="temperature")])
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 

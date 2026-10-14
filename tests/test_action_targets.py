@@ -54,7 +54,7 @@ from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 from tests.test_action_registry import _house
 
 # Come in `test_action_actuator.py`: cio' che si misura qui non e' la DURATA
@@ -90,8 +90,17 @@ ALTRO_IN_CUCINA = ["switch.cucina_presa", "sensor.cucina_temperatura",
                    "sensor.cucina_umidita", "climate.cucina"]
 TUTTA_LA_CUCINA = LUCI_CUCINA + ALTRO_IN_CUCINA
 
-STATI_CUCINA = {eid: {"id": eid, "state": "on", "attributes": {}}
-                for eid in TUTTA_LA_CUCINA}
+
+
+def _specchio_cucina() -> SpecchioFinto:
+    """Lo specchio VERO della cucina, tutto acceso. Fermo -- si muove solo
+    se qualcuno annuncia, e qui nessuno annuncia."""
+    return SpecchioFinto(raw_state(eid, "on") for eid in TUTTA_LA_CUCINA)
+
+
+#: Le righe minimali della cucina, come le restituisce lo specchio vero
+#: (`states_for`, la domanda di `entity_cache.states_by_id`).
+STATI_CUCINA = _specchio_cucina().states_for()
 
 
 def _risolto(entita, **resto) -> dict:
@@ -484,23 +493,10 @@ def _without(house: CasaFinta, method: str) -> CasaFinta:
     return house
 
 
-class FintaCache(MirrorById):
-    """Lo specchio: una lista di voci minimali con chiave `id`, come
-    `EntityCache.all_states()`. Fermo -- si muove solo se qualcuno annuncia,
-    e qui nessuno annuncia."""
-
-    def __init__(self, stati):
-        self._stati = stati
-        self.loaded = True
-
-    def all_states(self):
-        return [dict(voce) for voce in self._stati.values()]
-
-
 async def _porta(client) -> ActionActuator:
     registro = ServiceRegistry()
     await registro.refresh(_house(RISPOSTA_HA))
-    return ActionActuator(client, registro, FintaCache(STATI_CUCINA))
+    return ActionActuator(client, registro, _specchio_cucina())
 
 
 @pytest.mark.asyncio

@@ -33,13 +33,12 @@ from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
-from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import integration_follower, watch_system_conditions
 from hiris.app.storage import archive_name
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 # --------------------------------------------------------------------------
 # Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1) -- l'archivio
@@ -748,9 +747,9 @@ def _traces_asked(house: CasaFinta) -> list[str]:
     return [extra["item_id"] for command, extra in house.calls if command == _TRACE_LIST]
 
 
-class _FakeMirror(MirrorById):
-    """Lo specchio dello stato, ridotto a cio' che il collettore gli chiede:
-    `loaded` e `all_states()`.
+def _automation_mirror(config_id_by_entity, names=None) -> SpecchioFinto:
+    """Lo specchio VERO dello stato (`SpecchioFinto`), con le automazioni di
+    `config_id_by_entity` accese.
 
     Le righe le costruisce `proxy/entity_cache._to_minimal`, la proiezione
     VERA, a partire da stati grezzi veri -- non a mano. Se un domani la
@@ -764,20 +763,10 @@ class _FakeMirror(MirrorById):
     None` (tag `2024.7.0` e `2026.9.0`), quindi nello stato vero non c'e'
     proprio nessun `attributes["id"]`.
     """
-
-    loaded = True
-
-    def __init__(self, config_id_by_entity, names=None):
-        self._rows = []
-        for entity_id, config_id in config_id_by_entity.items():
-            attributes = {"friendly_name": (names or {}).get(entity_id, entity_id)}
-            if config_id is not None:
-                attributes["id"] = config_id
-            self._rows.append(_to_minimal(
-                {"entity_id": entity_id, "state": "on", "attributes": attributes}))
-
-    def all_states(self):
-        return list(self._rows)
+    return SpecchioFinto([
+        raw_state(entity_id, "on", (names or {}).get(entity_id, entity_id),
+                  **({} if config_id is None else {"id": config_id}))
+        for entity_id, config_id in config_id_by_entity.items()])
 
 
 def test_fake_automation_watcher_matches_watcher_marked_automations():
@@ -837,7 +826,7 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
         ],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
@@ -863,7 +852,7 @@ def test_the_title_is_the_name_the_house_gives_at_the_outcome():
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
         "1771346155971": [{"run_id": "2", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _FakeMirror(
+    app = {"watcher": watcher, "entity_cache": _automation_mirror(
         {"automation.luci_sera": "1771346155970",
          "automation.senza_nome": "1771346155971"},
         names={"automation.luci_sera": "Luci della sera (rinominata)"})}
@@ -898,7 +887,7 @@ def test_a_not_triggered_trace_is_not_forwarded():
         ],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
@@ -928,7 +917,7 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
         ],
     })
     app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0,
-           "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.x": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
@@ -963,7 +952,7 @@ def test_a_failed_read_for_one_automation_does_not_stop_the_others():
         return [{"run_id": "1", "script_execution": "error"}]
 
     client = CasaFinta(synthetic_inputs(), answers={_TRACE_LIST: _trace_list})
-    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+    app = {"watcher": watcher, "entity_cache": _automation_mirror({
         "automation.rotta": "1771346155970",
         "automation.buona": "1771346155971"})}
 
@@ -996,7 +985,7 @@ def test_marked_automations_are_read_in_one_connection():
         "1771346155971": [{"run_id": "1", "script_execution": "error"}],
         "1771346155972": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+    app = {"watcher": watcher, "entity_cache": _automation_mirror({
         "automation.a": "1771346155970",
         "automation.b": "1771346155971",
         "automation.c": "1771346155972"})}
@@ -1022,7 +1011,7 @@ def test_a_silent_batch_writes_nothing_and_keeps_every_cursor(caplog):
     client = CasaFinta(synthetic_inputs(), silence={_TRACE_LIST})
     app = {"watcher": watcher,
            "automation_trace_cursors": {"automation.a": {"vecchio"}},
-           "entity_cache": _FakeMirror({
+           "entity_cache": _automation_mirror({
                "automation.a": "1771346155970",
                "automation.b": "1771346155971"})}
 
@@ -1062,7 +1051,7 @@ def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.luci_sera": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
@@ -1098,7 +1087,7 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
     client = _traces_house({
         "1771346155971": [{"run_id": "1", "script_execution": "error"}],
     })
-    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+    app = {"watcher": watcher, "entity_cache": _automation_mirror({
         "automation.scritta_a_mano": None,
         "automation.buona": "1771346155971"})}
 
@@ -1129,7 +1118,7 @@ def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
     watcher = _FakeAutomationWatcher(["automation.scritta_a_mano"])
     client = _traces_house({})
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.scritta_a_mano": None})}
+           "entity_cache": _automation_mirror({"automation.scritta_a_mano": None})}
 
     with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
         for _ in range(3):
@@ -1158,8 +1147,8 @@ def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
     client = _traces_house({
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
-    blind = _FakeMirror({"automation.luci_sera": None})
-    seeing = _FakeMirror({"automation.luci_sera": "1771346155970"})
+    blind = _automation_mirror({"automation.luci_sera": None})
+    seeing = _automation_mirror({"automation.luci_sera": "1771346155970"})
     app = {"watcher": watcher, "entity_cache": blind}
 
     with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
@@ -1197,7 +1186,7 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
         "1771346155970": [{"run_id": "1", "script_execution": "error"}],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.luci_sera": None})}
+           "entity_cache": _automation_mirror({"automation.luci_sera": None})}
 
     blind_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert blind_round == 0
@@ -1206,7 +1195,7 @@ def test_an_unresolvable_automation_does_not_touch_its_cursor():
 
     # Lo specchio arriva: la traccia gia' conservata da HA e' NUOVA per il
     # cursore, e il fatto si scrive adesso invece di essere perso per sempre.
-    app["entity_cache"] = _FakeMirror({"automation.luci_sera": "1771346155970"})
+    app["entity_cache"] = _automation_mirror({"automation.luci_sera": "1771346155970"})
     seeing_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert seeing_round == 1
     assert _traces_asked(client) == ["1771346155970"]
@@ -1257,7 +1246,7 @@ def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
         ],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.rotta": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.rotta": "1771346155970"})}
 
     first_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert first_round == 1  # il "finished" iniziale non chiude niente; l'"error" apre
@@ -1292,7 +1281,7 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
         ],
     })
     app = {"watcher": watcher,
-           "entity_cache": _FakeMirror({"automation.guarita": "1771346155970"})}
+           "entity_cache": _automation_mirror({"automation.guarita": "1771346155970"})}
 
     first_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert first_round == 2  # apre e chiude nello stesso giro

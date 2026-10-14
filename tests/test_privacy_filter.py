@@ -12,6 +12,7 @@ from hiris.app.home_space import privacy
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy import entity_cache
+from tests._specchio_finto import SpecchioFinto
 from tests.test_knowledge_tools import _semina_casa
 
 
@@ -159,19 +160,11 @@ _MOVING_STATES = [
 ]
 
 
-class _MovingMirror:
-    """Lo specchio nella forma vera: le righe escono da `_to_minimal`."""
-    loaded = True
-
-    def all_states(self):
-        return [entity_cache._to_minimal(raw) for raw in _MOVING_STATES]
-
-
 @pytest.fixture
 def moving_door(tmp_path):
     casa = _semina_casa(tmp_path, casa=_MOVING_HOME, comportamento=[])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
-    yield ToolDispatcher(casa, memoria, cache=_MovingMirror())
+    yield ToolDispatcher(casa, memoria, cache=SpecchioFinto(_MOVING_STATES))
     memoria.close()
 
 

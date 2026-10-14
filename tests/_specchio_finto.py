@@ -1,11 +1,11 @@
 """Lo specchio dello stato delle prove: lo specchio VERO (T-02, T-04, 14/10/2026).
 
-Fino a oggi ogni file di prova si scriveva il suo specchio finto: 37 classi
-con un `all_states()` in 25 file, piu' le 7 che poggiavano su `MirrorById`
-(`tests/_mirror_by_id.py`, uscito con loro). Ognuna imitava a mano la forma di
-`EntityCache` -- e quasi nessuna la aveva intera: chi solo `all_states()`, chi
-anche `loaded`, nessuna le domande per id (`get`, `states_for`) se non per
-ereditarieta' da `MirrorById`.
+Fino a oggi ogni file di prova si scriveva il suo specchio finto: misurate
+il 14/10/2026, 37 classi con un `all_states()` in 25 file, 7 delle quali
+poggiavano su `MirrorById` (`tests/_mirror_by_id.py`, uscito con loro).
+Ognuna imitava a mano la forma di `EntityCache` -- e quasi nessuna la aveva
+intera: chi solo `all_states()`, chi anche `loaded`, nessuna le domande per id
+(`get`, `states_for`) se non per ereditarieta' da `MirrorById`.
 
 `SpecchioFinto` E' un `EntityCache`, come `CasaFinta` e' un `HAClient`: non
 imita nessun metodo. Le righe arrivano dagli stati GREZZI di Home Assistant

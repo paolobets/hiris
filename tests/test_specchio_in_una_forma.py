@@ -38,6 +38,7 @@ import ast
 from pathlib import Path
 
 from hiris.app.home_space.topology import Mirror, live_mirror, read_mirror
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
 
@@ -48,14 +49,20 @@ ROWS = [{"id": "light.cucina", "state": "on", "name": " Luce cucina ",
          "attributes": {"values": {"precision": 1}}, "state_class": "measurement"}]
 
 
-class _Cache:
-    def __init__(self, rows, *, loaded=True, broken=False):
-        self._rows, self.loaded, self._broken = rows, loaded, broken
+#: Le stesse due entita' di `ROWS`, grezze come le manda Home Assistant: lo
+#: specchio vero le proietta (`_to_minimal`).
+RAW = [{**raw_state("light.cucina", "on", " Luce cucina "),
+        "last_changed": "2026-10-01T10:00:00+00:00"},
+       {**raw_state("sensor.t", "21.5", "Temperatura", unit_of_measurement="°C",
+                    device_class="temperature", state_class="measurement"),
+        "last_changed": "2026-10-01T09:00:00+00:00"}]
+
+
+class _BrokenMirror(SpecchioFinto):
+    """Lo specchio vero la cui lettura solleva: sovrascrive solo `all_states`."""
 
     def all_states(self):
-        if self._broken:
-            raise RuntimeError("specchio guasto")
-        return self._rows
+        raise RuntimeError("specchio guasto")
 
 
 def test_lo_specchio_ha_i_campi_per_nome():
@@ -79,14 +86,16 @@ def test_leggibile_si_calcola_in_un_posto_e_dice_la_stessa_cosa_dei_chiamanti():
     # Una finta che non e' uno specchio vale come assente.
     assert read_mirror(object()).readable is False
     # Lettura che solleva: niente dizionari, e non leggibile.
-    assert read_mirror(_Cache(ROWS, broken=True)) == Mirror(readable=False)
+    assert read_mirror(_BrokenMirror(RAW)) == Mirror(readable=False)
     # Mai caricata: cio' che c'e' resta (le entita' mosse dagli eventi), ma
     # non vale come fotografia della casa.
-    unloaded = read_mirror(_Cache(ROWS, loaded=False))
+    unloaded = read_mirror(SpecchioFinto(RAW, pronto=False))
     assert unloaded.readable is False and unloaded.state["sensor.t"] == "21.5"
     # Caricata: lo specchio intero.
-    loaded = read_mirror(_Cache(ROWS))
-    assert loaded == live_mirror(ROWS) and loaded.readable is True
+    cache = SpecchioFinto(RAW)
+    loaded = read_mirror(cache)
+    assert loaded == live_mirror(cache.all_states()) and loaded.readable is True
+    assert loaded.names == {"light.cucina": "Luce cucina", "sensor.t": "Temperatura"}
 
 
 def _is_mirror(node: ast.AST) -> bool:

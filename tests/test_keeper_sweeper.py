@@ -17,7 +17,7 @@ from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
-from tests._mirror_by_id import MirrorById
+from tests._specchio_finto import SpecchioFinto, raw_state
 
 ADESSO = 1_755_600_000.0
 pytestmark = pytest.mark.asyncio
@@ -396,15 +396,13 @@ def _notify_house(during_call: list) -> CasaFinta:
     return house
 
 
-class _CasaMinima(MirrorById):
-    """Lo specchio dello stato vivo, con una sola entita' -- basta a
+def _casa_minima() -> SpecchioFinto:
+    """Lo specchio VERO dello stato vivo, con una sola entita' -- basta a
     soddisfare la guardia (b) di `ActionActuator.execute` (uno specchio VUOTO e
     uno MAI CALDO valgono uguale, vedi il suo docstring); la notifica non
     guarda nessuna entita', ma la porta deve comunque poter dire di aver
     visto la casa prima di rifiutare o proseguire."""
-
-    def all_states(self):
-        return [{"id": "sun.sun", "state": "above_horizon"}]
+    return SpecchioFinto([raw_state("sun.sun", "above_horizon", "Sole")])
 
 
 async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
@@ -423,7 +421,7 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
     client = _notify_house(listening)
     registro = ServiceRegistry()
     await registro.refresh(client)
-    porta = ActionActuator(client, registro, _CasaMinima())
+    porta = ActionActuator(client, registro, _casa_minima())
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
 
     await _orologio(
@@ -464,7 +462,7 @@ async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archi
     registro = ServiceRegistry()
     await registro.refresh(house)
     assert registro.service("notify", "send_message") is not None
-    porta = ActionActuator(house, registro, _CasaMinima())
+    porta = ActionActuator(house, registro, _casa_minima())
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
 
     await _orologio(
@@ -562,7 +560,7 @@ def _target_door(answers: list):
     `answers`, una per domanda (la nascita, poi il risveglio)."""
     from hiris.app.action.registry import ServiceRegistry
     from tests.test_action_registry import _house
-    from tests.test_action_targets import RISPOSTA_HA, STATI_CUCINA, FintaCache
+    from tests.test_action_targets import RISPOSTA_HA, _specchio_cucina
 
     house = CasaFinta(synthetic_inputs(), answers={
         "extract_from_target": lambda extra: answers.pop(0),
@@ -571,7 +569,7 @@ def _target_door(answers: list):
     async def build():
         registro = ServiceRegistry()
         await registro.refresh(_house(RISPOSTA_HA))
-        return ActionActuator(house, registro, FintaCache(STATI_CUCINA))
+        return ActionActuator(house, registro, _specchio_cucina())
     return build
 
 

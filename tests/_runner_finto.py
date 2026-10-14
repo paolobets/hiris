@@ -1,8 +1,9 @@
 """Il runner delle prove: UNO, nella forma dei runner veri (T-02, 14/10/2026).
 
-Fino a oggi ogni file se ne scriveva uno (41 classi con un `chat()` in 29
-file): chi teneva i kwargs in `ricevuto`, chi in `chiamato_con`, chi la sola
-domanda in `questions`, e quasi nessuno portava cio' che il prodotto LEGGE da
+Fino a oggi ogni file se ne scriveva uno (misurato il 14/10/2026: 42 classi
+con un `chat()` in 30 file, e 64 `AsyncMock` assegnati a `.chat` in 22):
+chi teneva i kwargs in `ricevuto`, chi in `chiamato_con`, chi la sola domanda
+in `questions`, e quasi nessuno portava cio' che il prodotto LEGGE da
 un runner dopo la chiamata (`last_tool_calls`, `last_truncated`,
 `last_tool_leaked`, `last_unanswered`): su quelle finte i segnali tacevano
 coperti dal ripiego di `getattr`, e nessuna prova poteva accorgersene.

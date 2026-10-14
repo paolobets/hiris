@@ -12,26 +12,21 @@ legge. Cambia solo cio' che il registro dice del turno.
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from hiris.app import steering
 from hiris.app.claude_runner import RunnerBackendError
 from hiris.app.llm_router import LLMRouter
 from hiris.app.usage.store import UsageStore
+from tests._runner_finto import RunnerFinto
 
 
-def _rifiuta(messaggio: str = "Errore Claude.") -> MagicMock:
-    runner = MagicMock()
-    runner.chat = AsyncMock(side_effect=RunnerBackendError(messaggio))
-    return runner
+def _rifiuta(messaggio: str = "Errore Claude.") -> RunnerFinto:
+    return RunnerFinto(RunnerBackendError(messaggio))
 
 
-def _risponde(testo: str = "risposta") -> MagicMock:
-    runner = MagicMock()
-    runner.chat = AsyncMock(return_value=testo)
-    return runner
+def _risponde(testo: str = "risposta") -> RunnerFinto:
+    return RunnerFinto(testo)
 
 
 @pytest.fixture()

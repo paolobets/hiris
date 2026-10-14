@@ -36,6 +36,7 @@ from hiris.app.mind import proposer_round as pr
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.usage.store import UsageStore
 from tests._casa_sintetica import synthetic_inputs
+from tests._runner_finto import RunnerFinto
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
 
@@ -70,18 +71,20 @@ class _Officina:
         return {"proposta_id": nata["id"], "anteprima": "anteprima"}
 
 
-class _Modello:
-    def __init__(self, *intenzioni):
-        self.intenzioni = list(intenzioni)
+def _modello(*intenzioni) -> RunnerFinto:
+    """Il modello che propone le `intenzioni` dentro il turno, e le cita
+    tutte come costruite."""
 
-    async def chat(self, **kwargs):
+    async def _propone(runner, **kwargs):
         nate = []
-        for intenzione in self.intenzioni:
+        for intenzione in intenzioni:
             esito = await kwargs["dispatcher"].dispatch("propose", intenzione)
             nate.append(esito["proposta_id"])
         return json.dumps({"esiti": [
             {"osservazione": n, "esito": "costruita", "proposta_id": ident}
             for n, ident in enumerate(nate)]})
+
+    return RunnerFinto(turno=_propone)
 
 
 #: Gli utenti di Home Assistant, righe grezze di `config/auth/list`: il
@@ -173,7 +176,7 @@ async def test_una_proposta_su_una_SERRATURA_esce_alto_anche_se_il_modello_dice_
     Mutazione ESEGUITA (06/10/2026): `lock` tolto da `HIGH_STAKES_DOMAINS` --
     rossa, «'lieve' == 'alto'»."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_SERRATURA)
+    casa["llm_router"] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
 
@@ -190,7 +193,7 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
     `_alert_high` che salta `notify_admins` -- rossa; `_alert_high` che chiede
     le proposte `medio` invece delle `alto` -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_SERRATURA)
+    casa["llm_router"] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
 
@@ -211,7 +214,7 @@ async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
     Mutazione ESEGUITA (06/10/2026): `to_alert` senza il filtro sul livello
     -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_LUCE)
+    casa["llm_router"] = _modello(_LUCE)
 
     await pr.proposer_round(casa)
 
@@ -223,7 +226,7 @@ async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
 @pytest.mark.asyncio
 async def test_un_turno_con_una_ALTO_e_una_MEDIO_avvisa_una_volta(casa):
     _analisi(casa, 2)
-    casa["llm_router"] = _Modello(_LUCE, _SERRATURA)
+    casa["llm_router"] = _modello(_LUCE, _SERRATURA)
 
     await pr.proposer_round(casa)
 
@@ -239,7 +242,7 @@ async def test_un_avviso_ARRIVATO_non_si_ripete_al_battito_dopo(casa):
     Mutazione ESEGUITA (06/10/2026): `mark_alerted` che non scrive -- rossa
     (due push)."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_SERRATURA)
+    casa["llm_router"] = _modello(_SERRATURA)
 
     await pr.proposer_round(casa)
     await pr.proposer_round(casa)
@@ -256,7 +259,7 @@ async def test_un_avviso_che_NON_PARTE_si_ritenta_finche_arriva(casa):
     proposta anche quando nessuna push e' arrivata -- rossa (una push sola);
     il giro senza il ritentativo in testa -- rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_SERRATURA)
+    casa["llm_router"] = _modello(_SERRATURA)
     porta = casa["action_actuator"]
     porta.arriva = False
 
@@ -278,7 +281,7 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
     Mutazione ESEGUITA (06/10/2026): `to_alert` senza `stato='in_attesa'` --
     rossa."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_SERRATURA)
+    casa["llm_router"] = _modello(_SERRATURA)
     porta = casa["action_actuator"]
     porta.arriva = False
     await pr.proposer_round(casa)
@@ -335,13 +338,12 @@ async def test_una_ALTO_che_il_modello_non_cita_si_avvisa_lo_stesso(casa):
     costruita che il modello dimentica di citare non resta muta."""
     _analisi(casa, 1)
 
-    class _Smemorato(_Modello):
-        async def chat(self, **kwargs):
-            await kwargs["dispatcher"].dispatch("propose", _SERRATURA)
-            return json.dumps({"esiti": [
-                {"osservazione": 0, "esito": "niente", "perche": "boh"}]})
+    async def _propone_dimentica(runner, **kwargs):
+        await kwargs["dispatcher"].dispatch("propose", _SERRATURA)
 
-    casa["llm_router"] = _Smemorato()
+    casa["llm_router"] = RunnerFinto(
+        json.dumps({"esiti": [{"osservazione": 0, "esito": "niente", "perche": "boh"}]}),
+        turno=_propone_dimentica)
 
     await pr.proposer_round(casa)
 
@@ -398,7 +400,7 @@ async def test_un_GUASTO_dell_avviso_non_toglie_il_turno(casa):
     Mutazione ESEGUITA (06/10/2026): `_alert_high` chiamato senza la sua
     protezione in testa al giro -- rossa (nessun esito scritto)."""
     _analisi(casa, 1)
-    casa["llm_router"] = _Modello(_LUCE)
+    casa["llm_router"] = _modello(_LUCE)
 
     def guasto(**_):
         raise RuntimeError("archivio illeggibile")
