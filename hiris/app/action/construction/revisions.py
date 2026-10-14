@@ -244,10 +244,17 @@ def _migration_6(conn) -> None:
     scrittura sia arrivata»: e la potatura, che protegge solo l'ultima
     `applicata`, poteva poi cancellare l'unico «prima» di un oggetto che Home
     Assistant aveva forse gia' cambiato. Le righe che portano ESATTAMENTE
-    quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca."""
+    quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca.
+
+    Il motivo si confronta col testo **com'era scritto allora**
+    (`_RETIRED_RESTART_REASONS`), non solo con la costante di oggi: C-26 ne
+    ha cambiato le lettere, e una migrazione legge le righe del passato
+    (N156-1, giro 156)."""
+    reasons = (*_RETIRED_RESTART_REASONS, REASON_RESTARTED)
     conn.execute(
-        "UPDATE costruzioni SET stato=? WHERE stato=? AND motivo=?",
-        (UNCERTAIN, _RETIRED_FAILED, REASON_RESTARTED))
+        "UPDATE costruzioni SET stato=? WHERE stato=? AND motivo IN "
+        f"({', '.join('?' * len(reasons))})",
+        (UNCERTAIN, _RETIRED_FAILED, *reasons))
 
 
 #: La parola con cui fino all'08/10/2026 una costruzione diceva «non sono
@@ -257,6 +264,19 @@ def _migration_6(conn) -> None:
 #: leggere le righe di allora.
 _RETIRED_FAILED = "rifiutata"
 _RETIRED_CANCEL_REASONS = ("rifiutata dalla pagina", "rifiutata dal proprietario")
+
+#: I testi con cui `risana` scriveva il motivo del riavvio sulle righe che
+#: chiudeva `rifiutata`: dal 23/08/2026 (`6dee6a25`) con l'elisione dritta,
+#: dal 07/09/2026 (`7289866a`) con `’`, fino al 07/10/2026, quando il dubbio
+#: ha avuto il suo stato. Dal 13/10/2026 (C-26) la costante porta «è». Testi
+#: storici: non hanno una fonte da interrogare, l'elenco e' il fatto, e
+#: servono solo a `_migration_6` per riconoscere le righe di allora.
+_RETIRED_RESTART_REASONS = (
+    ("l'add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+    ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+)
 
 #: Le colonne di `costruzioni` alla versione 7, quelle che la ricostruzione
 #: ricopia. Sono la forma di QUEL gradino, e restano ferme come

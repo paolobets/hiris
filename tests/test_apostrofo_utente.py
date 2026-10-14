@@ -384,14 +384,30 @@ def _elisioni_dritte(sorgente: str, nome: str,
     return trovate
 
 
+def _retired_linenos(tree: ast.AST) -> set[int]:
+    """Le righe delle costanti di modulo `_RETIRED_*`: testi storici."""
+    righe: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id.startswith("_RETIRED_")
+                for t in node.targets):
+            righe.update(range(node.lineno, node.end_lineno + 1))
+    return righe
+
+
 def _accenti_dritti(sorgente: str, nome: str,
                     intervalli: tuple[tuple[int, int], ...] | None, *,
                     solo_misti: bool) -> list[str]:
     """Le stringhe (non docstring, f-string comprese) nell'intervallo
     dichiarato che portano un accento dritto; con `solo_misti` soltanto
-    quelle che portano anche l'elisione `’`. Pura, come `_elisioni_dritte`."""
+    quelle che portano anche l'elisione `’`. Pura, come `_elisioni_dritte`.
+
+    Si salta il testo **ritirato**: le costanti `_RETIRED_*` portano le
+    parole e le frasi com'erano scritte su disco allora, perche' una
+    migrazione le riconosca (N156-1). Non sono testo per il proprietario, e
+    correggerle romperebbe proprio il confronto per cui esistono."""
     albero = ast.parse(sorgente, filename=nome)
-    docstring_righe = _docstring_linenos(albero)
+    docstring_righe = _docstring_linenos(albero) | _retired_linenos(albero)
     trovate = []
     for node in ast.walk(albero):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
