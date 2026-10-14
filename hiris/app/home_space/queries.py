@@ -204,8 +204,6 @@ def _entity_rows(house: House, entries: list[dict], depth: str, *, zone=None,
 #: dettaglio si costruisce qui, e la porta lo importa: una cifra sola.
 ROWS_MAX = 50
 
-#: Gli elenchi di righe annidati nel dettaglio completo, nell'ordine in cui
-#: si spende il tetto: prima le visibili, poi le nascoste.
 #: Le chiavi di `oltre`, da ogni porta (C-66, 13/10/2026): `restano` sempre;
 #: `salta` per chiedere la pagina dopo; `suggerimento` come restringere o
 #: perche' la risposta si ferma li'; `disponibili` quante righe ci sono in
@@ -227,6 +225,8 @@ def rows_left(left: int, *, skip: int | None = None, hint: str | None = None,
     return out
 
 
+#: Gli elenchi di righe annidati nel dettaglio completo, nell'ordine in cui
+#: si spende il tetto: prima le visibili, poi le nascoste.
 _NESTED_ROWS = ("entita", "entita_nascoste")
 
 
