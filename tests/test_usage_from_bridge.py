@@ -139,11 +139,18 @@ def test_senza_il_modello_vero_l_alias_si_dichiara_come_alias(registro):
     assert registro[0][1] == "opus (alias)"
 
 
-def test_senza_registro_il_ponte_logga_e_basta_come_prima():
+def test_senza_registro_il_ponte_logga_e_basta_come_prima(caplog):
     """Il percorso a processo separato (`main()`, il gateway esterno) non ha
-    `/data`: li' il registro resta `None` e il turno non deve rompersi."""
+    `/data`: li' il registro resta `None` e il turno non deve rompersi.
+
+    Mutazione ESEGUITA (14/10/2026, T-06): tolta la riga di log del turno --
+    rossa. Prima la prova non verificava niente: senza registro non c'e'
+    altro da osservare che il log, e non lo guardava."""
     ponte.set_usage_logger(None)
-    ponte._logga_uso(_esito({"input_tokens": 1}), "job-5")
+    with caplog.at_level("INFO", logger="hiris.agent"):
+        ponte._logga_uso(_esito({"input_tokens": 1}), "job-5")
+    assert [r.getMessage() for r in caplog.records
+            if "uso del ponte (job_id=job-5)" in r.getMessage()], caplog.text
 
 
 def test_un_turno_senza_usage_non_scrive_niente(registro):

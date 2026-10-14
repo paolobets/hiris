@@ -74,11 +74,18 @@ def test_un_vault_VUOTO_se_ne_va_in_silenzio(tmp_path, caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-def test_senza_il_file_non_succede_niente(tmp_path):
-    """Il caso normale, che e' quello di quasi tutte le installazioni.
+def test_senza_il_file_non_succede_niente(tmp_path, caplog):
+    """Il caso normale, che e' quello di quasi tutte le installazioni: niente
+    file creato, niente detto.
 
-    Mutazione: sollevare quando il file non c'e' -- rossa."""
-    decidi_vault(str(tmp_path))
+    Mutazione ESEGUITA (14/10/2026, T-06): tolto il ritorno su un file che
+    non c'e' -- rossa (`sqlite3.connect` lo crea vuoto, la lettura fallisce
+    e lo si dice nel log). Prima la prova verificava solo che non si
+    sollevasse, e la funzione non solleva mai."""
+    with caplog.at_level(logging.DEBUG):
+        decidi_vault(str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
+    assert caplog.records == []
 
 
 def test_un_file_ILLEGGIBILE_non_fa_cadere_l_avvio(tmp_path, caplog):

@@ -134,7 +134,12 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
 });
 
 test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', async () => {
-  const { testo } = await monta({ measured: true, total_requests: 0 });
+  /* Un'assenza vale solo su una pagina disegnata: senza il testimone qui
+     sotto la prova restava verde anche sulla pagina d'errore (T-06,
+     14/10/2026; mutazione ESEGUITA: `GET api/usage` a 500 -- rossa sul
+     testimone, prima verde). */
+  const { testo, outlet } = await monta({ ...MISURATO, total_requests: 0 });
+  assert.ok(outlet.querySelector('#usage-reset'), 'la pagina dei consumi non si è disegnata');
   assert.doesNotMatch(testo, /Chatbot/,
     'la 2.0 ha una chat sola: «Chatbot» è il vocabolario del prodotto vecchio');
 });
@@ -182,5 +187,8 @@ test('senza ripieghi non compare nessun riquadro', async () => {
      con cui questa pagina si apre, che è quanto ho speso. */
   const { outlet } = await monta({ ...MISURATO, fallbacks: [] });
 
+  /* Il testimone, come sopra: l'assenza del riquadro vale solo su una pagina
+     disegnata (T-06, mutazione ESEGUITA: `GET api/usage` a 500 -- rossa). */
+  assert.ok(outlet.querySelector('#usage-reset'), 'la pagina dei consumi non si è disegnata');
   assert.equal(outlet.querySelector('#usage-fallbacks'), null);
 });
