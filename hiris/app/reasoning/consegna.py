@@ -34,9 +34,17 @@ from __future__ import annotations
 import logging
 import time
 
+from aiohttp import web
+
 from ..mind.proposal_redo import WAKE_KEY as REDO_KEY
 from ..mind.proposer_turn import PROPOSAL_TURN_KIND
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
+from .queue import REASONING_QUEUE_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+SUBMIT_CHAT_REPLY_KEY = web.AppKey("submit_chat_reply")
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +66,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
     riuscita. Cio' che va saputo di un ramo lo dice il ramo stesso, nel
     registro dell'add-on, e il resto lo dice l'archivio che il ramo scrive.
     """
-    q = app.get("reasoning_queue")
+    q = app.get(REASONING_QUEUE_KEY)
     decision = decision or {}
     if q is None or not q.submit(job_id, nonce, decision, now):
         return False
@@ -119,7 +127,7 @@ async def consegna(app, job_id: str, nonce: str, decision: dict,
         # resta ignorato, come dalla fetta E4.
         reply = decision.get("reply")
         thread = (job or {}).get("thread")
-        submit_chat_reply = app.get("submit_chat_reply")
+        submit_chat_reply = app.get(SUBMIT_CHAT_REPLY_KEY)
         if thread is None:
             logger.warning(
                 "consegna di un turno di chat senza filo (job_id=%s): accodato "
@@ -241,7 +249,7 @@ def _chat_reply_submitter(app, data_dir: str):
             # causa nota (nessun codice HTTP, nessuna credenziale, nessun
             # modello) -- e' `family="altro"`, come ogni guasto che il
             # prodotto misura senza inventarne il perche'.
-            registry = app.get("occurrence_registry")
+            registry = app.get(OCCURRENCES_KEY)
             if registry is not None:
                 registry.fallimento(
                     SUBSCRIPTION.id, family="altro", code=None,
@@ -271,7 +279,7 @@ def _chat_reply_submitter(app, data_dir: str):
         # scorso, H2): li' la guardia e' solo «reply non vuota», che i
         # sentinella la superano -- registrare il successo li' avrebbe
         # sostituito la bugia di oggi con la bugia opposta.
-        registry = app.get("occurrence_registry")
+        registry = app.get(OCCURRENCES_KEY)
         if registry is not None:
             registry.successo(SUBSCRIPTION.id)
         _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,

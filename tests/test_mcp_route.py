@@ -29,6 +29,15 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -61,14 +70,14 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
 
     app = server.create_app()
-    app["ha_client"] = CasaFinta({})
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
+    app[HA_CLIENT_KEY] = CasaFinta({})
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
     # La sorgente del client di test e' un loopback, che NON e' nella CIDR del
     # Supervisor: nessun bypass ingress, si passa per forza dal token -- e' il
     # caso del sottoprocesso `claude`, che gira dentro il container.
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
     # `claude` porta una credenziale di TURNO, che vive quanto il turno.
     from conftest import credenziale_ponte
@@ -77,9 +86,9 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
     memoria = MemoryStore(memoria_db)
-    app["home_space_store"] = casa
-    app["memory_store"] = memoria
-    app["reasoning_queue"] = coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
+    app[HOME_SPACE_KEY] = casa
+    app[MEMORY_STORE_KEY] = memoria
+    app[REASONING_QUEUE_KEY] = coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -98,7 +107,7 @@ async def rotta_senza_archivi(aiohttp_client, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
     app = server.create_app()
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
     # `claude` porta una credenziale di TURNO, che vive quanto il turno.
     from conftest import credenziale_ponte
@@ -200,7 +209,7 @@ _CHI_COMANDA = {"specie": "integrazione", "id": "impronta-di-prova",
 def _chat_presa(app, soggetto: dict) -> str:
     """Un job di chat di `soggetto`, preso in carico: l'id che il ponte manda
     in `X-HIRIS-Chat`."""
-    coda, adesso = app["reasoning_queue"], time.time()
+    coda, adesso = app[REASONING_QUEUE_KEY], time.time()
     job_id = coda.enqueue(
         "chat", {}, {"history": [], "system_prompt": "Sei HIRIS.", "soggetto": soggetto},
         adesso + 300, now=adesso, thread=thread_for(soggetto, "canale"))
@@ -432,7 +441,7 @@ async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
             client, i, {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"turno-usa-getta-{i}"}
         )
 
-    contatori = client.app["mcp_rounds_per_exchange"]
+    contatori = client.app[handlers_mcp.ROUNDS_PER_EXCHANGE_KEY]
     assert len(contatori) <= MAX_TRACKED
 
 
@@ -492,7 +501,7 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
 
     # e la controprova che il dizionario e' rimasto limitato lo stesso: la
     # proprieta' nuova non e' stata comprata rinunciando al tetto di memoria.
-    assert len(client.app["mcp_rounds_per_exchange"]) <= MAX_TRACKED
+    assert len(client.app[handlers_mcp.ROUNDS_PER_EXCHANGE_KEY]) <= MAX_TRACKED
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +706,7 @@ async def test_la_valvola_di_sviluppo_non_apre_questa_rotta(aiohttp_client, monk
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "1")
     app = server.create_app()
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     app["internal_token"] = ""
     app.on_startup.clear()
     app.on_cleanup.clear()

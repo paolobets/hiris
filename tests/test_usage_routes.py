@@ -20,7 +20,10 @@ from hiris.app.api.handlers_usage import (
     handle_usage,
     handle_usage_history,
 )
-from hiris.app.usage.store import UsageStore
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._anagrafe_finta import AnagrafeFinta
 
 ROMA = "Europe/Rome"
@@ -67,8 +70,8 @@ def app(tmp_path):
     archivio.log("openrouter", "un/modello", token_in=50, token_out=5,
                       cost_usd=None, cost_state="non_noto", now=T22)
     try:
-        yield {"usage": archivio, "llm_router": object(),
-              "home_space_store": _archivio_casa(ROMA)}
+        yield {USAGE_KEY: archivio, LLM_ROUTER_KEY: object(),
+              HOME_SPACE_KEY: _archivio_casa(ROMA)}
     finally:
         archivio.close()
 
@@ -155,7 +158,7 @@ def test_senza_provider_e_senza_righe_si_dichiara_che_non_si_misura(tmp_path):
     si misura, e ha una sezione sua."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"usage": empty}))
+        corpo = _corpo(_chiama(handle_usage, {USAGE_KEY: empty}))
         assert corpo["measured"] is False
         assert corpo["reason"] == "nessun_provider"
         assert "provider" in corpo["message"].lower()
@@ -170,7 +173,7 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
     un'assenza di misura."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"usage": empty, "bridge_active": True}))
+        corpo = _corpo(_chiama(handle_usage, {USAGE_KEY: empty, BRIDGE_ACTIVE_KEY: True}))
         assert corpo["measured"] is True
         assert corpo["total_requests"] == 0
     finally:
@@ -221,7 +224,7 @@ def test_dopo_mezzanotte_il_giorno_CORRENTE_e_quello_della_casa(app, monkeypatch
     (`usage-route.js`), quindi e' il caso normale, non un caso limite.
     """
     just_after_midnight = 1787351400.0  # 22/08/2026 00:30 a Roma = 21/08 22:30 UTC
-    app["usage"].log("claude", "claude-sonnet-4-6", token_in=7,
+    app[USAGE_KEY].log("claude", "claude-sonnet-4-6", token_in=7,
                      cost_usd=0.1, cost_state="misurato", now=just_after_midnight)
     monkeypatch.setattr(handlers_usage.time, "time", lambda: just_after_midnight)
 
@@ -242,7 +245,7 @@ def test_senza_fuso_noto_la_storia_conta_in_UTC_e_non_inventa(tmp_path, monkeypa
     try:
         just_after_midnight = 1787351400.0
         archivio.log("claude", "m", cost_state="misurato", now=just_after_midnight)
-        app = {"usage": archivio}
+        app = {USAGE_KEY: archivio}
         monkeypatch.setattr(handlers_usage.time, "time", lambda: just_after_midnight)
 
         corpo = _corpo(_chiama(handle_usage_history, app))
@@ -264,7 +267,7 @@ def test_azzerare_sposta_l_ancora_e_NON_cancella(app):
 
     dopo = _corpo(_chiama(handle_usage, app))
     assert dopo["total_requests"] == 0, "il pulsante deve portare a zero"
-    assert app["usage"].totali()["richieste"] == 2, "e la storia resta intera"
+    assert app[USAGE_KEY].totali()["richieste"] == 2, "e la storia resta intera"
 
 
 def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
@@ -272,7 +275,7 @@ def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
     sempre un'ancora da spostare."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        assert _chiama(handle_reset_usage, {"usage": empty}).status == 200
+        assert _chiama(handle_reset_usage, {USAGE_KEY: empty}).status == 200
     finally:
         empty.close()
 
@@ -281,7 +284,7 @@ def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
     """La pagina ha un interruttore «da ultimo azzeramento / da sempre». Se il
     server ignorasse il parametro sarebbe un pulsante che non fa niente --
     difetto trovato rileggendo il proprio codice, non da un test caduto."""
-    app["usage"].sposta_anchor(T22 + 3600)
+    app[USAGE_KEY].sposta_anchor(T22 + 3600)
 
     da_anchor = _corpo(_chiama(handle_usage, app))
     da_sempre = _corpo(_chiama(handle_usage, app, {"from": "sempre"}))
@@ -309,7 +312,7 @@ def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path)
                  cost_state="non_noto", now=T21)
     archivio.log("claude", "claude-sonnet-4-6", token_in=1, cost_usd=0.1,
                  cost_state="misurato", now=T22)
-    app = {"usage": archivio, "home_space_store": _archivio_casa(ROMA)}
+    app = {USAGE_KEY: archivio, HOME_SPACE_KEY: _archivio_casa(ROMA)}
     try:
         corpo = _corpo(_chiama(handle_usage_history, app,
                                {"from": "2026-08-21", "to": "2026-08-22"}))

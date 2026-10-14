@@ -36,10 +36,13 @@ import time
 
 from aiohttp import web
 
-from ..action.construction.workshop import ARTICOLO_DETERMINATIVO
+from ..action.construction.revisions import CONSTRUCTIONS_KEY
+from ..action.construction.workshop import ARTICOLO_DETERMINATIVO, WORKSHOP_KEY
+from ..action.journal import JOURNAL_KEY
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
+from ..mind.store import OBSERVATIONS_KEY
 from ..states import PENDING, SUSPENDED
 from .boundary import error_response, occurrence_out
 from .soffitto import approved_services, subject_name
@@ -51,7 +54,7 @@ _NOT_FOUND = unknown_id_text("nessuna costruzione")
 
 
 def _store(request):
-    return request.app.get("constructions")
+    return request.app.get(CONSTRUCTIONS_KEY)
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
@@ -67,7 +70,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     # La finestra si dichiara (C-14, 13/10/2026): ogni coda e' tagliata alle
     # sue 200 piu' recenti, e `total` conta le due intere. Le stesse chiavi
     # della memoria e degli Impegni.
-    observations = request.app.get("observations")
+    observations = request.app.get(OBSERVATIONS_KEY)
     total = store.count(now=time.time(), pending_only=pending_only) + (
         observations.count_proposals(pending_only=pending_only)
         if observations is not None else 0)
@@ -103,7 +106,7 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
     prima di quel giorno -- lo tengono.
     """
     if row.get("motivo") is None and row.get("esecuzione_id"):
-        journal = app.get("journal")
+        journal = app.get(JOURNAL_KEY)
         voce = journal.read(row["esecuzione_id"]) if journal is not None else None
         if voce is not None and voce.get("errore"):
             row = {**row, "motivo": voce["errore"]}
@@ -156,7 +159,7 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     # `sospesa` e' la regola di ciascuna coda, decisa qui e non nella pagina
     # (C-12): le costruzioni con `_construction_suspended`, le proposte a mano
     # finche' sono `states.PENDING`.
-    observations = app.get("observations")
+    observations = app.get(OBSERVATIONS_KEY)
     by_hand = (observations.proposals(pending_only=pending_only)
                if observations is not None else [])
     # «Nata da» (attori, Task 4.5): la proposta a mano da cui e' nata una
@@ -217,7 +220,7 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     regola per le scritture e un'altra per le letture sarebbero due regole.
     """
     store = _store(request)
-    workshop = request.app.get("workshop")
+    workshop = request.app.get(WORKSHOP_KEY)
     if store is None or workshop is None:
         return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]
@@ -260,7 +263,7 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
     store = _store(request)
-    workshop = request.app.get("workshop")
+    workshop = request.app.get(WORKSHOP_KEY)
     if store is None or workshop is None:
         return error_response(503, "officina non disponibile")
     ident = request.match_info["id"]

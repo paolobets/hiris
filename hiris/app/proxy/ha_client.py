@@ -9,6 +9,7 @@ from typing import ClassVar
 from urllib.parse import quote
 
 import aiohttp
+from aiohttp import web
 
 # La forma di un entity_id (dominio.oggetto) vive una volta sola, nel
 # vocabolario di Home Assistant (`ha_vocabulary.is_entity_id`): qui serve a
@@ -2886,3 +2887,6 @@ class HAClient:
                     cb(event_type)
                 except Exception:
                     logger.exception("anagrafe_listener callback raised")
+
+
+HA_CLIENT_KEY = web.AppKey("ha_client", HAClient)

@@ -18,14 +18,17 @@ import types
 import pytest
 
 from hiris.app import steering
-from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY, ConstructionStore
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
 from hiris.app.home_space import historian
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import proposer_round as pr
 from hiris.app.mind import proposer_turn as pt
 from hiris.app.mind.analyst import evidence_of, observation_key
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.usage.store import UsageStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
@@ -105,8 +108,8 @@ def casa(tmp_path):
     costruzioni = ConstructionStore(str(tmp_path / "costruzioni.db"))
     store.replace_analysis(OGGI, {"osservazioni": osservazioni(),
                                   "fondamento": {"giorni": 3, "impronta": "aaa"}})
-    app = {"observations": store, "usage": usage, "constructions": costruzioni,
-           "workshop": _Officina(costruzioni), "bridge_active": False}
+    app = {OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
+           WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: False}
     try:
         yield app
     finally:
@@ -132,7 +135,7 @@ async def test_l_officina_RIFIUTA_dentro_il_turno_il_modello_corregge(casa):
     (06/10/2026): il giro della catena senza `tools` -- rossa."""
     app = casa
     storta = {k: v for k, v in _INTENZIONE_BUONA.items() if k != "alias"}
-    app["llm_router"] = _Modello((
+    app[LLM_ROUTER_KEY] = _Modello((
         [("propose", storta), ("propose", _INTENZIONE_BUONA)],
         lambda risultati: json.dumps({"esiti": [
             {"osservazione": 0, "esito": "costruita",
@@ -141,17 +144,17 @@ async def test_l_officina_RIFIUTA_dentro_il_turno_il_modello_corregge(casa):
 
     esito = await pr.proposer_round(app)
 
-    modello = app["llm_router"]
+    modello = app[LLM_ROUTER_KEY]
     # Gli strumenti sulla catena vengono dalla dichiarazione del mestiere.
     assert "propose" in _strumenti(modello) and "execute" not in _strumenti(modello)
     assert "errore" in modello.risultati[0]
     assert esito["problemi"] == []
-    accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
+    accanto = pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))
     assert [o["esito"] for o in accanto] == ["costruita", "niente"]
     assert accanto[0]["proposta_id"] == _id_nato(modello.risultati)
-    assert app["constructions"].read(accanto[0]["proposta_id"], now=time.time())["origine"] == \
+    assert app[CONSTRUCTIONS_KEY].read(accanto[0]["proposta_id"], now=time.time())["origine"] == \
         steering.PROPOSER_SPECIES
-    assert app["usage"].turns()[0]["outcome"] == steering.SUCCEEDED
+    assert app[USAGE_KEY].turns()[0]["outcome"] == steering.SUCCEEDED
 
 
 @pytest.mark.asyncio
@@ -162,7 +165,7 @@ async def test_COSTRUITA_senza_una_chiamata_riuscita_si_rifiuta(casa):
     Mutazione ESEGUITA (06/10/2026, Passo 5): `apply_outcomes` che accetta
     un «costruita» con qualunque `proposta_id` -- rossa."""
     app = casa
-    app["llm_router"] = _Modello(([], json.dumps({"esiti": [
+    app[LLM_ROUTER_KEY] = _Modello(([], json.dumps({"esiti": [
         {"osservazione": 0, "esito": "costruita", "proposta_id": "inventato"},
         {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
 
@@ -170,11 +173,11 @@ async def test_COSTRUITA_senza_una_chiamata_riuscita_si_rifiuta(casa):
 
     assert any("inventato" in p for p in esito["problemi"])
     # L'esito buono resta; quello storto lascia aperta la sua osservazione.
-    aperte = pt.open_observations(app["observations"].analysis(OGGI), {})
+    aperte = pt.open_observations(app[OBSERVATIONS_KEY].analysis(OGGI), {})
     assert [o["soggetto"] for o in aperte] == ["dev1"]
-    riga = app["usage"].turns()[0]
+    riga = app[USAGE_KEY].turns()[0]
     assert riga["outcome"] == steering.REFUSED
-    assert steering.refused_problems(app["usage"], steering.PROPOSER_SPECIES)
+    assert steering.refused_problems(app[USAGE_KEY], steering.PROPOSER_SPECIES)
 
 
 @pytest.mark.asyncio
@@ -184,12 +187,12 @@ async def test_un_id_nato_in_UN_ALTRO_turno_non_vale(casa):
     Mutazione ESEGUITA (06/10/2026): `proposed_in` che non guarda il turno --
     rossa."""
     app = casa
-    vecchia = app["constructions"].propose(
+    vecchia = app[CONSTRUCTIONS_KEY].propose(
         operation="crea", domain="automation", key="k0",
         actor=steering.PROPOSER_SPECIES, exchange="un-altro-turno", phrase=None,
         prima=None, dopo={}, helper=[], preview="", stakes=None,
         now=1_758_000_000.0)["id"]
-    app["llm_router"] = _Modello(([], json.dumps({"esiti": [
+    app[LLM_ROUTER_KEY] = _Modello(([], json.dumps({"esiti": [
         {"osservazione": 0, "esito": "costruita", "proposta_id": vecchia},
         {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
 
@@ -208,7 +211,7 @@ async def test_una_COSTRUITA_di_una_risposta_RIFIUTATA_si_cita_non_si_rifa(casa)
     Mutazioni ESEGUITE (06/10/2026): `_built_in` senza le non citate -- rossa,
     l'id si rifiuta; la domanda senza l'elenco -- rossa, l'id non c'e'."""
     app = casa
-    app["llm_router"] = _Modello(
+    app[LLM_ROUTER_KEY] = _Modello(
         ([("propose", _INTENZIONE_BUONA)], "non e' un JSON"),
         ([], lambda risultati: json.dumps({"esiti": [
             {"osservazione": 0, "esito": "costruita",
@@ -218,12 +221,12 @@ async def test_una_COSTRUITA_di_una_risposta_RIFIUTATA_si_cita_non_si_rifa(casa)
     primo = await pr.proposer_round(app)
     secondo = await pr.proposer_round(app)
 
-    ident = _id_nato(app["llm_router"].risultati)
+    ident = _id_nato(app[LLM_ROUTER_KEY].risultati)
     assert primo["problemi"] and secondo["problemi"] == []
-    assert ident in _domande(app["llm_router"])[1]
-    (riga,) = app["constructions"].list(now=time.time())
+    assert ident in _domande(app[LLM_ROUTER_KEY])[1]
+    (riga,) = app[CONSTRUCTIONS_KEY].list(now=time.time())
     assert (riga["id"], riga["impronta"]) == (ident, observation_key(osservazioni()[0]))
-    assert app["constructions"].unbound(actor=steering.PROPOSER_SPECIES,
+    assert app[CONSTRUCTIONS_KEY].unbound(actor=steering.PROPOSER_SPECIES,
                                         now=time.time()) == []
 
 
@@ -321,7 +324,7 @@ async def test_la_proposta_esce_FIRMATA_dal_proponente(casa):
     app = casa
     guardiano = await pt.guard(app, "turno-1")
     await guardiano.dispatch("propose", _INTENZIONE_BUONA)
-    ((chiamata),) = app["workshop"].chiamate
+    ((chiamata),) = app[WORKSHOP_KEY].chiamate
     assert chiamata["actor"] == steering.PROPOSER_SPECIES
     assert chiamata["exchange"] == "turno-1"
 
@@ -338,14 +341,14 @@ def _risposta_manuale(*_):
 @pytest.mark.asyncio
 async def test_A_MANO_va_nell_archivio_gemello_con_l_impronta_e_la_prova(casa):
     app = casa
-    app["llm_router"] = _Modello(([], _risposta_manuale()))
+    app[LLM_ROUTER_KEY] = _Modello(([], _risposta_manuale()))
 
     await pr.proposer_round(app)
 
-    (proposta,) = app["observations"].proposals()
+    (proposta,) = app[OBSERVATIONS_KEY].proposals()
     assert proposta["impronta"] == observation_key(osservazioni()[0])
     assert proposta["prova"] == evidence_of(osservazioni()[0])
-    accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
+    accanto = pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))
     # «a mano» sta accanto all'osservazione col solo id: testo, perche' e
     # prova vivono nell'archivio gemello, non si copiano.
     assert accanto[0] == {"impronta": proposta["impronta"], "esito": "a_mano",
@@ -366,26 +369,26 @@ async def test_esiti_e_proposta_a_mano_portano_l_istante_dell_orologio_del_giro(
     `replace_analysis` in `proposer_round._settle` -- rossa qui.
     """
     app = casa
-    app["llm_router"] = _Modello(([], _risposta_manuale()))
+    app[LLM_ROUTER_KEY] = _Modello(([], _risposta_manuale()))
     fermo = float(int(time.time())) - 600.0
     monkeypatch.setattr(pr, "time", types.SimpleNamespace(time=lambda: fermo))
 
     await pr.proposer_round(app)
 
-    (scritto,) = app["observations"]._conn.execute(
+    (scritto,) = app[OBSERVATIONS_KEY]._conn.execute(
         "SELECT scritto_ts FROM analisi WHERE giorno = ?", (OGGI,)).fetchone()
     assert scritto == fermo
-    (proposta,) = app["observations"].proposals()
+    (proposta,) = app[OBSERVATIONS_KEY].proposals()
     assert proposta["creata_ts"] == fermo
 
 
 @pytest.mark.asyncio
 async def test_un_giro_dopo_non_RICHIEDE_cio_che_ha_un_esito(casa):
     app = casa
-    app["llm_router"] = _Modello(([], _risposta_manuale()))
+    app[LLM_ROUTER_KEY] = _Modello(([], _risposta_manuale()))
     await pr.proposer_round(app)
     assert await pr.proposer_round(app) is None
-    assert len(app["llm_router"].chiamate) == 1
+    assert len(app[LLM_ROUTER_KEY].chiamate) == 1
 
 
 def _decisa(osservazione, *, aperta, by_hand, creata_ts=1.0, ident="p1", **prova):
@@ -451,17 +454,17 @@ async def test_chi_SALTA_una_domanda_lo_scrive_nel_registro(casa, caplog):
     rossa."""
     app = casa
     riga = osservazioni()[0]
-    ident = app["observations"].add_proposal(
+    ident = app[OBSERVATIONS_KEY].add_proposal(
         text="x", perche="y", fingerprint=observation_key(riga),
         prova=evidence_of(riga), stakes=None, now_ts=1.0)
-    app["observations"].close_proposal(ident, "disdetta")
-    app["llm_router"] = _Modello(([], json.dumps({"esiti": [
+    app[OBSERVATIONS_KEY].close_proposal(ident, "disdetta")
+    app[LLM_ROUTER_KEY] = _Modello(([], json.dumps({"esiti": [
         {"osservazione": 0, "esito": "niente", "perche": "abitudine"}]})))
 
     with caplog.at_level("INFO", logger="hiris.app.mind.proposer_round"):
         await pr.proposer_round(app)
 
-    assert "[0] Scaldabagno" not in _domande(app["llm_router"])[0]
+    assert "[0] Scaldabagno" not in _domande(app[LLM_ROUTER_KEY])[0]
     assert any(observation_key(riga) in r.getMessage()
                and "stessa prova" in r.getMessage() for r in caplog.records)
 
@@ -479,7 +482,7 @@ async def test_una_COSTRUITA_porta_impronta_e_prova_e_non_torna(casa):
     Mutazione ESEGUITA (06/10/2026): `_settle` che passa `prova=None` ad
     `answers` -- rossa sulla prova della riga."""
     app = casa
-    app["llm_router"] = _Modello((
+    app[LLM_ROUTER_KEY] = _Modello((
         [("propose", _INTENZIONE_BUONA)],
         lambda risultati: json.dumps({"esiti": [
             {"osservazione": 0, "esito": "costruita",
@@ -487,15 +490,15 @@ async def test_una_COSTRUITA_porta_impronta_e_prova_e_non_torna(casa):
             {"osservazione": 1, "esito": "niente", "perche": "abitudine"}]})))
     await pr.proposer_round(app)
 
-    ident = pt.outcomes_of(app["observations"].analysis(OGGI))[0]["proposta_id"]
-    riga = app["constructions"].read(ident, now=time.time())
+    ident = pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))[0]["proposta_id"]
+    riga = app[CONSTRUCTIONS_KEY].read(ident, now=time.time())
     assert riga["impronta"] == observation_key(osservazioni()[0])
     assert riga["prova"] == evidence_of(osservazioni()[0])
 
     # Un'analisi nuova con la stessa osservazione: in attesa, non si richiede.
-    app["observations"].replace_analysis(OGGI, {"osservazioni": osservazioni()[:1]})
+    app[OBSERVATIONS_KEY].replace_analysis(OGGI, {"osservazioni": osservazioni()[:1]})
     assert await pr.proposer_round(app) is None
-    assert len(app["llm_router"].chiamate) == 1
+    assert len(app[LLM_ROUTER_KEY].chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -507,11 +510,11 @@ async def test_una_COSTRUITA_SUPERA_la_proposta_a_mano_in_attesa(casa):
     rossa, la proposta a mano resta «attesa»."""
     app = casa
     riga = osservazioni()[0]
-    manuale = app["observations"].add_proposal(
+    manuale = app[OBSERVATIONS_KEY].add_proposal(
         text="Abbassa il termostato", perche="notturno",
         fingerprint=observation_key(riga), prova=evidence_of(riga),
         stakes=None, now_ts=1.0)
-    app["llm_router"] = _Modello((
+    app[LLM_ROUTER_KEY] = _Modello((
         [("propose", _INTENZIONE_BUONA)],
         lambda risultati: json.dumps({"esiti": [
             {"osservazione": 0, "esito": "costruita",
@@ -520,8 +523,8 @@ async def test_una_COSTRUITA_SUPERA_la_proposta_a_mano_in_attesa(casa):
 
     await pr.proposer_round(app)
 
-    assert "[0] Scaldabagno" in _domande(app["llm_router"])[0]
-    (proposta,) = app["observations"].proposals()
+    assert "[0] Scaldabagno" in _domande(app[LLM_ROUTER_KEY])[0]
+    (proposta,) = app[OBSERVATIONS_KEY].proposals()
     assert proposta["id"] == manuale and proposta["stato"] == "superata"
 
 
@@ -536,19 +539,19 @@ async def test_un_secondo_A_MANO_non_duplica_e_non_si_richiede_a_ogni_giro(casa)
     proposta nuova -- rossa, le proposte sono due."""
     app = casa
     riga = osservazioni()[0]
-    manuale = app["observations"].add_proposal(
+    manuale = app[OBSERVATIONS_KEY].add_proposal(
         text="Abbassa il termostato", perche="notturno",
         fingerprint=observation_key(riga), prova=evidence_of(riga),
         stakes=None, now_ts=1.0)
-    app["llm_router"] = _Modello(([], _risposta_manuale()))
+    app[LLM_ROUTER_KEY] = _Modello(([], _risposta_manuale()))
 
     await pr.proposer_round(app)
     assert await pr.proposer_round(app) is None
 
-    assert [p["id"] for p in app["observations"].proposals()] == [manuale]
-    accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
+    assert [p["id"] for p in app[OBSERVATIONS_KEY].proposals()] == [manuale]
+    accanto = pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))
     assert accanto[0]["proposta_id"] == manuale
-    assert len(app["llm_router"].chiamate) == 1
+    assert len(app[LLM_ROUTER_KEY].chiamate) == 1
 
 
 # -- Il ponte ------------------------------------------------------------------
@@ -584,19 +587,19 @@ async def test_sul_PONTE_si_accoda_e_si_raccoglie_con_l_id_del_turno(casa, monke
     Mutazione ESEGUITA (06/10/2026): la raccolta che non passa
     `exchange_id` all'archivio -- rossa (l'esito «costruita» si rifiuta)."""
     app = casa
-    coda = app["reasoning_queue"] = _Coda()
+    coda = app[REASONING_QUEUE_KEY] = _Coda()
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     await pr.proposer_round(app)
     (accodato,) = coda.accodati
     assert accodato["kind"] == pt.PROPOSAL_TURN_KIND
     assert accodato["wake"]["impronte"] == [observation_key(o) for o in osservazioni()]
 
-    nata = app["constructions"].propose(
+    nata = app[CONSTRUCTIONS_KEY].propose(
         operation="crea", domain="automation", key="k1",
         actor=steering.PROPOSER_SPECIES, exchange="xch-1", phrase=None,
         prima=None, dopo={}, helper=[], preview="", stakes=None,
         now=1_758_000_000.0)["id"]
-    ident = app["usage"].log_turn(
+    ident = app[USAGE_KEY].log_turn(
         species=steering.PROPOSER_SPECIES, provider="subscription", model="m",
         channel="ponte", duration_ms=1, iterations=1, tools=[],
         outcome="riuscito", now=1_758_000_000.0)
@@ -610,12 +613,12 @@ async def test_sul_PONTE_si_accoda_e_si_raccoglie_con_l_id_del_turno(casa, monke
 
     esito = await pr.proposer_round(app)
 
-    accanto = pt.outcomes_of(app["observations"].analysis(OGGI))
+    accanto = pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))
     assert [o.get("proposta_id") for o in accanto] == [nata, None]
     assert esito["problemi"] == []
     # Una seconda lettura dello stesso turno non riscrive niente.
     await pr.proposer_round(app)
-    assert len(pt.outcomes_of(app["observations"].analysis(OGGI))) == 2
+    assert len(pt.outcomes_of(app[OBSERVATIONS_KEY].analysis(OGGI))) == 2
 
 
 @pytest.mark.asyncio
@@ -627,7 +630,7 @@ async def test_un_analisi_RIFATTA_dopo_una_raccolta_viene_chiesta(casa, monkeypa
     Mutazione ESEGUITA (06/10/2026): il giro che esce dopo una raccolta senza
     problemi, come quello dell'attuatore -- rossa (niente accodato)."""
     app = casa
-    coda = app["reasoning_queue"] = _Coda()
+    coda = app[REASONING_QUEUE_KEY] = _Coda()
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     coda.turno = {"status": "decided", "decided_ts": 0,
                   "wake": {"giorno": OGGI, "impronte": [
@@ -639,9 +642,9 @@ async def test_un_analisi_RIFATTA_dopo_una_raccolta_viene_chiesta(casa, monkeypa
     await pr.proposer_round(app)
     assert coda.accodati == []
 
-    analisi = app["observations"].analysis(OGGI)
+    analisi = app[OBSERVATIONS_KEY].analysis(OGGI)
     nuova = {**osservazioni()[0], "soggetto": "dev3", "nome": "Forno"}
-    app["observations"].replace_analysis(
+    app[OBSERVATIONS_KEY].replace_analysis(
         OGGI, {**analisi, "osservazioni": [*analisi["osservazioni"], nuova]})
     await pr.proposer_round(app)
 
@@ -673,7 +676,7 @@ def test_un_osservazione_SENZA_esito_e_un_problema():
 # -- Le guardie del giro (G53-1, giro 53 della revisione) ---------------------
 
 def _coda_ponte(app, monkeypatch):
-    coda = app["reasoning_queue"] = _Coda()
+    coda = app[REASONING_QUEUE_KEY] = _Coda()
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
     return coda
 
@@ -688,7 +691,7 @@ async def test_sul_PONTE_la_NON_LEGATA_va_nel_turno_e_la_raccolta_la_lega(casa, 
     Mutazione ESEGUITA (06/10/2026): `_enqueue` con `unbound=()` -- rossa,
     l'id non e' nel turno accodato."""
     coda = _coda_ponte(casa, monkeypatch)
-    sciolta = casa["constructions"].propose(
+    sciolta = casa[CONSTRUCTIONS_KEY].propose(
         operation="crea", domain="automation", key="k1",
         actor=steering.PROPOSER_SPECIES, exchange="un-turno-rifiutato",
         phrase=None, prima=None, dopo={}, helper=[], preview="anteprima",
@@ -706,7 +709,7 @@ async def test_sul_PONTE_la_NON_LEGATA_va_nel_turno_e_la_raccolta_la_lega(casa, 
     esito = await pr.proposer_round(casa)
 
     assert esito["problemi"] == []
-    riga = casa["constructions"].read(sciolta, now=time.time())
+    riga = casa[CONSTRUCTIONS_KEY].read(sciolta, now=time.time())
     assert riga["impronta"] == observation_key(osservazioni()[0])
 
 
@@ -747,7 +750,7 @@ async def test_sul_PONTE_un_rifiuto_si_scrive_sulla_riga_del_turno(casa, monkeyp
     Mutazione ESEGUITA (06/10/2026): la raccolta senza `declare_refused` --
     rossa (la riga resta «riuscito»)."""
     coda = _coda_ponte(casa, monkeypatch)
-    ident = casa["usage"].log_turn(
+    ident = casa[USAGE_KEY].log_turn(
         species=steering.PROPOSER_SPECIES, provider="subscription", model="m",
         channel="ponte", duration_ms=1, iterations=1, tools=[],
         outcome="riuscito", now=1_758_000_000.0)
@@ -759,7 +762,7 @@ async def test_sul_PONTE_un_rifiuto_si_scrive_sulla_riga_del_turno(casa, monkeyp
                       {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
                       "outcome": "riuscito", "turn_id": ident}}
     await pr.proposer_round(casa)
-    riga = casa["usage"].turns()[0]
+    riga = casa[USAGE_KEY].turns()[0]
     assert riga["outcome"] == steering.REFUSED
     assert any("'x'" in p for p in riga["problems"])
 
@@ -780,7 +783,7 @@ async def test_una_risposta_di_IERI_non_scrive_sull_analisi_di_oggi(casa, monkey
                       {"osservazione": 1, "esito": "niente", "perche": "y"}]}),
                       "outcome": "riuscito"}}
     await pr.proposer_round(casa)
-    assert pt.outcomes_of(casa["observations"].analysis(OGGI)) == []
+    assert pt.outcomes_of(casa[OBSERVATIONS_KEY].analysis(OGGI)) == []
 
 
 def test_gli_esiti_del_proponente_vivono_nella_foglia():

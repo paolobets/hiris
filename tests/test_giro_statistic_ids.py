@@ -23,6 +23,13 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -84,8 +91,8 @@ def _house() -> CasaFinta:
 
 def _app(stores, house):
     sapere, archivio = stores
-    return {"observations": archivio, "knowledge": sapere,
-            "home_space_store": AnagrafeFinta(CASA), "ha_client": house}
+    return {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+            HOME_SPACE_KEY: AnagrafeFinta(CASA), HA_CLIENT_KEY: house}
 
 
 def _asked(house: CasaFinta) -> int:
@@ -224,7 +231,7 @@ async def test_la_memoria_e_piu_breve_di_ogni_giro_che_la_usa(started_app):
     l'aggregazione notturna a orario); e la mutazione eseguita -- la memoria
     portata a 300 secondi, la cadenza del recupero -- rossa."""
     graph = _call_graph()
-    users = [job for job in started_app["scheduler"].get_jobs()
+    users = [job for job in started_app[SCHEDULER_KEY].get_jobs()
              # Un lavoro iscritto come `partial(funzione, app)` (i giri usciti
              # in `conservazione.py`, Tappa 8) si guarda nella funzione.
              if _reaches(graph, getattr(job.func, "func", job.func).__name__,
@@ -255,7 +262,7 @@ async def test_una_ricetta_rotta_si_richiede_nello_stesso_giro(stores):
                       refuse={"energy/get_prefs": {"code": "not_found",
                                                    "message": "No prefs"}})
     modello = RunnerFinto("{}")  # il modello della catena: risponde senza ricetta
-    app = {**_app(stores, house), "llm_router": modello}
+    app = {**_app(stores, house), LLM_ROUTER_KEY: modello}
 
     await recipe_round.recipe_round(app)
 

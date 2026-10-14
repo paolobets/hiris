@@ -32,6 +32,7 @@ from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space import historian
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from tests._anagrafe_finta import AnagrafeFinta
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -161,7 +162,7 @@ def test_l_etichetta_di_una_sessione_e_il_giorno_della_casa(tmp_path):
     )
     store._conn.commit()
 
-    contesto = compose_chat_context({"home_space_store": _anagrafe("Europe/Rome")},
+    contesto = compose_chat_context({HOME_SPACE_KEY: _anagrafe("Europe/Rome")},
                                     data_dir, thread=PAOLO, soggetto=None)
 
     assert "[2026-08-22] parlato della caldaia" in contesto, contesto

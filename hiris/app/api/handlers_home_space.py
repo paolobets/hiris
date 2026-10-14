@@ -21,10 +21,13 @@ from ..home_space.behavior import without_body
 from ..home_space.briefing import _MEASUREMENT_NAMES, compose
 from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
-from ..home_space.reader import TABLES
+from ..home_space.reader import HOME_SPACE_KEY, TABLES
 from ..home_space.render import render_entity
+from ..home_space.rounds import HA_PROBLEMS_KEY, TREE_COMPARISON_KEY
 from ..home_space.topology import DISABLED, HIDDEN, OUTSIDE_CLASSES, SERVICE
-from ..proxy.state_translations import read_for_house
+from ..memory.store import MEMORY_STORE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..proxy.state_translations import STATE_TRANSLATIONS_KEY, read_for_house
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +126,7 @@ def _tree_entity(house: House, entry, translations: dict, zone):
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:
-    store = request.app.get("home_space_store")
+    store = request.app.get(HOME_SPACE_KEY)
     if store is None:
         # Difesa, non stato atteso: in produzione questo ramo non dovrebbe mai
         # scattare. Se `_on_startup` fallisce, l'add-on non parte affatto; un
@@ -179,8 +182,8 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
     # La casa di questa richiesta, letta come la leggono tutti
     # (`House.read`): anagrafe, specchio e registri caduti in un posto. Le
     # parole degli stati e il fuso, come nella ricerca della chat.
-    house = House.read(store, request.app.get("entity_cache"))
-    translations = await read_for_house(request.app.get("state_translations"),
+    house = House.read(store, request.app.get(ENTITY_CACHE_KEY))
+    translations = await read_for_house(request.app.get(STATE_TRANSLATIONS_KEY),
                                         store.reference_frame())
     zone = home_space_zone(house_timezone(store))
     return web.json_response({
@@ -230,7 +233,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
-        "confronto": request.app.get("tree_comparison"),
+        "confronto": request.app.get(TREE_COMPARISON_KEY),
         "comportamento": {
             "letto_il": store.behavior_loaded_at(),
             "conteggi": behavior_counts,
@@ -271,7 +274,7 @@ def house_of(app) -> House:
     """La casa di adesso (`home_space.house.House`) dagli archivi vivi di
     `app`: anagrafe e specchio in una lettura. Vale un turno, e chi la riceve
     non la mette mai in `app[...]` (R12): il turno dopo ne legge una nuova."""
-    return House.read(app.get("home_space_store"), app.get("entity_cache"))
+    return House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY))
 
 
 #: Il nucleo che non si e' potuto comporre, detto al modello (D-64). Non e'
@@ -334,8 +337,8 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     """La lettura degli archivi e la composizione: vedi `compose_briefing`."""
     if house is None:
         house = house_of(app)
-    home_space_store = app.get("home_space_store")
-    memory_store = app.get("memory_store")
+    home_space_store = app.get(HOME_SPACE_KEY)
+    memory_store = app.get(MEMORY_STORE_KEY)
 
     if home_space_store is None:
         # Difesa, non stato atteso: come in `handle_get_home_space` qui sopra,
@@ -410,7 +413,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
     # o in una lista vuota affermerebbe che la casa non ha guasti.
-    problems = app.get("ha_problems")
+    problems = app.get(HA_PROBLEMS_KEY)
 
     # L'esito dell'ultimo giro di verifica dell'albero (`server.tree_comparison_round`).
     #
@@ -425,7 +428,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
     # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «guardato e combacia».
-    comparison = app.get("tree_comparison")
+    comparison = app.get(TREE_COMPARISON_KEY)
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle

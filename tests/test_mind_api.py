@@ -11,10 +11,13 @@ from hiris.app.api.handlers_mind import (
     handle_set_objective,
     handle_watching,
 )
-from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
 from hiris.app.mind import knowledge as sap
-from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
-from hiris.app.mind.watcher import Watcher
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import ATTEMPTS_SHOWN, OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.mind.watcher import WATCHER_KEY, Watcher
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from hiris.app.proxy.state_translations import StateTranslations
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._contracts import assert_stessa_firma
@@ -87,16 +90,16 @@ for _nome in ("scope", "objective", "last_reconsideration", "readings_count"):
                         getattr(_FintoArchivioScope, _nome), nome=_nome)
 
 
-def _pagina(**extra):
+def _pagina(extra=None):
     """L'app con tutto cio' che la pagina dello scope legge."""
-    app = {"watcher": _FintoOsservatore(), "observations": _FintoArchivioScope()}
-    app.update(extra)
+    app = {WATCHER_KEY: _FintoOsservatore(), OBSERVATIONS_KEY: _FintoArchivioScope()}
+    app.update(extra or {})
     return app
 
 
 @pytest.mark.asyncio
 async def test_osservate_dice_cosa_si_guarda_e_perche():
-    r = await handle_watching(_richiesta({"watcher": _FintoOsservatore()}))
+    r = await handle_watching(_richiesta({WATCHER_KEY: _FintoOsservatore()}))
     assert r.status == 200
 
 
@@ -148,7 +151,7 @@ async def test_la_pagina_dice_quando_si_ricambiera_idea_e_perche_allora():
     ultima = {"quando_ts": 1787000000.0, "finestra_s": 604800.0, "cadenza_s": 302400.0}
     archivio = _FintoArchivioScope(ultima=ultima)
 
-    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+    corpo = _corpo(await handle_watching(_richiesta(_pagina({OBSERVATIONS_KEY: archivio}))))
 
     assert corpo["riconsiderazione"] == ultima
 
@@ -172,7 +175,7 @@ async def test_ogni_esito_di_un_tentativo_arriva_con_la_sua_lettura():
         {"quando_ts": 1.0, "esito": e, "dettaglio": None, "versione": None}
         for e in sorted(esiti)] + [
         {"quando_ts": 1.0, "esito": "ignoto", "dettaglio": None, "versione": None}])
-    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+    corpo = _corpo(await handle_watching(_richiesta(_pagina({OBSERVATIONS_KEY: archivio}))))
     letti = {t["esito"]: t for t in corpo["tentativi"]}
     for e in esiti:
         t = letti[e]
@@ -210,7 +213,8 @@ async def test_la_pagina_dice_QUANTO_SCRIVE_al_giorno():
     """
     archivio = _FintoArchivioScope()
 
-    volume = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))["volume"]
+    pagina = _pagina({OBSERVATIONS_KEY: archivio})
+    volume = _corpo(await handle_watching(_richiesta(pagina)))["volume"]
 
     assert len(volume) >= 7
     assert all("giorno" in v and "righe" in v for v in volume)
@@ -223,7 +227,7 @@ async def test_senza_archivio_la_pagina_non_inventa_la_meta_che_manca():
     """L'osservatore c'e' e l'archivio no -- avvio a meta', o un guasto. Un
     obiettivo di fabbrica e un volume a zero sarebbero due affermazioni che
     nessuno ha verificato. Si dichiara la mancanza e la pagina la dice."""
-    corpo = _corpo(await handle_watching(_richiesta({"watcher": _FintoOsservatore()})))
+    corpo = _corpo(await handle_watching(_richiesta({WATCHER_KEY: _FintoOsservatore()})))
 
     assert corpo["watching"]
     assert corpo["obiettivo"] is None
@@ -303,7 +307,7 @@ async def test_la_pagina_porta_i_TENTATIVI_non_solo_i_giri_riusciti():
     ]
     archivio = _ArchivioCoiTentativi(tentativi)
 
-    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+    corpo = _corpo(await handle_watching(_richiesta(_pagina({OBSERVATIONS_KEY: archivio}))))
 
     # Ogni tentativo esce intero, con la sua lettura accanto (G-25).
     assert [{k: t[k] for k in tentativi[0]} for t in corpo["tentativi"]] == tentativi
@@ -324,7 +328,7 @@ async def test_senza_archivio_i_tentativi_sono_NULL_come_le_sorelle():
 
     Mutazione che la uccide: tornare `[]` senza archivio.
     """
-    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=None))))
+    corpo = _corpo(await handle_watching(_richiesta(_pagina({OBSERVATIONS_KEY: None}))))
 
     assert corpo["tentativi"] is None
     assert corpo["obiettivo"] is None and corpo["riconsiderazione"] is None
@@ -360,7 +364,7 @@ _RESOCONTO = {
 async def test_il_resoconto_di_un_giorno_si_chiede_per_data():
     from hiris.app.api.handlers_mind import handle_report
 
-    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
     r = await handle_report(_richiesta(app, query={"day": "2026-09-13"}))
 
     assert json.loads(r.text)["resoconto"]["misure"][0]["valore"] == 23.71
@@ -377,7 +381,7 @@ async def test_un_giorno_MAI_AGGREGATO_e_404_non_un_resoconto_vuoto():
     """
     from hiris.app.api.handlers_mind import handle_report
 
-    app = {"observations": _ArchivioConResoconto()}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto()}
     r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
 
     assert r.status == 404
@@ -393,7 +397,7 @@ async def test_SENZA_giorno_tornano_le_MISURE_di_molti_giorni_senza_cronaca():
     """
     from hiris.app.api.handlers_mind import handle_report
 
-    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
     r = await handle_report(_richiesta(app))
 
     [giorno] = json.loads(r.text)["resoconti"]
@@ -438,7 +442,7 @@ async def test_si_puo_scrivere_l_obiettivo(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         r = await handle_set_objective(_richiesta_scritta(
-            {"observations": archivio}, {"testo": "spendere meno di sera"}))
+            {OBSERVATIONS_KEY: archivio}, {"testo": "spendere meno di sera"}))
         assert r.status == 200
         corpo = json.loads(r.text)
         assert corpo["scritto"] is True
@@ -462,9 +466,9 @@ async def test_un_obiettivo_vuoto_si_RIFIUTA_e_non_cancella_quello_di_prima(tmp_
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         await handle_set_objective(_richiesta_scritta(
-            {"observations": archivio}, {"testo": "quello buono"}))
+            {OBSERVATIONS_KEY: archivio}, {"testo": "quello buono"}))
         r = await handle_set_objective(_richiesta_scritta(
-            {"observations": archivio}, {"testo": "   "}))
+            {OBSERVATIONS_KEY: archivio}, {"testo": "   "}))
         assert r.status == 400
         assert "vuoto" in json.loads(r.text)["error"]
         assert archivio.objective()["testo"] == "quello buono"
@@ -484,9 +488,9 @@ async def test_riscrivere_lo_STESSO_obiettivo_non_e_un_cambio(tmp_path):
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
         await handle_set_objective(_richiesta_scritta(
-            {"observations": archivio}, {"testo": "uguale"}))
+            {OBSERVATIONS_KEY: archivio}, {"testo": "uguale"}))
         r = await handle_set_objective(_richiesta_scritta(
-            {"observations": archivio}, {"testo": "uguale"}))
+            {OBSERVATIONS_KEY: archivio}, {"testo": "uguale"}))
         assert r.status == 200
         corpo = json.loads(r.text)
         assert corpo["scritto"] is False
@@ -503,7 +507,7 @@ async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
         for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
             try:
                 r = await handle_set_objective(_richiesta_scritta(
-                    {"observations": archivio}, corpo))
+                    {OBSERVATIONS_KEY: archivio}, corpo))
             except web.HTTPBadRequest as rifiuto:
                 # Un corpo che non e' un oggetto lo rifiuta il confine
                 # (`api/boundary.json_object`).
@@ -544,7 +548,7 @@ async def test_la_SERIE_dei_resoconti_porta_l_obiettivo_di_ogni_giorno(tmp_path)
             "giorno": "2026-09-13",
             "obiettivo": {"testo": "spendere meno di sera", "scritto_ts": 1.0},
             "misure": [], "forme": [], "cronaca": []})
-        r = await handle_report(_richiesta({"observations": archivio}))
+        r = await handle_report(_richiesta({OBSERVATIONS_KEY: archivio}))
         serie = json.loads(r.text)["resoconti"]
         assert serie[0]["obiettivo"] == {"testo": "spendere meno di sera",
                                          "scritto_ts": 1.0}
@@ -566,7 +570,7 @@ async def test_la_serie_NON_porta_la_cronaca_ne_le_forme(tmp_path):
         archivio.replace_report("2026-09-13", {
             "giorno": "2026-09-13", "obiettivo": None, "misure": [],
             "forme": [{"misura": "forma"}], "cronaca": [{"chi": "x"}]})
-        r = await handle_report(_richiesta({"observations": archivio}))
+        r = await handle_report(_richiesta({OBSERVATIONS_KEY: archivio}))
         riga = json.loads(r.text)["resoconti"][0]
         assert set(riga) == {"giorno", "obiettivo", "misure"}
     finally:
@@ -584,7 +588,7 @@ async def test_l_analisi_si_puo_chiedere(tmp_path):
     try:
         archivio.replace_analysis("2026-09-15", {"osservazioni": [
             {"cosa": "il prelievo e' salito", "innesco": 1}]})
-        r = await handle_analysis(_richiesta({"observations": archivio},
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio},
                                              {"day": "2026-09-15"}))
         assert r.status == 200
         assert json.loads(r.text)["analisi"]["osservazioni"][0]["innesco"] == 1
@@ -601,7 +605,7 @@ async def test_un_giorno_MAI_analizzato_e_un_404_non_un_silenzio(tmp_path):
     """
     archivio = ObservationsStore(str(tmp_path / "oss.db"))
     try:
-        r = await handle_analysis(_richiesta({"observations": archivio},
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio},
                                              {"day": "2026-09-15"}))
         assert r.status == 404
     finally:
@@ -615,7 +619,7 @@ async def test_senza_giorno_tornano_le_ultime_analisi(tmp_path):
     try:
         for g in ("2026-09-14", "2026-09-15"):
             archivio.replace_analysis(g, {"osservazioni": []})
-        r = await handle_analysis(_richiesta({"observations": archivio}))
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio}))
         assert [a["giorno"] for a in json.loads(r.text)["analisi"]] == [
             "2026-09-15", "2026-09-14"]
     finally:
@@ -645,7 +649,7 @@ async def test_l_analisi_risolve_i_nomi_che_non_aveva(tmp_path):
             {"soggetto": "sconosciuto", "nome": None, "misura": "x"},
         ]})
         r = await handle_analysis(_richiesta(
-            {"observations": archivio, "home_space_store": casa},
+            {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: casa},
             {"day": "2026-09-15"}))
         oss = json.loads(r.text)["analisi"]["osservazioni"]
         assert oss[0]["nome"] == "SOLARE", "il buco si riempie con quello di oggi"
@@ -676,7 +680,7 @@ async def test_le_analisi_SENZA_giorno_risolvono_i_nomi_come_quella_col_giorno(t
         archivio.replace_analysis("2026-09-15", {"osservazioni": [
             {"soggetto": "dev1", "nome": None, "misura": "prelievo"}]})
         r = await handle_analysis(_richiesta(
-            {"observations": archivio, "home_space_store": casa}))
+            {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: casa}))
         elenco = json.loads(r.text)["analisi"]
         assert elenco[0]["osservazioni"][0]["nome"] == "SOLARE"
     finally:
@@ -705,7 +709,7 @@ async def test_le_MISURE_di_un_resoconto_portano_il_nome_come_la_cronaca(tmp_pat
             "forme": [{"soggetto": "dev1", "misura": "profilo", "valore": []}],
             "cronaca": []})
         r = await handle_report(_richiesta(
-            {"observations": archivio, "home_space_store": casa},
+            {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: casa},
             {"day": "2026-09-14"}))
         resoconto = json.loads(r.text)["resoconto"]
         misure = resoconto["misure"]
@@ -736,7 +740,7 @@ async def test_anche_la_SERIE_dei_resoconti_porta_i_nomi(tmp_path):
             "misure": [{"soggetto": "dev1", "misura": "prelievo", "valore": 1.0}],
             "forme": [], "cronaca": []})
         r = await handle_report(_richiesta(
-            {"observations": archivio, "home_space_store": casa}))
+            {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: casa}))
         serie = json.loads(r.text)["resoconti"]
         assert serie[0]["misure"][0]["nome"] == "SOLARE"
     finally:
@@ -754,7 +758,7 @@ async def test_senza_anagrafe_l_analisi_si_legge_lo_stesso(tmp_path):
     try:
         archivio.replace_analysis("2026-09-15", {"osservazioni": [
             {"soggetto": "dev1", "nome": None, "misura": "prelievo"}]})
-        r = await handle_analysis(_richiesta({"observations": archivio},
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio},
                                              {"day": "2026-09-15"}))
         assert r.status == 200
         assert json.loads(r.text)["analisi"]["osservazioni"][0]["nome"] is None
@@ -818,7 +822,7 @@ async def test_significati_attributi_e_rifiuti_si_CHIEDONO_riga_per_riga(tmp_pat
             subject_kind="dispositivo", subject="dev2", field="ricetta_non_capita",
             value="non ho capito", provenance="dedotto", evidence="le entita'",
             verification="non_capito", who="modello", when_ts=3.0))
-        corpo = json.loads((await handle_knowledge(_richiesta({"knowledge": sapere}))).text)
+        corpo = json.loads((await handle_knowledge(_richiesta({KNOWLEDGE_KEY: sapere}))).text)
     finally:
         sapere.close()
     assert len(corpo["significati"]) == len(meaning_seed(when_ts=1.0))
@@ -849,7 +853,7 @@ async def test_il_sapere_si_puo_finalmente_CHIEDERE():
          "quante": 2},
         {"sorta": "dispositivo", "campo": "ricetta", "provenienza": "dedotto",
          "quante": 1}]})
-    r = await handle_knowledge(_richiesta({"knowledge": sapere}))
+    r = await handle_knowledge(_richiesta({KNOWLEDGE_KEY: sapere}))
     assert r.status == 200
     corpo = json.loads(r.text)
     assert corpo["conteggi"]["totale"] == 3
@@ -869,7 +873,7 @@ async def test_le_righe_NON_CAPITE_viaggiano_con_chi_e_quando():
                      provenance="dedotto", evidence="le entita' del dispositivo",
                      verification="non_capito", who="modello (ponte)",
                      when_ts=1787000000.0)
-    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere(unexplained=[fatto])}))
+    r = await handle_knowledge(_richiesta({KNOWLEDGE_KEY: _FintoSapere(unexplained=[fatto])}))
     riga = json.loads(r.text)["non_capito"][0]
     assert riga["soggetto"] == "dev1"
     assert riga["valore"] == "non ho capito cosa misura"
@@ -967,8 +971,8 @@ async def test_la_rotta_del_giorno_porta_la_BANDA_e_il_nome_del_guasto():
 
     Mutazione ESEGUITA: tornare il resoconto archiviato com'e' -- rossa.
     """
-    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
-           "type_judgments": _giudizi_seme()}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           TYPE_JUDGMENTS_KEY: _giudizi_seme()}
     r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
 
     resoconto = json.loads(r.text)["resoconto"]
@@ -987,9 +991,9 @@ async def test_il_nome_VIVO_di_un_entita_arriva_dallo_SPECCHIO():
     Mutazione ESEGUITA: non passare i nomi vivi -- rossa (l'allarme resta
     senza nome, e la pagina mostra `alarm_control_panel.piano_terra`).
     """
-    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
-           "type_judgments": _giudizi_seme(),
-           "entity_cache": SpecchioFinto([
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           TYPE_JUDGMENTS_KEY: _giudizi_seme(),
+           ENTITY_CACHE_KEY: SpecchioFinto([
                raw_state("alarm_control_panel.piano_terra", "disarmed",
                          "Allarme piano terra"),
                raw_state("light.studio", "off", "Studio")])}
@@ -1007,8 +1011,8 @@ async def test_senza_lo_specchio_la_rotta_risponde_LO_STESSO():
 
     Mutazione ESEGUITA: `app["entity_cache"]` invece di `.get` -- rossa.
     """
-    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
-           "type_judgments": _giudizi_seme()}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           TYPE_JUDGMENTS_KEY: _giudizi_seme()}
     r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
 
     assert r.status == 200
@@ -1024,7 +1028,7 @@ async def test_senza_l_istantanea_dei_GIUDIZI_il_primo_piano_porta_solo_il_siste
     Mutazione ESEGUITA: `app["type_judgments"]` invece di `.get` -- rossa
     (KeyError, e la pagina perde anche i guasti).
     """
-    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO})}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO})}
     r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
 
     assert r.status == 200
@@ -1063,7 +1067,7 @@ async def test_i_soggetti_di_REGISTRO_portano_l_integrazione_e_il_suo_nome():
     """
     from hiris.app.api.handlers_mind import handle_watching
 
-    app = {"watcher": _OsservatoreConSoggetti([
+    app = {WATCHER_KEY: _OsservatoreConSoggetti([
         "log:homeassistant.components.hassio.handler@components/hassio/handler.py:108",
         "log:homeassistant.components.hassio.http@components/hassio/http.py:12",
         "log:aioamazondevices@components/alexa_devices/coordinator.py:191",
@@ -1084,7 +1088,7 @@ async def test_una_SEGNALAZIONE_porta_il_dominio_che_la_apre():
     """
     from hiris.app.api.handlers_mind import handle_watching
 
-    app = {"watcher": _OsservatoreConSoggetti(
+    app = {WATCHER_KEY: _OsservatoreConSoggetti(
         ["problema:hacs.restart_required_605635573_tags/v5.5.0"])}
     r = await handle_watching(_richiesta(app))
 
@@ -1102,7 +1106,7 @@ async def test_un_ENTITA_non_diventa_un_integrazione():
     """
     from hiris.app.api.handlers_mind import handle_watching
 
-    app = {"watcher": _OsservatoreConSoggetti(["light.studio", "sensor.potenza"])}
+    app = {WATCHER_KEY: _OsservatoreConSoggetti(["light.studio", "sensor.potenza"])}
     r = await handle_watching(_richiesta(app))
 
     for voce in json.loads(r.text)["watching"]:
@@ -1120,7 +1124,7 @@ async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
     """
     from hiris.app.api.handlers_mind import handle_watching
 
-    app = {"watcher": _OsservatoreConSoggetti(["integrazione:01K2CK4GG287VKK18M5J788MRQ"])}
+    app = {WATCHER_KEY: _OsservatoreConSoggetti(["integrazione:01K2CK4GG287VKK18M5J788MRQ"])}
     r = await handle_watching(_richiesta(app))
 
     voce, = json.loads(r.text)["watching"]
@@ -1157,7 +1161,7 @@ async def test_l_ESITO_del_proponente_arriva_ACCANTO_alla_sua_osservazione(tmp_p
         archivio.replace_analysis("2026-09-20", {
             "osservazioni": [osservazione], proposer_turn.OUTCOMES_KEY: [esito]})
 
-        r = await handle_analysis(_richiesta({"observations": archivio},
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio},
                                              {"day": "2026-09-20"}))
 
         analisi = json.loads(r.text)["analisi"]
@@ -1192,7 +1196,7 @@ async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
                 {"impronta": analyst.observation_key(risposta),
                  "esito": proposer_turn.NOTHING, "perche": "x"}]})
 
-        r = await handle_analysis(_richiesta({"observations": archivio},
+        r = await handle_analysis(_richiesta({OBSERVATIONS_KEY: archivio},
                                              {"day": "2026-09-20"}))
 
         prima, seconda = json.loads(r.text)["analisi"]["osservazioni"]
@@ -1212,7 +1216,7 @@ async def test_il_404_del_resoconto_dice_QUANDO_si_scrivera():
     Mutazione eseguita: tolto `ora_notturna` dal 404 -> rossa."""
     from hiris.app.mind.report import NIGHTLY_HOUR, NIGHTLY_MINUTE
 
-    app = {"observations": _ArchivioConResoconto()}
+    app = {OBSERVATIONS_KEY: _ArchivioConResoconto()}
     r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
     assert r.status == 404
     assert json.loads(r.text)["ora_notturna"] == f"{NIGHTLY_HOUR:02d}:{NIGHTLY_MINUTE:02d}"
@@ -1229,7 +1233,7 @@ async def test_il_sapere_porta_quanto_costa_rifare_la_cronaca():
     from hiris.app.mind.report import BACKFILL_EVERY_MINUTES
     from hiris.app.mind.store import READING_RETENTION_S
 
-    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere()}))
+    r = await handle_knowledge(_richiesta({KNOWLEDGE_KEY: _FintoSapere()}))
     assert json.loads(r.text)["cronaca"] == {
         "ritenzione_s": READING_RETENTION_S,
         "un_giorno_ogni_s": BACKFILL_EVERY_MINUTES * 60}
@@ -1251,8 +1255,8 @@ async def test_decisione_esce_stesso_nome_watching_fuori(tmp_path):
         archivio.decide_scope("sensor.uptime", inside=False, reason="di servizio",
                               author="observer", when_ts=1787000001.0)
         r = await handle_watching(_richiesta(
-            {"watcher": Watcher(archivio, now=lambda: 1787572800.0),
-             "observations": archivio}))
+            {WATCHER_KEY: Watcher(archivio, now=lambda: 1787572800.0),
+             OBSERVATIONS_KEY: archivio}))
         corpo = _corpo(r)
         dentro = [v for v in corpo["watching"] if v["soggetto"] == "climate.camera_t"]
         assert [v.get("quando") for v in dentro] == [1787000000.0]
@@ -1282,8 +1286,8 @@ async def test_le_righe_del_sapere_portano_il_nome_del_dispositivo(tmp_path):
     anagrafe = HomeSpace(str(tmp_path))
     anagrafe.hold_registries({"dispositivi": [{"id": "inv", "name": "Inverter"}],
                               "entita": []})
-    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere(unexplained=[fatto, tipo]),
-                                           "home_space_store": anagrafe}))
+    r = await handle_knowledge(_richiesta({KNOWLEDGE_KEY: _FintoSapere(unexplained=[fatto, tipo]),
+                                           HOME_SPACE_KEY: anagrafe}))
     righe = json.loads(r.text)["non_capito"]
     assert righe[0]["nome"] == "Inverter"
     assert righe[0]["soggetto"] == "inv"
@@ -1326,8 +1330,8 @@ async def test_il_sapere_consegna_le_RICETTE_intere(tmp_path):
         anagrafe.hold_registries({"dispositivi": [{"id": "inv", "name": "Inverter"}],
                                   "entita": []})
 
-        r = await handle_knowledge(_richiesta({"knowledge": sapere,
-                                               "home_space_store": anagrafe}))
+        r = await handle_knowledge(_richiesta({KNOWLEDGE_KEY: sapere,
+                                               HOME_SPACE_KEY: anagrafe}))
 
         assert json.loads(r.text)["ricette"] == [{
             "dispositivo": "inv", "nome": "Inverter", "ricetta": ricetta,

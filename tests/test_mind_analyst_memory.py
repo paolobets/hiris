@@ -17,9 +17,11 @@ import json
 import pytest
 
 from hiris.app.home_space import historian
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import analyst, analyst_round
 from hiris.app.mind import analyst_turn as at
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._runner_finto import RunnerFinto
 
 
@@ -170,7 +172,7 @@ async def test_il_GIRO_legge_la_memoria_dagli_archivi_e_toglie_la_ripetizione(tm
         # dizionari di `proposals()`: la firma di `add_proposal` cambia con lo
         # strato 4 (`stakes`), e questa prova non deve legarsi a lei.
         modello = _modello_ripetitore()
-        app = {"observations": store, "llm_router": modello, "bridge_active": False}
+        app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: modello, BRIDGE_ACTIVE_KEY: False}
 
         await analyst_round.analyst_round(app)
 

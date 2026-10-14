@@ -16,9 +16,10 @@ test. Qui si pinnano tre cose che nessun altro test copre:
 
 import pytest
 
-from hiris.app.action.actuator import ActionActuator
+from hiris.app.action.actuator import ACTUATOR_KEY, ActionActuator
 from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
 from tests._contracts import assert_stessa_firma
 
 
@@ -112,7 +113,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     actuator = FintaPorta()
-    d = create_tool_dispatcher({"action_actuator": actuator}, soffitto=_AMMINISTRATORE)
+    d = create_tool_dispatcher({ACTUATOR_KEY: actuator}, soffitto=_AMMINISTRATORE)
 
     esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
@@ -136,7 +137,7 @@ def test_l_unico_costruttore_del_dispatcher_passa_l_istantanea_dei_giudizi():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     giudizi_finti = object()
-    d = create_tool_dispatcher({"type_judgments": giudizi_finti},
+    d = create_tool_dispatcher({TYPE_JUDGMENTS_KEY: giudizi_finti},
                                soffitto=_AMMINISTRATORE)
     assert d._judgments is giudizi_finti
 

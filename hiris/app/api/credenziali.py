@@ -34,6 +34,15 @@ import hmac
 import logging
 import secrets
 
+from aiohttp import web
+
+from ..models_store import MODELS_CONFIG_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+BRIDGE_CREDENTIAL_KEY = web.AppKey("credenziale_ponte")
+CREDENTIALS_KEY = web.AppKey("credenziali")
+
 logger = logging.getLogger(__name__)
 
 #: **Il ruolo che questa credenziale porta al cancello delle rotte**
@@ -106,12 +115,12 @@ def prepara_credenziali(app) -> None:
     errore in aiohttp 4 — la stessa ragione per cui nascono lì i contatori dei
     giri di strumento, la cache dei ruoli e i valori già visti dei canali.
     """
-    app["credenziali"] = {}
+    app[CREDENTIALS_KEY] = {}
     # La credenziale del ponte IN CORSO. Sta in un contenitore suo perche' il
     # worker ne chiede una a ogni giro (ogni pochi secondi) e coniarne una
     # nuova ogni volta ne lascerebbe centinaia vive insieme: si riusa finche'
     # e' a meta' vita, e si rinnova dopo.
-    app["credenziale_ponte"] = {}
+    app[BRIDGE_CREDENTIAL_KEY] = {}
 
 
 def durata_ponte_s(app) -> float:
@@ -135,7 +144,7 @@ def durata_ponte_s(app) -> float:
     copre."""
     from ..models_store import bridge_deadline_min
 
-    return 2 * 60.0 * bridge_deadline_min(app.get("models_config"))
+    return 2 * 60.0 * bridge_deadline_min(app.get(MODELS_CONFIG_KEY))
 
 
 def credenziale_ponte_viva(app, *, adesso: float) -> str:
@@ -146,13 +155,13 @@ def credenziale_ponte_viva(app, *, adesso: float) -> str:
     una scadenza e' un guasto che nessuno saprebbe leggere. La vita e'
     `durata_ponte_s`: a meta' ne resta un turno intero.
     """
-    corrente = app.get("credenziale_ponte")
+    corrente = app.get(BRIDGE_CREDENTIAL_KEY)
     if corrente is None:
         return ""
     durata_s = durata_ponte_s(app)
     if corrente.get("scade", 0) - adesso > durata_s / 2:
         return corrente["segreto"]
-    segreto = conia(app["credenziali"], mestiere="ponte",
+    segreto = conia(app[CREDENTIALS_KEY], mestiere="ponte",
                     durata_s=durata_s, adesso=adesso)
     corrente["segreto"] = segreto
     corrente["scade"] = adesso + durata_s

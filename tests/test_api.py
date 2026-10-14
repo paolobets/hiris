@@ -6,10 +6,14 @@ from datetime import UTC
 import pytest
 import pytest_asyncio
 
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.server import create_app
+from hiris.app.storage import DATA_DIR_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -48,11 +52,11 @@ async def client(aiohttp_client, tmp_path):
 
     mock_runner = RunnerFinto("Test response")
 
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = mock_runner
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
 
     app.on_startup.clear()
     app.on_cleanup.clear()
@@ -111,10 +115,10 @@ async def test_chat_missing_message(client):
 @pytest.mark.asyncio
 async def test_chat_no_runner(aiohttp_client, tmp_path):
     app = create_app()
-    app["data_dir"] = str(tmp_path)  # lo scrive l'avvio, che qui non gira
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
+    app[DATA_DIR_KEY] = str(tmp_path)  # lo scrive l'avvio, che qui non gira
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = None
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -165,10 +169,10 @@ async def test_chat_no_runner(aiohttp_client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
-    client.app["chat_settings"] = ChatSettings(
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(
         name="Energia", system_prompt="Sei un esperto di energia.",
     )
-    runner = client.app["claude_runner"]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "risposta energia"
 
     resp = await client.post("/api/chat", json={
@@ -184,8 +188,8 @@ async def test_chat_usa_il_system_prompt_delle_impostazioni(client):
 
 @pytest.mark.asyncio
 async def test_chat_senza_chatbot_id_usa_comunque_le_impostazioni(client):
-    client.app["chat_settings"] = ChatSettings(system_prompt="Prompt di default HIRIS.")
-    runner = client.app["claude_runner"]
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Prompt di default HIRIS.")
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "risposta default"
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -200,8 +204,8 @@ async def test_chat_con_chatbot_id_sconosciuto_non_rompe_e_ignora_lid(client):
     sul default (fallback). Ora non c'e' nessuna ricerca da far fallire: un
     id qualsiasi -- esistito o mai esistito -- non cambia il comportamento,
     perche' non seleziona piu' niente."""
-    client.app["chat_settings"] = ChatSettings(system_prompt="Fallback prompt.")
-    runner = client.app["claude_runner"]
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Fallback prompt.")
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "fallback"
 
     resp = await client.post("/api/chat", json={
@@ -233,11 +237,11 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     def _build(data_dir_name):
         mock_runner = RunnerFinto("stessa risposta")
         app = create_app()
-        app["ha_client"] = CasaFinta(synthetic_inputs())
-        app["chat_settings"] = ChatSettings(system_prompt="Prompt fisso.")
-        app["claude_runner"] = mock_runner
-        app["theme"] = "auto"
-        app["data_dir"] = str(tmp_path / data_dir_name)
+        app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+        app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="Prompt fisso.")
+        app[CLAUDE_RUNNER_KEY] = mock_runner
+        app[THEME_KEY] = "auto"
+        app[DATA_DIR_KEY] = str(tmp_path / data_dir_name)
         app.on_startup.clear()
         app.on_cleanup.clear()
         return app, mock_runner
@@ -288,10 +292,10 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
     il turno chiede sempre `auto`. Il test non è stato cancellato perché dava
     fastidio: il suo soggetto è cambiato di segno, e questo è l'unico posto
     che lo verifica sull'app VERA (`create_app`), non su un'app di prova."""
-    client.app["chat_settings"] = ChatSettings(
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(
         name="Haiku", system_prompt="Chat test", restrict_to_home=False,
     )
-    runner = client.app["claude_runner"]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "ok"
 
     await client.post("/api/chat", json={"message": "test"})
@@ -308,8 +312,8 @@ async def test_chat_chiede_sempre_auto_al_runner(client):
 @pytest.mark.asyncio
 async def test_chat_max_turns_blocks_when_limit_reached(client):
     from hiris.app.chat_store import append_messages
-    client.app["chat_settings"] = ChatSettings(max_chat_turns=2)
-    data_dir = client.app["data_dir"]
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(max_chat_turns=2)
+    data_dir = client.app[DATA_DIR_KEY]
     # Pre-fill 2 user turns nella cronologia del filo di chi scrive.
     append_messages([
         {"role": "user", "content": "first"},
@@ -329,8 +333,8 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
 @pytest.mark.asyncio
 async def test_chat_persists_exchange_in_history(client):
     from hiris.app.chat_store import load_history
-    data_dir = client.app["data_dir"]
-    runner = client.app["claude_runner"]
+    data_dir = client.app[DATA_DIR_KEY]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "stored response"
 
     await client.post("/api/chat", json={"message": "persist me"})
@@ -352,9 +356,9 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
 
     from hiris.app.chat_store import _get_store
 
-    data_dir = client.app["data_dir"]
-    client.app["chat_settings"] = ChatSettings(retention_days=5)
-    runner = client.app["claude_runner"]
+    data_dir = client.app[DATA_DIR_KEY]
+    client.app[CHAT_SETTINGS_KEY] = ChatSettings(retention_days=5)
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "ok"
 
     store = _get_store(data_dir)
@@ -397,8 +401,8 @@ async def test_chat_does_not_persist_toxic_response(client):
     poison subsequent turns and the user already sees the error in the
     current response payload."""
     from hiris.app.chat_store import load_history
-    data_dir = client.app["data_dir"]
-    runner = client.app["claude_runner"]
+    data_dir = client.app[DATA_DIR_KEY]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "Errore temporaneo del servizio AI. Riprova tra poco."
 
     await client.post("/api/chat", json={"message": "fail me"})
@@ -415,8 +419,8 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
     runner when a model emits a tool call as raw text content."""
     from hiris.app.backends.openai_compat_runner import TOOL_LEAK_USER_MSG
     from hiris.app.chat_store import load_history
-    data_dir = client.app["data_dir"]
-    runner = client.app["claude_runner"]
+    data_dir = client.app[DATA_DIR_KEY]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = TOOL_LEAK_USER_MSG
 
     await client.post("/api/chat", json={"message": "leak me"})
@@ -465,7 +469,7 @@ async def test_chat_debug_tools_called_returns_objects(client):
     spurious "Errore di connessione. Riprova tra poco." with no backend error.
     """
 
-    runner = client.app["claude_runner"]
+    runner = client.app[CLAUDE_RUNNER_KEY]
     runner.risposta = "Ecco i consumi energia"
     runner.dopo["last_tool_calls"] = [
         {"tool": "get_energy_history", "input": {"hours": 24}},

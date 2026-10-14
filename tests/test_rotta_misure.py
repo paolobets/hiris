@@ -24,7 +24,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_misure import handle_misure
-from hiris.app.usage.store import UsageStore
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 
 ADESSO = 1_758_000_000.0
 
@@ -32,7 +32,7 @@ ADESSO = 1_758_000_000.0
 @pytest.fixture()
 def app(tmp_path):
     fuori = web.Application()
-    fuori["usage"] = UsageStore(str(tmp_path / "consumi.db"))
+    fuori[USAGE_KEY] = UsageStore(str(tmp_path / "consumi.db"))
     return fuori
 
 
@@ -77,7 +77,7 @@ async def test_la_rotta_restituisce_i_DUE_registri(app):
     poteva leggerli.
 
     Mutazione ESEGUITA: restituire i soli turni, senza i carichi -- rossa."""
-    ident = _turno(app["usage"])
+    ident = _turno(app[USAGE_KEY])
 
     dati = await _chiedi(app)
 
@@ -94,8 +94,8 @@ async def test_il_carico_arriva_LEGATO_al_suo_turno(app):
     senza il suo turno non risponde a niente.
 
     Mutazione ESEGUITA: restituire i carichi come lista piatta -- rossa."""
-    uno = _turno(app["usage"], specie="chat")
-    due = _turno(app["usage"], specie="analista", giri=3)
+    uno = _turno(app[USAGE_KEY], specie="chat")
+    due = _turno(app[USAGE_KEY], specie="analista", giri=3)
 
     dati = await _chiedi(app)
 
@@ -109,8 +109,8 @@ async def test_la_FINESTRA_si_puo_stringere(app):
     domanda normale riguarda gli ultimi giorni.
 
     Mutazione ESEGUITA: ignorare `giorni` e restituire tutto -- rossa."""
-    vecchio = _turno(app["usage"], now=ADESSO - 10 * 86400)
-    recente = _turno(app["usage"], now=ADESSO)
+    vecchio = _turno(app[USAGE_KEY], now=ADESSO - 10 * 86400)
+    recente = _turno(app[USAGE_KEY], now=ADESSO)
 
     stretta = await _chiedi(app, giorni="3", adesso=str(ADESSO))
     larga = await _chiedi(app, giorni="30", adesso=str(ADESSO))
@@ -147,7 +147,7 @@ async def test_la_risposta_dice_di_essere_TEMPORANEA(app):
     dimenticanza».
 
     Mutazione ESEGUITA: togliere il campo dalla risposta -- rossa."""
-    _turno(app["usage"])
+    _turno(app[USAGE_KEY])
 
     dati = await _chiedi(app)
 
@@ -163,7 +163,7 @@ async def test_gli_ARGOMENTI_escono_col_nome_tool_args_e_senza_credenziali(app):
     e mai una credenziale. Non escono sotto i nomi vecchi.
 
     Mutazione ESEGUITA: non esporre `tool_args` dall'archivio -- rossa."""
-    archivio = app["usage"]
+    archivio = app[USAGE_KEY]
     archivio.log_turn(species="chat", provider="p", model="m",
                       channel="catena-openai", duration_ms=1, iterations=1,
                       tools=["execute"], outcome="riuscito", now=ADESSO,
@@ -224,7 +224,7 @@ async def test_la_rotta_porta_i_token_dei_giri(app):
 
     Mutazione ESEGUITA: togliere TOKEN_COLUMNS dalla SELECT di payloads --
     rossa."""
-    archivio = app["usage"]
+    archivio = app[USAGE_KEY]
     ident = archivio.log_turn(species="chat", provider="subscription",
                               model="m", channel="ponte", duration_ms=1,
                               iterations=1, tools=[], outcome="riuscito",

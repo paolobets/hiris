@@ -5,6 +5,8 @@ import time
 from contextvars import ContextVar
 from typing import Any
 
+from aiohttp import web
+
 from .claude_runner import (
     RunnerBackendError,
     _current_tool_calls,
@@ -261,4 +263,7 @@ class LLMRouter:
         compito, portava uno strumento «scappato» come testo (B22). Stessa
         ContextVar dei runner, come `last_truncated`."""
         return _current_tool_leaked.get()
+
+
+LLM_ROUTER_KEY = web.AppKey("llm_router", LLMRouter)
 

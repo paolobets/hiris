@@ -15,6 +15,9 @@ from unittest import mock
 import pytest
 
 from hiris.app import startup
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -25,7 +28,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 def _job(app, job_id):
-    job = app["scheduler"].get_job(job_id)
+    job = app[SCHEDULER_KEY].get_job(job_id)
     assert job is not None, f"il lavoro {job_id} non e' registrato"
     return job
 
@@ -56,7 +59,7 @@ async def test_la_potatura_gira_alle_03_00(started_app):
     `hiris_retention` -- rossa."""
     assert str(_job(started_app, "hiris_retention").trigger) == \
         "cron[hour='3', minute='0']"
-    assert started_app["scheduler"].get_job("hiris_mind_pruning") is None
+    assert started_app[SCHEDULER_KEY].get_job("hiris_mind_pruning") is None
 
 
 async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_app):
@@ -87,7 +90,7 @@ async def test_il_giro_delle_condizioni_tiene_anche_gli_id_delle_statistiche(sta
             mock.patch.object(startup, "hold_watcher_statistic_ids",
                               mock.AsyncMock()) as held:
         await job.func()
-    held.assert_awaited_once_with(started_app, started_app["ha_client"])
+    held.assert_awaited_once_with(started_app, started_app[HA_CLIENT_KEY])
 
 
 async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_app):
@@ -110,7 +113,7 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
                            mock.AsyncMock()) as reloaded:
         await job.func()
     reloaded.assert_awaited_once()
-    assert reloaded.await_args.args[0] is started_app["entity_cache"]
+    assert reloaded.await_args.args[0] is started_app[ENTITY_CACHE_KEY]
 
 
 async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_app):
@@ -123,7 +126,7 @@ async def test_i_lavori_periodici_sono_sedici_come_dichiara_il_readme(started_ap
     Tappa 8 Task 6).
 
     Mutazione ESEGUITA: un `add_job` in piu' in `_on_startup` -- rossa."""
-    jobs = started_app["scheduler"].get_jobs()
+    jobs = started_app[SCHEDULER_KEY].get_jobs()
     assert len(jobs) == 16, sorted(job.id for job in jobs)
     readme = (pathlib.Path(__file__).resolve().parents[1] / "README.md").read_text(
         encoding="utf-8")

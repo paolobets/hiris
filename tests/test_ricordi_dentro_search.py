@@ -27,7 +27,9 @@ import pytest
 
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.tools import TOOLS
+from hiris.app.memory.store import MEMORY_STORE_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -44,7 +46,7 @@ async def test_ogni_ricordo_ancorato_esce_dalla_scheda(tmp_path):
     ognuno, ancorato a lui, e la sua scheda di `search(riferimento)` -- con
     le nascoste e quelle di servizio incluse -- deve portarlo."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        home_space, memory = app["home_space_store"].read(), app["memory_store"]
+        home_space, memory = app[HOME_SPACE_KEY].read(), app[MEMORY_STORE_KEY]
         objects = ([("area", a["id"]) for a in home_space["aree"]]
                    + [("entita", e["id"]) for e in home_space["entita"]]
                    + [("dispositivo", d["id"]) for d in home_space["dispositivi"]])

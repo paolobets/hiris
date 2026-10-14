@@ -39,8 +39,10 @@ from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
 from ..home_space.historian import house_timezone, local_date
+from ..home_space.reader import HOME_SPACE_KEY
 from ..providers import SUBSCRIPTION
-from ..steering import chain_runner
+from ..steering import BRIDGE_ACTIVE_KEY, chain_runner
+from ..usage.store import USAGE_KEY
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
@@ -87,7 +89,7 @@ def _house_timezone(app) -> str:
     calcolare l'intervallo predefinito). Il fuso lo legge
     `historian.house_timezone`, l'unico lettore.
     """
-    return house_timezone(app.get("home_space_store")) or ""
+    return house_timezone(app.get(HOME_SPACE_KEY)) or ""
 
 
 def _can_respond(app) -> bool:
@@ -97,7 +99,7 @@ def _can_respond(app) -> bool:
     ancora consumato niente» -- e non un'assenza di misura. E' la distinzione
     che rende `measured: false` un caso raro invece che la normalita'.
     """
-    return bool(chain_runner(app) or app.get("bridge_active"))
+    return bool(chain_runner(app) or app.get(BRIDGE_ACTIVE_KEY))
 
 
 def _unmeasured() -> dict:
@@ -167,7 +169,7 @@ def _model_out(m: dict) -> dict:
 
 
 async def handle_usage(request: web.Request) -> web.Response:
-    store = request.app.get("usage")
+    store = request.app.get(USAGE_KEY)
     if store is None or (store.empty() and not _can_respond(request.app)):
         return web.json_response(_unmeasured())
 
@@ -263,7 +265,7 @@ async def handle_usage_history(request: web.Request) -> web.Response:
     `/api/usage` a intervalli: appesantirlo con trenta giorni di serie
     storica farebbe pagare a ogni giro una domanda che la chat non fa.
     """
-    store = request.app.get("usage")
+    store = request.app.get(USAGE_KEY)
     if store is None:
         return web.json_response({"days": [], "from": "", "to": ""})
 
@@ -302,7 +304,7 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
     Con l'archivio c'e' sempre un'ancora da spostare. Il `409` resta per
     l'app che l'archivio non ce l'ha: li' non c'e' niente da cui ripartire.
     """
-    store = request.app.get("usage")
+    store = request.app.get(USAGE_KEY)
     if store is None:
         body = _unmeasured()
         body["deleted"] = False

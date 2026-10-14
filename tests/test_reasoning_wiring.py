@@ -56,6 +56,7 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -72,7 +73,7 @@ async def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(t
     `ReasoningQueue` in `_on_startup` -- rossa."""
     inputs = synthetic_inputs()
     async with fotografia_porte.mounted(inputs, str(tmp_path)) as app:
-        coda = app["reasoning_queue"]
+        coda = app[REASONING_QUEUE_KEY]
         assert coda._read_timezone() == inputs["ha_config"]["time_zone"] == "Europe/Rome", (
             "ReasoningQueue deve ricevere read_timezone -- senza, il tetto "
             "giornaliero dei turni si azzera all'ora del container invece "

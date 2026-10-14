@@ -37,6 +37,8 @@ import threading
 import time as _time
 import uuid
 
+from aiohttp import web
+
 from ..states import (
     AUTOMATED,
     CANCELLED,
@@ -2256,3 +2258,6 @@ class ObservationsStore:
         """
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now_ts)
+
+
+OBSERVATIONS_KEY = web.AppKey("observations", ObservationsStore)

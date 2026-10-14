@@ -8,6 +8,14 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
+from hiris.app.action.journal import JOURNAL_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta, Refused
 
@@ -117,11 +125,11 @@ def _admin_house() -> CasaFinta:
 def _app(archivio=None, officina=None):
     app = web.Application()
     if archivio is not None:
-        app["constructions"] = archivio
+        app[CONSTRUCTIONS_KEY] = archivio
     if officina is not None:
-        app["workshop"] = officina
-    app["ha_client"] = _admin_house()
-    app["ruoli"] = {"quando": 0.0, "per_id": {}}
+        app[WORKSHOP_KEY] = officina
+    app[HA_CLIENT_KEY] = _admin_house()
+    app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}
     return app
 
 
@@ -434,11 +442,11 @@ _INGRESS_ADMIN = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["constructions"] = ConstructionStore(
+    app[CONSTRUCTIONS_KEY] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni_http.db"))
-    app["journal"] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
+    app[JOURNAL_KEY] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
     ha = WorkshopHouse()
-    app["workshop"] = Workshop(ha.client, app["constructions"], app["journal"])
+    app[WORKSHOP_KEY] = Workshop(ha.client, app[CONSTRUCTIONS_KEY], app[JOURNAL_KEY])
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
     app["_fake_ha"] = ha
@@ -446,19 +454,19 @@ async def client(aiohttp_client, tmp_path):
     # queste prove parlano del CSRF e dei codici di stato, non del soffitto,
     # quindi dichiarano la premessa -- un amministratore, dall'ingress -- invece
     # di subirla.
-    app["ha_client"] = _admin_house()
-    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]
+    app[HA_CLIENT_KEY] = _admin_house()
+    app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["constructions"].close()
-    app["journal"].close()
+    app[CONSTRUCTIONS_KEY].close()
+    app[JOURNAL_KEY].close()
 
 
 @pytest.mark.asyncio
 async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -478,7 +486,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
 async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
     client, csrf_stretto
 ):
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -495,7 +503,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
 
 @pytest.mark.asyncio
 async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip",
         actor="chat", exchange="turno-1", phrase="modifica",
@@ -516,7 +524,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
 async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     client, csrf_stretto
 ):
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip_ok",
         actor="chat", exchange="turno-1", phrase="modifica",
@@ -540,7 +548,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
     prova end-to-end, nel file il cui stesso commento argomenta perche' serve.
     Non tocca Home Assistant (vedi `handlers_constructions.py`), quindi la meta'
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -557,7 +565,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
 
 @pytest.mark.asyncio
 async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client, csrf_stretto):
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -579,7 +587,7 @@ async def test_il_motivo_esce_letto_cronaca(client):
     Mutazione ESEGUITA (07/10/2026): in `_out` il ramo che legge
     `journal.read(...)["errore"]` tolto -- rossa su `motivo` (`None`);
     ripristinata e verificata col confronto del file."""
-    archivio = client.app["constructions"]
+    archivio = client.app[CONSTRUCTIONS_KEY]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_motivo",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -592,7 +600,7 @@ async def test_il_motivo_esce_letto_cronaca(client):
     assert risposta.status == 409
     riga = archivio.read(ident, now=ADESSO_HTTP)
     assert riga["motivo"] is None, "il motivo non si copia nella riga"
-    voce = client.app["journal"].read(riga["esecuzione_id"])
+    voce = client.app[JOURNAL_KEY].read(riga["esecuzione_id"])
 
     letta = await client.get(f"/api/constructions/{ident}", headers=_INGRESS_ADMIN)
     assert letta.status == 200
@@ -616,7 +624,7 @@ async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_s
     Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
     rossa (200 e una scrittura)."""
     ha = client.app["_fake_ha"]
-    ident = _edit_proposal(client.app["constructions"], "tapparelle_s17")
+    ident = _edit_proposal(client.app[CONSTRUCTIONS_KEY], "tapparelle_s17")
     ha.corpi["tapparelle_s17"] = {"id": "tapparelle_s17", "alias": "cambiata a mano"}
 
     risposta = await client.post(
@@ -633,7 +641,7 @@ async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, cs
     """Un guasto di rete durante la rilettura e' indisponibilita' (503), non
     un conflitto, e la sua causa e' il silenzio del client."""
     ha = client.app["_fake_ha"]
-    ident = _edit_proposal(client.app["constructions"], "tapparelle_s17_rete")
+    ident = _edit_proposal(client.app[CONSTRUCTIONS_KEY], "tapparelle_s17_rete")
     ha._solleva.add("read_configuration")
 
     risposta = await client.post(
@@ -663,7 +671,7 @@ async def test_una_proposta_a_mano_guasta_non_fa_cadere_l_elenco(tmp_path):
                                       stakes=None, now_ts=4.0)
     osservazioni._conn.execute("UPDATE proposte SET prova_json = '{' WHERE id = ?", (rotta,))
     osservazioni._conn.commit()
-    app["observations"] = osservazioni
+    app[OBSERVATIONS_KEY] = osservazioni
     try:
         risposta = await handle_get_constructions(FintaRichiesta(app))
         assert risposta.status == 200
@@ -699,7 +707,7 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
     chiusa = osservazioni.add_proposal(text="t", perche="p", fingerprint="f2", prova={},
                                        stakes=None, now_ts=4.0)
     osservazioni.close_proposal(chiusa, osservazioni.PROPOSAL_OUTCOMES[0])
-    app["observations"] = osservazioni
+    app[OBSERVATIONS_KEY] = osservazioni
     try:
         corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
         sospese = {c["id"]: c["sospesa"] for c in corpo["constructions"]}

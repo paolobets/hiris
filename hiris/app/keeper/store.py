@@ -17,6 +17,8 @@ import secrets
 import threading
 import time
 
+from aiohttp import web
+
 from ..chat_thread import ChatThread, thread_condition, thread_params, unknown_id_text
 from ..states import CANCELLED, FAILED, PENDING, SUSPENDED, TAKEN, readable, sql_list
 from ..storage import (
@@ -672,3 +674,6 @@ class AgendaStore:
         """Applica `CONSERVAZIONE`; torna le righe tolte."""
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now)
+
+
+AGENDA_KEY = web.AppKey("agenda", AgendaStore)

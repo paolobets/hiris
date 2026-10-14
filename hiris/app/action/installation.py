@@ -26,8 +26,15 @@ from datetime import UTC, datetime
 
 from aiohttp import web
 
+from ..api.admission import ACCESS_FLAG_KEY
 from ..background import spawn as _spawn
 from ..home_space.redaction import home_assistant_folder
+from ..proxy.ha_client import HA_CLIENT_KEY
+from ..storage import DATA_DIR_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+INSTALLATION_TASK_KEY = web.AppKey("installation_task")
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +270,8 @@ async def sync_panel_visibility(app) -> None:
 
 
 async def _sync(app) -> None:
-    access = app["non_admin_access"]
-    ha = app["ha_client"]
+    access = app[ACCESS_FLAG_KEY]
+    ha = app[HA_CLIENT_KEY]
     try:
         own = await asyncio.wait_for(ha.own_slug(), timeout=SLUG_CAP_S)
     except TimeoutError:
@@ -341,7 +348,7 @@ async def install(app) -> None:
         logger.info("nessun Supervisor: la voce di menu e la card non si toccano")
         return
     await sync_panel_visibility(app)
-    ha = app["ha_client"]
+    ha = app[HA_CLIENT_KEY]
     try:
         await asyncio.wait_for(ha.ws_ready.wait(), timeout=SYNC_CAP_S)
     except TimeoutError:
@@ -350,7 +357,7 @@ async def install(app) -> None:
                        SYNC_CAP_S)
         return
     try:
-        await disinstalla_card_lovelace(ha, app["data_dir"])
+        await disinstalla_card_lovelace(ha, app[DATA_DIR_KEY])
     except Exception as exc:
         logger.warning("card HIRIS: disinstallazione non riuscita (%s)",
                        type(exc).__name__)
@@ -360,4 +367,4 @@ async def start_installation(app: web.Application) -> None:
     # Il compito si tiene in `app`: il tetto della sincronia e' di dieci
     # minuti, e un arresto durante l'attesa del nucleo lo lascerebbe pendente
     # a chiusura. `_on_cleanup` lo ferma.
-    app["installation_task"] = _spawn(install(app), name="installation")
+    app[INSTALLATION_TASK_KEY] = _spawn(install(app), name="installation")

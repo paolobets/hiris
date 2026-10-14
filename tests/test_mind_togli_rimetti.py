@@ -17,16 +17,21 @@ import json
 import pytest
 
 from hiris.app.api.handlers_mind import handle_set_scope
+from hiris.app.api.soffitto import ROLES_KEY
 from hiris.app.home_space.house import (
     SOURCE_GONE,
     SOURCE_SWITCHED_OFF_BY_HA,
     SOURCE_SWITCHED_OFF_BY_OWNER,
     House,
 )
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.topology import Mirror
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import analyst, analyst_round
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._anagrafe_finta import AnagrafeFinta
 from tests._runner_finto import RunnerFinto
 from tests._specchio_finto import SpecchioFinto, raw_state
@@ -47,7 +52,7 @@ def _richiesta(app, corpo, *, ruolo="amministratore"):
     class _R(dict):
         def __init__(self):
             super().__init__(soggetto=AMMINISTRATORE, auth_via="ingress", ruolo=ruolo)
-            app.setdefault("ruoli", {"quando": 0.0, "per_id": {}})
+            app.setdefault(ROLES_KEY, {"quando": 0.0, "per_id": {}})
             self.app = app
             self.query = {}
             self.method, self.path = "POST", "/api/mind/scope"
@@ -64,7 +69,7 @@ async def test_il_proprietario_toglie_e_la_decisione_e_sua(archivio):
     archivio.decide_scope("sensor.vicino", inside=True, reason="pesa", author=OBSERVER,
                           when_ts=1000.0)
 
-    r = await handle_set_scope(_richiesta({"observations": archivio}, {
+    r = await handle_set_scope(_richiesta({OBSERVATIONS_KEY: archivio}, {
         "soggetto": "sensor.vicino", "dentro": False, "motivo": "e' il sensore del vicino"}))
 
     assert r.status == 200
@@ -83,7 +88,7 @@ async def test_senza_motivo_si_scrive_quello_di_ripiego(archivio):
     facoltativo per chi preme il bottone, mai per l'archivio."""
     archivio.decide_scope("sensor.x", inside=True, reason="pesa", author=OBSERVER)
 
-    r = await handle_set_scope(_richiesta({"observations": archivio}, {
+    r = await handle_set_scope(_richiesta({OBSERVATIONS_KEY: archivio}, {
         "soggetto": "sensor.x", "dentro": False, "motivo": "   "}))
 
     assert r.status == 200
@@ -96,7 +101,7 @@ async def test_il_proprietario_puo_cambiare_idea(archivio):
     `may_overwrite` il proprietario non potrebbe piu' rimettere dentro cio'
     che lui stesso ha tolto."""
     archivio.decide_scope("sensor.x", inside=True, reason="pesa", author=OBSERVER)
-    app = {"observations": archivio}
+    app = {OBSERVATIONS_KEY: archivio}
     await handle_set_scope(_richiesta(app, {"soggetto": "sensor.x", "dentro": False}))
 
     r = await handle_set_scope(_richiesta(app, {"soggetto": "sensor.x", "dentro": True}))
@@ -111,7 +116,7 @@ async def test_il_proprietario_puo_cambiare_idea(archivio):
 async def test_si_tocca_solo_cio_su_cui_qualcuno_ha_deciso(archivio):
     """La pagina toglie e rimette righe che esistono: un soggetto mai
     giudicato e' un 404, non una riga nuova che nessun evento accendera'."""
-    r = await handle_set_scope(_richiesta({"observations": archivio}, {
+    r = await handle_set_scope(_richiesta({OBSERVATIONS_KEY: archivio}, {
         "soggetto": "sensor.mai_visto", "dentro": False}))
     assert r.status == 404
     assert archivio.scope() == {}
@@ -145,7 +150,7 @@ async def test_chi_decide_su_un_soggetto_non_rilegge_tutto_il_perimetro(archivio
 
     archivio.decide_scope("sensor.s0", inside=True, reason="pesa", author=OBSERVER)
     analyst.bring_back(archivio, _analisi("sensor.s1"), _casa("sensor.s1"), when_ts=2000.0)
-    r = await handle_set_scope(_richiesta({"observations": archivio}, {
+    r = await handle_set_scope(_richiesta({OBSERVATIONS_KEY: archivio}, {
         "soggetto": "sensor.s2", "dentro": True}))
 
     assert r.status == 200
@@ -165,7 +170,7 @@ async def test_chi_decide_su_un_soggetto_non_rilegge_tutto_il_perimetro(archivio
 ])
 async def test_un_corpo_storto_e_un_400(archivio, corpo):
     archivio.decide_scope("sensor.x", inside=True, reason="pesa", author=OBSERVER)
-    r = await handle_set_scope(_richiesta({"observations": archivio}, corpo))
+    r = await handle_set_scope(_richiesta({OBSERVATIONS_KEY: archivio}, corpo))
     assert r.status == 400
     assert archivio.scope()["sensor.x"]["autore"] == OBSERVER
 
@@ -385,10 +390,10 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
     archivio.decide_scope("sensor.vicino", inside=False, reason="e' del vicino", author=OWNER)
 
     await analyst_round.analyst_round({
-        "observations": archivio, "llm_router": _modello_rimettitore(),
-        "bridge_active": False,
-        "home_space_store": _anagrafe("sensor.pioggia", "sensor.vicino"),
-        "entity_cache": _specchio("sensor.pioggia", "sensor.vicino")})
+        OBSERVATIONS_KEY: archivio, LLM_ROUTER_KEY: _modello_rimettitore(),
+        BRIDGE_ACTIVE_KEY: False,
+        HOME_SPACE_KEY: _anagrafe("sensor.pioggia", "sensor.vicino"),
+        ENTITY_CACHE_KEY: _specchio("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
     assert (scope["sensor.pioggia"]["dentro"], scope["sensor.pioggia"]["autore"]) == (
@@ -426,10 +431,11 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await analyst_round.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
-                                "bridge_active": False,
-                                "home_space_store": _anagrafe("sensor.pioggia"),
-                                "entity_cache": _specchio("sensor.pioggia")})
+    await analyst_round.analyst_round({OBSERVATIONS_KEY: archivio,
+                                LLM_ROUTER_KEY: _modello_inventore(),
+                                BRIDGE_ACTIVE_KEY: False,
+                                HOME_SPACE_KEY: _anagrafe("sensor.pioggia"),
+                                ENTITY_CACHE_KEY: _specchio("sensor.pioggia")})
 
     assert "sensor.inventato" not in archivio.scope()
     assert archivio.scope()["sensor.pioggia"]["autore"] == ANALYST
@@ -454,8 +460,9 @@ async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
                     "copertura": 1.0}]})
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
-    await analyst_round.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
-                                "bridge_active": False, "home_space_store": _anagrafe()})
+    await analyst_round.analyst_round({OBSERVATIONS_KEY: archivio,
+                                LLM_ROUTER_KEY: _modello_inventore(),
+                                BRIDGE_ACTIVE_KEY: False, HOME_SPACE_KEY: _anagrafe()})
 
     assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER
     assert "sensor.inventato" not in archivio.scope()

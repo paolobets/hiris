@@ -4,6 +4,8 @@ import asyncio
 import logging
 import re
 
+from aiohttp import web
+
 from ..home_space import type_vocabulary
 from ..home_space.ha_vocabulary import domain_of
 from ._sanitize import sanitize_ha_value
@@ -846,5 +848,8 @@ class EntityCache:
         if entity_ids is None:
             return dict(self._states)
         return {eid: self._states[eid] for eid in entity_ids if eid in self._states}
+
+
+ENTITY_CACHE_KEY = web.AppKey("entity_cache", EntityCache)
 
 

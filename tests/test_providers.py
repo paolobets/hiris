@@ -20,7 +20,10 @@ from unittest import mock
 
 import pytest
 
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import providers_in_chain
+from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._avvio import STARTUP_LOGGER, UNREACHABLE_OLLAMA
 
 
@@ -142,7 +145,7 @@ async def test_l_avvio_costruisce_la_catena_dall_archivio_e_dalle_credenziali(tm
     async with _started(tmp_path, ["openrouter", "claude", "ollama"],
                         credentials=("openrouter", "claude")) as (app, chains):
         assert _the_chain(chains) == ["openrouter", "claude"]
-        assert app["model_chain"] == ["openrouter", "claude"]
+        assert app[MODEL_CHAIN_KEY] == ["openrouter", "claude"]
 
 
 @pytest.mark.asyncio
@@ -156,7 +159,7 @@ async def test_l_avvio_non_accoda_un_credenziato_che_nessuno_ha_messo_in_catena(
     async with _started(tmp_path, ["claude"],
                         credentials=("claude", "openrouter", "openai")) as (app, chains):
         assert _the_chain(chains) == ["claude"]
-        assert app["model_chain"] == ["claude"]
+        assert app[MODEL_CHAIN_KEY] == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -166,7 +169,7 @@ async def test_l_avvio_lascia_vuota_una_catena_vuota(tmp_path):
     async with _started(tmp_path, [],
                         credentials=("claude", "openrouter")) as (app, chains):
         assert _the_chain(chains) == []
-        assert app["model_chain"] == []
+        assert app[MODEL_CHAIN_KEY] == []
 
 
 @pytest.mark.asyncio
@@ -186,13 +189,13 @@ async def test_l_avvio_scrive_una_copia_non_la_lista_del_router(tmp_path):
     verde: in produzione quella copia non arrivava a nessuno), e' uscita alla
     Tappa 7 T9 (voce M-30)."""
     async with _started(tmp_path, ["claude"], credentials=("claude",)) as (app, _chains):
-        published = app["model_chain"]
+        published = app[MODEL_CHAIN_KEY]
         assert published == ["claude"]
-        assert published is not app["llm_router"]._chat_policy
-        assert published is not app["models_config"]["chain_order"]
+        assert published is not app[LLM_ROUTER_KEY]._chat_policy
+        assert published is not app[MODELS_CONFIG_KEY]["chain_order"]
         published.append("openrouter")
-        assert app["llm_router"]._chat_policy == ["claude"]
-        assert app["models_config"]["chain_order"] == ["claude"]
+        assert app[LLM_ROUTER_KEY]._chat_policy == ["claude"]
+        assert app[MODELS_CONFIG_KEY]["chain_order"] == ["claude"]
 
 
 @pytest.mark.asyncio
@@ -318,10 +321,10 @@ def _router(**backends):
 
 
 def _app(chain_order, *, ollama_modello="", timeout_s=120, router=None):
-    return {"models_config": {"chain_order": list(chain_order),
+    return {MODELS_CONFIG_KEY: {"chain_order": list(chain_order),
                               "ollama": {"modello": ollama_modello,
                                          "timeout_s": timeout_s}},
-            "llm_router": router}
+            LLM_ROUTER_KEY: router}
 
 
 def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
@@ -334,7 +337,7 @@ def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
                 catena=["openrouter", "claude"])
     app = _app(["claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude", "openrouter"]
+    assert app[MODEL_CHAIN_KEY] == ["claude", "openrouter"]
     assert r._chat_policy == ["claude", "openrouter"], (
         "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
         "cioe' la pagina torna a mentire"
@@ -351,8 +354,8 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == r._chat_policy
-    assert app["model_chain"] is not r._chat_policy
+    assert app[MODEL_CHAIN_KEY] == r._chat_policy
+    assert app[MODEL_CHAIN_KEY] is not r._chat_policy
 
 
 def test_una_catena_svuotata_svuota_ANCHE_il_router():
@@ -365,7 +368,7 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY] == []
     assert r._chat_policy == []
     assert _runners(r) == []
 
@@ -379,7 +382,7 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude"]
+    assert app[MODEL_CHAIN_KEY] == ["claude"]
     assert r._chat_policy == ["claude"]
 
 
@@ -392,7 +395,7 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY] == []
 
 
 def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
@@ -407,7 +410,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
     _recompute_chain(app)
-    assert app["model_chain"] == ["claude", "ollama"]
+    assert app[MODEL_CHAIN_KEY] == ["claude", "ollama"]
     assert _runners(r)[-1] is locale
 
 
@@ -434,7 +437,7 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
 
     app = _app(["claude", "openrouter"], router=None)
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY] == []
 
 
 def test_il_ricalcolo_regge_un_archivio_assente():
@@ -442,7 +445,7 @@ def test_il_ricalcolo_regge_un_archivio_assente():
 
     app: dict = {}
     _recompute_chain(app)
-    assert app["model_chain"] == []
+    assert app[MODEL_CHAIN_KEY] == []
 
 
 @pytest.mark.asyncio
@@ -469,11 +472,11 @@ async def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_model
     with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",),
                             ollama_url=UNREACHABLE_OLLAMA) as (app, _chains):
-            local = app["llm_router"]._backend_map()["ollama"]
+            local = app[LLM_ROUTER_KEY]._backend_map()["ollama"]
             assert local is not None, "con l'indirizzo il runner locale c'e'"
             assert local._local is True
             assert local._chosen_model() == ""
-            app["models_config"] = {**app["models_config"],
+            app[MODELS_CONFIG_KEY] = {**app[MODELS_CONFIG_KEY],
                                     "ollama": {"modello": "qwen2.5:7b"}}
             assert local._chosen_model() == "qwen2.5:7b", (
                 "il modello del runner locale si legge dall'archivio, a ogni uso"
@@ -516,6 +519,6 @@ async def test_ogni_runner_riceve_la_lettura_del_SUO_provider(tmp_path):
     async with _started(tmp_path, ["claude", "openai", "openrouter"],
                         credentials=tuple(scelti),
                         provider_models=scelti) as (app, _chains):
-        backends = app["llm_router"]._backend_map()
+        backends = app[LLM_ROUTER_KEY]._backend_map()
         letti = {provider: backends[provider]._chosen_model() for provider in scelti}
     assert letti == scelti

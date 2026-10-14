@@ -27,19 +27,28 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
+from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from hiris.app import startup
-from hiris.app.action.actuator import ActionActuator
-from hiris.app.action.construction.revisions import ConstructionStore
-from hiris.app.action.construction.workshop import Workshop
-from hiris.app.action.registry import ServiceRegistry
+from hiris.app.action.actuator import ACTUATOR_KEY, ActionActuator
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY, ConstructionStore
+from hiris.app.action.construction.workshop import WORKSHOP_KEY, Workshop
+from hiris.app.action.journal import JOURNAL_KEY
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY, ServiceRegistry
 from hiris.app.agent import bridge_governor
+from hiris.app.agent.bridge_governor import RECOMPUTE_CHAIN_KEY
 from hiris.app.home_space import historian, registry_follower
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import conditions_round, day_report, realignment
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.mind.watcher import Watcher
-from hiris.app.proxy.entity_cache import EntityCache
+from hiris.app.mind.day_report import BACKFILL_QUIET_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.mind.watcher import WATCHER_KEY, Watcher
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY, EntityCache
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._avvio import RecordingHouse, router_routes, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -174,8 +183,8 @@ async def test_the_startup_repair_finds_its_collaborators_already_built(startup_
     position = _first(startup_steps, "reaggregate")
     assert _first(startup_steps, "rebuild_conditions") < position
     present = startup_steps[position][1]
-    assert "knowledge" in present
-    assert "home_space_store" in present
+    assert KNOWLEDGE_KEY in present
+    assert HOME_SPACE_KEY in present
 
 
 async def test_unfinished_constructions_heal_before_the_heartbeat(startup_steps):
@@ -218,7 +227,7 @@ async def test_a_failing_startup_repair_does_not_stop_startup(tmp_path, caplog):
             caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             RecordingHouse) as app:
-            assert callable(app["recompute_chain"])
+            assert callable(app[RECOMPUTE_CHAIN_KEY])
     lines = [r.getMessage() for r in caplog.records if r.name == STARTUP_LOGGER]
     assert any(line.startswith("cervello:")
                and "RuntimeError: riparazione rotta" in line for line in lines), lines
@@ -235,12 +244,12 @@ async def test_the_workshop_holds_the_app_store_journal_and_house(started_app):
 
     Mutazione ESEGUITA: `Workshop(ha_client, app["constructions"],
     Journal(...))` (una cronaca sua) -- rossa."""
-    workshop = started_app["workshop"]
+    workshop = started_app[WORKSHOP_KEY]
     assert isinstance(workshop, Workshop)
-    assert isinstance(started_app["constructions"], ConstructionStore)
-    assert workshop._ha is started_app["ha_client"]
-    assert workshop._store is started_app["constructions"]
-    assert workshop._journal is started_app["journal"]
+    assert isinstance(started_app[CONSTRUCTIONS_KEY], ConstructionStore)
+    assert workshop._ha is started_app[HA_CLIENT_KEY]
+    assert workshop._store is started_app[CONSTRUCTIONS_KEY]
+    assert workshop._journal is started_app[JOURNAL_KEY]
 
 
 async def test_the_workshop_does_not_hold_the_service_door(started_app):
@@ -251,8 +260,8 @@ async def test_the_workshop_does_not_hold_the_service_door(started_app):
 
     Mutazione ESEGUITA: passato `app["action_actuator"]` all'officina come
     attributo -- rossa."""
-    actuator = started_app["action_actuator"]
-    held = vars(started_app["workshop"]).values()
+    actuator = started_app[ACTUATOR_KEY]
+    held = vars(started_app[WORKSHOP_KEY]).values()
     assert not any(value is actuator for value in held)
 
 
@@ -262,9 +271,9 @@ async def test_the_workshop_reads_the_house_timezone(started_app):
     dell'avvio).
 
     Mutazione ESEGUITA: `read_timezone` tolto dalla costruzione -- rossa."""
-    expected = historian.house_timezone(started_app["home_space_store"])
+    expected = historian.house_timezone(started_app[HOME_SPACE_KEY])
     assert expected is not None
-    assert started_app["workshop"]._read_timezone() == expected
+    assert started_app[WORKSHOP_KEY]._read_timezone() == expected
 
 
 async def test_the_watcher_holds_its_store_and_the_knowledge(started_app):
@@ -274,12 +283,12 @@ async def test_the_watcher_holds_its_store_and_the_knowledge(started_app):
 
     Mutazione ESEGUITA: `app["watcher"] = Watcher(...)` spostata sopra
     `_open_knowledge(app, data_dir)` -- rossa (l'avvio solleva `KeyError`)."""
-    watcher = started_app["watcher"]
+    watcher = started_app[WATCHER_KEY]
     assert isinstance(watcher, Watcher)
-    assert isinstance(started_app["observations"], ObservationsStore)
-    assert watcher._store is started_app["observations"]
-    assert started_app["knowledge"] is not None
-    assert watcher._knowledge is started_app["knowledge"]
+    assert isinstance(started_app[OBSERVATIONS_KEY], ObservationsStore)
+    assert watcher._store is started_app[OBSERVATIONS_KEY]
+    assert started_app[KNOWLEDGE_KEY] is not None
+    assert watcher._knowledge is started_app[KNOWLEDGE_KEY]
 
 
 async def test_the_service_door_holds_the_state_mirror(started_app):
@@ -290,10 +299,10 @@ async def test_the_service_door_holds_the_state_mirror(started_app):
 
     Mutazione ESEGUITA: la porta costruita sopra `app["entity_cache"] = ...` --
     rossa (`_cache` e' `None`)."""
-    actuator = started_app["action_actuator"]
+    actuator = started_app[ACTUATOR_KEY]
     assert isinstance(actuator, ActionActuator)
-    assert actuator._cache is started_app["entity_cache"]
-    assert actuator._journal is started_app["journal"]
+    assert actuator._cache is started_app[ENTITY_CACHE_KEY]
+    assert actuator._journal is started_app[JOURNAL_KEY]
 
 
 async def test_the_service_registry_is_the_one_the_door_uses(started_app):
@@ -302,9 +311,9 @@ async def test_the_service_registry_is_the_one_the_door_uses(started_app):
 
     Mutazione ESEGUITA: tolto `app["service_registry"] = ServiceRegistry()` --
     rossa (l'avvio solleva `KeyError`)."""
-    registry = started_app["service_registry"]
+    registry = started_app[SERVICE_REGISTRY_KEY]
     assert isinstance(registry, ServiceRegistry)
-    assert started_app["action_actuator"]._registry is registry
+    assert started_app[ACTUATOR_KEY]._registry is registry
 
 
 async def test_backfill_quiet_is_born_at_startup(started_app):
@@ -317,7 +326,7 @@ async def test_backfill_quiet_is_born_at_startup(started_app):
 
     Mutazione ESEGUITA: tolta `app["backfill_quiet"] = {}` da `_on_startup` --
     rossa."""
-    assert isinstance(started_app["backfill_quiet"], dict)
+    assert isinstance(started_app[BACKFILL_QUIET_KEY], dict)
 
 
 # --------------------------------------------------------------------------
@@ -330,9 +339,9 @@ async def test_the_watcher_listens_to_the_same_tap_as_the_mirror_and_after_it(st
     conta che lo specchio sia aggiornato prima.
 
     Mutazione ESEGUITA: scambiate le due iscrizioni -- rossa."""
-    listeners = started_app["ha_client"].registered("state")
-    mirror = started_app["entity_cache"].on_state_changed
-    watcher = started_app["watcher"].watch_reading
+    listeners = started_app[HA_CLIENT_KEY].registered("state")
+    mirror = started_app[ENTITY_CACHE_KEY].on_state_changed
+    watcher = started_app[WATCHER_KEY].watch_reading
     assert mirror in listeners and watcher in listeners, listeners
     assert listeners.index(mirror) < listeners.index(watcher)
 
@@ -345,9 +354,9 @@ async def test_the_automation_event_marks_the_automation(started_app):
     Mutazione ESEGUITA: commentata
     `ha_client.add_automation_listener(_mark_triggered_automation)` -- rossa."""
     entity_id = "automation.prova_cablaggio_avvio"
-    for listener in started_app["ha_client"].registered("automation"):
+    for listener in started_app[HA_CLIENT_KEY].registered("automation"):
         listener({"entity_id": entity_id, "name": "Prova di cablaggio"})
-    watcher = started_app["watcher"]
+    watcher = started_app[WATCHER_KEY]
     assert entity_id in watcher.marked_automations()
 
 
@@ -360,8 +369,8 @@ async def test_a_service_event_makes_the_registry_reread(started_app):
 
     Mutazione ESEGUITA: tolta `ha_client.add_service_listener(...)` -- rossa.
     Mutazione ESEGUITA: l'ascoltatore che non chiama `invalidate()` -- rossa."""
-    house = started_app["ha_client"]
-    registry = started_app["service_registry"]
+    house = started_app[HA_CLIENT_KEY]
+    registry = started_app[SERVICE_REGISTRY_KEY]
     with mock.patch.object(house, "get_services",
                            mock.AsyncMock(wraps=house.get_services)) as asked:
         await registry.ensure_fresh(house)
@@ -392,7 +401,7 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
     def capture(coroutine, *, name=None):
         spawned.append(coroutine)
 
-    house = started_app["ha_client"]
+    house = started_app[HA_CLIENT_KEY]
     # Due moduli creano i compiti degli ascoltatori di topologia: lo specchio
     # in `mind/realignment.py`, la ricostruzione in
     # `home_space/registry_follower.py`.
@@ -406,15 +415,15 @@ async def test_a_reconnection_rereads_the_state_mirror(started_app):
         # riconosce dalla funzione e da cio' che porta con se'.
         rereads = [c for c in spawned
                    if c.cr_code is realignment.reload_and_realign.__code__
-                   and c.cr_frame.f_locals.get("entity_cache") is started_app["entity_cache"]
+                   and c.cr_frame.f_locals.get("entity_cache") is started_app[ENTITY_CACHE_KEY]
                    and c.cr_frame.f_locals.get("client") is house]
         assert len(rereads) == 1, [c.cr_code.co_qualname for c in spawned]
         # E l'osservatore che riallinea e' quello dell'app, chiesto all'avviso
         # e non fissato all'iscrizione: l'ascoltatore nasce prima di lui.
         # Mutazione ESEGUITA: `lambda: None` al posto di `app.get("watcher")`
         # nell'iscrizione -- rossa.
-        assert started_app.get("watcher") is not None
-        assert rereads[0].cr_frame.f_locals["watcher"]() is started_app["watcher"]
+        assert started_app.get(WATCHER_KEY) is not None
+        assert rereads[0].cr_frame.f_locals["watcher"]() is started_app[WATCHER_KEY]
     finally:
         for coroutine in spawned:
             coroutine.close()
@@ -429,20 +438,20 @@ async def test_a_closed_disconnection_window_reaches_the_app_watcher(started_app
     Mutazione ESEGUITA: tolta
     `ha_client.add_disconnection_listener(disconnection_recorder(...))` --
     rossa."""
-    house = started_app["ha_client"]
-    real = started_app["watcher"]
+    house = started_app[HA_CLIENT_KEY]
+    real = started_app[WATCHER_KEY]
     windows = []
 
     class Osservatore:
         def record_disconnection(self, window):
             windows.append(window)
 
-    started_app["watcher"] = Osservatore()
+    started_app[WATCHER_KEY] = Osservatore()
     try:
         for listener in house.registered("disconnection"):
             listener({"da": 1.0, "a": 2.0})
     finally:
-        started_app["watcher"] = real
+        started_app[WATCHER_KEY] = real
     assert windows == [{"da": 1.0, "a": 2.0}]
 
 
@@ -464,7 +473,7 @@ async def test_a_reference_change_rereads_the_state_words(started_app):
     def capture(coroutine, *, name=None):
         spawned.append(coroutine)
 
-    house = started_app["ha_client"]
+    house = started_app[HA_CLIENT_KEY]
     with (mock.patch.object(realignment, "_spawn", capture),
           mock.patch.object(registry_follower, "_spawn", capture)):
         for listener in house.registered("topology"):
@@ -515,9 +524,9 @@ async def test_the_chain_can_be_recomputed_without_any_provider(started_app):
 
     Mutazione ESEGUITA: `app["recompute_chain"] = ...` spostata dentro il ramo
     con i provider -- rossa (`KeyError`)."""
-    assert started_app["llm_router"] is None, "la casa sintetica non ha provider"
-    started_app["recompute_chain"]()
-    assert started_app["model_chain"] == []
+    assert started_app[LLM_ROUTER_KEY] is None, "la casa sintetica non ha provider"
+    started_app[RECOMPUTE_CHAIN_KEY]()
+    assert started_app[MODEL_CHAIN_KEY] == []
 
 
 async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
@@ -540,9 +549,9 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
     with mock.patch.object(startup, "_recompute_chain", spy):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             RecordingHouse) as app:
-            assert app["llm_router"] is not None
+            assert app[LLM_ROUTER_KEY] is not None
             assert recomputed == [app], "l'avvio non ha ricalcolato la catena"
-            app["recompute_chain"]()
+            app[RECOMPUTE_CHAIN_KEY]()
             assert recomputed == [app, app]
 
 
@@ -550,7 +559,7 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
 # Lo spegnimento
 # --------------------------------------------------------------------------
 
-def _connections(app) -> dict[str, sqlite3.Connection]:
+def _connections(app) -> dict[web.AppKey, sqlite3.Connection]:
     """`{chiave di app: connessione}` per ogni oggetto dell'app che tiene una
     connessione SQLite: gli archivi, chiesti all'app e non elencati."""
     found = {}
@@ -581,7 +590,7 @@ async def test_every_store_is_closed_after_shutdown(tmp_path):
             connection.execute("SELECT 1")
     # La derivazione non si e' svuotata: i due archivi di cui le prove vecchie
     # parlavano per nome ci sono.
-    assert {"observations", "constructions"} <= set(connections), sorted(connections)
+    assert {OBSERVATIONS_KEY, CONSTRUCTIONS_KEY} <= set(connections), sorted(map(str, connections))
     still_open = []
     for key, connection in connections.items():
         try:

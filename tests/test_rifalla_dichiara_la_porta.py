@@ -18,6 +18,15 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, MODEL_CHAIN_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -113,20 +122,20 @@ def casa(tmp_path):
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, stakes=None, now_ts=100.0)
     app = {
-        "observations": store,
-        "llm_router": _modello(),
-        "occurrence_registry": _Registro("claude"),
-        "model_chain": ["claude"],
-        "reasoning_queue": _Coda(),
-        "models_config": {"ponte": {"tetto_giornaliero": 50}},
-        "bridge_active": False,
+        OBSERVATIONS_KEY: store,
+        LLM_ROUTER_KEY: _modello(),
+        OCCURRENCES_KEY: _Registro("claude"),
+        MODEL_CHAIN_KEY: ["claude"],
+        REASONING_QUEUE_KEY: _Coda(),
+        MODELS_CONFIG_KEY: {"ponte": {"tetto_giornaliero": 50}},
+        BRIDGE_ACTIVE_KEY: False,
         # La casa che non serve niente (Tappa 2, Task 12): «Rifalla» non legge
         # Home Assistant -- il ruolo e' quello che il confine ha lasciato nella
         # richiesta. Prima qui c'era una finta di `users()` che nessuno
         # chiamava (misurato il 03/10/2026: zero comandi); una lettura nuova
         # su questo percorso ora fa cadere la prova col suo nome.
-        "ha_client": CasaFinta({}),
-        "ruoli": {"quando": 0.0, "per_id": {}},
+        HA_CLIENT_KEY: CasaFinta({}),
+        ROLES_KEY: {"quando": 0.0, "per_id": {}},
     }
     try:
         yield app, store, ident
@@ -151,7 +160,7 @@ async def test_col_piano_ACCESO_il_giro_va_sul_PONTE_e_non_preleva(
     alla catena -- rossa (503: sul ponte la partenza unica non da' un runner
     della catena, e il giro non si accoda)."""
     app, store, ident = casa
-    app["bridge_active"] = True
+    app[BRIDGE_ACTIVE_KEY] = True
     _piano_acceso(monkeypatch)
     accodati = []
 
@@ -160,7 +169,7 @@ async def test_col_piano_ACCESO_il_giro_va_sul_PONTE_e_non_preleva(
             accodati.append((kind, wake))
             return "job-1"
 
-    app["reasoning_queue"] = _CodaVera()
+    app[REASONING_QUEUE_KEY] = _CodaVera()
 
     risposta, corpo = await _rifai(app, ident)
 
@@ -179,8 +188,8 @@ async def test_col_piano_che_NON_PUO_rispondere_si_usano_le_parole_del_ripiego(
     Mutazione ESEGUITA: usare la frase della porta sincrona anche qui --
     rossa."""
     app, _store, ident = casa
-    app["bridge_active"] = True
-    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
+    app[BRIDGE_ACTIVE_KEY] = True
+    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
     _piano_acceso(monkeypatch)
 
     _risposta, corpo = await _rifai(app, ident)
@@ -211,8 +220,8 @@ async def test_col_ripiego_la_proposta_si_riscrive_comunque(casa, monkeypatch):
 
     Mutazione ESEGUITA: rifiutare col ripiego -- rossa."""
     app, store, ident = casa
-    app["bridge_active"] = True
-    app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
+    app[BRIDGE_ACTIVE_KEY] = True
+    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 0}}
     _piano_acceso(monkeypatch)
 
     _risposta, _corpo = await _rifai(app, ident)

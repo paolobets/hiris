@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -564,16 +568,16 @@ def _app_with_ceiling(tmp_path, *, utenti=()):
     from hiris.app.api.servizi import ServiziStore
     from hiris.app.api.soffitto import prepara_ruoli
 
-    app = {"ha_client": _house_with_users(utenti),
-           "servizi": ServiziStore(str(tmp_path / "servizi.db"))}
+    app = {HA_CLIENT_KEY: _house_with_users(utenti),
+           SERVICES_KEY: ServiziStore(str(tmp_path / "servizi.db"))}
     prepara_ruoli(app)
     return app
 
 
 def _approva(app, nome, chiave, *, ruolo, specie="luogo"):
-    app["servizi"].presenta(nome=nome, chiave=chiave, indirizzo="1.2.3.4",
+    app[SERVICES_KEY].presenta(nome=nome, chiave=chiave, indirizzo="1.2.3.4",
                             now_ts=ADESSO)
-    assert app["servizi"].approva(chiave, ruolo=ruolo, specie=specie, now_ts=ADESSO)
+    assert app[SERVICES_KEY].approva(chiave, ruolo=ruolo, specie=specie, now_ts=ADESSO)
 
 
 async def test_al_risveglio_una_persona_amministratrice_comanda_come_prima(tmp_path):
@@ -584,7 +588,7 @@ async def test_al_risveglio_una_persona_amministratrice_comanda_come_prima(tmp_p
         soffitto = await ceiling_at_wake(app, {"specie": "persona", "id": "paolo"})
         assert soffitto["comandare"] is True
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 #: Il pannello della cucina com'e' nel filo: specie e impronta della chiave.
@@ -603,13 +607,13 @@ async def test_al_risveglio_il_ruolo_di_un_servizio_si_rilegge_dall_archivio(tmp
         prima = await ceiling_at_wake(app, _CUCINA)
         assert prima["comandare"] is True
 
-        assert app["servizi"].approva("k1", ruolo="lettore", specie="luogo",
+        assert app[SERVICES_KEY].approva("k1", ruolo="lettore", specie="luogo",
                                       now_ts=ADESSO + 1)
         dopo = await ceiling_at_wake(app, _CUCINA)
         assert dopo["comandare"] is False
         assert dopo["perche"]
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 @pytest.mark.parametrize("caso", ["revocato", "sconosciuto", "ambiguo", "senza_archivio"])
@@ -622,21 +626,21 @@ async def test_al_risveglio_un_servizio_che_non_si_sa_non_comanda(tmp_path, caso
     try:
         if caso == "revocato":
             _approva(app, "pannello", "k1", ruolo="amministratore")
-            app["servizi"].revoca("k1", now_ts=ADESSO + 1)
+            app[SERVICES_KEY].revoca("k1", now_ts=ADESSO + 1)
         elif caso == "ambiguo":
             _approva(app, "pannello", "k1", ruolo="amministratore")
             _approva(app, "pannello", "k2", ruolo="lettore")
         subject = {"specie": "luogo", "id": "pannello"}
         if caso == "senza_archivio":
-            app["servizi"].close()
-            app = {**app, "servizi": None}
+            app[SERVICES_KEY].close()
+            app = {**app, SERVICES_KEY: None}
             soffitto = await ceiling_at_wake(app, subject)
         else:
             soffitto = await ceiling_at_wake(app, subject)
         assert soffitto["comandare"] is False
     finally:
-        if app.get("servizi") is not None:
-            app["servizi"].close()
+        if app.get(SERVICES_KEY) is not None:
+            app[SERVICES_KEY].close()
 
 
 async def test_al_risveglio_il_ruolo_portato_dal_soggetto_non_vale(tmp_path):
@@ -651,7 +655,7 @@ async def test_al_risveglio_il_ruolo_portato_dal_soggetto_non_vale(tmp_path):
             app, {"specie": "luogo", "id": "pannello", "ruolo": "amministratore"})
         assert soffitto["comandare"] is False
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 # ---------------------------------------------------------------------------
@@ -679,7 +683,7 @@ async def test_al_risveglio_senza_soggetto_non_si_comanda(tmp_path):
         assert (await ceiling_at_wake(app, None))["comandare"] is False
         assert (await ceiling_at_wake(app, {}))["comandare"] is False
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 @pytest.mark.parametrize("come", ["saltata", "turno_fallito", "guasto"])
@@ -730,7 +734,7 @@ async def test_un_fai_di_una_persona_non_verificabile_non_si_esegue(
 
     app = _app_with_ceiling(tmp_path, utenti=[_ha_user("marta", admin=True)])
     if caso == "ha_guasto":
-        app["ha_client"] = _silent_house()
+        app[HA_CLIENT_KEY] = _silent_house()
     thread = ChatThread("persona:-", "pannello") if caso == "senza_id" else PAOLO
     try:
         ident = _crea_fai(archivio, thread=thread)
@@ -743,7 +747,7 @@ async def test_un_fai_di_una_persona_non_verificabile_non_si_esegue(
         p = archivio.read(ident)
         assert (p["stato"], p["motivo"]) == ("fallita", WAKE_UNVERIFIED_PERSON)
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 async def test_un_fai_di_una_persona_amministratrice_si_esegue_al_risveglio(
@@ -759,7 +763,7 @@ async def test_un_fai_di_una_persona_amministratrice_si_esegue_al_risveglio(
         assert [c["servizio"] for c, _ in porta.chiamate] == ["light.turn_on"]
         assert archivio.read(ident)["stato"] == "mantenuta"
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
 
 # ---------------------------------------------------------------------------
@@ -867,7 +871,7 @@ _MARTA = _ha_user("marta", admin=False)
 
 def _orologio_montato(archivio, cartella, app, *, porta, turno=None, recapito=None):
 
-    app["data_dir"] = cartella
+    app[DATA_DIR_KEY] = cartella
     veri = sweeper._promise_delivery(app)
     return Sweeper(
         archivio, execute=porta,
@@ -895,7 +899,7 @@ async def test_un_fai_orfano_che_matura_prima_di_ogni_accesso_si_esegue_nel_filo
     try:
         await _orologio_montato(archivio, cartella, app, porta=porta).batti(ADESSO + 11)
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
     assert [c["servizio"] for c, _ in porta.chiamate] == ["light.turn_on"]
     assert porta.soggetti == [new_subject("persona", ident="paolo")]
@@ -915,13 +919,13 @@ async def test_un_fai_orfano_senza_UN_proprietario_verificato_fallisce_come_prim
               "nessun_proprietario": [_MARTA, _ha_user("paolo", admin=True)]}[caso]
     app = _app_with_ceiling(tmp_path, utenti=utenti)
     if caso == "ha_guasto":
-        app["ha_client"] = _silent_house()
+        app[HA_CLIENT_KEY] = _silent_house()
     ident = _semina_orfana(archivio, "fai")
     porta = PortaFinta()
     try:
         await _orologio_montato(archivio, cartella, app, porta=porta).batti(ADESSO + 11)
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
     assert porta.chiamate == []
     p = archivio.read(ident)
@@ -942,7 +946,7 @@ async def test_un_chiedi_orfano_porta_l_esito_nel_filo_del_proprietario_e_ai_suo
             turno=TurnoFinto({"avvisare": True, "testo": "fa caldo"}),
         ).batti(ADESSO + 11)
     finally:
-        app["servizi"].close()
+        app[SERVICES_KEY].close()
 
     assert recapito.soggetti == [new_subject("persona", ident="paolo")]
     assert [c["servizio"] for c, _ in porta.chiamate] == ["notify.mobile_app_iphone_bet"]

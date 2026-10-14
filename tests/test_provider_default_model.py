@@ -23,7 +23,8 @@ import pytest_asyncio
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
 from hiris.app.backends.openrouter_runner import OpenRouterRunner
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.llm_router import LLMRouter
+from hiris.app.llm_router import LLM_ROUTER_KEY, LLMRouter
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import CLAUDE, OPENAI, OPENROUTER
 
 
@@ -110,12 +111,12 @@ async def test_un_modello_esplicito_vince_sulla_scelta():
 
 
 def _archivio(**provider_models):
-    return {"models_config": {"provider_models": dict(provider_models)}}
+    return {MODELS_CONFIG_KEY: {"provider_models": dict(provider_models)}}
 
 
 def _lettura(app, provider):
     def leggi() -> str:
-        return (app.get("models_config") or {}).get("provider_models", {}).get(provider, "")
+        return (app.get(MODELS_CONFIG_KEY) or {}).get("provider_models", {}).get(provider, "")
     return leggi
 
 
@@ -126,7 +127,7 @@ async def test_il_modello_di_claude_cambia_dal_turno_dopo_non_dal_riavvio():
                           read_model=_lettura(app, "claude"))
     assert await _modello_spedito(runner) == "claude-opus-4-7"
 
-    app["models_config"] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
+    app[MODELS_CONFIG_KEY] = {"provider_models": {"claude": "claude-haiku-4-5-20251001"}}
     assert await _modello_spedito(runner) == "claude-haiku-4-5-20251001", (
         "il runner deve LEGGERE il modello al momento dell'uso, non averlo "
         "ricevuto alla costruzione"
@@ -138,7 +139,7 @@ async def test_il_modello_di_openai_cambia_dal_turno_dopo():
     app = _archivio(openai="gpt-4.1")
     runner = _cloud(read_model=_lettura(app, "openai"))
     assert await _modello_spedito(runner) == "gpt-4.1"
-    app["models_config"] = {"provider_models": {"openai": "gpt-4o-mini"}}
+    app[MODELS_CONFIG_KEY] = {"provider_models": {"openai": "gpt-4o-mini"}}
     assert await _modello_spedito(runner) == "gpt-4o-mini"
 
 
@@ -149,7 +150,7 @@ async def test_il_modello_di_openrouter_cambia_dal_turno_dopo():
                               read_model=_lettura(app, "openrouter"))
     # Il prefisso `openrouter:` viene tolto prima della chiamata, come sempre.
     assert await _modello_spedito(runner) == "openai/gpt-4.1"
-    app["models_config"] = {"provider_models": {"openrouter": ""}}
+    app[MODELS_CONFIG_KEY] = {"provider_models": {"openrouter": ""}}
     assert await _modello_spedito(runner) == OPENROUTER.auto_model.split("openrouter:")[-1]
 
 
@@ -159,17 +160,17 @@ async def test_il_modello_di_ollama_cambia_dal_turno_dopo():
     passato esplicitamente (quell'istanza ne ha scaricato uno solo). Prima
     quella vittoria era di un valore cotto nel costruttore (`fixed_model`);
     adesso e' di una lettura, ed e' l'unica differenza."""
-    archivio = {"models_config": {"ollama": {"modello": "llama3.1:8b"}}}
+    archivio = {MODELS_CONFIG_KEY: {"ollama": {"modello": "llama3.1:8b"}}}
     runner = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,
         read_model=lambda: (
-            (archivio.get("models_config") or {}).get("ollama", {}).get("modello", "")
+            (archivio.get(MODELS_CONFIG_KEY) or {}).get("ollama", {}).get("modello", "")
         ),
     )
     assert await _modello_spedito(runner) == "llama3.1:8b"
     assert await _modello_spedito(runner, model="gpt-4o") == "llama3.1:8b"
 
-    archivio["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
+    archivio[MODELS_CONFIG_KEY] = {"ollama": {"modello": "qwen2.5:14b"}}
     assert await _modello_spedito(runner) == "qwen2.5:14b"
     assert await _modello_spedito(runner, model="gpt-4o") == "qwen2.5:14b"
 
@@ -207,7 +208,7 @@ async def started_runners(tmp_path_factory):
 
 
 def _reader(app, provider):
-    runner = app["llm_router"]._backend_map()[provider]
+    runner = app[LLM_ROUTER_KEY]._backend_map()[provider]
     assert runner is not None, f"l'avvio non ha costruito il runner di {provider}"
     return runner._read_model
 
@@ -216,18 +217,18 @@ def _reader(app, provider):
 def _assigned(app, models_config):
     """`app["models_config"]` RIASSEGNATO (come fa la PUT), e rimesso alla
     fine: l'app e' condivisa dalle prove del file."""
-    before = app.get("models_config", _MISSING)
+    before = app.get(MODELS_CONFIG_KEY, _MISSING)
     if models_config is _MISSING:
-        app.pop("models_config", None)
+        app.pop(MODELS_CONFIG_KEY, None)
     else:
-        app["models_config"] = models_config
+        app[MODELS_CONFIG_KEY] = models_config
     try:
         yield
     finally:
         if before is _MISSING:
-            app.pop("models_config", None)
+            app.pop(MODELS_CONFIG_KEY, None)
         else:
-            app["models_config"] = before
+            app[MODELS_CONFIG_KEY] = before
 
 
 _MISSING = object()
@@ -247,7 +248,7 @@ async def test_la_lettura_dell_avvio_vede_l_archivio_RIASSEGNATO(started_runners
     with _assigned(started_runners,
                    {"provider_models": {"claude": "claude-opus-4-7"}}):
         assert leggi() == "claude-opus-4-7"
-        started_runners["models_config"] = {
+        started_runners[MODELS_CONFIG_KEY] = {
             "provider_models": {"claude": "claude-sonnet-4-6"}}
         assert leggi() == "claude-sonnet-4-6"
 
@@ -266,7 +267,7 @@ async def test_la_lettura_del_locale_NON_passa_da_provider_models(started_runner
                    {"ollama": {"modello": "llama3.1:8b"},
                     "provider_models": {"ollama": "un-fantasma"}}):
         assert modello_locale() == "llama3.1:8b"
-        started_runners["models_config"] = {"ollama": {"modello": "qwen2.5:14b"}}
+        started_runners[MODELS_CONFIG_KEY] = {"ollama": {"modello": "qwen2.5:14b"}}
         assert modello_locale() == "qwen2.5:14b"
 
 

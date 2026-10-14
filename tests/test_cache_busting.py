@@ -19,8 +19,11 @@ import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.api import shell
+from hiris.app.api.shell import BUILD_STAMP_KEY
 from hiris.app.chat_store import close_all_stores
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.server import create_app
+from hiris.app.storage import DATA_DIR_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -39,8 +42,8 @@ async def client(aiohttp_client, tmp_path):
     senza avviare ha_client/scheduler/ecc -- questi test riguardano solo il
     guscio HTML e il servizio statico, non il resto del boot."""
     app = create_app()
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["data_dir"] = str(tmp_path)
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[DATA_DIR_KEY] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -157,7 +160,7 @@ async def test_both_shells_declare_the_running_build_stamp(client):
     colpendo le rotte vere (GET / e GET /config), non la funzione isolata, un
     dimenticanza in una delle due chiamate a _inject_version si vede."""
     app = client.app
-    stamp = app["build_stamp"]
+    stamp = app[BUILD_STAMP_KEY]
     assert stamp  # precondizione: create_app() l'ha calcolato da static/ reale
 
     resp_index = await client.get("/")

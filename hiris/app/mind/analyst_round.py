@@ -17,7 +17,9 @@ from ..home_space import historian
 from ..home_space.historian import house_timezone
 from ..home_space.house import House
 from ..home_space.privacy import PresenceMask
-from ..reasoning.queue import turn_answer
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..steering import (
     ANALYST_SPECIES,
     SPECIES,
@@ -30,7 +32,9 @@ from ..steering import (
     too_soon_to_ask_again,
     turn_in_flight,
 )
+from ..usage.store import USAGE_KEY
 from . import analyst, analyst_turn, report
+from .store import OBSERVATIONS_KEY
 from .view import mind_view
 
 logger = logging.getLogger(__name__)
@@ -82,7 +86,7 @@ def write_analysis(app, store, day: str, occurrence: dict) -> None:
     analysis = {**analysis,
                 "fondamento": analyst_turn.fondamento(
                     store.report_stamps(limit=ANALYST_DAYS))}
-    house = House.read(app.get("home_space_store"), app.get("entity_cache"))
+    house = House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY))
     # Un istante solo per la scrittura (G-14): le decisioni del «rimetti
     # dentro» e l'analisi che le porta nascono nello stesso momento.
     now = time.time()
@@ -114,11 +118,11 @@ async def analyst_round(app) -> dict | None:
     Non solleva mai: gira per sempre, e un giro andato storto non deve fermare
     lo schedulatore.
     """
-    store = app.get("observations")
+    store = app.get(OBSERVATIONS_KEY)
     if store is None:
         return None
     try:
-        timezone = house_timezone(app.get("home_space_store"))
+        timezone = house_timezone(app.get(HOME_SPACE_KEY))
         today = historian.today(timezone).isoformat()
 
         collected = _collect_analyst_turn(app, store, today)
@@ -160,7 +164,7 @@ async def analyst_round(app) -> dict | None:
 
         # I problemi della risposta di prima, se e' stata rifiutata (D10):
         # dal registro dei turni, la stessa riga sulle due strade.
-        refused = refused_problems(app.get("usage"), ANALYST_SPECIES)
+        refused = refused_problems(app.get(USAGE_KEY), ANALYST_SPECIES)
         route, _downgrade, runner = start(app, ANALYST_SPECIES)
         if route == "ponte":
             return _enqueue_analyst_turn(app, series, today, previous,
@@ -180,7 +184,7 @@ async def analyst_round(app) -> dict | None:
         if question is None:
             return None
         answer, turn = await chain_turn(
-            runner, ANALYST_SPECIES, usage=app.get("usage"),
+            runner, ANALYST_SPECIES, usage=app.get(USAGE_KEY),
             max_tokens=analyst_turn.MAX_ANSWER_TOKENS,
             user_message=question, system_prompt=analyst_turn.SYSTEM,
             tools=declared.catalog_for_turn() or None, dispatcher=dispatcher)
@@ -188,7 +192,7 @@ async def analyst_round(app) -> dict | None:
             series, chain_answer(answer, turn), truncated=turn.truncated,
             previous=previous, tool_calls=turn.tool_calls, presence=presence)
         if _was_refused(esito) and not turn.truncated:
-            declare_refused(app.get("usage"), turn.turn_id, esito["problemi"])
+            declare_refused(app.get(USAGE_KEY), turn.turn_id, esito["problemi"])
         write_analysis(app, store, today, esito)
         return esito
     except Exception as error:
@@ -207,8 +211,8 @@ def _was_refused(esito: dict) -> bool:
 def _analyst_presence(app):
     """La maschera dei nomi sulla casa di adesso (decisione 12 estesa): quella
     che il raccoglitore rifa' per riportare i segnaposto agli id."""
-    casa = app.get("home_space_store")
-    return (PresenceMask(House.read(casa, app.get("entity_cache")))
+    casa = app.get(HOME_SPACE_KEY)
+    return (PresenceMask(House.read(casa, app.get(ENTITY_CACHE_KEY)))
             if casa is not None else None)
 
 
@@ -248,7 +252,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     turno che il ponte ha fallito: `turn_answer`) non c'e' nessuna risposta da
     correggere.
     """
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     if queue is None:
         return None
     turn = queue.latest_if_decided(analyst_turn.ANALYSIS_TURN_KIND)
@@ -297,7 +301,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
         # L'esito sulla riga del turno del ponte (D10): il runner l'ha messa
         # nella decisione. Il raccoglitore rilegge lo stesso turno finche' non
         # ne parte un altro, e riscrivere lo stesso esito non cambia niente.
-        declare_refused(app.get("usage"), decision.get("turn_id"), esito["problemi"])
+        declare_refused(app.get(USAGE_KEY), decision.get("turn_id"), esito["problemi"])
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e
         # non si scrive niente. Il giro successivo richiede.

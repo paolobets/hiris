@@ -18,6 +18,16 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.consegna import SUBMIT_CHAT_REPLY_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -76,20 +86,20 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     runner = RunnerFinto("risposta sincrona")
 
     app = web.Application(middlewares=[_finto_confine])
-    app["llm_router"] = runner
-    app["claude_runner"] = runner
-    app["chat_settings"] = ChatSettings(
+    app[LLM_ROUTER_KEY] = runner
+    app[CLAUDE_RUNNER_KEY] = runner
+    app[CHAT_SETTINGS_KEY] = ChatSettings(
         name="t", system_prompt="Sei HIRIS.", max_chat_turns=max_chat_turns)
-    app["data_dir"] = data_dir
-    app["bridge_active"] = ponte_attivo
-    app["ha_client"] = CasaFinta(synthetic_inputs(),
+    app[DATA_DIR_KEY] = data_dir
+    app[BRIDGE_ACTIVE_KEY] = ponte_attivo
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs(),
                                  answers={"config/auth/list": lambda extra: _UTENTI})
-    app["ruoli"] = {"quando": 0.0, "per_id": {}}
+    app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
-    app["reasoning_queue"] = q
+    app[REASONING_QUEUE_KEY] = q
     # La consegna VERA del ponte, costruita su quest'app e questa cartella
     # (fino al 03/10/2026 la si ritagliava dal testo di `_on_startup`).
-    app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)
+    app[SUBMIT_CHAT_REPLY_KEY] = _chat_reply_submitter(app, data_dir)
 
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)

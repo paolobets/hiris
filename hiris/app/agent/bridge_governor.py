@@ -9,7 +9,12 @@ import logging
 import os
 import time
 
+from aiohttp import web
+
+from ..api.credenziali import BRIDGE_CREDENTIAL_KEY, CREDENTIALS_KEY
 from ..background import spawn as _spawn
+from ..llm_router import LLM_ROUTER_KEY
+from ..models_store import MODELS_CONFIG_KEY
 from ..providers import (
     OLLAMA,
     SUBSCRIPTION,
@@ -17,7 +22,15 @@ from ..providers import (
     providers_in_chain,
     subscription_has_token,
 )
+from ..reasoning.queue import REASONING_QUEUE_KEY
+from ..steering import BRIDGE_ACTIVE_KEY, MODEL_CHAIN_KEY
 from ..usage.bridge_loads import _registra_turno_ponte
+from ..usage.store import USAGE_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+AGENT_WORKER_TASK_KEY = web.AppKey("agent_worker_task")
+RECOMPUTE_CHAIN_KEY = web.AppKey("recompute_chain")
 
 logger = logging.getLogger(__name__)
 
@@ -159,18 +172,18 @@ def _govern_bridge_worker(app) -> None:
     except RuntimeError:
         return
 
-    voluto = should_start_agent_worker(bool(app.get("bridge_active")))
-    current = app.get("agent_worker_task")
+    voluto = should_start_agent_worker(bool(app.get(BRIDGE_ACTIVE_KEY)))
+    current = app.get(AGENT_WORKER_TASK_KEY)
     live = current is not None and not current.done()
 
     if voluto and not live:
         from ..usage.bridge_loads import BRIDGE_LOADS_KEY
         from . import runner as _agent_runner
 
-        if app.get("usage") is not None:
+        if app.get(USAGE_KEY) is not None:
             # I token dell'abbonamento smettono di finire solo nel log. Si
             # collega QUI, dove il lavoratore in-addon nasce.
-            _agent_runner.set_usage_logger(app["usage"].log)
+            _agent_runner.set_usage_logger(app[USAGE_KEY].log)
             # E il REGISTRO DEI TURNI, dalla stessa porta e per lo stesso
             # motivo (24/09/2026). Senza questa riga il ponte non scriveva
             # niente: 32 domande vere all'abbonamento Max avevano prodotto
@@ -179,7 +192,7 @@ def _govern_bridge_worker(app) -> None:
             # E la giunzione (spec «le misure complete» §4): i carichi che
             # /api/mcp annota per turno arrivano alla riga del ponte da qui.
             _agent_runner.set_turn_logger(_registra_turno_ponte(
-                app["usage"], app.get(BRIDGE_LOADS_KEY)))
+                app[USAGE_KEY], app.get(BRIDGE_LOADS_KEY)))
         # **Le intestazioni del ponte si coniano, non si leggono** (spec §5).
         # Un segreto letto dall'ambiente sarebbe unico, eterno, condiviso con
         # ogni altra integrazione, e finirebbe nella riga di comando del
@@ -202,9 +215,9 @@ def _govern_bridge_worker(app) -> None:
         async def _consegna(job_id, nonce, decision, now):
             return await consegna(app, job_id, nonce, decision, now)
 
-        app["agent_worker_task"] = _spawn(
+        app[AGENT_WORKER_TASK_KEY] = _spawn(
             _agent_runner.run_loop(
-                app["reasoning_queue"],
+                app[REASONING_QUEUE_KEY],
                 _consegna,
                 "http://127.0.0.1:8099",
                 _intestazioni_ponte,
@@ -217,13 +230,13 @@ def _govern_bridge_worker(app) -> None:
             "%s c'e'.", SUBSCRIPTION.name)
     elif not voluto and live:
         current.cancel()
-        app["agent_worker_task"] = None
+        app[AGENT_WORKER_TASK_KEY] = None
         # **Spegnere il ponte spegne il suo accesso, subito.** Aspettare la
         # scadenza vorrebbe dire che l'interruttore non stacca davvero niente.
         from ..api.credenziali import revoca
 
-        quante = revoca(app.get("credenziali") or {}, mestiere="ponte")
-        (app.get("credenziale_ponte") or {}).clear()
+        quante = revoca(app.get(CREDENTIALS_KEY) or {}, mestiere="ponte")
+        (app.get(BRIDGE_CREDENTIAL_KEY) or {}).clear()
         logger.info("ponte spento: revocate %d credenziali del turno", quante)
         logger.info(
             "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
@@ -250,12 +263,12 @@ def _recompute_chain(app) -> None:
     farebbe niente fino al riavvio successivo -- esattamente il difetto che il
     Task 10 ha chiuso per la catena. Qui e' l'UNICO posto che lo scrive.
     """
-    cfg = app.get("models_config") or {}
+    cfg = app.get(MODELS_CONFIG_KEY) or {}
     # Un valore solo, derivato una volta, letto da tutti: la spazzata
     # (`conservazione.reasoning_sweep`), l'instradamento (`steering.who_answers`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
-    app["bridge_active"] = _bridge_active(cfg)
+    app[BRIDGE_ACTIVE_KEY] = _bridge_active(cfg)
     # E il lavoratore del ponte SEGUE l'interruttore, invece di essere deciso
     # una volta all'avvio. Sono i due lati dello stesso fatto: accendere il
     # ponte senza far partire chi risponde vorrebbe dire accodare ogni turno in
@@ -264,7 +277,7 @@ def _recompute_chain(app) -> None:
     # bottone che risponde 200 e fa aspettare. Spegnerlo senza fermarlo
     # lascerebbe un consumatore vivo per una coda che nessuno riempie.
     _govern_bridge_worker(app)
-    router = app.get("llm_router")
+    router = app.get(LLM_ROUTER_KEY)
     mappa = router._backend_map() if router is not None else {}
     risponde = can_answer_now(mappa, cfg)
     chain = providers_in_chain(cfg.get("chain_order") or [], risponde)
@@ -272,7 +285,7 @@ def _recompute_chain(app) -> None:
     # usa. Sono lo stesso valore -- se divergessero, divergerebbero da sé
     # stesse -- e sono due oggetti perché nessuno dei due possa modificare
     # l'altro per sbaglio (stessa ragione del `list(_chain)` dell'avvio).
-    app["model_chain"] = list(chain)
+    app[MODEL_CHAIN_KEY] = list(chain)
     if router is None:
         return
     # NIENTE ripiego sulla policy precedente quando la catena è vuota: una

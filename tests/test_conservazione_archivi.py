@@ -22,6 +22,9 @@ from types import SimpleNamespace
 import pytest
 
 from hiris.app import conservazione, server, storage
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._avvio import started_app  # noqa: F401
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -191,15 +194,15 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     della coda saltato quando `app["bridge_active"]` e' falso -- rossa."""
     from unittest import mock
 
-    queue = started_app["reasoning_queue"]
+    queue = started_app[REASONING_QUEUE_KEY]
     window_s = queue.CONSERVAZIONE["reasoning_jobs"][0] * storage.DAY_S
     born = time.time() - window_s - 3600
     queue.enqueue("chat", {}, {}, born + 60, job_id="vecchio", now=born)
     queue.sweep_expired(now=born + 120)
     assert queue.get("vecchio")["status"] == "expired"
 
-    with mock.patch.dict(started_app, {"bridge_active": False}):
-        await started_app["scheduler"].get_job("hiris_retention").func()
+    with mock.patch.dict(started_app, {BRIDGE_ACTIVE_KEY: False}):
+        await started_app[SCHEDULER_KEY].get_job("hiris_retention").func()
 
     # Riletta da una seconda connessione: una cancellazione non committata si
     # vedrebbe dalla connessione dell'archivio e da nessun'altra (rilievo

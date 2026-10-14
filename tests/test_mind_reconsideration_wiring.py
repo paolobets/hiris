@@ -14,6 +14,14 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -86,8 +94,8 @@ def _probes(house: CasaFinta) -> int:
 
 
 def _app(archivio, anagrafe, modello):
-    return {"observations": archivio, "home_space_store": anagrafe,
-            "llm_router": modello}
+    return {OBSERVATIONS_KEY: archivio, HOME_SPACE_KEY: anagrafe,
+            LLM_ROUTER_KEY: modello}
 
 
 @pytest.mark.asyncio
@@ -219,9 +227,9 @@ async def test_senza_modello_o_senza_archivio_il_giro_non_solleva(archivio):
     fermerebbe lo schedulatore, non solo questo giro."""
     anagrafe = _anagrafe([_entita("climate.x")])
 
-    assert await reconsideration_round({"observations": archivio,
-                                        "home_space_store": anagrafe}, _house()) is None
-    assert await reconsideration_round({"llm_router": _modello()}, _house()) is None
+    assert await reconsideration_round({OBSERVATIONS_KEY: archivio,
+                                        HOME_SPACE_KEY: anagrafe}, _house()) is None
+    assert await reconsideration_round({LLM_ROUTER_KEY: _modello()}, _house()) is None
     assert await reconsideration_round({}, None) is None
 
 
@@ -287,9 +295,9 @@ def piano_acceso(monkeypatch):
 
 def _app_ponte_acceso(archivio, anagrafe, modello, coda):
     app = _app(archivio, anagrafe, modello)
-    app["reasoning_queue"] = coda
-    app["bridge_active"] = True
-    app["models_config"] = {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}
+    app[REASONING_QUEUE_KEY] = coda
+    app[BRIDGE_ACTIVE_KEY] = True
+    app[MODELS_CONFIG_KEY] = {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}
     return app
 
 
@@ -645,8 +653,8 @@ async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
 
     Mutazione che la uccide: tornare `None` senza annotare.
     """
-    app = {"observations": archivio,
-           "home_space_store": _anagrafe([_entita("climate.x")])}
+    app = {OBSERVATIONS_KEY: archivio,
+           HOME_SPACE_KEY: _anagrafe([_entita("climate.x")])}
 
     esito = await reconsideration_round(app, _house())
 
@@ -671,7 +679,7 @@ async def test_il_piano_che_serve_l_osservatore_finisce_nel_REGISTRO_degli_esiti
     registro = OccurrenceRegistry()
     app = _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]),
                             _modello(), coda)
-    app["occurrence_registry"] = registro
+    app[OCCURRENCES_KEY] = registro
     await reconsideration_round(app, _house())
     preso = coda.claim(now=1.0)
     coda.submit(preso["job_id"], preso["nonce"],

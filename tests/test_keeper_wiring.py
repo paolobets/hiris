@@ -25,16 +25,21 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import startup
-from hiris.app.action.actuator import ActionActuator
-from hiris.app.action.journal import Journal
+from hiris.app.action.actuator import ACTUATOR_KEY, ActionActuator
+from hiris.app.action.journal import JOURNAL_KEY, Journal
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY
 from hiris.app.api.handlers_chat import create_tool_dispatcher
-from hiris.app.api.soffitto import consente
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.api.soffitto import ROLES_KEY, consente
 from hiris.app.chat_thread import ChatThread
-from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
 from hiris.app.keeper import sweeper
-from hiris.app.keeper.store import AgendaStore
-from hiris.app.keeper.sweeper import Sweeper
-from hiris.app.memory.store import MemoryStore
+from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
+from hiris.app.keeper.sweeper import SWEEPER_KEY, Sweeper
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.storage import DATA_DIR_KEY
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -80,13 +85,13 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(recorded_s
     Mutazione ESEGUITA (03/10/2026): `ActionActuator(...)` costruita con
     `None` al posto di `app["journal"]` -- rossa (`None is <Journal>`)."""
     app, _jobs = recorded_startup
-    assert isinstance(app["journal"], Journal)
-    assert isinstance(app["agenda"], AgendaStore)
-    porta = app["action_actuator"]
+    assert isinstance(app[JOURNAL_KEY], Journal)
+    assert isinstance(app[AGENDA_KEY], AgendaStore)
+    porta = app[ACTUATOR_KEY]
     assert isinstance(porta, ActionActuator)
-    assert porta._journal is app["journal"]
-    assert porta._ha is app["ha_client"]
-    assert porta._registry is app["service_registry"]
+    assert porta._journal is app[JOURNAL_KEY]
+    assert porta._ha is app[HA_CLIENT_KEY]
+    assert porta._registry is app[SERVICE_REGISTRY_KEY]
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -94,8 +99,8 @@ async def test_il_battito_e_registrato_come_lavoro(recorded_startup):
     """Mutazione ESEGUITA (03/10/2026): `seconds=15` -> `seconds=60` nel
     lavoro del battito -- rossa."""
     app, jobs = recorded_startup
-    assert isinstance(app["sweeper"], Sweeper)
-    assert app["scheduler"].get_job("hiris_keeper_heartbeat") is not None, (
+    assert isinstance(app[SWEEPER_KEY], Sweeper)
+    assert app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat") is not None, (
         f"il battito non e' registrato -- lavori: {sorted(jobs)}")
     battito = jobs["hiris_keeper_heartbeat"]
     assert battito["trigger"] == "interval"
@@ -136,7 +141,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
 
     with mock.patch.object(ActionActuator, "execute", AsyncMock()) as execute:
         async with started_with(tmp_path) as app:
-            assert app["agenda"].read(ident)["stato"] == "fallita"
+            assert app[AGENDA_KEY].read(ident)["stato"] == "fallita"
     # E nessuno l'ha eseguita: risana() deve finire prima che qualunque cosa
     # la prenda di nuovo in mano.
     execute.assert_not_awaited()
@@ -157,8 +162,8 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(reco
     """Mutazione ESEGUITA (03/10/2026): `_battito` chiama
     `app["sweeper"].batti()` senza l'istante -- rossa."""
     app, _jobs = recorded_startup
-    battito = app["scheduler"].get_job("hiris_keeper_heartbeat").func
-    with mock.patch.object(app["sweeper"], "batti", AsyncMock()) as batti:
+    battito = app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat").func
+    with mock.patch.object(app[SWEEPER_KEY], "batti", AsyncMock()) as batti:
         await battito()
 
     batti.assert_awaited_once()
@@ -184,9 +189,9 @@ async def test_il_cleanup_chiude_promesse_e_cronaca():
     promesse_finte = MagicMock()
     cronaca_finta = MagicMock()
     app = {
-        "ha_client": CasaFinta({}),
-        "agenda": promesse_finte,
-        "journal": cronaca_finta,
+        HA_CLIENT_KEY: CasaFinta({}),
+        AGENDA_KEY: promesse_finte,
+        JOURNAL_KEY: cronaca_finta,
     }
 
     await startup._on_cleanup(app)
@@ -201,7 +206,7 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
     costruiscono l'app a mano, vedi `tests/test_api.py::client`) non deve
     rompersi al cleanup: stessa disciplina di `archivio_casa`/
     `archivio_memoria` qui sotto."""
-    app = {"ha_client": CasaFinta({})}
+    app = {HA_CLIENT_KEY: CasaFinta({})}
     await startup._on_cleanup(app)  # non deve sollevare
 
 
@@ -220,9 +225,9 @@ async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
     archivio_casa_finto = create_autospec(HomeSpace, instance=True)
     archivio_memoria_finto = create_autospec(MemoryStore, instance=True)
     app = {
-        "ha_client": CasaFinta({}),
-        "home_space_store": archivio_casa_finto,
-        "memory_store": archivio_memoria_finto,
+        HA_CLIENT_KEY: CasaFinta({}),
+        HOME_SPACE_KEY: archivio_casa_finto,
+        MEMORY_STORE_KEY: archivio_memoria_finto,
     }
 
     await startup._on_cleanup(app)
@@ -240,7 +245,7 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     (`app["service_registry"]`), non una seconda costruzione."""
     registro_sentinella = object()
     promesse_sentinella = object()
-    app = {"service_registry": registro_sentinella, "agenda": promesse_sentinella}
+    app = {SERVICE_REGISTRY_KEY: registro_sentinella, AGENDA_KEY: promesse_sentinella}
 
     dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
 
@@ -257,8 +262,8 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
     from hiris.app.chat_store import close_all_stores, load_history
 
     paolo = ChatThread("persona:paolo", "pannello")
-    app = {"data_dir": str(tmp_path), "ha_client": None, "servizi": None,
-           "ruoli": {"quando": 0.0, "per_id": {}}}
+    app = {DATA_DIR_KEY: str(tmp_path), HA_CLIENT_KEY: None, SERVICES_KEY: None,
+           ROLES_KEY: {"quando": 0.0, "per_id": {}}}
     try:
         collaboratori = sweeper._promise_delivery(app)
         assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling",
@@ -275,7 +280,7 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
 
         # Chi e' il proprietario lo dice Home Assistant, nelle righe GREZZE di
         # `config/auth/list` (Tappa 2, Task 12): `is_owner`, letto dal client.
-        app["ha_client"] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
+        app[HA_CLIENT_KEY] = CasaFinta({}, answers={"config/auth/list": lambda extra: [
             {"id": "marta", "name": "Marta", "is_owner": False, "is_active": True,
              "system_generated": False, "group_ids": ["system-users"]},
             {"id": "paolo", "name": "Paolo", "is_owner": True, "is_active": True,

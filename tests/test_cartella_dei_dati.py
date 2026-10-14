@@ -1,4 +1,4 @@
-"""La cartella dei dati si legge in un modo solo: `app["data_dir"]` (D-27).
+"""La cartella dei dati si legge in un modo solo: `app[DATA_DIR_KEY]` (D-27).
 
 Fino alla Tappa 8 si leggeva in quattro forme -- `app["data_dir"]`,
 `app.get("data_dir")`, `app.get("data_dir", "/data")`, e una guardia `if not
@@ -8,23 +8,27 @@ L'avvio la scrive per prima (`startup._on_startup`, da `HIRIS_DATA_DIR`), e
 da li' in poi c'e' sempre: un ripiego non protegge niente, nasconde
 un'app montata male.
 
-Il cancello: nessuna chiamata `.get("data_dir", ...)` nel prodotto.
+Il cancello: nessuna chiamata `.get(DATA_DIR_KEY, ...)` nel prodotto. Dalla
+Chiusura (X-32) la chiave e' `storage.DATA_DIR_KEY`, un `web.AppKey`: il
+cancello cerca quel NOME, e lo chiede al modulo che la possiede.
 """
 import ast
 import pathlib
 
+from hiris.app import storage
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
-KEY = "data_dir"
+KEY = next(name for name, value in vars(storage).items() if value is storage.DATA_DIR_KEY)
 
 
 def _is_key(node: ast.AST) -> bool:
-    return isinstance(node, ast.Constant) and node.value == KEY
+    return isinstance(node, ast.Name) and node.id == KEY
 
 
 def readings(tree: ast.AST) -> tuple[int, int]:
     """`(letture col ripiego, letture dirette)` della chiave in un albero:
-    `x.get("data_dir", ...)` contro `x["data_dir"]`."""
+    `x.get(DATA_DIR_KEY, ...)` contro `x[DATA_DIR_KEY]`."""
     soft = direct = 0
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
@@ -41,8 +45,8 @@ def _product() -> dict[str, ast.AST]:
 
 
 def test_il_cancello_riconosce_le_due_forme():
-    tree = ast.parse('a = app.get("data_dir")\nb = app.get("data_dir", "/data")\n'
-                     'c = app["data_dir"]\nd = cfg.get("altro")\n')
+    tree = ast.parse('a = app.get(DATA_DIR_KEY)\nb = app.get(DATA_DIR_KEY, "/data")\n'
+                     'c = app[DATA_DIR_KEY]\nd = cfg.get("altro")\n')
     assert readings(tree) == (2, 1)
 
 

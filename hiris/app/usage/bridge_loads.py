@@ -21,7 +21,8 @@ import threading
 import time
 from collections import OrderedDict
 
-BRIDGE_LOADS_KEY = "bridge_loads"
+from aiohttp import web
+
 MAX_TRACKED = 64
 
 
@@ -60,6 +61,9 @@ class BridgeLoads:
             return None
         with self._lock:
             return self._per_exchange.pop(exchange_id, None)
+
+
+BRIDGE_LOADS_KEY = web.AppKey("bridge_loads", BridgeLoads)
 
 
 def create_bridge_loads(app) -> None:

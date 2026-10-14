@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 
 from hiris.app.keeper.outcome import ALREADY_CLOSED, CLOSED, UNKNOWN, keep_concluded
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.keeper.sweeper import SWEEPER_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
 from hiris.app.states import KEPT, TAKEN
 
 pytestmark = pytest.mark.asyncio
@@ -38,8 +41,8 @@ class _Registro:
 
 
 def _app(stato, *, orologio=True):
-    return {"agenda": _Archivio(stato), "occurrence_registry": _Registro(),
-            **({"sweeper": _Orologio()} if orologio else {})}
+    return {AGENDA_KEY: _Archivio(stato), OCCURRENCES_KEY: _Registro(),
+            **({SWEEPER_KEY: _Orologio()} if orologio else {})}
 
 
 async def test_una_promessa_presa_si_conclude_dall_orologio_e_si_conta():
@@ -49,8 +52,8 @@ async def test_una_promessa_presa_si_conclude_dall_orologio_e_si_conta():
     successo -- rossa qui e in `test_mcp_exchange_promise`."""
     app = _app(TAKEN)
     assert await keep_concluded(app, "p1", {"testo": "fatto"}, now=5.0) == CLOSED
-    assert app["sweeper"].chiuse == [("p1", {"testo": "fatto"}, 5.0)]
-    assert app["occurrence_registry"].successi == ["subscription"]
+    assert app[SWEEPER_KEY].chiuse == [("p1", {"testo": "fatto"}, 5.0)]
+    assert app[OCCURRENCES_KEY].successi == ["subscription"]
 
 
 async def test_una_promessa_gia_conclusa_non_si_riconsegna_ne_si_conta():
@@ -60,15 +63,15 @@ async def test_una_promessa_gia_conclusa_non_si_riconsegna_ne_si_conta():
     `stato != TAKEN` -- rossa qui (prima di questa prova nessuna lo vedeva)."""
     app = _app(KEPT)
     assert await keep_concluded(app, "p1", {"testo": "x"}, now=5.0) == ALREADY_CLOSED
-    assert app["sweeper"].chiuse == []
-    assert app["occurrence_registry"].successi == []
+    assert app[SWEEPER_KEY].chiuse == []
+    assert app[OCCURRENCES_KEY].successi == []
 
 
 @pytest.mark.parametrize("app", [_app(None), _app(TAKEN, orologio=False)],
                          ids=["promessa-assente", "orologio-assente"])
 async def test_senza_promessa_o_senza_orologio_non_si_chiude_niente(app):
     assert await keep_concluded(app, "p1", {"testo": "x"}, now=5.0) == UNKNOWN
-    assert app["occurrence_registry"].successi == []
+    assert app[OCCURRENCES_KEY].successi == []
 
 
 def test_l_archivio_delle_promesse_non_si_porta_dietro_il_loop_del_modello():

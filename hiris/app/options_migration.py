@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from .models_store import MODELS_CONFIG_KEY
 from .providers import CLAUDE, DEFAULT_PRESET, SUBSCRIPTION, chosen_model, get, preset
 
 logger = logging.getLogger(__name__)
@@ -209,7 +210,7 @@ def seed_at_startup(app, data_dir: str, credentials: dict) -> None:
             log=logger),
     )
     for seed in seeds:
-        store, to_save = seed(dict(app["models_config"]))
+        store, to_save = seed(dict(app[MODELS_CONFIG_KEY]))
         if to_save:
             save_models_config(data_dir, store, flags=True)
-            app["models_config"] = load_models_config(data_dir)
+            app[MODELS_CONFIG_KEY] = load_models_config(data_dir)

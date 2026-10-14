@@ -7,18 +7,24 @@ import time
 import aiohttp
 from aiohttp import web
 
+from ..agent.bridge_governor import RECOMPUTE_CHAIN_KEY
 from ..model_resolution import (
     CHAIN_END,
     compose_now,
     compose_panel,
     compose_topology,
 )
-from ..models_store import _OUR_KEYS, load_models_config, save_models_config
+from ..models_store import _OUR_KEYS, MODELS_CONFIG_KEY, load_models_config, save_models_config
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import (
     CLAUDE,
+    CLAUDE_CREDENTIAL_KEY,
+    LOCAL_MODEL_URL_KEY,
     OLLAMA,
     OPENAI,
+    OPENAI_CREDENTIAL_KEY,
     OPENROUTER,
+    OPENROUTER_CREDENTIAL_KEY,
     SUBSCRIPTION,
     all_providers,
     chosen_model,
@@ -26,6 +32,8 @@ from ..providers import (
     page_payload,
 )
 from ..providers import get as provider_of
+from ..steering import MODEL_CHAIN_KEY
+from ..storage import DATA_DIR_KEY
 from .boundary import json_object
 
 logger = logging.getLogger(__name__)
@@ -68,7 +76,7 @@ def _models_in_use(store: dict) -> dict[str, str]:
 
 
 async def handle_get_models_config(request: web.Request) -> web.Response:
-    data_dir = request.app["data_dir"]
+    data_dir = request.app[DATA_DIR_KEY]
     payload = load_models_config(data_dir)
     _bridge_on = payload["ponte"]["attivo"]
     # I fatti si misurano UNA volta e si passano a entrambe le composizioni:
@@ -82,7 +90,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # scrittura a caldo, invariante 4, che il Task 10 chiude. Finché quel
     # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
-    _chain = list(request.app.get("model_chain") or [])
+    _chain = list(request.app.get(MODEL_CHAIN_KEY) or [])
     # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
     # RUNTIME -- che dal Task 10 è l'ARCHIVIO, non l'ambiente. Fino alla 2.4.1
     # venivano da `BRIDGE_DEADLINE_MIN` e `OLLAMA_REQUEST_TIMEOUT` perché era
@@ -128,8 +136,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # una app che non ne ha uno (una fixture che non fa girare
         # `create_app`), e produce esattamente ciò che è vero in quel caso --
         # nessuna osservazione, e la pagina lo dice.
-        occurrences=(request.app["occurrence_registry"].occurrences()
-               if request.app.get("occurrence_registry") is not None else {}),
+        occurrences=(request.app[OCCURRENCES_KEY].occurrences()
+               if request.app.get(OCCURRENCES_KEY) is not None else {}),
         # L'orologio di parete, letto QUI e passato: `model_resolution` è un
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
         # in cui «3 min fa» è una cosa che si possa provare.
@@ -153,9 +161,9 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
 
 async def handle_save_models_config(request: web.Request) -> web.Response:
     body = await json_object(request)
-    data_dir = request.app["data_dir"]
+    data_dir = request.app[DATA_DIR_KEY]
     clean = save_models_config(data_dir, body)
-    request.app["models_config"] = clean   # hot-update per la sessione corrente
+    request.app[MODELS_CONFIG_KEY] = clean   # hot-update per la sessione corrente
     # E poi si RIMETTE IN VIGORE. Aggiornare solo il dizionario cambiava la
     # PAGINA e non il RUNTIME: la catena del router e il timeout del backend
     # locale si costruivano all'avvio, quindi un riordino salvato non toccava
@@ -167,7 +175,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     # processo dove `_on_startup` non è girato, la funzione non c'è -- e non
     # esserci non è un errore da inghiottire, è l'assenza del runtime da
     # rimettere in vigore.
-    recompute = request.app.get("recompute_chain")
+    recompute = request.app.get(RECOMPUTE_CHAIN_KEY)
     if callable(recompute):
         recompute()
     return web.json_response({"ok": True, **clean})
@@ -434,16 +442,16 @@ async def handle_list_models(request: web.Request) -> web.Response:
     quel client non esiste — misurato l'01/09, vedi `save_models_config`.
     """
     requested = request.query.get("provider", "")
-    store = load_models_config(request.app["data_dir"])
+    store = load_models_config(request.app[DATA_DIR_KEY])
     hide_free = bool(store["nascondi_gratuiti"])
     # Gli stessi modelli che la riga mostra, dalla stessa funzione: il pannello
     # e la riga da cui si apre non possono dire due cose diverse.
     in_use = _models_in_use(store)
     credentials = credentials_present(request.app)
-    claude_key = request.app.get("claude_api_key", "")
-    openai_key = request.app.get("openai_api_key", "")
-    openrouter_key = request.app.get("openrouter_api_key", "")
-    local_url = request.app.get("local_model_url", "")
+    claude_key = request.app.get(CLAUDE_CREDENTIAL_KEY, "")
+    openai_key = request.app.get(OPENAI_CREDENTIAL_KEY, "")
+    openrouter_key = request.app.get(OPENROUTER_CREDENTIAL_KEY, "")
+    local_url = request.app.get(LOCAL_MODEL_URL_KEY, "")
 
     async def read(pid: str) -> tuple[list[str], str, str, str]:
         """`(values, source, chosen, auto_resolved)` per un provider.

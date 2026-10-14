@@ -24,7 +24,12 @@ import logging
 import pytest
 
 from hiris.app.agent import runner
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.providers import CLAUDE
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -110,17 +115,17 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         )
 
         app = web.Application()
-        app["chat_settings"] = impostazioni
-        app["data_dir"] = data_dir
-        app["bridge_active"] = True
+        app[CHAT_SETTINGS_KEY] = impostazioni
+        app[DATA_DIR_KEY] = data_dir
+        app[BRIDGE_ACTIVE_KEY] = True
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
-        app["reasoning_queue"] = q
+        app[REASONING_QUEUE_KEY] = q
         # LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su
         # haiku. Con la regola vecchia il job porterebbe `haiku`; con quella
         # nuova porta `opus`. Metterli uguali renderebbe questo test incapace
         # di distinguere le due implementazioni -- cioe' incapace di fallire,
         # che e' il difetto n.1 di questo prodotto.
-        app["models_config"] = {
+        app[MODELS_CONFIG_KEY] = {
             "provider_models": {"claude": "claude-haiku-4-5-20251001"},
             "ponte": {"modello": "opus"},
         }

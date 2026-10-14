@@ -43,6 +43,9 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 
+from hiris.app.action.journal import JOURNAL_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
 from casa_finta import CasaFinta, Refused
@@ -294,7 +297,7 @@ async def mounted_app(tmp_path_factory):
     async with fotografia_porte.mounted(inputs, data_dir, _house(inputs)) as app:
         # Un atto di HIRIS nell'istante in cui la luce si e' accesa: la storia
         # lo abbina (`per_mano_di`).
-        app["journal"].log(actor="chat", service="light.turn_on", entity=["light.luce_uno"],
+        app[JOURNAL_KEY].log(actor="chat", service="light.turn_on", entity=["light.luce_uno"],
                            executed=True, now=_NOW.timestamp() - 3600)
         yield app
 
@@ -319,7 +322,7 @@ def _bodies_read(app):
     adesso che spegne `nulla_riconosciuto` (`ToolDispatcher._blind_spots`).
     Le due strade insieme, come le conta `behavior.without_body` (B-39): i
     corpi non letti e le voci archiviate senza corpo."""
-    store = app["home_space_store"]
+    store = app[HOME_SPACE_KEY]
     read = [{**entry, "corpo": {} if entry.get("corpo") is None else entry["corpo"]}
             for entry in store.behavior()]
     with (mock.patch.object(store, "unread_bodies", return_value={}),
@@ -345,11 +348,11 @@ def _broken(app):
     """La casa che non si e' potuta guardare: registri di aree e piani
     caduti, specchio illeggibile, cronaca illeggibile, tracce e calendari
     che non rispondono."""
-    store = app["home_space_store"]
+    store = app[HOME_SPACE_KEY]
     house = House(store.read(), Mirror({}, readable=False), unavailable=("aree", "piani"))
     _SCENE["guasta"] = True
     try:
-        with mock.patch.object(app["journal"], "list", side_effect=OSError("disco")):
+        with mock.patch.object(app[JOURNAL_KEY], "list", side_effect=OSError("disco")):
             yield _dispatcher(app, house)
     finally:
         _SCENE["guasta"] = False

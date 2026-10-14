@@ -42,6 +42,7 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from ..mind import automate_turn, proposal_redo
+from ..mind.store import OBSERVATIONS_KEY
 from ..states import CANCELLED, DONE_ELSEWHERE, PENDING
 from .boundary import error_response, json_object
 
@@ -52,7 +53,7 @@ _NOT_PENDING = "quella proposta non e’ piu’ in attesa: qualcuno l’ha gia�
 _NO_STORE = "l’archivio delle proposte non e’ disponibile in questo momento."
 
 def _store(request):
-    return request.app.get("observations")
+    return request.app.get(OBSERVATIONS_KEY)
 
 
 def _row(store, ident: str) -> dict | None:

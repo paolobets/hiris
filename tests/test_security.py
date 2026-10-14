@@ -10,6 +10,10 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.storage import DATA_DIR_KEY
 from tests._runner_finto import RunnerFinto
 
 # ---------------------------------------------------------------------------
@@ -31,10 +35,10 @@ def _make_app_with_runner(runner):
     from hiris.app.chat_settings import ChatSettings
 
     app = web.Application(middlewares=[_security_headers])
-    app["llm_router"] = runner
-    app["claude_runner"] = runner
-    app["chat_settings"] = ChatSettings(system_prompt="test")
-    app["data_dir"] = "/tmp"
+    app[LLM_ROUTER_KEY] = runner
+    app[CLAUDE_RUNNER_KEY] = runner
+    app[CHAT_SETTINGS_KEY] = ChatSettings(system_prompt="test")
+    app[DATA_DIR_KEY] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)
     return app

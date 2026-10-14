@@ -121,8 +121,11 @@ from hiris.app.agent import prompts as bridge_prompts
 from hiris.app.api import handlers_chat, handlers_home_space, soffitto
 from hiris.app.home_space import briefing, house_query, queries, topology
 from hiris.app.home_space.house import House
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.mind import analyst_turn, observer, proposer_turn, recipe_turn
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 
 DIFFERENCES_SHOWN = 200
 STARTUP_TIMEOUT_S = 120
@@ -362,7 +365,7 @@ async def mounted(inputs: dict, data_dir: str, house_class=None):
                 # L'avvio intero: anche la prima connessione e cio' che ha
                 # rimandato. Un'app consegnata prima avrebbe le riletture
                 # della prima connessione in volo mentre la si usa.
-                await asyncio.wait_for(app["ha_client"]._first_connection_settled(),
+                await asyncio.wait_for(app[HA_CLIENT_KEY]._first_connection_settled(),
                                        timeout=STARTUP_TIMEOUT_S)
             finally:
                 quiet.setLevel(level)
@@ -466,7 +469,7 @@ async def _shoot(inputs: dict, clock: float, data_dir: str) -> dict:
 
 
 async def _ports(app, clock: float) -> dict:
-    store, cache = app["home_space_store"], app["entity_cache"]
+    store, cache = app[HOME_SPACE_KEY], app[ENTITY_CACHE_KEY]
     home_space, entries = store.read(), store.behavior()
     mirror = topology.live_mirror(cache.all_states())
     text, summary = handlers_home_space.compose_briefing(app)

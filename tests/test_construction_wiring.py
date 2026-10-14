@@ -8,6 +8,8 @@ import logging
 
 import pytest
 
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+
 
 @pytest.mark.asyncio
 async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, caplog):
@@ -56,7 +58,7 @@ async def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path, c
 
     with caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
         async with started_with(tmp_path) as app:
-            stato = app["constructions"].read(ident, now=_time.time())["stato"]
+            stato = app[CONSTRUCTIONS_KEY].read(ident, now=_time.time())["stato"]
     avvisi = [rec.getMessage() for rec in caplog.records
               if "risanamento delle costruzioni" in rec.getMessage()]
     assert stato != "in_corso", (

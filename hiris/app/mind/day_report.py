@@ -12,14 +12,25 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
+from aiohttp import web
+
 from ..home_space.historian import day_boundaries, home_space_zone, house_timezone, local_date
 from ..home_space.house import House
 from ..home_space.house_history import read_bands, statistic_ids_for_round
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import recipe_turn
 from .facts import aggregate_day, chronicle_is_stale, rebuild_chronicle
 from .flatline import HISTORY_DAYS, frozen_day, mark_excluded, split_at
+from .judgments import TYPE_JUDGMENTS_KEY
+from .knowledge import KNOWLEDGE_KEY
 from .recipes import Recipe, hourly_points, muted_recipes, silent_entities, unread_series
-from .store import READING_RETENTION_S
+from .store import OBSERVATIONS_KEY, READING_RETENTION_S
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+BACKFILL_QUIET_KEY = web.AppKey("backfill_quiet")
+LAST_REPAIR_KEY = web.AppKey("ultima_riparazione")
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +74,7 @@ def _backfill_warning_due(app, day: str, clock: float) -> bool:
     """Se il warning di `day` va scritto adesso: si' la prima volta e dopo
     `BACKFILL_QUIET_S` dall'ultimo, e in quel caso segna l'istante. Una sola
     regola per i due rami di `backfill_one_report`."""
-    quiet = app["backfill_quiet"]
+    quiet = app[BACKFILL_QUIET_KEY]
     if clock - quiet.get(day, float("-inf")) < BACKFILL_QUIET_S:
         return False
     quiet[day] = clock
@@ -142,11 +153,11 @@ async def backfill_one_report(app, ha_client, *,
     ogni giro, e una riuscita toglie la voce del giorno (Task 7b, decisioni del
     proprietario del 17/09/2026).
     """
-    archivio = app["observations"]
+    archivio = app[OBSERVATIONS_KEY]
     first_ts = archivio.oldest_reading_ts()
     if first_ts is None:
         return None
-    timezone = house_timezone(app.get("home_space_store"))
+    timezone = house_timezone(app.get(HOME_SPACE_KEY))
     adesso = now(UTC)
     today = local_date(adesso.timestamp(), timezone)
     first_day = local_date(first_ts, timezone)
@@ -170,17 +181,17 @@ async def backfill_one_report(app, ha_client, *,
                         "giorno il log tace per %d ore", as_text, type(error).__name__,
                         error, BACKFILL_QUIET_S // 3600)
                 return None
-            app["backfill_quiet"].pop(as_text, None)
+            app[BACKFILL_QUIET_KEY].pop(as_text, None)
             logger.info("cervello: recuperato il resoconto di %s", as_text)
             return as_text
-        if (chronicle_is_stale(written, app["type_judgments"])
+        if (chronicle_is_stale(written, app[TYPE_JUDGMENTS_KEY])
                 and day_boundaries(as_text, timezone)[0] >= oldest_intact_ts):
             started = time.monotonic()
             try:
                 rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
-                                  judgments=app["type_judgments"],
-                                  house=House.read(app.get("home_space_store"),
-                                                   app.get("entity_cache")),
+                                  judgments=app[TYPE_JUDGMENTS_KEY],
+                                  house=House.read(app.get(HOME_SPACE_KEY),
+                                                   app.get(ENTITY_CACHE_KEY)),
                                   when_ts=now(UTC).timestamp())
             except Exception as error:
                 if _backfill_warning_due(app, as_text, now(UTC).timestamp()):
@@ -190,10 +201,10 @@ async def backfill_one_report(app, ha_client, *,
                         error, BACKFILL_QUIET_S // 3600)
                 day += timedelta(days=1)
                 continue
-            app["backfill_quiet"].pop(as_text, None)
+            app[BACKFILL_QUIET_KEY].pop(as_text, None)
             logger.info(
                 "cervello: rifatta la cronaca di %s col giudizio %s in %.2f s",
-                as_text, app["type_judgments"].chronicle_fingerprint(),
+                as_text, app[TYPE_JUDGMENTS_KEY].chronicle_fingerprint(),
                 time.monotonic() - started)
             return as_text
         day += timedelta(days=1)
@@ -226,7 +237,7 @@ async def _write_missing_reports(app, ha_client, days, timezone, *,
     Non solleva: e' una consolazione, non il lavoro principale, e non deve
     poter far fallire un avvio.
     """
-    archivio = app["observations"]
+    archivio = app[OBSERVATIONS_KEY]
     scritti: list[str] = []
     for day in days:
         try:
@@ -259,7 +270,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     try:
         await _reaggregate_days(app, ha_client, now=now)
     except Exception as error:
-        app["ultima_riparazione"] = {
+        app[LAST_REPAIR_KEY] = {
             "stato": REPAIR_RAISED,
             "perche": f"{type(error).__name__}: {error}",
             "giorni": [], "resoconti_scritti": []}
@@ -286,12 +297,12 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
 
     `now` e' iniettabile per i test: nella vita vera nessuno lo passa.
     """
-    timezone = house_timezone(app.get("home_space_store"))
+    timezone = house_timezone(app.get(HOME_SPACE_KEY))
     today = local_date(now(UTC).timestamp(), timezone)
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
     written = await _write_missing_reports(app, ha_client, days, timezone,
                                            when_ts=now(UTC).timestamp())
-    app["ultima_riparazione"] = {"stato": REPAIR_DONE, "perche": None,
+    app[LAST_REPAIR_KEY] = {"stato": REPAIR_DONE, "perche": None,
                                  "giorni": days, "resoconti_scritti": written}
     if written:
         logger.info("cervello: resoconti scritti all'avvio per %s",
@@ -318,13 +329,13 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     dispositivo. Quali di quelle entita' hanno statistiche lo dice
     `statistic_ids_for_round`, la lettura condivisa col giro delle ricette.
     """
-    sapere = app.get("knowledge")
-    casa = app.get("home_space_store")
+    sapere = app.get(KNOWLEDGE_KEY)
+    casa = app.get(HOME_SPACE_KEY)
     if sapere is None or casa is None:
         return {}, {}, {}, None, {}
     # I dispositivi e i loro nomi li dice la casa (Task 12): il nome,
     # altrimenti l'id (`House.name`).
-    house = House.read(casa, app.get("entity_cache"))
+    house = House.read(casa, app.get(ENTITY_CACHE_KEY))
     nomi = {device_id: house.name("dispositivo", device_id)
             for device_id in house.device_ids()}
     # Le ricette di tutti in una lettura (A-38), nell'ordine dell'anagrafe.
@@ -454,9 +465,9 @@ async def write_day_report(app, ha_client, *, day: str, timezone: str | None,
     ricette, serie, nomi, silent, mute = await _report_ingredients(
         app, ha_client, giorno=day, timezone=timezone)
     return aggregate_day(
-        store=app["observations"], day=day, timezone=timezone,
+        store=app[OBSERVATIONS_KEY], day=day, timezone=timezone,
         recipes=ricette, series=serie, names=nomi,
         silent=silent, muted=mute,
-        judgments=app["type_judgments"],
-        house=House.read(app.get("home_space_store"), app.get("entity_cache")),
+        judgments=app[TYPE_JUDGMENTS_KEY],
+        house=House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY)),
         when_ts=when_ts)

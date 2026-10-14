@@ -26,9 +26,9 @@ from unittest import mock
 import pytest
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.provider_occurrences import OccurrenceRegistry
-from hiris.app.reasoning.consegna import consegna
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.provider_occurrences import OCCURRENCES_KEY, OccurrenceRegistry
+from hiris.app.reasoning.consegna import SUBMIT_CHAT_REPLY_KEY, consegna
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
 
 # Fetta «le chat divise»: un job di chat porta il filo di chi ha scritto, e
 # senza filo la consegna non scrive (prova in `tests/test_chat_divise.py`).
@@ -43,8 +43,8 @@ async def _real_submit(tmp_path, registry):
     from tests._avvio import started_with
 
     async with started_with(tmp_path / "avvio") as started:
-        with mock.patch.dict(started, {"occurrence_registry": registry}):
-            yield started["submit_chat_reply"]
+        with mock.patch.dict(started, {OCCURRENCES_KEY: registry}):
+            yield started[SUBMIT_CHAT_REPLY_KEY]
 
 
 @pytest.mark.asyncio
@@ -62,11 +62,11 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    app = {"occurrence_registry": registry, "reasoning_queue": q}
+    app = {OCCURRENCES_KEY: registry, REASONING_QUEUE_KEY: q}
 
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J1", now=1.0, thread=T)
     async with _real_submit(tmp_path, registry) as submit:
-        app["submit_chat_reply"] = submit
+        app[SUBMIT_CHAT_REPLY_KEY] = submit
         claimed = q.claim(10.0)
         assert claimed["job_id"] == "J1"
         esito_consegna = await consegna(app, "J1", claimed["nonce"],
@@ -109,11 +109,11 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
     q = ReasoningQueue(str(tmp_path / "r.db"))
-    app = {"occurrence_registry": registry, "reasoning_queue": q}
+    app = {OCCURRENCES_KEY: registry, REASONING_QUEUE_KEY: q}
 
     q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J2", now=1.0, thread=T)
     async with _real_submit(tmp_path, registry) as submit:
-        app["submit_chat_reply"] = submit
+        app[SUBMIT_CHAT_REPLY_KEY] = submit
         claimed = q.claim(10.0)
         assert claimed["job_id"] == "J2"
         esito_consegna = await consegna(app, "J2", claimed["nonce"],

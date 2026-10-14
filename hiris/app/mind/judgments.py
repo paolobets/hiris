@@ -16,6 +16,8 @@ import re
 import sqlite3
 import time as _time
 
+from aiohttp import web
+
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.type_judgments import (
     _SUBJECT_KINDS,
@@ -35,8 +37,13 @@ from ..home_space.type_vocabulary import (
     REPO_JUDGMENTS,
     judgment_seed_rows,
 )
-from .knowledge import Fact
+from .knowledge import KNOWLEDGE_KEY, Fact
 from .seed import REPO_PRIORITY, SEED_AUTHOR
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+TYPE_JUDGMENTS_KEY = web.AppKey("type_judgments")
+TYPE_JUDGMENTS_STATUS_KEY = web.AppKey("type_judgments_status")
 
 #: La provenienza di una riga scritta dalla porta: **il proprietario l'ha
 #: detto** (`knowledge.PROVENANCES`). Fino al 08/10/2026 la porta scriveva
@@ -349,11 +356,11 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     `soffitto.subject_name`, la casa dei nomi -- e mai dal corpo di una
     richiesta.
     """
-    knowledge = app.get("knowledge")
+    knowledge = app.get(KNOWLEDGE_KEY)
     if knowledge is None:
         raise JudgmentRefused("il sapere non e' disponibile")
     subject = str(subject or "").strip()
-    _check(subject_kind, subject, field, value, app.get("type_judgments", REPO_JUDGMENTS))
+    _check(subject_kind, subject, field, value, app.get(TYPE_JUDGMENTS_KEY, REPO_JUDGMENTS))
     if value is None:
         seeded = _seed_values().get((subject_kind, subject, field))
         fact = None if seeded is None else Fact(
@@ -371,7 +378,7 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                     when_ts=now())
         _writing(knowledge.write, fact)
     judgments, status = build_judgments(knowledge)
-    app["type_judgments"], app["type_judgments_status"] = judgments, status
+    app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = judgments, status
     row = None if fact is None else {
         "soggetto_genere": fact.subject_kind, "soggetto": fact.subject, "campo": fact.field,
         "valore": fact.value, "chi": fact.who, "quando_ts": fact.when_ts}

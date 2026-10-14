@@ -13,11 +13,13 @@ from aiohttp import web
 
 from hiris.app import server
 from hiris.app.api.handlers_mind import handle_knowledge, handle_set_judgment
+from hiris.app.api.soffitto import ROLES_KEY
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.open_questions import OPEN_QUESTIONS
-from hiris.app.mind.judgments import build_judgments
-from hiris.app.mind.knowledge import Fact, KnowledgeStore
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY, TYPE_JUDGMENTS_STATUS_KEY, build_judgments
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY, Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -64,8 +66,8 @@ def _richiesta(app, corpo=None):
             # finto resta per il NOME dell'autore (`subject_name`).
             super().__init__(soggetto=AUTORE, auth_via="ingress",
                              ruolo="amministratore")
-            app.setdefault("ha_client", _house())
-            app.setdefault("ruoli", {"quando": 0.0, "per_id": {}})
+            app.setdefault(HA_CLIENT_KEY, _house())
+            app.setdefault(ROLES_KEY, {"quando": 0.0, "per_id": {}})
             self.app = app
             self.query = {}
             self.method, self.path = "POST", "/api/mind/judgment"
@@ -81,7 +83,7 @@ def _app_seminata(tmp_path):
     s = KnowledgeStore(str(tmp_path / "sapere.db"))
     s.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
     j, stato = build_judgments(s)
-    return s, {"knowledge": s, "type_judgments": j, "type_judgments_status": stato}
+    return s, {KNOWLEDGE_KEY: s, TYPE_JUDGMENTS_KEY: j, TYPE_JUDGMENTS_STATUS_KEY: stato}
 
 
 @pytest.mark.asyncio
@@ -92,14 +94,14 @@ async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
     rossa (`chi` vale il nome del confine, non quello di HA)."""
     s, app = _app_seminata(tmp_path)
     try:
-        prima = app["type_judgments_status"]["impronta"]
+        prima = app[TYPE_JUDGMENTS_STATUS_KEY]["impronta"]
         r = await handle_set_judgment(_richiesta(app, {
             "soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",
             "campo": "genere", "valore": "presenza"}))
         assert r.status == 200
         corpo = json.loads(r.text)
         assert corpo["istantanea"]["impronta"] != prima
-        assert corpo["istantanea"] == app["type_judgments_status"]
+        assert corpo["istantanea"] == app[TYPE_JUDGMENTS_STATUS_KEY]
         assert corpo["istantanea"]["stato"] == "sapere"
         assert corpo["riga"]["valore"] == "presenza"
         assert corpo["riga"]["chi"] == HA_NAME
@@ -120,7 +122,7 @@ async def test_valore_null_torna_seme(tmp_path):
                 "soggetto_genere": "tipo", "soggetto": "light",
                 "campo": "genere", "valore": valore}))
             assert r.status == 200, r.text
-            assert (app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()) is seminata
+            assert (app[TYPE_JUDGMENTS_KEY].rows() == tv.REPO_JUDGMENTS.rows()) is seminata
     finally:
         s.close()
 

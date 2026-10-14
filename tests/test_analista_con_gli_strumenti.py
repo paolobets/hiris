@@ -17,10 +17,13 @@ import pytest
 
 from hiris.app import steering
 from hiris.app.home_space import historian
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import analyst_round, compute
 from hiris.app.mind import analyst_turn as at
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._runner_finto import RunnerFinto
 
 
@@ -115,7 +118,7 @@ def casa(tmp_path):
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
     modello = _modello_lettore()
-    app = {"observations": store, "llm_router": modello, "bridge_active": False}
+    app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: modello, BRIDGE_ACTIVE_KEY: False}
     try:
         yield app, store, modello
     finally:
@@ -124,7 +127,7 @@ def casa(tmp_path):
 
 def _oggi(app):
     return historian.today(
-        historian.house_timezone(app.get("home_space_store"))).isoformat()
+        historian.house_timezone(app.get(HOME_SPACE_KEY))).isoformat()
 
 
 @pytest.mark.asyncio
@@ -180,7 +183,7 @@ def test_sul_ponte_le_letture_hanno_il_nome_NUDO(casa):
     Mutazione ESEGUITA (06/10/2026): il raccoglitore che passa i nomi come
     arrivano -- rossa (`mcp__hiris__history`)."""
     app, store, _modello = casa
-    app["reasoning_queue"] = _CodaRisposta(_oggi(app))
+    app[REASONING_QUEUE_KEY] = _CodaRisposta(_oggi(app))
     raccolto = analyst_round._collect_analyst_turn(app, store, _oggi(app))
     assert raccolto["analisi"]["letture"] == [
         {"tool": "history", "input": {"riferimento": "sensor.prelievo"}},

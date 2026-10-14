@@ -28,6 +28,8 @@ import logging
 import os
 from datetime import UTC, datetime
 
+from aiohttp import web
+
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..storage import write_json_atomic
 from .behavior import automation_active
@@ -649,4 +651,7 @@ class HomeSpace:
     def energy_current(self) -> bool:
         """Se la dashboard tenuta e' stata letta in questo giro dell'anagrafe."""
         return self._energy_current
+
+
+HOME_SPACE_KEY = web.AppKey("home_space_store", HomeSpace)
 

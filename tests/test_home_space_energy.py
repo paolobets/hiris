@@ -23,6 +23,15 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -444,9 +453,9 @@ def test_recipe_round_asks_with_dashboard(tmp_path):
                 {"statistic_id": "sensor.inverter_prelievo"}]})
         # Il modello finto risponde «niente da misurare».
         runner = RunnerFinto('{"why": "prova", "steps": []}')
-        app = {"observations": archivio, "knowledge": sapere,
-               "home_space_store": _store(tmp_path), "ha_client": house,
-               "entity_cache": _cache(), "llm_router": runner}
+        app = {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+               HOME_SPACE_KEY: _store(tmp_path), HA_CLIENT_KEY: house,
+               ENTITY_CACHE_KEY: _cache(), LLM_ROUTER_KEY: runner}
 
         _run(recipe_round.recipe_round(app))
 
@@ -634,9 +643,9 @@ def _round_app(tmp_path, runner, sapere, archivio):
     house = CasaFinta({"energy_prefs": PREFS}, answers={
         "recorder/list_statistic_ids": lambda extra: [
             {"statistic_id": s} for s in sorted(SERIES)]})
-    return {"observations": archivio, "knowledge": sapere,
-            "home_space_store": _store(tmp_path), "ha_client": house,
-            "entity_cache": _cache(), "llm_router": runner}
+    return {OBSERVATIONS_KEY: archivio, KNOWLEDGE_KEY: sapere,
+            HOME_SPACE_KEY: _store(tmp_path), HA_CLIENT_KEY: house,
+            ENTITY_CACHE_KEY: _cache(), LLM_ROUTER_KEY: runner}
 
 
 def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
@@ -658,7 +667,7 @@ def test_recipe_round_rewrites_stale_recipe_once(tmp_path):
         # Il modello finto risponde con una ricetta valida.
         runner = RunnerFinto(json.dumps(RECIPE))
         app = _round_app(tmp_path, runner, sapere, archivio)
-        house = House(app["home_space_store"].read(),
+        house = House(app[HOME_SPACE_KEY].read(),
                       live_mirror(_cache().all_states()))
         _write(sapere, house)
 
@@ -695,8 +704,8 @@ def test_bridge_carries_fingerprint_to_collection(tmp_path):
         _write(sapere, casa)
         back = recipe_turn.recipes_to_repair(sapere, casa, with_series=SERIES,
                                              energy=dashboard)
-        app = {"reasoning_queue": coda,
-               "models_config": {"ponte": {"scadenza_min": 10}}}
+        app = {REASONING_QUEUE_KEY: coda,
+               MODELS_CONFIG_KEY: {"ponte": {"scadenza_min": 10}}}
 
         recipe_round._enqueue_recipe_turn(app, casa, "inv", objective="risparmiare",
                                     with_series=SERIES, energy=dashboard,

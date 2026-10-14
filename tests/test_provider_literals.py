@@ -22,6 +22,10 @@ from pathlib import Path
 import pytest
 
 from hiris.app import providers
+from hiris.app.agent.bridge_governor import RECOMPUTE_CHAIN_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.providers import CLAUDE_CREDENTIAL_KEY
+from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._runner_finto import RunnerFinto
 from tests.test_api import client  # noqa: F401
 
@@ -147,12 +151,12 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
     monkeypatch.setattr(providers, "PROVIDERS", providers.PROVIDERS + (SESTO,))
     app = client.app
     app["sesto_api_key"] = "una-chiave"
-    app["claude_api_key"] = "sk-test"
+    app[CLAUDE_CREDENTIAL_KEY] = "sk-test"
     router = LLMRouter(claude=RunnerFinto("da claude"), sesto=RunnerFinto("dal sesto"),
                        model_chain=["claude"])
-    app["llm_router"] = router
-    app["recompute_chain"] = lambda: _recompute_chain(app)
-    app["model_chain"] = ["claude"]
+    app[LLM_ROUTER_KEY] = router
+    app[RECOMPUTE_CHAIN_KEY] = lambda: _recompute_chain(app)
+    app[MODEL_CHAIN_KEY] = ["claude"]
 
     body = await (await client.get("/api/models/config")).json()
     assert body["ordine_fisso"][-1] == "sesto"

@@ -10,6 +10,7 @@ import logging
 
 import pytest
 
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.options_migration import seed_chain
 
 VUOTO = {
@@ -194,7 +195,7 @@ async def _start_seeding_the_chain(tmp_path, credenziali) -> dict:
     from tests._avvio import credential_environment, started_with
 
     async with started_with(tmp_path, credential_environment(credenziali)) as app:
-        return copy.deepcopy(app["models_config"])
+        return copy.deepcopy(app[MODELS_CONFIG_KEY])
 
 
 CREDENZIALI_DEL_PROPRIETARIO = {

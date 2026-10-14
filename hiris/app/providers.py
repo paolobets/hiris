@@ -39,6 +39,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+from aiohttp import web
+
 # LA MISURA DELLA CREDENZIALE DEL PIANO, in un posto solo.
 #
 # «Il piano ha un token?» era scritta quattro volte, in quattro moduli, e
@@ -69,14 +71,23 @@ def subscription_has_token() -> bool:
     return bool(os.environ.get(SUBSCRIPTION_TOKEN_VAR, "").strip())
 
 
+#: Le chiavi di `app` dove l'avvio mette la credenziale di ogni provider:
+#: `web.AppKey`, mai una stringa (X-32, Chiusura dello sprint). Le possiede
+#: questo modulo, perche' ogni provider dichiara qui dove sta la sua.
+CLAUDE_CREDENTIAL_KEY = web.AppKey("claude_api_key")
+OPENAI_CREDENTIAL_KEY = web.AppKey("openai_api_key")
+OPENROUTER_CREDENTIAL_KEY = web.AppKey("openrouter_api_key")
+LOCAL_MODEL_URL_KEY = web.AppKey("local_model_url")
+
+
 def _subscription_token(_sources: Mapping[str, Any]) -> bool:
     return subscription_has_token()
 
 
-def _value_at(key: str) -> Callable[[Mapping[str, Any]], bool]:
-    """La credenziale che sta in una chiave dell'app (`app["claude_api_key"]`...).
+def _value_at(key: web.AppKey) -> Callable[[Mapping[str, Any]], bool]:
+    """La credenziale che sta in una chiave dell'app (`app[CLAUDE_CREDENTIAL_KEY]`...).
 
-    La scrive l'avvio (`server._on_startup`) una volta sola, ed e' la stessa
+    La scrive l'avvio (`startup._on_startup`) una volta sola, ed e' la stessa
     che leggono la pagina Modelli e chi costruisce i runner: prima l'avvio
     guardava le variabili lette dall'ambiente e la pagina guardava -- per
     Claude API -- di nuovo l'ambiente OPPURE il runner costruito, cioe' due
@@ -217,7 +228,7 @@ CLAUDE = Provider(
     privacy=("I tuoi messaggi e la conoscenza della casa passano da Anthropic "
              "(USA)."),
     missing_reason="manca la chiave",
-    credential=_value_at("claude_api_key"),
+    credential=_value_at(CLAUDE_CREDENTIAL_KEY),
     model_path=("provider_models", "claude"),
     auto_model="claude-sonnet-4-6",
     # La RISERVA: tre nomi scritti a mano che invecchiano, dichiarati come
@@ -237,7 +248,7 @@ OPENROUTER = Provider(
     privacy=("I tuoi messaggi passano da OpenRouter (USA) e dal fornitore del "
              "modello che scegli."),
     missing_reason="manca la chiave",
-    credential=_value_at("openrouter_api_key"),
+    credential=_value_at(OPENROUTER_CREDENTIAL_KEY),
     model_path=("provider_models", "openrouter"),
     # Pagante ma affidabile, e NON quello di OpenAI: su OpenRouter `gpt-4o`
     # non e' nemmeno un nome valido.
@@ -263,7 +274,7 @@ OPENAI = Provider(
     nature="a consumo",
     privacy="I tuoi messaggi passano dai server di OpenAI (USA).",
     missing_reason="manca la chiave",
-    credential=_value_at("openai_api_key"),
+    credential=_value_at(OPENAI_CREDENTIAL_KEY),
     model_path=("provider_models", "openai"),
     auto_model="gpt-4o",
     reserve_models=("gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"),
@@ -280,7 +291,7 @@ OLLAMA = Provider(
     # La credenziale di Ollama e' il SOLO indirizzo: l'indirizzo e' cio' che
     # si custodisce, il modello e' cio' che si decide (vedi
     # `needs_chosen_model`).
-    credential=_value_at("local_model_url"),
+    credential=_value_at(LOCAL_MODEL_URL_KEY),
     model_path=("ollama", "modello"),
     needs_chosen_model=True,
     reply_timeout_s=120,

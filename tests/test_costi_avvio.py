@@ -47,6 +47,9 @@ import itertools
 import sys
 from pathlib import Path
 
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -210,7 +213,7 @@ def test_l_avvio_si_iscrive_prima_di_leggere_e_la_prima_connessione_non_rilegge(
     `_ws_loop` -- rossa (anagrafe, comportamento e plance rimandati)."""
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            house = app["ha_client"]
+            house = app[HA_CLIENT_KEY]
             return (list(house._session.sent), list(house._session.sent_after),
                     [command for command, _extra in house.calls],
                     sorted(task.get_name() for task in house._session.deferred_work),
@@ -251,8 +254,8 @@ def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypa
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path),
                                             unreachable) as app:
-            return app["ha_client"]._reread_at_first_connection, \
-                app["entity_cache"].loaded
+            return app[HA_CLIENT_KEY]._reread_at_first_connection, \
+                app[ENTITY_CACHE_KEY].loaded
 
     asked, loaded = asyncio.run(boot())
     assert asked
@@ -325,7 +328,7 @@ def test_la_prima_connessione_subito_dopo_il_tetto_avvisa_ogni_ascoltatore(tmp_p
 
     async def boot():
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-            house = app["ha_client"]
+            house = app[HA_CLIENT_KEY]
             return {kind: [cb for cb in getattr(house, f"_{kind}_listeners")
                            if cb not in probes] for kind in announced}
 

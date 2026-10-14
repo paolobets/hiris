@@ -24,7 +24,7 @@ from hiris.app.home_space.log_source import (
     integration_of,
     manifest_of,
 )
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, build_home_space
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.mind.view import _with_integration
 from tests.test_history_tool import _COMPORTAMENTO, _history_house, _history_mirror
@@ -182,7 +182,7 @@ async def test_la_pagina_non_conta_il_manifest(aiohttp_client, tmp_path):
     store = HomeSpace(str(tmp_path))
     store.hold_registries(copy.deepcopy(_REGISTRI))
     app = web.Application()
-    app["home_space_store"] = store
+    app[HOME_SPACE_KEY] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     body = await (await (await aiohttp_client(app)).get("/api/home-space")).json()
     assert "manifesti" not in body["conteggi"] and "aree" in body["conteggi"]

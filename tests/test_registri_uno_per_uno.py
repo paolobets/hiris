@@ -25,6 +25,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.home_space.rounds import HA_INTEGRATIONS_KEY, HA_PROBLEMS_KEY
+from hiris.app.mind.watcher import WATCHER_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -138,9 +142,9 @@ def _conditions_app(tmp_path, house, *, problems=None, rebuilt=True, followed=Tr
         _run(rebuild(house, store))
     house.calls.clear()
     house.connections.clear()
-    app = {"watcher": _Observer(), "home_space_store": store}
+    app = {WATCHER_KEY: _Observer(), HOME_SPACE_KEY: store}
     if problems is not None:
-        app["ha_problems"] = problems
+        app[HA_PROBLEMS_KEY] = problems
     if followed:
         integration_follower(app)(_snapshot(synthetic_inputs()["registries"]["integrazioni"]))
     return app
@@ -166,8 +170,8 @@ def test_il_giro_delle_condizioni_non_rilegge_i_problemi_ne_i_registri(tmp_path)
     assert _commands(house) == ["system_log/list"]
     assert len(house.connections) == 1
     assert written == 1 + 2
-    assert app["watcher"].received[0]["problems"] == [{"domain": "hue", "issue_id": "x"}]
-    assert app["watcher"].received[0]["integrations"] == \
+    assert app[WATCHER_KEY].received[0]["problems"] == [{"domain": "hue", "issue_id": "x"}]
+    assert app[WATCHER_KEY].received[0]["integrations"] == \
         synthetic_inputs()["registries"]["integrazioni"]
 
 
@@ -178,7 +182,7 @@ def test_senza_problemi_in_memoria_li_legge_una_volta_e_li_lascia_li(tmp_path):
     _run(watch_system_conditions(app, house))
 
     assert _commands(house).count("repairs/list_issues") == 1
-    assert app["ha_problems"] == {"problemi": []}
+    assert app[HA_PROBLEMS_KEY] == {"problemi": []}
 
 
 def test_i_problemi_in_memoria_non_letti_saltano_il_giro(tmp_path):
@@ -190,7 +194,7 @@ def test_i_problemi_in_memoria_non_letti_saltano_il_giro(tmp_path):
         "errore": "Home Assistant non ha risposto", "causa": "silenzio", "codice": None})
 
     assert _run(watch_system_conditions(app, house)) is None
-    assert app["watcher"].received == []
+    assert app[WATCHER_KEY].received == []
 
 
 def test_le_integrazioni_non_ancora_annunciate_saltano_il_giro(tmp_path):
@@ -202,7 +206,7 @@ def test_le_integrazioni_non_ancora_annunciate_saltano_il_giro(tmp_path):
     app = _conditions_app(tmp_path, house, problems={"problemi": []}, followed=False)
 
     assert _run(watch_system_conditions(app, house)) is None
-    assert app["watcher"].received == []
+    assert app[WATCHER_KEY].received == []
     assert house.calls == []
 
 
@@ -213,7 +217,7 @@ def test_un_cambio_annunciato_arriva_all_anagrafe_senza_aspettare_un_giro(tmp_pa
     prossimo evento di registro (prima del Task 5)."""
     house = CasaFinta(synthetic_inputs())
     app = _conditions_app(tmp_path, house, problems={"problemi": []})
-    store = app["home_space_store"]
+    store = app[HOME_SPACE_KEY]
     assert {row["stato"] for row in store.read()["integrazioni"]} == {"loaded"}
 
     changed = {**synthetic_inputs()["registries"]["integrazioni"][0], "state": "setup_error"}
@@ -238,8 +242,8 @@ def test_l_elenco_iniziale_sostituisce_quello_di_prima(tmp_path):
 
     follow(_snapshot(rows[1:]))
 
-    assert [row["entry_id"] for row in app["ha_integrations"]] == ["voce_due"]
-    assert [row["entry_id"] for row in app["home_space_store"].read()["integrazioni"]] == \
+    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY]] == ["voce_due"]
+    assert [row["entry_id"] for row in app[HOME_SPACE_KEY].read()["integrazioni"]] == \
         ["voce_due"]
 
 
@@ -254,7 +258,7 @@ def test_una_voce_tolta_esce_e_una_aggiunta_entra(tmp_path):
     follow([{"type": "removed", "entry": rows[0]}])
     follow([{"type": "added", "entry": added}])
 
-    assert [row["entry_id"] for row in app["ha_integrations"]] == ["voce_due", "voce_tre"]
+    assert [row["entry_id"] for row in app[HA_INTEGRATIONS_KEY]] == ["voce_due", "voce_tre"]
 
 
 def test_un_elenco_iniziale_vuoto_e_una_casa_senza_integrazioni(tmp_path):
@@ -263,8 +267,8 @@ def test_un_elenco_iniziale_vuoto_e_una_casa_senza_integrazioni(tmp_path):
 
     integration_follower(app)([])
 
-    assert app["ha_integrations"] == []
-    assert app["home_space_store"].read()["integrazioni"] == []
+    assert app[HA_INTEGRATIONS_KEY] == []
+    assert app[HOME_SPACE_KEY].read()["integrazioni"] == []
 
 
 def test_un_anagrafe_mai_letta_non_nasce_dalle_sole_integrazioni(tmp_path):
@@ -273,8 +277,8 @@ def test_un_anagrafe_mai_letta_non_nasce_dalle_sole_integrazioni(tmp_path):
 
     _run(watch_system_conditions(app, house))
 
-    assert app["home_space_store"].read() == {}
-    assert app["home_space_store"].updated_at() is None
+    assert app[HOME_SPACE_KEY].read() == {}
+    assert app[HOME_SPACE_KEY].updated_at() is None
 
 
 def test_le_integrazioni_tornate_escono_dai_non_disponibili(tmp_path):
@@ -296,13 +300,13 @@ def test_dal_websocket_all_anagrafe(tmp_path):
     house = CasaFinta(synthetic_inputs())
     app = _conditions_app(tmp_path, house, followed=False)
     house.add_integration_listener(integration_follower(app))
-    store = app["home_space_store"]
+    store = app[HOME_SPACE_KEY]
     changed = {**synthetic_inputs()["registries"]["integrazioni"][1], "state": "not_loaded"}
 
     async def scenario():
         await house.start_websocket()
         await asyncio.wait_for(house.ws_ready.wait(), 2)
-        while "ha_integrations" not in app:
+        while HA_INTEGRATIONS_KEY not in app:
             await asyncio.sleep(0)
         house._session.push_config_entry_change("updated", changed)
         while store.read()["integrazioni"][1]["stato"] != "not_loaded":
@@ -310,7 +314,7 @@ def test_dal_websocket_all_anagrafe(tmp_path):
         house._ws_task.cancel()
 
     _run(asyncio.wait_for(scenario(), 2))
-    assert len(app["ha_integrations"]) == 2
+    assert len(app[HA_INTEGRATIONS_KEY]) == 2
 
 
 # ── i due chiamanti che non usavano gli alias (A-01, A-06) ───────────────────

@@ -4,7 +4,19 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from hiris.app import providers
+from hiris.app.agent.bridge_governor import RECOMPUTE_CHAIN_KEY
 from hiris.app.api import handlers_models
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.provider_occurrences import OCCURRENCES_KEY
+from hiris.app.providers import (
+    CLAUDE_CREDENTIAL_KEY,
+    LOCAL_MODEL_URL_KEY,
+    OPENAI_CREDENTIAL_KEY,
+    OPENROUTER_CREDENTIAL_KEY,
+)
+from hiris.app.steering import MODEL_CHAIN_KEY
 from tests._runner_finto import RunnerFinto
 
 # Reuse the aiohttp test-app fixture/factory from test_api.py (creates the real
@@ -26,7 +38,7 @@ def _with_claude_key(client):
     non produce -- in produzione il runner di Claude nasce solo con la
     chiave. Le prove che vogliono Claude API credenziato la mettono qui; le
     altre restano senza, e `/api/models` non esce in rete."""
-    client.app["claude_api_key"] = "sk-test"
+    client.app[CLAUDE_CREDENTIAL_KEY] = "sk-test"
 
 
 @pytest.fixture
@@ -44,7 +56,7 @@ def claude_con_elenco(client):
     Claude non comparirebbe affatto; il mock serve perche' una suite che esce
     sulla rete e' una suite che fallisce per ragioni sue.
     """
-    client.app["claude_api_key"] = "sk-test"
+    client.app[CLAUDE_CREDENTIAL_KEY] = "sk-test"
     with patch.object(handlers_models, "_fetch_claude_models",
                       AsyncMock(return_value=(list(providers.CLAUDE.reserve_models),
                                               "riserva"))):
@@ -163,8 +175,8 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
     chiude, visto dal payload -- e con lui esce il campo `toggle`, che leggeva
     l'interruttore grezzo."""
     monkeypatch.setenv("PROVIDER_OPENROUTER", "true")
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = []
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = []
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -186,8 +198,8 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
 
 @pytest.mark.asyncio
 async def test_in_catena_segue_la_catena_del_runtime(client):
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = ["openrouter"]
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = ["openrouter"]
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -215,8 +227,8 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     dovrebbe dedurre da un `if (id === 'subscription')`. Il numero sale quando
     il backend smette di far dedurre qualcosa alla pagina: e' l'invariante 2
     che si stringe, non che si allenta."""
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = ["openrouter"]
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = ["openrouter"]
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -247,8 +259,8 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
     """Due rappresentazioni della stessa cosa nello STESSO payload sarebbero il
     difetto in miniatura: la frase dice chi risponde, le due liste dicono in che
     ordine, e devono venire dalla stessa misura."""
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = ["openrouter", "claude"]
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = ["openrouter", "claude"]
 
     body = await (await client.get("/api/models/config")).json()
     assert body["adesso"]["chi"] == body["catena"][0]["id"]
@@ -264,7 +276,7 @@ async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(cli
     ponte in un posto che il prodotto non ha piu' proverebbe uno stato
     irraggiungibile."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["model_chain"] = []
+    client.app[MODEL_CHAIN_KEY] = []
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -281,7 +293,7 @@ async def test_il_modello_di_ollama_ha_una_casa_sola_e_la_riga_la_legge(client):
     e il payload avrebbe portato due valori diversi per la stessa cosa. Il
     comportamento che conta -- la riga di Ollama dice quale modello risponde --
     si guarda dove la cosa vive adesso: l'archivio."""
-    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    client.app[LOCAL_MODEL_URL_KEY] = "http://192.168.1.42:11434"
     await client.put("/api/models/config", json={
         "chain_order": [], "ollama": {"modello": "llama3.1:8b", "timeout_s": 120}})
 
@@ -308,7 +320,7 @@ async def test_ollama_senza_modello_non_puo_entrare_in_catena_e_dice_perche(clie
     che descrive il runtime, mentre `LLMRouter._ordered_backends` lo saltava in
     silenzio. La riga resta credenziata (il pallino resta acceso: l'indirizzo
     c'e' davvero) e a mancare e' il GESTO."""
-    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    client.app[LOCAL_MODEL_URL_KEY] = "http://192.168.1.42:11434"
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["fuori_catena"]}
 
@@ -350,7 +362,7 @@ async def test_la_riga_di_openrouter_non_mostra_piu_un_modello_di_openai(client)
     di OpenAI: su OpenRouter `gpt-4o` non e' nemmeno un nome valido). La riga
     diceva `gpt-4o` a chiunque non avesse scelto un modello: un identificatore
     preciso, e falso."""
-    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"] + body["fuori_catena"]}
     assert righe["openrouter"]["modello"] == providers.OPENROUTER.auto_model
@@ -372,7 +384,7 @@ async def test_il_connettore_dichiara_il_tempo_CHE_IL_TURNO_SUBISCE(client, monk
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
     await client.put("/api/models/config",
                      json={"ponte": {"attivo": True, "scadenza_min": 9}})
-    client.app["model_chain"] = []
+    client.app[MODEL_CHAIN_KEY] = []
 
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"][0]["id"] == "subscription"
@@ -386,7 +398,7 @@ async def test_una_catena_vuota_non_ha_una_fine(client):
     """`fine_catena` e' la frase che chiude la sequenza: senza sequenza non c'e'
     niente da chiudere, e una riga «se non risponde, la chat da' errore» sotto
     una catena vuota parlerebbe di un anello che non esiste."""
-    client.app["model_chain"] = []
+    client.app[MODEL_CHAIN_KEY] = []
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"] == []
     assert body["fine_catena"] == ""
@@ -404,9 +416,9 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
 
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", fake_oauth_token)
     monkeypatch.setenv("CLAUDE_API_KEY", fake_claude_key)
-    client.app["openai_api_key"] = fake_openai_key
-    client.app["openrouter_api_key"] = fake_openrouter_key
-    client.app["model_chain"] = ["claude", "openrouter", "openai"]
+    client.app[OPENAI_CREDENTIAL_KEY] = fake_openai_key
+    client.app[OPENROUTER_CREDENTIAL_KEY] = fake_openrouter_key
+    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter", "openai"]
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -582,8 +594,8 @@ async def test_il_pannello_di_claude_senza_chiave_DICE_che_non_c_e_niente_da_leg
     voci inerti: senza chiave quel provider non entra in catena. La perdita e'
     scritta nella spec §6.3, non nascosta."""
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
-    client.app["claude_runner"] = None
-    client.app["claude_api_key"] = ""
+    client.app[CLAUDE_RUNNER_KEY] = None
+    client.app[CLAUDE_CREDENTIAL_KEY] = ""
     body = await (await client.get("/api/models?provider=claude")).json()
     # La voce c'e' comunque: chi viene CHIESTO riceve sempre una risposta --
     # nascondere e' comodo per chi capisce e crudele per chi non capisce
@@ -629,7 +641,7 @@ async def test_il_pannello_di_ollama_scrive_nella_sua_casa_non_in_provider_model
     in lettura E in scrittura. Il percorso viaggia nel payload perche' la
     pagina non debba conoscerlo: senza, servirebbe un `if (id === 'ollama')`
     nel frontend."""
-    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    client.app[LOCAL_MODEL_URL_KEY] = "http://192.168.1.42:11434"
     body = await (await client.get("/api/models?provider=ollama")).json()
     p = body["providers"][0]
     assert p["dove"] == ["ollama", "modello"]
@@ -645,7 +657,7 @@ async def test_la_casella_dei_gratuiti_viaggia_come_percorso_solo_per_openrouter
     """La casella vive SULLA LISTA CHE FILTRA, e la pagina la disegna senza
     sapere per chi: le arriva un'etichetta e un percorso dentro l'oggetto che
     gia' salva."""
-    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
     body = await (await client.get("/api/models?provider=openrouter")).json()
     p = body["providers"][0]
     assert p["casella"] == {"etichetta": "nascondi i gratuiti",
@@ -709,7 +721,7 @@ async def test_accendere_il_ponte_dalla_pagina_mette_il_piano_in_testa(client, m
     si rilegge. Se `ponte.attivo` tornasse a venire dall'ambiente, la seconda
     lettura mostrerebbe il piano ancora fuori."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["model_chain"] = ["claude"]
+    client.app[MODEL_CHAIN_KEY] = ["claude"]
 
     prima = await (await client.get("/api/models/config")).json()
     assert "subscription" in {r["id"] for r in prima["fuori_catena"]}
@@ -736,7 +748,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
     di spegnere il ponte. Un interruttore che si accende e non si spegne è
     peggio di nessun interruttore."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["model_chain"] = ["claude"]
+    client.app[MODEL_CHAIN_KEY] = ["claude"]
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -750,7 +762,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
 async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
     """Non «il primo di chain_order»: il primo di `app["model_chain"]`,
     cioè la lista che il router prova davvero."""
-    client.app["model_chain"] = ["openrouter", "claude"]
+    client.app[MODEL_CHAIN_KEY] = ["openrouter", "claude"]
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] == "openrouter"
@@ -854,8 +866,8 @@ async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
     VECCHIO -- un salvataggio che si applica con un giro di ritardo, cioe' un
     difetto peggiore di quello che sostituisce."""
     visto = []
-    client.app["recompute_chain"] = lambda: visto.append(
-        list(client.app["models_config"]["chain_order"]))
+    client.app[RECOMPUTE_CHAIN_KEY] = lambda: visto.append(
+        list(client.app[MODELS_CONFIG_KEY]["chain_order"]))
 
     resp = await client.put("/api/models/config",
                             json={"chain_order": ["openrouter", "claude"]})
@@ -892,14 +904,14 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
 
     router = LLMRouter(claude=_Runner(), openrouter=_Runner(),
                        model_chain=["claude", "openrouter"])
-    client.app["llm_router"] = router
-    client.app["recompute_chain"] = lambda: _recompute_chain(client.app)
-    client.app["models_config"] = {"chain_order": ["claude", "openrouter"]}
-    client.app["model_chain"] = ["claude", "openrouter"]
+    client.app[LLM_ROUTER_KEY] = router
+    client.app[RECOMPUTE_CHAIN_KEY] = lambda: _recompute_chain(client.app)
+    client.app[MODELS_CONFIG_KEY] = {"chain_order": ["claude", "openrouter"]}
+    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
     # Le due credenziali che il GET misura per disegnare le righe: senza,
     # `compose_topology` sposterebbe OpenRouter fra chi sta fuori e la prova
     # guarderebbe un'altra cosa.
-    client.app["openrouter_api_key"] = "sk-or-presente"
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
 
     await client.put("/api/models/config",
                      json={"chain_order": ["openrouter", "claude"]})
@@ -921,11 +933,11 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
 
     L'ambiente e' messo al CONTRARIO dell'archivio apposta."""
     monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT", "777")
-    client.app["local_model_url"] = "http://192.168.1.42:11434"
+    client.app[LOCAL_MODEL_URL_KEY] = "http://192.168.1.42:11434"
     await client.put("/api/models/config", json={
         "chain_order": ["ollama"],
         "ollama": {"modello": "llama3.1:8b", "timeout_s": 300}})
-    client.app["model_chain"] = ["ollama"]
+    client.app[MODEL_CHAIN_KEY] = ["ollama"]
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["ollama"]
@@ -952,7 +964,7 @@ async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
     avrebbe copertura zero (la lezione del debito E del Task 1)."""
     from hiris.app.provider_occurrences import OccurrenceRegistry
 
-    assert isinstance(client.app["occurrence_registry"], OccurrenceRegistry)
+    assert isinstance(client.app[OCCURRENCES_KEY], OccurrenceRegistry)
 
 
 @pytest.mark.asyncio
@@ -962,9 +974,9 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     registro e' scritto DA QUI, come lo scriverebbe il router, e la pagina
     riceve le due frasi gia' fatte."""
     _with_claude_key(client)
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = ["claude", "openrouter"]
-    registro = client.app["occurrence_registry"]
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
+    registro = client.app[OCCURRENCES_KEY]
     for _ in range(40):
         registro.fallimento("claude", family="altro", code=400,
                             message="credit balance too low", durata_s=0.4)
@@ -985,7 +997,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     lo dice invece di regalare un successo che nessuno ha misurato. E' anche
     la prova che il registro non nasce popolato."""
     _with_claude_key(client)
-    client.app["model_chain"] = ["claude"]
+    client.app[MODEL_CHAIN_KEY] = ["claude"]
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
@@ -1004,12 +1016,12 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
     _with_claude_key(client)
     import hiris.app.api.handlers_models as modulo
 
-    client.app["model_chain"] = ["claude"]
+    client.app[MODEL_CHAIN_KEY] = ["claude"]
     orologio = [5_000.0]
     # Il registro dell'app usa `time.time` vero: gli si scrive dentro un esito
     # con una data esplicita, cosi' l'unica variabile del test e' l'orologio
     # dell'handler.
-    client.app["occurrence_registry"]._per_provider["claude"] = {
+    client.app[OCCURRENCES_KEY]._per_provider["claude"] = {
         "tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
         "messaggio": "", "quando": 5_000.0, "da_quante": 2, "durata_s": 5.0}
     monkeypatch.setattr(modulo.time, "time", lambda: orologio[0])
@@ -1040,11 +1052,11 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     buono = RunnerFinto("ok")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"],
-                       registry=client.app["occurrence_registry"])
+                       registry=client.app[OCCURRENCES_KEY])
     await router.chat(model="auto")
 
-    client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["model_chain"] = ["claude", "openrouter"]
+    client.app[OPENROUTER_CREDENTIAL_KEY] = "sk-or-presente"
+    client.app[MODEL_CHAIN_KEY] = ["claude", "openrouter"]
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"]}
     assert righe["claude"]["stato_testo"].startswith("il modello non esiste più (404), ")
@@ -1069,8 +1081,8 @@ async def test_l_avvio_consegna_al_router_IL_registro_dell_app(tmp_path):
     from tests._avvio import credential_environment, started_with
 
     async with started_with(tmp_path, credential_environment(["claude"])) as app:
-        assert app["llm_router"] is not None, "con una credenziale il router nasce"
-        assert app["llm_router"]._registry is app["occurrence_registry"], (
+        assert app[LLM_ROUTER_KEY] is not None, "con una credenziale il router nasce"
+        assert app[LLM_ROUTER_KEY]._registry is app[OCCURRENCES_KEY], (
             "ogni LLMRouter costruito dall'avvio deve ricevere il registro "
             "degli esiti, o il ciclo di ripiego torna a buttare via cio' che "
             "vede"

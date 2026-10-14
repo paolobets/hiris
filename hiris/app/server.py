@@ -4,7 +4,7 @@ import os
 from aiohttp import web
 
 from .action.installation import start_installation
-from .api.admission import parse_access_flag
+from .api.admission import ACCESS_FLAG_KEY, parse_access_flag
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import (
     handle_delete_conversation,
@@ -28,9 +28,17 @@ from .api.handlers_settings import (
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
-from .api.shell import _STATIC_DIR, _compute_build_stamp, _security_headers, _serve_shell
-from .chat_thread import SyncTurnsInFlight
-from .provider_occurrences import OccurrenceRegistry
+from .api.shell import (
+    _STATIC_DIR,
+    BUILD_STAMP_KEY,
+    HTML_CONFIG_KEY,
+    HTML_INDEX_KEY,
+    _compute_build_stamp,
+    _security_headers,
+    _serve_shell,
+)
+from .chat_thread import SYNC_TURNS_KEY, SyncTurnsInFlight
+from .provider_occurrences import OCCURRENCES_KEY, OccurrenceRegistry
 from .startup import _on_cleanup, _on_startup
 
 
@@ -51,13 +59,13 @@ def create_app() -> web.Application:
     # Spec 2026-09-27 §2: l'opzione dell'add-on e' l'UNICA fonte della scelta,
     # letta qui una volta. Chi decide l'accesso legge `app[...]`, mai
     # l'ambiente per richiesta: cambiarlo a processo avviato non apre niente.
-    app["non_admin_access"] = parse_access_flag(
+    app[ACCESS_FLAG_KEY] = parse_access_flag(
         os.environ.get("HIRIS_NON_ADMIN_ACCESS"))
 
     static_path = _STATIC_DIR
     # Build stamp: hash del contenuto del frontend, per verificare in UI/health
     # QUALE build gira davvero (diagnostica cache vs container non ricostruito).
-    app["build_stamp"] = _compute_build_stamp(static_path)
+    app[BUILD_STAMP_KEY] = _compute_build_stamp(static_path)
 
     # Che cosa e' successo davvero, per provider (fetta «cosa e' successo
     # davvero», Task 11). Nasce QUI e non in `_on_startup` per due ragioni,
@@ -71,16 +79,16 @@ def create_app() -> web.Application:
     # Nessuna persistenza: muore col processo, e «da quando l'add-on e'
     # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un
     # esito di due ore fa resta li', vecchio, e la pagina ne dice l'eta'.
-    app["occurrence_registry"] = OccurrenceRegistry()
+    app[OCCURRENCES_KEY] = OccurrenceRegistry()
     # I fili con un turno sincrono in volo (fetta «il seguito delle chat
     # divise»): scritto da `handle_chat`, letto dalle rotte delle
     # conversazioni per il 409. Nasce qui per la stessa ragione del registro
     # sopra: non dipende da niente, e dopo l'avvio l'app non si scrive piu'.
-    app["sync_turns"] = SyncTurnsInFlight()
+    app[SYNC_TURNS_KEY] = SyncTurnsInFlight()
     app.router.add_static("/static", static_path, show_index=False)
 
-    app.router.add_get("/", _serve_shell("html_index"))
-    app.router.add_get("/config", _serve_shell("html_config"))
+    app.router.add_get("/", _serve_shell(HTML_INDEX_KEY))
+    app.router.add_get("/config", _serve_shell(HTML_CONFIG_KEY))
     app.router.add_get("/api/health", handle_health)
     app.router.add_get("/api/config", handle_config)
     # **ROTTA TEMPORANEA** (3.66.x): i due registri in lettura, per la

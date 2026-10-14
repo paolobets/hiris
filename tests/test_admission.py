@@ -23,6 +23,20 @@ import pytest_asyncio
 from aiohttp import web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from hiris.app.api.admission import ACCESS_FLAG_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.keeper.store import AGENDA_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -79,17 +93,17 @@ def _compose(tmp_path, *, access=None, **casa):
     cambia cio' che `config/auth/list` dice. `casa` va a `_house`."""
     app = create_app()
     if access is not None:
-        app["non_admin_access"] = access
+        app[ACCESS_FLAG_KEY] = access
     utenti = [dict(riga) for riga in _UTENTI]
     app["_utenti_ha"] = utenti
-    app["ha_client"] = _house(utenti, **casa)
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
-    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]  # il client di prova e' locale
-    app["memory_store"] = MemoryStore(str(tmp_path / "memoria.db"))
-    app["servizi"] = ServiziStore(str(tmp_path / "servizi.db"))
+    app[HA_CLIENT_KEY] = _house(utenti, **casa)
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
+    app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]  # il client di prova e' locale
+    app[MEMORY_STORE_KEY] = MemoryStore(str(tmp_path / "memoria.db"))
+    app[SERVICES_KEY] = ServiziStore(str(tmp_path / "servizi.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     return app
@@ -100,8 +114,8 @@ async def casa(aiohttp_client, tmp_path):
     app = _compose(tmp_path)
     client = await aiohttp_client(app)
     yield client
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 def _persona(utente, **altre):
@@ -273,7 +287,7 @@ async def test_un_servizio_utente_firmato_NON_configura(casa, caplog, method, pa
 @pytest.mark.asyncio
 async def test_PIN_l_amministratore_vede_TUTTI_i_ricordi(casa):
     """Pin 5 (3.6): l'amministratore vede ogni ricordo, orfani compresi."""
-    store = casa.app["memory_store"]
+    store = casa.app[MEMORY_STORE_KEY]
     store.remember("la caldaia fa rumore", said_by="persona:u-marta")
     store.remember("il cane dorme in cucina", said_by="persona:u-admin")
     store.remember("un ricordo senza autore")
@@ -304,7 +318,7 @@ async def test_PIN_il_ruolo_NON_si_legge_per_chi_non_e_una_persona(casa, monkeyp
     app = casa.app
     privata, pubblica = servizio_approvato(app, "lettore")
     await casa.post("/api/services/window/open", headers=_persona("u-admin"))
-    prima = len(app["ha_client"].calls)
+    prima = len(app[HA_CLIENT_KEY].calls)
 
     firmata = await casa.get("/api/health",
                              headers=firma(privata, pubblica, "GET", "/api/health"))
@@ -316,7 +330,7 @@ async def test_PIN_il_ruolo_NON_si_legge_per_chi_non_e_una_persona(casa, monkeyp
 
     assert [firmata.status, turno.status, presentata.status, sviluppo.status] == [
         200, 200, 200, 200]
-    assert "config/auth/list" not in _asked(app["ha_client"])[prima:]
+    assert "config/auth/list" not in _asked(app[HA_CLIENT_KEY])[prima:]
 
 
 def _service_key() -> str:
@@ -359,8 +373,8 @@ async def aperta(aiohttp_client, tmp_path):
     app = _compose(tmp_path, access=True)
     client = await aiohttp_client(app)
     yield client
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest_asyncio.fixture
@@ -370,8 +384,8 @@ async def aperta_muta(aiohttp_client, tmp_path):
     app = _compose(tmp_path, access=True, silence={"config/auth/list"})
     client = await aiohttp_client(app)
     yield client
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest_asyncio.fixture
@@ -380,8 +394,8 @@ async def chiusa(aiohttp_client, tmp_path):
     app = _compose(tmp_path, access=False)
     client = await aiohttp_client(app)
     yield client
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 _MUTANTI = ("POST", "PUT", "PATCH", "DELETE")
@@ -546,8 +560,8 @@ async def test_la_TABELLA_delle_regole(aiohttp_client, tmp_path, chi, accesa, am
         assert status == 200, body
     else:
         assert (status, body) == (403, _rifiuto_json(atteso))
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -629,8 +643,8 @@ async def test_una_rotta_NUOVA_nasce_chiusa(aiohttp_client, tmp_path):
         assert await _gate_refused(client, "GET", "/api/prova", _persona("u-marta"))
     finally:
         del admission._GESTURES[("GET", "/api/prova")]
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -719,7 +733,7 @@ def test_lo_statico_e_ammesso_solo_come_RISORSA_STATICA():
 async def test_nessun_ORACOLO_sull_esistenza_di_un_ricordo(aperta, method):
     """2.16: un ricordo che c'e' e uno che non c'e' rispondono uguale, e
     quello che c'e' resta com'era."""
-    store = aperta.app["memory_store"]
+    store = aperta.app[MEMORY_STORE_KEY]
     ident = store.remember("la caldaia fa rumore", said_by="persona:u-marta")
 
     esiste = await _risposta(aperta, method, f"/api/memories/{ident}",
@@ -739,11 +753,11 @@ async def test_le_SEI_rotte_della_spec_sono_chiuse_e_non_scrivono(aperta, tmp_pa
 
     app = aperta.app
     osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
-    app["observations"] = osservazioni
+    app[OBSERVATIONS_KEY] = osservazioni
     obiettivo = osservazioni.objective()
-    impostazioni = app["chat_settings"]
-    catena = app.get("models_config")
-    store = app["memory_store"]
+    impostazioni = app[CHAT_SETTINGS_KEY]
+    catena = app.get(MODELS_CONFIG_KEY)
+    store = app[MEMORY_STORE_KEY]
     ident = store.remember("il cane dorme in cucina", said_by="persona:u-admin")
     marta = _persona("u-marta")
 
@@ -761,8 +775,8 @@ async def test_le_SEI_rotte_della_spec_sono_chiuse_e_non_scrivono(aperta, tmp_pa
     ]
 
     assert esiti == [True] * 6
-    assert app["chat_settings"] is impostazioni
-    assert app.get("models_config") is catena
+    assert app[CHAT_SETTINGS_KEY] is impostazioni
+    assert app.get(MODELS_CONFIG_KEY) is catena
     assert osservazioni.objective() == obiettivo
     assert store.get(ident)["testo"] == "il cane dorme in cucina"
     osservazioni.close()
@@ -860,14 +874,14 @@ async def test_il_flusso_SSE_si_ferma_prima_di_partire(chiusa):
 async def test_senza_il_client_di_HA_nessuna_persona_entra(aiohttp_client, tmp_path):
     """2.29: nessun ramo «senza client passa»."""
     app = _compose(tmp_path, access=True)
-    app["ha_client"] = None
+    app[HA_CLIENT_KEY] = None
     client = await aiohttp_client(app)
 
     for utente in ("u-admin", "u-marta"):
         assert await _gate_refused(client, "GET", "/api/config", _persona(utente),
                                    testo=ROLES_UNREADABLE)
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -883,7 +897,7 @@ async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
 
     caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
     aperta = aperta_muta
-    ha = aperta.app["ha_client"]
+    ha = aperta.app[HA_CLIENT_KEY]
     adesso = [1_000_000.0]
     monkeypatch.setattr(soffitto.time, "time", lambda: adesso[0])
 
@@ -907,7 +921,7 @@ async def test_un_guasto_NON_si_moltiplica_per_ogni_asset(aperta_muta):
 
     Mutazione ESEGUITA: `hold_failure_s` a zero nel cancello -- rossa
     (venti chiamate)."""
-    ha = aperta_muta.app["ha_client"]
+    ha = aperta_muta.app[HA_CLIENT_KEY]
 
     for _ in range(20):
         await aperta_muta.get("/static/hiris-icon.svg", headers=_persona("u-marta"))
@@ -927,7 +941,7 @@ async def test_una_lettura_dei_ruoli_SENZA_RISPOSTA_si_chiede_una_volta_per_atte
 
     caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
     aperta = aperta_muta
-    ha = aperta.app["ha_client"]
+    ha = aperta.app[HA_CLIENT_KEY]
     # L'orologio fermo: tutte le richieste cadono dentro l'attesa del guasto.
     monkeypatch.setattr(soffitto.time, "time", lambda: 1_000_000.0)
 
@@ -955,7 +969,7 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_
                    answers={"supervisor /addons/self/info": lambda extra: slug},
                    refuse={"frontend/update_panel": rotto, "get_panels": rotto})
     chiusa = await aiohttp_client(app)
-    ha = app["ha_client"]
+    ha = app[HA_CLIENT_KEY]
     # Il nucleo collegato: la casa finta non accende `ws_ready` alla nascita
     # (Tappa 2, Task 7), lo accende il websocket di lunga vita, che qui non
     # si apre.
@@ -966,8 +980,8 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(aiohttp_client, tmp_
     assert _asked(ha).count("frontend/update_panel") == 1
     assert await _gate_refused(chiusa, "GET", "/api/config", _persona("u-marta"),
                                testo=OPTION_OFF)
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 def test_il_cancello_non_conosce_la_VOCE_DI_MENU():
@@ -1232,8 +1246,8 @@ async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog)
     [riga] = [r.getMessage() for r in caplog.records
               if r.name == "hiris.app.api.admission"]
     assert "senza gruppi in Home Assistant" in riga
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -1255,7 +1269,7 @@ async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme():
     ha = CasaFinta(synthetic_inputs(),
                    answers={"config/auth/list": lambda extra: [dict(r) for r in _UTENTI]},
                    delay={"config/auth/list": entrata})
-    app = {"ha_client": ha}
+    app = {HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     letture = [asyncio.ensure_future(_ha_users(app)) for _ in range(8)]
     await asyncio.sleep(0)
@@ -1285,8 +1299,8 @@ async def test_il_cancello_lascia_il_RUOLO_sulla_richiesta(aiohttp_client, tmp_p
     corpo = await (await client.get("/api/prova-ruolo", headers=_persona("u-admin"))).json()
 
     assert corpo == {"ruolo": "amministratore"}
-    app["memory_store"].close()
-    app["servizi"].close()
+    app[MEMORY_STORE_KEY].close()
+    app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -1360,7 +1374,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
     from hiris.app.keeper.exchange import interpreta_promise
 
     ha, runner = _house(), _runner_lettore()
-    app = {"llm_router": runner, "ha_client": ha}
+    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "fra un'ora guarda il registro",
                 "domanda": "ci sono errori?", "istantanea": [],
@@ -1380,7 +1394,7 @@ async def test_la_promessa_dell_amministratore_legge_come_prima():
     from hiris.app.keeper.exchange import interpreta_promise
 
     ha, runner = _house(), _runner_lettore()
-    app = {"llm_router": runner, "ha_client": ha}
+    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
                 "istantanea": [], "thread": ChatThread("persona:u-admin", "pannello")}
@@ -1402,9 +1416,9 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
     from hiris.app.keeper.store import AgendaStore
 
     app = casa.app
-    ha = app["ha_client"]
+    ha = app[HA_CLIENT_KEY]
     agenda = AgendaStore(str(pathlib_tmp(app) / "promesse.db"))
-    app["agenda"] = agenda
+    app[AGENDA_KEY] = agenda
     adesso = time.time()
     ident = agenda.create({"specie": "chiedi", "frase": "fra un'ora il registro",
                            "quando_ts": adesso + 10, "domanda": "errori?"},
@@ -1426,7 +1440,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
 
 def pathlib_tmp(app):
     import pathlib
-    return pathlib.Path(app["data_dir"])
+    return pathlib.Path(app[DATA_DIR_KEY])
 
 
 def json_text(corpo) -> str:
@@ -1563,7 +1577,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
 
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
     ha, runner = _house(), _runner_lettore()
-    app = {"llm_router": runner, "ha_client": ha}
+    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
                 "istantanea": [], "thread": ChatThread("sviluppo:-", "sviluppo")}
@@ -1575,7 +1589,7 @@ async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch
 
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     ha2, runner2 = _house(), _runner_lettore()
-    app2 = {"llm_router": runner2, "ha_client": ha2}
+    app2 = {LLM_ROUTER_KEY: runner2, HA_CLIENT_KEY: ha2}
     prepara_ruoli(app2)
     await interpreta_promise(app2, promessa)
     assert "system_log/list" in _asked(ha2), "con l'interruttore acceso, come ieri"
@@ -1594,7 +1608,7 @@ async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_pat
     from hiris.app.keeper.sweeper import Sweeper
 
     ha, runner = _house(), _runner_lettore()
-    app = {"llm_router": runner, "ha_client": ha}
+    app = {LLM_ROUTER_KEY: runner, HA_CLIENT_KEY: ha}
     prepara_ruoli(app)
     agenda = AgendaStore(str(tmp_path / "promesse.db"))
     adesso = time.time()

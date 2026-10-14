@@ -17,10 +17,14 @@ verificati con `git status`.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind import day_report
+from hiris.app.mind.day_report import BACKFILL_QUIET_KEY
 from hiris.app.mind.facts import aggregate_day
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from tests.test_mind_wiring import _repair_house, _sapere
 
 #: L'orologio iniettato: il 25/08/2026, lontano dall'adesso di chi esegue.
@@ -34,9 +38,9 @@ def _written_ts(archive: ObservationsStore, day: str) -> float:
 
 
 def _app(archive, tmp_path) -> dict:
-    return {"home_space_store": None, "observations": archive,
-            "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
-            "backfill_quiet": {}}
+    return {HOME_SPACE_KEY: None, OBSERVATIONS_KEY: archive,
+            KNOWLEDGE_KEY: _sapere(tmp_path), TYPE_JUDGMENTS_KEY: REPO_JUDGMENTS,
+            BACKFILL_QUIET_KEY: {}}
 
 
 def _record_days(archive) -> None:

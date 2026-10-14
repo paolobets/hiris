@@ -49,6 +49,8 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 
+from aiohttp import web
+
 from ..home_space.historian import instant_epoch
 from ..storage import (
     Retention,
@@ -379,3 +381,6 @@ class MemoryStore:
             else:
                 row["condizioni"].append({"tipo": child["tipo"], "valore": child["valore"]})
         return rows
+
+
+MEMORY_STORE_KEY = web.AppKey("memory_store", MemoryStore)

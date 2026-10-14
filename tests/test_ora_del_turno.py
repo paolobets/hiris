@@ -11,6 +11,7 @@ import pytest
 from conftest import SCADENZA_LONTANA
 from hiris.app.agent import prompts
 from hiris.app.api import handlers_chat
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.steering import SPECIES, house_hour, with_hour
 from tests._runner_finto import RunnerFinto
 from tests.test_chat_briefing import _build_chat_client, _semina_casa
@@ -95,7 +96,7 @@ async def test_la_promessa_sulla_catena_porta_l_ora_nella_domanda():
             "conclude", {"avvisare": False, "testo": "niente"})
 
     modello = RunnerFinto(turno=_conclude)
-    await interpreta_promise({"llm_router": modello},
+    await interpreta_promise({LLM_ROUTER_KEY: modello},
                              {"id": "p1", "frase": "dimmi", "domanda": "guarda",
                               "istantanea": []})
     assert "\n\nAdesso sono le" in modello.ultima["user_message"]

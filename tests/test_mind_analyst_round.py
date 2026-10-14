@@ -33,9 +33,12 @@ import types
 import pytest
 
 from hiris.app.home_space import historian
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import analyst_round
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.reasoning.queue import ReasoningQueue
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._runner_finto import RunnerFinto
 
 
@@ -63,7 +66,7 @@ def casa(tmp_path):
     for giorno in ("2026-09-15", "2026-09-16", "2026-09-17"):
         store.replace_report(giorno, _resoconto(giorno))
     modello = _finto_modello()
-    app = {"observations": store, "llm_router": modello, "bridge_active": False}
+    app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: modello, BRIDGE_ACTIVE_KEY: False}
     try:
         yield app, store, modello
     finally:
@@ -230,7 +233,7 @@ async def test_un_turno_SCADUTO_non_blocca_l_analista_per_sempre(casa):
     """Mutazione: la guardia vecchia (`not reply`) -- rossa, e la casa resta
     senza analisi finche' qualcuno non se ne accorge."""
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=1.0)
+    app[REASONING_QUEUE_KEY] = _CodaConTurnoFermo(deadline_ts=1.0)
 
     await analyst_round.analyst_round(app)
 
@@ -246,7 +249,7 @@ async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
     Mutazione: togliere la guardia -- rossa."""
     import time as _t
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=_t.time() + 600)
+    app[REASONING_QUEUE_KEY] = _CodaConTurnoFermo(deadline_ts=_t.time() + 600)
 
     await analyst_round.analyst_round(app)
 
@@ -319,7 +322,7 @@ async def test_una_risposta_di_UN_ALTRO_GIORNO_non_blocca_l_analista(casa):
     resta senza analisi finche' qualcuno non legge il registro.
     """
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaConRispostaINACCETTABILE()
+    app[REASONING_QUEUE_KEY] = _CodaConRispostaINACCETTABILE()
 
     await analyst_round.analyst_round(app)
 
@@ -340,7 +343,7 @@ async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
     coda.turno["status"] = "pending"
     coda.turno["decision"] = None
     coda.turno["wake"] = {"giorno": _oggi(app)}
-    app["reasoning_queue"] = coda
+    app[REASONING_QUEUE_KEY] = coda
 
     # Si guarda il RACCOGLITORE, non il giro: dal giro non si distinguerebbe
     # «non ho raccolto niente» da «ho raccolto un esito vuoto», e una prova che
@@ -354,7 +357,7 @@ async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
 
 def _oggi(app):
     return historian.today(
-        historian.house_timezone(app.get("home_space_store"))).isoformat()
+        historian.house_timezone(app.get(HOME_SPACE_KEY))).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +388,7 @@ def test_un_turno_FALLITO_dal_ponte_non_e_una_risposta(casa):
     """Mutazione ESEGUITA: il raccoglitore che legge la `reply` senza l'esito
     -- rossa («non JSON», `risposta: True`)."""
     app, store, _modello = casa
-    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200,
+    app[REASONING_QUEUE_KEY] = _CodaDiOggi(_oggi(app), 7200,
                                          reply="[runner non disponibile]",
                                          outcome="fallito")
 
@@ -397,7 +400,7 @@ def test_un_turno_FALLITO_dal_ponte_non_e_una_risposta(casa):
 @pytest.mark.asyncio
 async def test_un_turno_FALLITO_dal_ponte_non_blocca_il_giro(casa):
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200,
+    app[REASONING_QUEUE_KEY] = _CodaDiOggi(_oggi(app), 7200,
                                          reply="[runner non disponibile]",
                                          outcome="fallito")
 
@@ -413,7 +416,7 @@ async def test_un_RIFIUTO_non_si_rilegge_all_infinito(casa):
     Mutazione ESEGUITA: rimettere `return collected` per ogni risposta prima
     dell'accodamento -- rossa."""
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 7200, reply=_RIFIUTABILE)
+    app[REASONING_QUEUE_KEY] = _CodaDiOggi(_oggi(app), 7200, reply=_RIFIUTABILE)
 
     await analyst_round.analyst_round(app)
 
@@ -427,7 +430,7 @@ async def test_dopo_un_RIFIUTO_non_si_richiede_a_ogni_giro(casa):
 
     Mutazione ESEGUITA: togliere il freno -- rossa."""
     app, _store, modello = casa
-    app["reasoning_queue"] = _CodaDiOggi(_oggi(app), 60, reply=_RIFIUTABILE)
+    app[REASONING_QUEUE_KEY] = _CodaDiOggi(_oggi(app), 60, reply=_RIFIUTABILE)
 
     await analyst_round.analyst_round(app)
 

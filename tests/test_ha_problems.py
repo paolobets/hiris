@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.home_space.rounds import HA_PROBLEMS_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -329,7 +331,7 @@ def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
     """La catena intera: `app["ha_problems"]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
-    app = {"ha_problems": {"problemi": [
+    app = {HA_PROBLEMS_KEY: {"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
     ]}}
     testo, _ = compose_briefing(app)
@@ -357,8 +359,8 @@ def test_rileggi_problemi_mette_la_fotografia_in_ram():
 
     app: dict = {}
     esito = asyncio.run(reread_ha_problems(app, house))
-    assert esito == app["ha_problems"]
-    assert [p["domain"] for p in app["ha_problems"]["problemi"]] == ["caldaia"]
+    assert esito == app[HA_PROBLEMS_KEY]
+    assert [p["domain"] for p in app[HA_PROBLEMS_KEY]["problemi"]] == ["caldaia"]
     assert house.calls == [("repairs/list_issues", None)]
 
 
@@ -372,7 +374,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
 
     app: dict = {}
     asyncio.run(reread_ha_problems(app, house))
-    assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto",
+    assert app[HA_PROBLEMS_KEY] == {"errore": "Home Assistant non ha risposto",
                                   "causa": "silenzio", "codice": None}
     testo, _ = compose_briefing(app)
     assert "non si è potuto guardare" in testo
@@ -387,7 +389,7 @@ def test_rileggi_problemi_porta_anche_il_rifiuto_col_suo_motivo():
 
     app: dict = {}
     asyncio.run(reread_ha_problems(app, house))
-    assert app["ha_problems"] == {"errore": "Unknown command.", "causa": "rifiuto",
+    assert app[HA_PROBLEMS_KEY] == {"errore": "Unknown command.", "causa": "rifiuto",
                                   "codice": "unknown_command"}
     testo, _ = compose_briefing(app)
     assert "Unknown command." in testo
@@ -404,7 +406,7 @@ def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():
 
     app: dict = {}
     assert asyncio.run(reread_ha_problems(app, _ClienteVecchio())) is None
-    assert "ha_problems" not in app
+    assert HA_PROBLEMS_KEY not in app
     assert asyncio.run(reread_ha_problems(app, None)) is None
 
 

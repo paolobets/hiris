@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 
 def test_default_e_completo_senza_argomenti():
@@ -294,7 +294,7 @@ async def _start(tmp_path):
     from tests._avvio import started_with
 
     async with started_with(tmp_path) as app:
-        return app["chat_settings"]
+        return app[CHAT_SETTINGS_KEY]
 
 
 @pytest.mark.asyncio

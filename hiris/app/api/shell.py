@@ -16,6 +16,12 @@ from aiohttp import web
 
 from ..version import read_version
 
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+BUILD_STAMP_KEY = web.AppKey("build_stamp")
+HTML_INDEX_KEY = web.AppKey("html_index")
+HTML_CONFIG_KEY = web.AppKey("html_config")
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +30,7 @@ def _read_static_pages(app) -> None:
     serva qualcosa. Sta fuori dalla coroutine perche' `open()` dentro una
     funzione async e' un difetto anche quando qui non lo e' -- e una regola
     con un'eccezione «tanto lo so io» e' una regola che non vale piu'."""
-    for fname, key in (("index.html", "html_index"), ("config.html", "html_config")):
+    for fname, key in (("index.html", HTML_INDEX_KEY), ("config.html", HTML_CONFIG_KEY)):
         path = os.path.join(_STATIC_DIR, fname)
         try:
             with open(path, encoding="utf-8") as f:
@@ -188,7 +194,7 @@ def _serve_shell(key: str):
         if not html:
             return web.Response(text="UI not yet available", status=503)
         return web.Response(
-            text=_inject_version(html, read_version(), request.app.get("build_stamp", "")),
+            text=_inject_version(html, read_version(), request.app.get(BUILD_STAMP_KEY, "")),
             content_type="text/html",
             headers=_NO_CACHE,
         )

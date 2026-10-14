@@ -8,12 +8,18 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
+from aiohttp import web
+
 from .chat_settings import DEFAULT_RETENTION_DAYS
 from .chat_thread import ChatThread, thread_condition, thread_params
 from .home_space.historian import instant_epoch
 from .model_resolution import FAILURE_OPENINGS, TEMPORARY_FAILURE
 from .proxy._sanitize import truncate_with_marker
 from .storage import Retention, add_missing_columns, archive_name, connect, init_schema, rekey
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+CHAT_STORE_KEY = web.AppKey("chat_store")
 
 logger = logging.getLogger(__name__)
 

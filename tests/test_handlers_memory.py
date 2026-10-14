@@ -13,16 +13,16 @@ from hiris.app.api.handlers_memory import (
     handle_get_memories,
     handle_patch_memory,
 )
-from hiris.app.home_space.reader import HomeSpace
-from hiris.app.memory.store import MemoryStore
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
 
 _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa"
 
 
 def _app(archivio_memoria=None, archivio_casa=None) -> web.Application:
     app = web.Application()
-    app["memory_store"] = archivio_memoria
-    app["home_space_store"] = archivio_casa
+    app[MEMORY_STORE_KEY] = archivio_memoria
+    app[HOME_SPACE_KEY] = archivio_casa
     app.router.add_get("/api/memories", handle_get_memories)
     app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     app.router.add_delete("/api/memories/{id}", handle_delete_memory)

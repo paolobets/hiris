@@ -42,11 +42,13 @@ from unittest import mock
 import pytest
 
 from hiris.app.home_space.historian import day_boundaries
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, build_home_space
 from hiris.app.mind import day_report, recipe_turn
 from hiris.app.mind.flatline import HISTORY_DAYS
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
 from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
 
@@ -83,10 +85,10 @@ def _app():
         "integrazioni": [],
         "dispositivi": [{"id": DEVICE, "name": "Inverter", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
+    return {KNOWLEDGE_KEY: object(), HOME_SPACE_KEY: AnagrafeFinta(home_space),
             # Le tre fonti sono vive: senza stato sarebbero «sparite», e le
             # loro ricette mute (`recipes.muted_recipes`).
-            "entity_cache": SpecchioFinto([(
+            ENTITY_CACHE_KEY: SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
 
@@ -263,8 +265,8 @@ def _thermometer_app():
              for t in THERMOMETERS]
     cache.append({"entity_id": HOUSE_METER, "state": "1",
                               "attributes": {"state_class": "total_increasing"}})
-    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
-            "entity_cache": SpecchioFinto(cache)}
+    return {KNOWLEDGE_KEY: object(), HOME_SPACE_KEY: AnagrafeFinta(home_space),
+            ENTITY_CACHE_KEY: SpecchioFinto(cache)}
 
 
 def _thermometer_rows(entity_id, from_iso, to_iso, frozen_from):

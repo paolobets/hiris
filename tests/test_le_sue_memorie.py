@@ -21,15 +21,18 @@ from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
 from conftest import credenziale_ponte, firma, servizio_approvato
-from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY, ConstructionStore
 from hiris.app.api.admission import NOT_ADMITTED
 from hiris.app.api.handlers_memory import handle_get_memories
 from hiris.app.api.handlers_settings import _payload
-from hiris.app.chat_settings import MESSAGE_CAP, ChatSettings
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, MESSAGE_CAP, ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import subject_key_for
-from hiris.app.keeper.store import AgendaStore
-from hiris.app.memory.store import MemoryStore
+from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.server import create_app
 from tests.test_admission import _compose, _persona, live_routes
 
@@ -51,12 +54,12 @@ SETTINGS = ChatSettings(name="Casa", system_prompt="sii breve", max_chat_turns=7
 async def casa(aiohttp_client, tmp_path):
     """L'opzione accesa, con gli archivi che `/api/pending` legge."""
     app = _compose(tmp_path, access=True)
-    app["chat_settings"] = SETTINGS
-    app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
-    app["constructions"] = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
+    app[CHAT_SETTINGS_KEY] = SETTINGS
+    app[AGENDA_KEY] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    app[CONSTRUCTIONS_KEY] = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
     client = await aiohttp_client(app)
     yield client
-    for store in ("memory_store", "servizi", "agenda", "constructions"):
+    for store in (MEMORY_STORE_KEY, SERVICES_KEY, AGENDA_KEY, CONSTRUCTIONS_KEY):
         app[store].close()
 
 
@@ -78,7 +81,7 @@ _TUTTI = ["Marta preferisce 20 gradi", "il cane dorme in cucina",
 async def test_PIN_l_amministratore_vede_ogni_ricordo_e_il_TOTALE_della_casa(casa):
     """3.6: tutti i ricordi, orfani compresi, i piu' recenti prima, e `total`
     e' il conto dell'archivio intero."""
-    _semina(casa.app["memory_store"])
+    _semina(casa.app[MEMORY_STORE_KEY])
 
     corpo = await (await casa.get("/api/memories", headers=_persona("u-admin"))).json()
 
@@ -91,7 +94,7 @@ async def test_PIN_l_amministratore_vede_ogni_ricordo_e_il_TOTALE_della_casa(cas
 @pytest.mark.asyncio
 async def test_PIN_oltre_il_taglio_l_amministratore_vede_il_TOTALE_vero(casa):
     """Il taglio dei 200 e il totale della casa: 250 + 5 + 250."""
-    store = casa.app["memory_store"]
+    store = casa.app[MEMORY_STORE_KEY]
     for i in range(250):
         store.remember(f"vecchio {i}", said_by="persona:u-admin")
     for i in range(5):
@@ -110,7 +113,7 @@ async def test_PIN_un_servizio_firmato_vede_ogni_ricordo(casa):
     """I servizi firmati non passano dal cancello: la lettura resta quella di
     prima, qualunque ruolo abbiano (il rischio del servizio `utente` e'
     dichiarato, security-constraints 5.9)."""
-    _semina(casa.app["memory_store"])
+    _semina(casa.app[MEMORY_STORE_KEY])
     privata, pubblica = servizio_approvato(casa.app, "utente")
 
     risposta = await casa.get("/api/memories",
@@ -123,7 +126,7 @@ async def test_PIN_un_servizio_firmato_vede_ogni_ricordo(casa):
 
 @pytest.mark.asyncio
 async def test_PIN_lo_sviluppo_vede_ogni_ricordo(casa, monkeypatch):
-    _semina(casa.app["memory_store"])
+    _semina(casa.app[MEMORY_STORE_KEY])
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
 
     corpo = await (await casa.get("/api/memories")).json()
@@ -164,7 +167,7 @@ async def test_PIN_le_impostazioni_dell_amministratore_sono_TUTTE(casa):
 async def test_chi_non_amministra_vede_SOLO_i_suoi_ricordi(casa, utente, vede):
     """3.3, 3.4: il corpo porta solo le sue righe -- non quelle
     dell'amministratore, non gli orfani -- e il conto e' il suo (3.2)."""
-    _semina(casa.app["memory_store"])
+    _semina(casa.app[MEMORY_STORE_KEY])
 
     risposta = await casa.get("/api/memories", headers=_persona(utente))
     corpo = await risposta.json()
@@ -179,7 +182,7 @@ async def test_il_filtro_sta_PRIMA_del_taglio_e_il_totale_e_il_suo(casa):
     """3.1, 3.2: 250 dell'amministratore, 5 di Marta, 250 dell'amministratore.
     Filtrati dopo un `fetch(limit=200)` i suoi sparirebbero sotto il taglio, e
     un `total` della casa direbbe quanti ricordi hanno gli altri."""
-    store = casa.app["memory_store"]
+    store = casa.app[MEMORY_STORE_KEY]
     for i in range(250):
         store.remember(f"vecchio {i}", said_by="persona:u-admin")
     for i in range(5):
@@ -221,7 +224,7 @@ def test_l_archivio_filtra_per_AUTORE_prima_del_limite(tmp_path):
 @pytest.mark.asyncio
 async def test_la_QUERY_non_allarga_il_filtro(casa):
     """3.7: il filtro lo decide il ruolo, mai la richiesta."""
-    _semina(casa.app["memory_store"])
+    _semina(casa.app[MEMORY_STORE_KEY])
 
     corpo = await (await casa.get("/api/memories?all=1&said_by=persona:u-admin",
                                   headers=_persona("u-marta"))).json()
@@ -244,15 +247,15 @@ def _richiesta(app, *, ruolo, soggetto):
 
 async def _memorie_dirette(tmp_path, *, ruolo, soggetto, extra=()):
     app = _compose(tmp_path, access=True)
-    _semina(app["memory_store"])
+    _semina(app[MEMORY_STORE_KEY])
     for testo, autore in extra:
-        app["memory_store"].remember(testo, said_by=autore)
+        app[MEMORY_STORE_KEY].remember(testo, said_by=autore)
     try:
         risposta = await handle_get_memories(_richiesta(app, ruolo=ruolo, soggetto=soggetto))
         return json.loads(risposta.body)
     finally:
-        app["memory_store"].close()
-        app["servizi"].close()
+        app[MEMORY_STORE_KEY].close()
+        app[SERVICES_KEY].close()
 
 
 @pytest.mark.asyncio
@@ -283,7 +286,7 @@ async def test_il_ricordo_scritto_in_chat_e_quello_che_la_pagina_mostra(casa):
     """3.8: la chiave che il filtro confronta e' quella che scrive `remember`
     dello strumento (`subject_key_for` del soggetto del turno, in chat e dal
     ponte): un ricordo nato da Marta in chat lo ritrova Marta sulla pagina."""
-    casa.app["memory_store"].remember(
+    casa.app[MEMORY_STORE_KEY].remember(
         "la tapparella della sala si blocca",
         said_by=subject_key_for({"specie": "persona", "id": "u-marta"}))
 
@@ -377,21 +380,21 @@ async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, ute
     app = casa.app
     # La casa e' il client vero (`tests/test_admission.py::_compose`): le
     # letture dei ruoli sono i `config/auth/list` che ha ricevuto.
-    app["ha_client"].calls.clear()
-    ruoli = app["ruoli"]
+    app[HA_CLIENT_KEY].calls.clear()
+    ruoli = app[ROLES_KEY]
 
     class _SempreScaduta(dict):
         def __getitem__(self, key):
             return 0.0 if key == "quando" else super().__getitem__(key)
 
-    app["ruoli"] = _SempreScaduta(ruoli)
+    app[ROLES_KEY] = _SempreScaduta(ruoli)
     try:
         risposta = await casa.request(method, path, headers=_persona(utente))
     finally:
-        app["ruoli"] = ruoli
+        app[ROLES_KEY] = ruoli
 
     assert risposta.status == 200
-    assert [name for name, _extra in app["ha_client"].calls].count(
+    assert [name for name, _extra in app[HA_CLIENT_KEY].calls].count(
         "config/auth/list") == 1
 
 
@@ -506,8 +509,8 @@ async def test_PIN_la_stessa_DECISIONE_sulle_strade_di_chi_costruisce(
         risposta = await client.request(method, path, headers=headers)
         assert risposta.status == _STRADE_EFC38564[(method, path)][chi]
     finally:
-        app["memory_store"].close()
-        app["servizi"].close()
+        app[MEMORY_STORE_KEY].close()
+        app[SERVICES_KEY].close()
 
 
 #: Il soffitto che la chat mette nel turno (`ruolo`, i gesti, e se il ruolo e'
@@ -555,8 +558,8 @@ async def test_PIN_il_SOFFITTO_della_richiesta_per_ogni_chiamante(
         headers = _caller_headers(client, chi, monkeypatch, "GET", "/api/prova-soffitto")
         corpo = await (await client.get("/api/prova-soffitto", headers=headers)).json()
     finally:
-        app["memory_store"].close()
-        app["servizi"].close()
+        app[MEMORY_STORE_KEY].close()
+        app[SERVICES_KEY].close()
 
     soffitto, letto = _SOFFITTO_EFC38564[chi]
     assert {k: corpo["soffitto"][k] for k in (*_TUTTO, "ruolo")} == soffitto

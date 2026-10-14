@@ -5,6 +5,8 @@ import secrets
 import threading
 import time
 
+from aiohttp import web
+
 from ..chat_thread import ChatThread, thread_condition, thread_from_columns, thread_params
 from ..home_space.historian import day_boundaries, local_date
 from ..storage import (
@@ -722,3 +724,6 @@ class ReasoningQueue:
         """Applica `CONSERVAZIONE`; torna i turni tolti."""
         with self._lock:
             return prune_declared(self._conn, CONSERVAZIONE, now)
+
+
+REASONING_QUEUE_KEY = web.AppKey("reasoning_queue", ReasoningQueue)

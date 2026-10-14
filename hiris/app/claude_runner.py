@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 import anthropic
+from aiohttp import web
 
 # fetta «cosa è successo davvero»: la classificazione dell'errore vive in
 # `provider_occurrences`, che non importa niente da qui a livello di modulo (il suo
@@ -1111,3 +1112,6 @@ class ClaudeRunner:
             if exc.status_code in (429, 529):
                 self._write_rejection(kwargs.get("model") or "")
             raise
+
+
+CLAUDE_RUNNER_KEY = web.AppKey("claude_runner", ClaudeRunner)

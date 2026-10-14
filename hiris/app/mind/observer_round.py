@@ -12,9 +12,13 @@ import time
 
 from ..home_space.house import House
 from ..home_space.house_history import statistic_ids_for_round
+from ..home_space.reader import HOME_SPACE_KEY
+from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
-from ..reasoning.queue import turn_answer
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..steering import OBSERVER_SPECIES, enqueue_turn, start, turn_in_flight
+from ..usage.store import USAGE_KEY
 from ..version import read_version
 from . import store as mind_store
 from .cadence import cadence_from, measure_memory_window, reason_to_reconsider
@@ -22,6 +26,8 @@ from .observer import SCOPE_TURN_KIND
 from .observer import apply_answer as observer_apply_answer
 from .observer import bridge_turn as observer_bridge_turn
 from .observer import reconsider as observer_reconsider
+from .store import OBSERVATIONS_KEY
+from .watcher import WATCHER_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +67,14 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     ancora costruito, l'anagrafe non ancora letta -- non deve fermare lo
     schedulatore.
     """
-    store = app.get("observations")
-    home_space_store = app.get("home_space_store")
+    store = app.get(OBSERVATIONS_KEY)
+    home_space_store = app.get(HOME_SPACE_KEY)
     if store is None or home_space_store is None:
         return None
     try:
         # La casa di questo giro (R13): l'anagrafe e lo specchio di adesso,
         # una volta. Vale il giro e basta.
-        house = House.read(home_space_store, app.get("entity_cache"))
+        house = House.read(home_space_store, app.get(ENTITY_CACHE_KEY))
         collected, letto = _collect_scope_turn(app, store, house)
         if collected is not None:
             return collected
@@ -174,7 +180,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             runner, store, house, reason=why,
             window_s=window_s, cadence_s=cadence_from(window_s),
             only=lotto, record=not in_corso, campaign_ts=campagna_ts,
-            measurements=app.get("usage"))
+            measurements=app.get(USAGE_KEY))
         _record_attempt(store, outcome, route="catena", downgrade=downgrade)
         logger.info("osservatore: giro finito -- %s", outcome)
         return outcome
@@ -193,7 +199,7 @@ async def hold_watcher_statistic_ids(app, ha_client) -> None:
     giro il watcher usa la regola del sorgente (`ha_vocabulary.has_statistics`).
     Una lettura fallita non tocca l'ultima buona (`Watcher.hold_statistic_ids`).
     """
-    watcher = app.get("watcher")
+    watcher = app.get(WATCHER_KEY)
     if watcher is None or ha_client is None:
         return
     watcher.hold_statistic_ids(await statistic_ids_for_round(app, ha_client))
@@ -341,7 +347,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     con tentativi fantasma tutti sulla stessa risposta (rilievo della review
     indipendente, 11/09/2026).
     """
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     if queue is None:
         return None, False
     turn = queue.latest_if_decided(SCOPE_TURN_KIND)
@@ -376,7 +382,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     # servito -- o mancato -- un turno dell'osservatore (rilievo della review
     # indipendente, 11/09/2026). La chat lo fa in `_submit_chat_reply`, la
     # promessa nella rotta MCP.
-    registry = app.get("occurrence_registry")
+    registry = app.get(OCCURRENCES_KEY)
     if registry is not None:
         if "errore" in outcome:
             registry.fallimento(SUBSCRIPTION.id, family="altro", code=None,

@@ -22,8 +22,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from hiris.app import steering
-from hiris.app.claude_runner import BASE_TOOL_RULES, ClaudeRunner
+from hiris.app.claude_runner import BASE_TOOL_RULES, CLAUDE_RUNNER_KEY, ClaudeRunner
 from hiris.app.home_space.tools import TOOLS
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from tests._runner_finto import RunnerFinto
 
 APP = Path(__file__).resolve().parents[1] / "hiris" / "app"
@@ -196,13 +198,13 @@ def test_la_partenza_dichiara_il_ripiego_solo_se_il_turno_parte(monkeypatch):
                         lambda app, *, agent, reason: dichiarati.append((agent, reason)))
 
     runner = RunnerFinto()
-    assert steering.start({"claude_runner": runner}, "analista") == ("catena", "tetto", runner)
+    assert steering.start({CLAUDE_RUNNER_KEY: runner}, "analista") == ("catena", "tetto", runner)
     assert dichiarati == [("analista", "tetto")]
     assert steering.start({}, "analista") == ("catena", "tetto", None)
     assert dichiarati == [("analista", "tetto")]
 
     monkeypatch.setattr(steering, "who_answers", lambda app: ("ponte", ""))
-    assert steering.start({"claude_runner": runner}, "analista") == ("ponte", "", None)
+    assert steering.start({CLAUDE_RUNNER_KEY: runner}, "analista") == ("ponte", "", None)
 
 
 class _Coda:
@@ -221,11 +223,11 @@ class _Coda:
 def test_l_accodamento_prende_tutto_dalla_dichiarazione(species):
     """Il `kind`, la precedenza, il modello e la scadenza: nessun mestiere
     li scrive piu' a mano."""
-    app = {"reasoning_queue": _Coda(),
-           "models_config": {"ponte": {"modello": "opus", "scadenza_min": 7}}}
+    app = {REASONING_QUEUE_KEY: _Coda(),
+           MODELS_CONFIG_KEY: {"ponte": {"modello": "opus", "scadenza_min": 7}}}
     job_id, minuti = steering.enqueue_turn(app, species, {"w": 1}, {"c": 2},
                                            thread="filo", now=1000.0)
-    (job,) = app["reasoning_queue"].accodati
+    (job,) = app[REASONING_QUEUE_KEY].accodati
     declared = steering.SPECIES[species]
     assert (job_id, minuti) == ("job-1", 7)
     assert job == {"kind": declared.kind, "wake": {"w": 1},

@@ -22,7 +22,9 @@ from pathlib import Path
 import pytest
 
 from hiris.app.home_space.house_history import read_errors
+from hiris.app.home_space.rounds import HA_PROBLEMS_KEY
 from hiris.app.mind.conditions_round import watch_system_conditions
+from hiris.app.mind.watcher import WATCHER_KEY
 from hiris.app.proxy.ha_client import SHAPE
 from tests._casa_sintetica import synthetic_inputs
 from tests.test_mind_wiring import _announced, _OsservatoreFinto
@@ -44,7 +46,7 @@ def _house(name: str) -> CasaFinta:
 @pytest.mark.parametrize("name", sorted(ANSWERS))
 def test_il_giro_delle_condizioni_si_salta(name, caplog):
     osservatore = _OsservatoreFinto()
-    app = _announced({"watcher": osservatore, "ha_problems": {"problemi": []}}, [])
+    app = _announced({WATCHER_KEY: osservatore, HA_PROBLEMS_KEY: {"problemi": []}}, [])
     with caplog.at_level(logging.WARNING):
         esito = asyncio.run(watch_system_conditions(app, _house(name)))
     assert esito is None

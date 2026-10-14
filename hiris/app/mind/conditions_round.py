@@ -6,11 +6,21 @@ sprint, F8 passo 6, 14/10/2026): `server.py` registra e avvia, non ospita.
 """
 import logging
 
+from aiohttp import web
+
 from ..home_space.historian import instant_epoch
 from ..home_space.house import House
 from ..home_space.house_history import read_log, read_traces
-from ..home_space.rounds import reread_ha_problems
-from ..proxy.entity_cache import automation_config_id
+from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.rounds import HA_INTEGRATIONS_KEY, HA_PROBLEMS_KEY, reread_ha_problems
+from ..proxy.entity_cache import ENTITY_CACHE_KEY, automation_config_id
+from .watcher import WATCHER_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+TRACE_CURSORS_KEY = web.AppKey("automation_trace_cursors")
+TRACE_UNRESOLVED_KEY = web.AppKey("automation_trace_unresolved")
+TRACES_BOOT_TS_KEY = web.AppKey("automation_traces_boot_ts")
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +76,10 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
     e in quel caso deve propagare, per il motivo scritto sul suo docstring.
     """
-    watcher = app.get("watcher")
+    watcher = app.get(WATCHER_KEY)
     if watcher is None:
         return None
-    problems_report = app.get("ha_problems")
+    problems_report = app.get(HA_PROBLEMS_KEY)
     if problems_report is None:
         problems_report = await reread_ha_problems(app, ha_client)
     if not isinstance(problems_report, dict) or "errore" in problems_report:
@@ -79,7 +89,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             problems_report.get("errore") if isinstance(problems_report, dict)
             else "nessun lettore")
         return None
-    integrations = app.get("ha_integrations")
+    integrations = app.get(HA_INTEGRATIONS_KEY)
     if integrations is None:
         logger.warning(
             "cervello: condizioni di sistema non lette, l'elenco delle "
@@ -244,13 +254,13 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     riuscito, invece di essere azzerato da una risposta che non e' mai
     arrivata.
     """
-    watcher = app.get("watcher")
+    watcher = app.get(WATCHER_KEY)
     if watcher is None:
         return None
-    boot_ts = app.get("automation_traces_boot_ts", 0.0)
-    cursors = app.setdefault("automation_trace_cursors", {})
-    cache = app.get("entity_cache")
-    unresolved = app.setdefault("automation_trace_unresolved", set())
+    boot_ts = app.get(TRACES_BOOT_TS_KEY, 0.0)
+    cursors = app.setdefault(TRACE_CURSORS_KEY, {})
+    cache = app.get(ENTITY_CACHE_KEY)
+    unresolved = app.setdefault(TRACE_UNRESOLVED_KEY, set())
     written = 0
     # Prima si risolvono tutte, poi si chiede UNA volta (A-21, Tappa 2, Task
     # 8): fino al 04/10/2026 ogni automazione segnata era una lettura sua,
@@ -293,7 +303,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     report = await read_traces(ha_client, list(dict.fromkeys(
         ("automation", automation_id) for _entity_id, automation_id in resolved)))
     # La casa di questo giro, per i nomi (A-18): letta una volta.
-    house = House.read(app.get("home_space_store"), cache)
+    house = House.read(app.get(HOME_SPACE_KEY), cache)
     if "errore" in report:
         # La raffica intera non e' partita: nessuna automazione si e' potuta
         # guardare, e nessun cursore si tocca.

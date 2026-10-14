@@ -49,6 +49,10 @@ from .soffitto import (
     request_ceiling,
 )
 
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+ACCESS_FLAG_KEY = web.AppKey("non_admin_access")
+
 logger = logging.getLogger(__name__)
 
 
@@ -371,7 +375,7 @@ async def admission_refusal(app, request: web.Request) -> web.Response | None:
         return gesture_refusal(request)
     if not seen.read:
         text, why = ROLES_UNREADABLE, "ruoli illeggibili"
-    elif not app.get("non_admin_access"):
+    elif not app.get(ACCESS_FLAG_KEY):
         text, why = OPTION_OFF, "opzione spenta"
     elif not seen.known:
         text, why = UNKNOWN_PERSON, "persona sconosciuta a Home Assistant"

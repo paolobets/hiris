@@ -30,9 +30,12 @@ import re
 
 import pytest
 
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
 from hiris.app.home_space import historian
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind.proposer_round import proposer_round
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._runner_finto import RunnerFinto
 
 OGGI = historian.today(historian.house_timezone(None)).isoformat()
@@ -394,7 +397,7 @@ async def test_due_giri_insieme_non_fanno_DUE_turni(tmp_path):
     """
     store = ObservationsStore(str(tmp_path / "oss.db"))
     modello = _finto_modello()
-    app = {"observations": store, "llm_router": modello, "bridge_active": False}
+    app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: modello, BRIDGE_ACTIVE_KEY: False}
     try:
         store.replace_analysis(OGGI, {
             "osservazioni": [{"soggetto": "dev1", "misura": "prelievo",
@@ -439,8 +442,8 @@ async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
          "testo": "Sposta la lavatrice nel pomeriggio",
          "perche": "costa meno"}]}))
 
-    app = {"observations": store, "llm_router": modello, "bridge_active": False,
-           "workshop": officina}
+    app = {OBSERVATIONS_KEY: store, LLM_ROUTER_KEY: modello, BRIDGE_ACTIVE_KEY: False,
+           WORKSHOP_KEY: officina}
     try:
         store.replace_analysis(OGGI, {
             "osservazioni": [{"soggetto": "dev1", "misura": "prelievo",

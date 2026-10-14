@@ -42,11 +42,13 @@ from unittest import mock
 import pytest
 
 from hiris.app.home_space.historian import day_boundaries
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HOME_SPACE_KEY, build_home_space
 from hiris.app.mind import day_report, recipe_turn
 from hiris.app.mind.analyst import index
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
 from hiris.app.mind.operations import COVERAGE_LOW, FROZEN, MINIMUM_COVERAGE
 from hiris.app.mind.report import build_report, series_of_measures
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
 
@@ -84,8 +86,8 @@ def _app():
         "integrazioni": [],
         "dispositivi": [{"id": STATION, "name": "Stazione", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
-            "entity_cache": SpecchioFinto([(
+    return {KNOWLEDGE_KEY: object(), HOME_SPACE_KEY: AnagrafeFinta(home_space),
+            ENTITY_CACHE_KEY: SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
 

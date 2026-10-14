@@ -10,8 +10,11 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from aiohttp import web
+
 from ..background import spawn as _spawn
 from .behavior import reread, reread_dashboards
+from .reader import HOME_SPACE_KEY
 from .redaction import home_assistant_folder
 from .topology import (
     AREAS_PER_ROUND,
@@ -20,6 +23,12 @@ from .topology import (
     hierarchy,
     tree_areas,
 )
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+HA_INTEGRATIONS_KEY = web.AppKey("ha_integrations")
+HA_PROBLEMS_KEY = web.AppKey("ha_problems")
+TREE_COMPARISON_KEY = web.AppKey("tree_comparison")
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +136,7 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     except Exception as exc:  # non previsto: `problems()` cattura gia' da se'
         logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
         report = {"errore": "Home Assistant non ha risposto"}
-    app["ha_problems"] = report
+    app[HA_PROBLEMS_KEY] = report
     return report
 
 
@@ -169,11 +178,11 @@ def integration_follower(app):
             return
         listing = not changes or any(
             isinstance(change, dict) and change.get("type") is None for change in changes)
-        if not listing and "ha_integrations" not in app:
+        if not listing and HA_INTEGRATIONS_KEY not in app:
             logger.debug("integrazioni: un cambio prima dell'elenco iniziale, ignorato")
             return
         entries = {} if listing else {
-            row.get("entry_id"): row for row in app["ha_integrations"]}
+            row.get("entry_id"): row for row in app[HA_INTEGRATIONS_KEY]}
         for change in changes:
             entry = change.get("entry") if isinstance(change, dict) else None
             if not isinstance(entry, dict) or not entry.get("entry_id"):
@@ -183,8 +192,8 @@ def integration_follower(app):
             else:
                 entries[entry["entry_id"]] = entry
         rows = list(entries.values())
-        app["ha_integrations"] = rows
-        home_space_store = app.get("home_space_store")
+        app[HA_INTEGRATIONS_KEY] = rows
+        home_space_store = app.get(HOME_SPACE_KEY)
         if home_space_store is not None:
             home_space_store.hold_integrations(rows)
 
@@ -249,7 +258,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
             # comando: non si scrive niente, cosi' la chiave resta assente e
             # il nucleo tace invece di affermare che l'albero e' verificato.
             return None
-        store = app.get("home_space_store")
+        store = app.get(HOME_SPACE_KEY)
         if store is None:
             return None
 
@@ -279,7 +288,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
         # (`/api/home-space`) per dire quanto e' fresco il verdetto che sta
         # mostrando.
         report["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
-        app["tree_comparison"] = report
+        app[TREE_COMPARISON_KEY] = report
         divergenti = sum(1 for g in report["guardate"] if g.get("mancanti") or g.get("in_piu")
                          or g.get("assente_in_ha"))
         if divergenti:

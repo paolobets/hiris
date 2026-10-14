@@ -27,9 +27,10 @@ import pytest
 from hiris.app import steering
 from hiris.app.home_space import historian
 from hiris.app.mind import analyst_round, analyst_turn
-from hiris.app.mind.store import ObservationsStore
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.usage.store import UsageStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests.test_mind_analyst_memory import _osservazione
 
 
@@ -61,7 +62,7 @@ def app(tmp_path):
     # Senza, la memoria e' `[]` sulle due strade e il confronto non la vede.
     store.replace_analysis("2026-09-16", {"osservazioni": [_osservazione()]})
     try:
-        yield {"observations": store, "usage": usage, "bridge_active": False}
+        yield {OBSERVATIONS_KEY: store, USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: False}
     finally:
         store.close()
         usage.close()
@@ -88,11 +89,11 @@ async def test_accodamento_e_raccolta_vedono_la_stessa_serie(app, monkeypatch):
     monkeypatch.setattr(analyst_round, "turn_in_flight", lambda app, kind: False)
     await analyst_round.analyst_round(app)
 
-    app["reasoning_queue"] = _Queue({
+    app[REASONING_QUEUE_KEY] = _Queue({
         "status": "decided", "wake": {"giorno": today},
         "decision": {"reply": json.dumps({"osservazioni": []}), "tools_called": [],
                      "outcome": "riuscito"}})
-    analyst_round._collect_analyst_turn(app, app["observations"], today)
+    analyst_round._collect_analyst_turn(app, app[OBSERVATIONS_KEY], today)
 
     assert seen["accodamento"][0]["serie"], "la derivazione non ha composto nessuna serie"
     assert seen["accodamento"][1], "la derivazione non ha composto nessuna memoria"

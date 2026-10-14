@@ -17,14 +17,19 @@ import pytest
 
 from hiris.app import background, steering
 from hiris.app.action.construction import stakes, workshop
+from hiris.app.action.construction.revisions import CONSTRUCTIONS_KEY
+from hiris.app.action.construction.workshop import WORKSHOP_KEY
 from hiris.app.api.handlers_constructions import _both_queues
 from hiris.app.api.handlers_proposals import handle_proposal_automate
+from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind import automate_turn as at
 from hiris.app.mind import proposal_redo
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
+from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.consegna import consegna
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.usage.store import UsageStore
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.usage.store import USAGE_KEY, UsageStore
 from tests._runner_finto import RunnerFinto
 from tests.test_api_proposte import _richiesta
 from tests.test_construction_workshop import _intento, banco  # noqa: F401
@@ -58,8 +63,8 @@ def casa(tmp_path, banco):
         text="Spegni lo scaldabagno di notte", perche="il prelievo notturno e' salito",
         fingerprint="dev1|prelievo|None|1", prova={"base": 19}, stakes=None,
         now_ts=100.0)
-    app = {"observations": store, "usage": usage, "constructions": costruzioni,
-           "workshop": officina, "bridge_active": False}
+    app = {OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
+           WORKSHOP_KEY: officina, BRIDGE_ACTIVE_KEY: False}
     try:
         yield app, store, ident
     finally:
@@ -84,21 +89,21 @@ async def test_NASCE_l_automazione_e_la_proposta_a_mano_si_chiude_col_legame(cas
     (06/10/2026): `settle` senza `automate_proposal` -- rossa (la proposta
     resta in attesa e senza id)."""
     app, store, ident = casa
-    app["llm_router"] = _Modello([("propose", _intento())],
+    app[LLM_ROUTER_KEY] = _Modello([("propose", _intento())],
                                  lambda r: json.dumps({"proposta_id": r[0]["proposta_id"]}))
 
     risposta = await _premi(app, ident)
 
     assert risposta.status == 202
-    nata = app["llm_router"].risultati[0]["proposta_id"]
+    nata = app[LLM_ROUTER_KEY].risultati[0]["proposta_id"]
     riga = _riga(store, ident)
     assert riga["stato"] == store.PROPOSAL_AUTOMATED
     assert riga["costruzione_id"] == nata
     # Firmata dal proponente, e misurata sotto la sua specie di turno.
-    assert app["constructions"].read(nata, now=1.0)["origine"] == steering.PROPOSER_SPECIES
-    assert app["usage"].turns()[0]["species"] == steering.AUTOMATE_SPECIES
+    assert app[CONSTRUCTIONS_KEY].read(nata, now=1.0)["origine"] == steering.PROPOSER_SPECIES
+    assert app[USAGE_KEY].turns()[0]["species"] == steering.AUTOMATE_SPECIES
     # La pagina legge il legame dalla costruzione: «Nata da».
-    righe = await _both_queues(app, app["constructions"], False)
+    righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     costruzione = next(r for r in righe if r["id"] == nata)
     assert costruzione["nata_da"] == {"id": ident, "testo": riga["testo"]}
     assert app.get(at.IN_FLIGHT) is None
@@ -113,19 +118,19 @@ async def test_un_automazione_su_una_SERRATURA_si_rifiuta_dentro_il_turno(casa):
     `refuse_high=False` -- rossa (la costruzione `alto` entra
     nell'archivio)."""
     app, store, ident = casa
-    app["llm_router"] = _Modello(
+    app[LLM_ROUTER_KEY] = _Modello(
         [("propose", _intento(azioni=_SERRATURA))],
         json.dumps({"perche": "tocca la serratura, che chiede sempre"}))
 
     await _premi(app, ident)
 
-    assert app["llm_router"].risultati[0] == {"errore": stakes.HIGH_UNATTENDED}
-    assert app["constructions"].list(now=1.0, pending_only=False, limit=10) == []
+    assert app[LLM_ROUTER_KEY].risultati[0] == {"errore": stakes.HIGH_UNATTENDED}
+    assert app[CONSTRUCTIONS_KEY].list(now=1.0, pending_only=False, limit=10) == []
     riga = _riga(store, ident)
     assert riga["stato"] == "in_attesa"
     assert riga["non_automatizzabile"] == "tocca la serratura, che chiede sempre"
     # E il comando, su quella forma, non c'e' piu'.
-    righe = await _both_queues(app, app["constructions"], False)
+    righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     assert next(r for r in righe if r["id"] == ident)["automatizzabile"] is False
 
 
@@ -154,13 +159,13 @@ async def test_per_ALTO_il_comando_non_esiste_ne_nella_rotta_ne_nella_pagina(cas
     alta = store.add_proposal(text="Chiudi a chiave la sera", perche="x",
                               fingerprint="lock|x|None|1", prova={},
                               stakes=stakes.HIGH, now_ts=200.0)
-    app["llm_router"] = _Modello([], "{}")
+    app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     risposta = await _premi(app, alta)
 
     assert risposta.status == 403
-    assert app["usage"].turns() == []
-    righe = await _both_queues(app, app["constructions"], False)
+    assert app[USAGE_KEY].turns() == []
+    righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     assert next(r for r in righe if r["id"] == alta)["automatizzabile"] is False
 
 
@@ -175,7 +180,7 @@ async def test_il_guardiano_ammette_solo_un_AUTOMAZIONE_NUOVA(casa):
     modifica = await guardiano.dispatch("propose", _intento(gesto="modifica"))
 
     assert "errore" in script and "errore" in modifica
-    assert app["constructions"].list(now=1.0, pending_only=False, limit=10) == []
+    assert app[CONSTRUCTIONS_KEY].list(now=1.0, pending_only=False, limit=10) == []
 
 
 @pytest.mark.asyncio
@@ -198,8 +203,8 @@ async def test_sul_PONTE_si_accoda_e_la_consegna_chiude_col_legame(casa, tmp_pat
     il ramo di `consegna` tolto -- rossa."""
     app, store, ident = casa
     coda = ReasoningQueue(str(tmp_path / "coda.db"))
-    app.update({"reasoning_queue": coda, "bridge_active": True,
-                "models_config": {}})
+    app.update({REASONING_QUEUE_KEY: coda, BRIDGE_ACTIVE_KEY: True,
+                MODELS_CONFIG_KEY: {}})
     try:
         from unittest.mock import patch
 
@@ -208,10 +213,10 @@ async def test_sul_PONTE_si_accoda_e_la_consegna_chiude_col_legame(casa, tmp_pat
             seconda = await _premi(app, ident)
         assert (prima.status, seconda.status) == (202, 409)
         assert at.preparing(app) == ident
-        righe = await _both_queues(app, app["constructions"], False)
+        righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
         assert next(r for r in righe if r["id"] == ident)["in_preparazione"] is True
 
-        nata = app["constructions"].propose(
+        nata = app[CONSTRUCTIONS_KEY].propose(
             operation="crea", domain="automation", key="k1",
             actor=steering.PROPOSER_SPECIES, exchange="turno-ponte", phrase=None,
             prima=None, dopo={}, helper=[], preview="", stakes=None, now=5.0)["id"]
@@ -368,13 +373,13 @@ async def test_UNA_ALLA_VOLTA_un_altra_in_preparazione_ferma_il_comando(casa):
                                  fingerprint="dev2|x|None|1", prova={},
                                  stakes=None, now_ts=200.0)
     app[at.IN_FLIGHT] = prima
-    app["llm_router"] = _Modello([], "{}")
+    app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     risposta = await handle_proposal_automate(_richiesta(app, {"id": seconda}))
 
     assert risposta.status == 409
-    assert app["usage"].turns() == []
-    righe = await _both_queues(app, app["constructions"], False)
+    assert app[USAGE_KEY].turns() == []
+    righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     assert next(r for r in righe if r["id"] == seconda)["automatizzabile"] is False
 
 
@@ -389,13 +394,13 @@ async def test_sopra_un_RIFALLA_in_corso_non_si_rende_automatica(casa):
     rossa."""
     app, _store, prima = casa
     app[proposal_redo.CHAIN_IN_FLIGHT] = {prima}
-    app["llm_router"] = _Modello([], "{}")
+    app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     risposta = await handle_proposal_automate(_richiesta(app, {"id": prima}))
 
     assert risposta.status == 409
-    assert app["usage"].turns() == []
-    righe = await _both_queues(app, app["constructions"], False)
+    assert app[USAGE_KEY].turns() == []
+    righe = await _both_queues(app, app[CONSTRUCTIONS_KEY], False)
     assert next(r for r in righe if r["id"] == prima)["automatizzabile"] is False
 
 
@@ -408,11 +413,11 @@ async def test_mentre_si_prepara_l_automazione_RIFALLA_non_parte(casa):
     `automate_turn.preparing` -- rossa."""
     app, store, prima = casa
     app[at.IN_FLIGHT] = prima
-    app["llm_router"] = _Modello([], "{}")
+    app[LLM_ROUTER_KEY] = _Modello([], "{}")
 
     with pytest.raises(proposal_redo.InFlight):
         await proposal_redo.redo(app, store, _riga(store, prima), "piu' tardi")
-    assert app["usage"].turns() == []
+    assert app[USAGE_KEY].turns() == []
 
 
 @pytest.mark.asyncio

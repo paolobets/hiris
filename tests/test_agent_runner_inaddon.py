@@ -11,9 +11,11 @@ import pytest
 
 from conftest import SCADENZA_LONTANA
 from hiris.app.agent import bridge_governor, prompts, runner
+from hiris.app.agent.bridge_governor import AGENT_WORKER_TASK_KEY
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
-from hiris.app.steering import SPECIES
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, SPECIES
 
 #: Gli strumenti di un turno di chat: i NOMI, dalla dichiarazione del mestiere.
 CHAT_TOOLS = SPECIES["chat"].tools_for_turn()
@@ -57,9 +59,9 @@ async def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno(mo
         return asyncio.sleep(0)
 
     monkeypatch.setattr(runner, "run_loop", _run_loop)
-    app = {"bridge_active": True, "reasoning_queue": object()}
+    app = {BRIDGE_ACTIVE_KEY: True, REASONING_QUEUE_KEY: object()}
     bridge_governor._govern_bridge_worker(app)
-    await app["agent_worker_task"]
+    await app[AGENT_WORKER_TASK_KEY]
 
     assert ricevute, "il lavoratore del ponte non e' partito"
     assert ricevute["get_headers"]() == {

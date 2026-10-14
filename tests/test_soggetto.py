@@ -28,8 +28,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hiris.app.api import canali
-from hiris.app.api.middleware_internal_auth import internal_auth_middleware
-from hiris.app.api.servizi import ServiziStore
+from hiris.app.api.canali import SEEN_CHANNELS_KEY
+from hiris.app.api.credenziali import CREDENTIALS_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY, internal_auth_middleware
+from hiris.app.api.servizi import SERVICES_KEY, ServiziStore
 
 _INGRESS = "/api/hassio_ingress/abc123/"
 _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
@@ -58,8 +60,8 @@ class _Richiesta(dict):
                     # `/23` di prima comprendeva ogni add-on installato: era
                     # il reperto A-2, e una finta che la tenesse proverebbe un
                     # mondo che il prodotto non esegue piu'.
-                    "supervisor_ingress_cidrs": ["172.30.32.2/32"],
-                    "canali_visti": {}, "servizi": None,
+                    INGRESS_CIDRS_KEY: ["172.30.32.2/32"],
+                    SEEN_CHANNELS_KEY: {}, SERVICES_KEY: None,
                     "sessioni_ingress": {}}
 
 
@@ -206,8 +208,8 @@ class _Firmata(_Richiesta):
         self._corpo = corpo
         self.method = metodo
         self.path = percorso
-        self.app["canali_visti"] = {}
-        self.app["servizi"] = servizi
+        self.app[SEEN_CHANNELS_KEY] = {}
+        self.app[SERVICES_KEY] = servizi
 
     async def read(self):
         return self._corpo
@@ -396,8 +398,8 @@ async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno(confine_
     from hiris.app.api import credenziali
 
     richiesta = _Firmata(headers={}, remote="127.0.0.1")
-    richiesta.app["credenziali"] = {}
-    segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
+    richiesta.app[CREDENTIALS_KEY] = {}
+    segreto = credenziali.conia(richiesta.app[CREDENTIALS_KEY], mestiere="ponte",
                                 durata_s=60, adesso=time.time())
     richiesta.headers["X-HIRIS-Internal-Token"] = segreto
 
@@ -417,8 +419,8 @@ async def test_una_credenziale_SCADUTA_non_apre_piu(confine_vero):
     from hiris.app.api import credenziali
 
     richiesta = _Firmata(headers={}, remote="127.0.0.1")
-    richiesta.app["credenziali"] = {}
-    segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
+    richiesta.app[CREDENTIALS_KEY] = {}
+    segreto = credenziali.conia(richiesta.app[CREDENTIALS_KEY], mestiere="ponte",
                                 durata_s=60, adesso=time.time() - 3600)
     richiesta.headers["X-HIRIS-Internal-Token"] = segreto
 
@@ -446,9 +448,9 @@ async def test_la_credenziale_si_guarda_PRIMA_del_segreto_condiviso():
     from hiris.app.api import credenziali
 
     richiesta = _Firmata(headers={}, remote="127.0.0.1")
-    richiesta.app["credenziali"] = {}
+    richiesta.app[CREDENTIALS_KEY] = {}
     # lo stesso valore vale come credenziale effimera E come segreto condiviso
-    vive = richiesta.app["credenziali"]
+    vive = richiesta.app[CREDENTIALS_KEY]
     vive["s3greto"] = {"mestiere": "ponte", "scade": time.time() + 60}
     richiesta.headers["X-HIRIS-Internal-Token"] = "s3greto"
     assert credenziali.riconosci(vive, "s3greto", adesso=time.time())
@@ -497,9 +499,9 @@ async def test_ogni_porta_attacca_il_soggetto_nella_STESSA_forma(archivio, confi
     viste["firma"] = visto["soggetto"]
 
     turno = _Firmata(headers={}, remote="127.0.0.1")
-    turno.app["credenziali"] = {}
+    turno.app[CREDENTIALS_KEY] = {}
     turno.headers["X-HIRIS-Internal-Token"] = credenziali.conia(
-        turno.app["credenziali"], mestiere="ponte", durata_s=60, adesso=time.time())
+        turno.app[CREDENTIALS_KEY], mestiere="ponte", durata_s=60, adesso=time.time())
     _, visto = await _passa(turno)
     viste["turno"] = visto["soggetto"]
 

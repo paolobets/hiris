@@ -33,8 +33,11 @@ from hiris.app.api.soffitto import consente
 from hiris.app.home_space.historian import home_space_zone, house_timezone
 from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.render import render_memory
 from hiris.app.home_space.topology import Mirror
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -85,8 +88,8 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
     dal dettaglio di `search` e dalla scheda dell'area in `search` esce lo
     STESSO dizionario, ed e' quello di `render_memory`."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        memory = app["memory_store"]
-        area = app["home_space_store"].read()["aree"][0]["id"]
+        memory = app[MEMORY_STORE_KEY]
+        area = app[HOME_SPACE_KEY].read()["aree"][0]["id"]
         ident = memory.remember("d'inverno qui la voglio fra 19 e 20", detto_da="paolo",
                                 ancore=[{"tipo": "area", "riferimento": area,
                                          "nome_visto": "qui"}])
@@ -108,8 +111,8 @@ async def test_lo_stesso_ricordo_ha_la_stessa_forma_da_ogni_porta(tmp_path):
         rows = (await dispatcher.dispatch("search", {"genere": "ricordo"}))["voci"]
         from_row = next(m for m in rows if m["id"] == ident)
 
-        house = House.read(app["home_space_store"], app["entity_cache"])
-        zone = home_space_zone(house_timezone(app["home_space_store"]))
+        house = House.read(app[HOME_SPACE_KEY], app[ENTITY_CACHE_KEY])
+        zone = home_space_zone(house_timezone(app[HOME_SPACE_KEY]))
         expected = render_memory(memory.get(ident), house, zone=zone)
         assert expected["corretto_da_utente"] is True
         # L'istante nell'ora della casa da ogni porta, pagina compresa

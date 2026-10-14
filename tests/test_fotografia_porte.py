@@ -24,6 +24,15 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -148,6 +157,11 @@ def test_la_casa_congelata_non_ha_cio_che_la_cattura_non_congela():
         assert getattr(fotografia_porte.FrozenHouse(synthetic_inputs()), name) is None
 
 
+#: Le chiavi che l'avvio vero mette in `app` e che la fotografia legge.
+_ATTESE = (HOME_SPACE_KEY, ENTITY_CACHE_KEY, MEMORY_STORE_KEY, TYPE_JUDGMENTS_KEY,
+           STATE_TRANSLATIONS_KEY, SERVICE_REGISTRY_KEY, KNOWLEDGE_KEY, HA_CLIENT_KEY)
+
+
 def test_l_app_fotografata_e_quella_dell_avvio_vero():
     """Mutazione ESEGUITA: in `mounted` sostituito l'avvio con un'app montata a
     mano senza `type_judgments` -- rossa (chiave mancante)."""
@@ -155,14 +169,9 @@ def test_l_app_fotografata_e_quella_dell_avvio_vero():
         import tempfile
         with tempfile.TemporaryDirectory() as data_dir:
             async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
-                return {name for name in ("home_space_store", "entity_cache", "memory_store",
-                                          "type_judgments", "state_translations",
-                                          "service_registry", "knowledge", "ha_client")
-                        if app.get(name) is not None}
+                return {key for key in _ATTESE if app.get(key) is not None}
 
-    assert asyncio.run(keys()) == {
-        "home_space_store", "entity_cache", "memory_store", "type_judgments",
-        "state_translations", "service_registry", "knowledge", "ha_client"}
+    assert asyncio.run(keys()) == set(_ATTESE)
 
 
 # ── la fotografia dal vivo: le forme ───────────────────────────────────────

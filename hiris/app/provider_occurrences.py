@@ -45,6 +45,8 @@ from __future__ import annotations
 
 import time
 
+from aiohttp import web
+
 from .proxy._sanitize import sanitize_text
 
 # Le famiglie d'errore, e non una di più. Sono tre cause distinte più il ramo
@@ -234,3 +236,6 @@ class OccurrenceRegistry:
         sarebbe affermare un'osservazione che non c'è stata.
         """
         return {name: dict(entry) for name, entry in self._per_provider.items()}
+
+
+OCCURRENCES_KEY = web.AppKey("occurrence_registry", OccurrenceRegistry)

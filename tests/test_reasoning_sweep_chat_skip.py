@@ -34,7 +34,11 @@ from pathlib import Path
 import pytest
 
 from hiris.app.mind import observer
-from hiris.app.steering import JOB_SPECIES
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.models_store import MODELS_CONFIG_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.startup import SCHEDULER_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY, JOB_SPECIES
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -49,13 +53,13 @@ async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
     legge (`app["bridge_active"]`, `app["models_config"]["ponte"]`), come le
     lascerebbero `_recompute_chain` e la pagina Modelli."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        app["bridge_active"] = bridge_active
+        app[BRIDGE_ACTIVE_KEY] = bridge_active
         if deadline_min is not None:
-            config = dict(app.get("models_config") or {})
+            config = dict(app.get(MODELS_CONFIG_KEY) or {})
             config["ponte"] = {**(config.get("ponte") or {}), "scadenza_min": deadline_min}
-            app["models_config"] = config
-        sweep = app["scheduler"].get_job("hiris_reasoning_sweep").func
-        yield sweep, app["reasoning_queue"], app
+            app[MODELS_CONFIG_KEY] = config
+        sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
+        yield sweep, app[REASONING_QUEUE_KEY], app
 
 
 @pytest.mark.asyncio
@@ -238,8 +242,8 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
         # Scadenza 5 minuti -> confine a 10 minuti fa: undici bastano. La
         # stessa app, la stessa spazzata: cambia solo cio' che la pagina
         # Modelli scriverebbe.
-        app["models_config"] = {**app["models_config"],
-                                "ponte": {**app["models_config"]["ponte"], "scadenza_min": 5}}
+        app[MODELS_CONFIG_KEY] = {**app[MODELS_CONFIG_KEY],
+                                "ponte": {**app[MODELS_CONFIG_KEY]["ponte"], "scadenza_min": 5}}
         await sweep()
         assert q.get("j")["status"] == "failed"
 
@@ -265,7 +269,7 @@ async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
 
         await spazzata()
 
-        ultimo = app["observations"].recent_attempts()[0]
+        ultimo = app[OBSERVATIONS_KEY].recent_attempts()[0]
         assert ultimo["esito"] == "scaduta"
         assert "non ha risposto" in ultimo["dettaglio"]
         assert coda.get("S1")["status"] == "expired"

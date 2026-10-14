@@ -36,6 +36,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from aiohttp import web
+
 logger = logging.getLogger(__name__)
 
 # La categoria che porta le traduzioni degli stati per DOMINIO. Non e' quella
@@ -568,3 +570,6 @@ class StateTranslations:
                         len(self._resources), language, ha_version)
         return {"lette": True, "lingua": language, "risorse": self._resources,
                 "appena_lette": True}
+
+
+STATE_TRANSLATIONS_KEY = web.AppKey("state_translations", StateTranslations)

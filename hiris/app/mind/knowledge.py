@@ -43,6 +43,8 @@ import threading
 import time as _time
 from dataclasses import dataclass
 
+from aiohttp import web
+
 from ..home_space.type_judgments import ATTRIBUTE_FIELD, JUDGMENT_FIELD_NAMES, type_subject
 from ..home_space.type_vocabulary import Provenance
 from ..storage import (
@@ -1049,6 +1051,9 @@ class KnowledgeStore:
             deleted = self._delete(subject_kind, subject, field)
             self._commit()
         return bool(deleted)
+
+
+KNOWLEDGE_KEY = web.AppKey("knowledge", KnowledgeStore)
 
 def now_ts() -> float:
     """L'orologio, in un posto solo: le prove lo sostituiscono senza toccare

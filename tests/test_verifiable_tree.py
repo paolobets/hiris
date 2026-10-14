@@ -43,8 +43,8 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
-from hiris.app.home_space.reader import HomeSpace
-from hiris.app.home_space.rounds import tree_comparison_round
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
+from hiris.app.home_space.rounds import TREE_COMPARISON_KEY, tree_comparison_round
 from hiris.app.home_space.topology import (
     choose_sample,
     compare_with_home_assistant,
@@ -425,20 +425,20 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
     archivio = _archivio_con_una_casa(tmp_path, [
         {"entity_id": "light.cucina", "name": "Luce", "area_id": "cucina"},
     ])
-    app = {"home_space_store": archivio}
+    app = {HOME_SPACE_KEY: archivio}
     house = _tree_house({"cucina": ["light.cucina"]})
 
     esito = asyncio.run(tree_comparison_round(app, house, count=1)())
-    assert esito is app["tree_comparison"]
-    assert app["tree_comparison"]["aree_totali"] == 3
-    assert app["tree_comparison"]["letto_il"]
-    assert len(app["tree_comparison"]["guardate"]) == 1
+    assert esito is app[TREE_COMPARISON_KEY]
+    assert app[TREE_COMPARISON_KEY]["aree_totali"] == 3
+    assert app[TREE_COMPARISON_KEY]["letto_il"]
+    assert len(app[TREE_COMPARISON_KEY]["guardate"]) == 1
 
 
 def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
     archivio = _archivio_con_una_casa(tmp_path)
     house = _tree_house({})
-    giro = tree_comparison_round({"home_space_store": archivio}, house, count=1)
+    giro = tree_comparison_round({HOME_SPACE_KEY: archivio}, house, count=1)
 
     asyncio.run(giro())
     asyncio.run(giro())
@@ -452,11 +452,11 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
     comando, e il client ne fa la busta del silenzio."""
     archivio = _archivio_con_una_casa(tmp_path)
     house = _tree_house({}, silence={"extract_from_target"})
-    app = {"home_space_store": archivio}
+    app = {HOME_SPACE_KEY: archivio}
 
     asyncio.run(tree_comparison_round(app, house, count=2)())
-    assert len(app["tree_comparison"]["guardate"]) == 2
-    assert all(g["errore"] for g in app["tree_comparison"]["guardate"])
+    assert len(app[TREE_COMPARISON_KEY]["guardate"]) == 2
+    assert all(g["errore"] for g in app[TREE_COMPARISON_KEY]["guardate"])
     testo, _ = compose_briefing(app)
     assert "non si sono potute controllare" in testo
 
@@ -470,17 +470,17 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
         pass
 
     archivio = _archivio_con_una_casa(tmp_path)
-    app = {"home_space_store": archivio}
+    app = {HOME_SPACE_KEY: archivio}
     assert asyncio.run(tree_comparison_round(app, _ClienteVecchio())()) is None
     assert asyncio.run(tree_comparison_round(app, None)()) is None
-    assert "tree_comparison" not in app
+    assert TREE_COMPARISON_KEY not in app
 
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
     """La catena intera: `app["tree_comparison"]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio il giro sarebbe un dato scritto e mai
     letto -- la quarta fondamenta al contrario."""
-    app = {"tree_comparison": {"aree_totali": 4, "guardate": [
+    app = {TREE_COMPARISON_KEY: {"aree_totali": 4, "guardate": [
         {"area": "cucina", "nome": "Cucina", "mancanti": [], "in_piu": ["light.fantasma"],
          "assente_in_ha": False},
     ]}}
@@ -501,8 +501,8 @@ async def test_api_casa_mostra_la_divergenza_sull_albero(aiohttp_client, tmp_pat
     sarebbero due case diverse a seconda della porta."""
     archivio = _archivio_con_una_casa(tmp_path)
     app = web.Application()
-    app["home_space_store"] = archivio
-    app["tree_comparison"] = {"aree_totali": 3, "letto_il": "2026-08-18T10:00:00+00:00",
+    app[HOME_SPACE_KEY] = archivio
+    app[TREE_COMPARISON_KEY] = {"aree_totali": 3, "letto_il": "2026-08-18T10:00:00+00:00",
                                "guardate": [{"area": "cucina", "nome": "Cucina",
                                              "mancanti": [], "in_piu": ["light.fantasma"],
                                              "assente_in_ha": False}]}
@@ -521,7 +521,7 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
     niente da dire». La stessa distinzione di `non_disponibili`."""
     archivio = _archivio_con_una_casa(tmp_path)
     app = web.Application()
-    app["home_space_store"] = archivio
+    app[HOME_SPACE_KEY] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 

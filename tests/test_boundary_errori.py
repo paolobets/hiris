@@ -21,6 +21,7 @@ import pytest_asyncio
 from hiris.app.api.boundary import BODY_NOT_OBJECT, error_body, error_response
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
+from hiris.app.storage import DATA_DIR_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +36,7 @@ def _no_auth(monkeypatch):
 async def bare_client(aiohttp_client, tmp_path):
     """L'app vera, senza nessun archivio: ogni rotta che ne chiede uno sbaglia."""
     app = create_app()
-    app["data_dir"] = str(tmp_path)
+    app[DATA_DIR_KEY] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
     return await aiohttp_client(app)

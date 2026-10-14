@@ -63,9 +63,14 @@ from dataclasses import dataclass
 
 from ..home_space.ha_vocabulary import is_entity_id
 from ..home_space.house import House
+from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.topology import ha_running
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..proxy.ha_client import HA_CLIENT_KEY
+from .knowledge import KNOWLEDGE_KEY
 from .recipe_turn import ANSWER_FIELDS
 from .state_words import prime_state_translations
+from .store import OBSERVATIONS_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -112,15 +117,15 @@ async def reconcile(app) -> Reconciliation | None:
     """Applica la riconciliazione agli archivi dell'app, e lo dice nel log.
     `None` se manca un archivio (avvio a meta'): non c'e' niente da
     confrontare."""
-    store, knowledge = app.get("observations"), app.get("knowledge")
-    home_space = app.get("home_space_store")
+    store, knowledge = app.get(OBSERVATIONS_KEY), app.get(KNOWLEDGE_KEY)
+    home_space = app.get(HOME_SPACE_KEY)
     if store is None or knowledge is None or home_space is None:
         return None
-    house = House.read(home_space, app.get("entity_cache"))
+    house = House.read(home_space, app.get(ENTITY_CACHE_KEY))
     answers = knowledge.device_answers(ANSWER_FIELDS)
     plan = what_to_forget(
         house, read_at=home_space.updated_at(),
-        ha_started=await ha_running(app.get("ha_client")),
+        ha_started=await ha_running(app.get(HA_CLIENT_KEY)),
         scope_subjects=list(store.scope()), answered_devices=list(answers))
     if plan.stopped is not None:
         logger.info("riconciliazione: niente tolto, %s", plan.stopped)

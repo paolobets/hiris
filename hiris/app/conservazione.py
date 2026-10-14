@@ -39,9 +39,10 @@ import time
 from collections.abc import Iterable
 
 from .mind.observer import SCOPE_TURN_KIND
-from .mind.store import ATTEMPT_EXPIRED
-from .models_store import bridge_deadline_min
+from .mind.store import ATTEMPT_EXPIRED, OBSERVATIONS_KEY
+from .models_store import MODELS_CONFIG_KEY, bridge_deadline_min
 from .reasoning.consegna import close_expired_promise
+from .reasoning.queue import REASONING_QUEUE_KEY
 from .steering import JOB_SPECIES
 from .version import read_version
 
@@ -284,7 +285,7 @@ def decidi_vault(data_dir: str) -> None:
 # pass silenzioso: un log esplicito lo dichiara prima di lasciarlo
 # scadere (sweep_expired lo ha gia' marcato 'expired' sopra).
 async def reasoning_sweep(app) -> None:
-    reasoning_queue = app["reasoning_queue"]
+    reasoning_queue = app[REASONING_QUEUE_KEY]
     # **Nessun interruttore** (D5, G-11, 08/10/2026). Fino a qui la spazzata
     # leggeva `app["bridge_active"]` e a ponte spento non faceva niente: i
     # turni rimasti in coda non scadevano, un ripiego schiantato teneva la
@@ -310,7 +311,7 @@ async def reasoning_sweep(app) -> None:
             # indistinguibile da un'attesa legittima -- lo stesso guasto
             # appiattito su un'assenza che questa fetta esiste per togliere.
             # E' il gemello di `close_expired_promise` (`reasoning/consegna`).
-            store = app.get("observations")
+            store = app.get(OBSERVATIONS_KEY)
             if store is not None:
                 attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
                 store.record_attempt(
@@ -353,7 +354,7 @@ async def reasoning_sweep(app) -> None:
     # Il doppio, e non la scadenza secca, perche' il ripiego COMINCIA alla
     # scadenza: il margine e' il tempo che la catena ha per rispondere.
     reasoning_queue.fail_stuck_downgrades(
-        time.time() - 2 * 60 * bridge_deadline_min(app.get("models_config")))
+        time.time() - 2 * 60 * bridge_deadline_min(app.get(MODELS_CONFIG_KEY)))
     # **Le risposte consegnate si dimenticano** (reperto C-6,
     # 23/09/2026). La domanda si azzera alla consegna da sempre
     # (`submit`); la risposta restava fino alla potatura a sette giorni,

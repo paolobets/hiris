@@ -16,9 +16,14 @@ from __future__ import annotations
 
 import logging
 
+from aiohttp import web
+
+from ..action.registry import SERVICE_REGISTRY_KEY
 from ..chat_thread import subject_from_thread, thread_for
 from ..proxy._sanitize import sanitize_ha_value
+from ..proxy.ha_client import HA_CLIENT_KEY
 from ..states import FAILED, KEPT, SKIPPED
+from ..storage import DATA_DIR_KEY
 from .delivery import deliver
 from .outcome import write_line
 from .promise import (
@@ -336,6 +341,9 @@ class Sweeper:
         return "la notifica non è arrivata a " + "; ".join(failures)
 
 
+SWEEPER_KEY = web.AppKey("sweeper", Sweeper)
+
+
 def target_changed(at_birth, now) -> str | None:
     """Se il bersaglio di una promessa non copre piu' le stesse entita', **la
     frase che lo dice** (reperto B-6, 22/09/2026). `None` se non e' cambiato.
@@ -386,11 +394,11 @@ def _promise_delivery(app) -> dict:
     from .recipient import recipients_for
 
     async def _recipients(subject):
-        return await recipients_for(subject, app.get("ha_client"),
-                                    app.get("service_registry"))
+        return await recipients_for(subject, app.get(HA_CLIENT_KEY),
+                                    app.get(SERVICE_REGISTRY_KEY))
 
     def _write(thread, content, *, quoted=None):
-        return append_assistant_line(content, app["data_dir"], thread=thread,
+        return append_assistant_line(content, app[DATA_DIR_KEY], thread=thread,
                                      quoted=quoted)
 
     async def _ceiling(subject):

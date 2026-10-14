@@ -16,9 +16,14 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_store import close_all_stores
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.server import create_app
+from hiris.app.storage import DATA_DIR_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -37,12 +42,12 @@ def reset_chat_stores():
 async def client(aiohttp_client, tmp_path):
     app = create_app()
     mock_runner = RunnerFinto("risposta di prova")
-    app["ha_client"] = CasaFinta(synthetic_inputs())
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = mock_runner
-    app["llm_router"] = mock_runner
-    app["theme"] = "auto"
-    app["data_dir"] = str(tmp_path)
+    app[HA_CLIENT_KEY] = CasaFinta(synthetic_inputs())
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = mock_runner
+    app[LLM_ROUTER_KEY] = mock_runner
+    app[THEME_KEY] = "auto"
+    app[DATA_DIR_KEY] = str(tmp_path)
     app["internal_token"] = ""
     app.on_startup.clear()
     app.on_cleanup.clear()

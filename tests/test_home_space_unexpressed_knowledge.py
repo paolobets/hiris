@@ -23,10 +23,12 @@ import pytest
 
 from hiris.app.home_space.house import House
 from hiris.app.home_space.queries import view
-from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.reader import HOME_SPACE_KEY, HomeSpace
 from hiris.app.home_space.topology import Mirror, live_first
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._house_translations import house_translations
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -206,9 +208,9 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
         grandezza=None, minimum=3.0, maximum=5.0)
 
     app = web.Application()
-    app["memory_store"] = memoria
-    app["home_space_store"] = casa_archivio
-    app["entity_cache"] = SpecchioFinto([raw_state(
+    app[MEMORY_STORE_KEY] = memoria
+    app[HOME_SPACE_KEY] = casa_archivio
+    app[ENTITY_CACHE_KEY] = SpecchioFinto([raw_state(
         "sensor.frigo_temp", "4", "Temperatura frigo", unit_of_measurement="C")])
     app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     client = await aiohttp_client(app)

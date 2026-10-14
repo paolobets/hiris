@@ -10,12 +10,24 @@ from __future__ import annotations
 import logging
 import time
 
+from aiohttp import web
+
 from ..home_space.energy import energy_dashboard
 from ..home_space.house import House
 from ..home_space.house_history import statistic_ids_for_round
-from ..reasoning.queue import turn_answer
+from ..home_space.reader import HOME_SPACE_KEY
+from ..proxy.entity_cache import ENTITY_CACHE_KEY
+from ..proxy.ha_client import HA_CLIENT_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
 from ..steering import RECIPES_SPECIES, enqueue_turn, start, too_soon_to_ask_again, turn_in_flight
+from ..usage.store import USAGE_KEY
 from . import recipe_turn
+from .knowledge import KNOWLEDGE_KEY
+from .store import OBSERVATIONS_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+RECIPE_CURSOR_KEY = web.AppKey("recipe_turn_cursor")
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +63,13 @@ async def recipe_round(app) -> dict | None:
     Non solleva mai: gira per sempre, e un avvio a meta' non deve fermare lo
     schedulatore.
     """
-    store = app.get("observations")
-    sapere = app.get("knowledge")
-    home_space_store = app.get("home_space_store")
+    store = app.get(OBSERVATIONS_KEY)
+    sapere = app.get(KNOWLEDGE_KEY)
+    home_space_store = app.get(HOME_SPACE_KEY)
     if store is None or sapere is None or home_space_store is None:
         return None
     try:
-        house = House.read(home_space_store, app.get("entity_cache"))
+        house = House.read(home_space_store, app.get(ENTITY_CACHE_KEY))
         collected = _collect_recipe_turn(app, sapere, house)
         if collected is not None and collected.get("risposta"):
             return collected
@@ -88,7 +100,7 @@ async def recipe_round(app) -> dict | None:
         # si e' potuto leggere, e allora non si dice niente al modello e non si
         # ripara niente.
         with_series = None
-        cliente = app.get("ha_client")
+        cliente = app.get(HA_CLIENT_KEY)
         if cliente is not None:
             reading = await statistic_ids_for_round(app, cliente)
             if isinstance(reading, dict):  # la busta del guasto (D3)
@@ -128,8 +140,8 @@ async def recipe_round(app) -> dict | None:
             return None
         # A chi chiedere: **si ruota**, o un dispositivo che non risponde
         # affama tutti gli altri (vedi `recipe_turn.who_to_ask`).
-        device_id, app["recipe_turn_cursor"] = recipe_turn.who_to_ask(
-            to_ask, int(app.get("recipe_turn_cursor") or 0))
+        device_id, app[RECIPE_CURSOR_KEY] = recipe_turn.who_to_ask(
+            to_ask, int(app.get(RECIPE_CURSOR_KEY) or 0))
         if device_id is None:
             return None
         repair = to_repair.get(device_id)
@@ -150,7 +162,7 @@ async def recipe_round(app) -> dict | None:
             runner, sapere, house, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
             with_series=with_series, energy=dashboard, repair=repair,
-            measurements=app.get("usage"))
+            measurements=app.get(USAGE_KEY))
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:
@@ -194,7 +206,7 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
     stesso: se il dispositivo ha gia' una ricetta o un rifiuto scritto dopo
     che il turno e' stato deciso, quella risposta e' gia' stata applicata.
     """
-    queue = app.get("reasoning_queue")
+    queue = app.get(REASONING_QUEUE_KEY)
     if queue is None:
         return None
     turn = queue.latest_if_decided(recipe_turn.RECIPE_TURN_KIND)

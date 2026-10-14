@@ -40,6 +40,7 @@ from conftest import SCADENZA_LONTANA
 from hiris.app import chat_store
 from hiris.app.chat_store import close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
+from hiris.app.reasoning.consegna import SUBMIT_CHAT_REPLY_KEY
 
 # Fetta «le chat divise»: la consegna scrive nel filo del job.
 T = ChatThread("persona:paolo", "pannello")
@@ -69,7 +70,7 @@ async def submitted(tmp_path_factory):
     data_dir = tmp_path_factory.mktemp("consegna")
     with mock.patch.object(chat_store, "append_messages", recording):
         async with started_with(data_dir) as app:
-            yield app["submit_chat_reply"], calls, str(data_dir)
+            yield app[SUBMIT_CHAT_REPLY_KEY], calls, str(data_dir)
 
 
 @pytest.mark.asyncio(loop_scope="module")

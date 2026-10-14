@@ -22,8 +22,9 @@ from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
 from hiris.app.home_space import house_query as hq
 from hiris.app.home_space.house import House
+from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.topology import Mirror
-from hiris.app.memory.store import MemoryStore
+from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -123,19 +124,19 @@ async def test_dal_dispatcher_un_ricordo_si_trova_per_nome(tmp_path):
 
     Mutazione ESEGUITA: `_search` che non passa `memories` -- rossa."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        app["memory_store"].remember("La caldaia va spenta a maggio")
+        app[MEMORY_STORE_KEY].remember("La caldaia va spenta a maggio")
         dispatcher = create_tool_dispatcher(app, soffitto=consente(None, ruolo="amministratore"))
         trovato = await dispatcher.dispatch("search", {"nome": "caldaia"})
         assert trovato["trovate"] == 1, trovato
         assert trovato["voci"][0]["genere"] == "ricordo"
         assert "caldaia" in trovato["voci"][0]["testo"]
-        store, app["memory_store"] = app["memory_store"], None
+        store, app[MEMORY_STORE_KEY] = app[MEMORY_STORE_KEY], None
         try:
             cieco = await create_tool_dispatcher(
                 app, soffitto=consente(None, ruolo="amministratore")).dispatch(
                 "search", {"genere": "ricordo"})
         finally:
-            app["memory_store"] = store
+            app[MEMORY_STORE_KEY] = store
         assert cieco["trovate"] == 0
         assert any("ricordi" in m for m in cieco["non_ho_potuto_guardare"]), cieco
 
@@ -168,12 +169,12 @@ async def test_senza_archivio_una_ricerca_di_entita_non_parla_dei_ricordi(tmp_pa
     revisore. I corpi si leggono per le due strade che `behavior.without_body`
     conta insieme (B-39): i non letti e le voci archiviate col corpo `None`."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        casa = app["home_space_store"]
+        casa = app[HOME_SPACE_KEY]
         letti = [{**v, "corpo": {} if v.get("corpo") is None else v["corpo"]}
                  for v in casa.behavior()]
         monkeypatch.setattr(casa, "unread_bodies", dict)
         monkeypatch.setattr(casa, "behavior", lambda: letti)
-        store, app["memory_store"] = app["memory_store"], None
+        store, app[MEMORY_STORE_KEY] = app[MEMORY_STORE_KEY], None
         try:
             dispatcher = create_tool_dispatcher(
                 app, soffitto=consente(None, ruolo="amministratore"))
@@ -181,7 +182,7 @@ async def test_senza_archivio_una_ricerca_di_entita_non_parla_dei_ricordi(tmp_pa
                                                           "nome": "zzqqxx"})
             solo_nome = await dispatcher.dispatch("search", {"nome": "zzqqxx"})
         finally:
-            app["memory_store"] = store
+            app[MEMORY_STORE_KEY] = store
     assert not any("ricordi" in m for m in entita.get("non_ho_potuto_guardare", [])), entita
     assert entita.get("nulla_riconosciuto") is True, entita
     assert any("ricordi" in m for m in solo_nome["non_ho_potuto_guardare"]), solo_nome
@@ -196,13 +197,13 @@ async def test_senza_archivio_il_solo_riferimento_dichiara_i_ricordi_non_letti(t
     Mutazione ESEGUITA: il ramo `elif` torna a `filters.kind == "ricordo"` --
     rossa."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
-        store, app["memory_store"] = app["memory_store"], None
+        store, app[MEMORY_STORE_KEY] = app[MEMORY_STORE_KEY], None
         try:
             risposta = await create_tool_dispatcher(
                 app, soffitto=consente(None, ruolo="amministratore")).dispatch(
                 "search", {"riferimento": "light.cucina"})
         finally:
-            app["memory_store"] = store
+            app[MEMORY_STORE_KEY] = store
     assert any("ricordi" in m for m in risposta.get("non_ho_potuto_guardare", [])), risposta
 
 
@@ -215,7 +216,7 @@ async def test_la_ricerca_legge_tutti_i_ricordi_non_gli_ultimi_venti(tmp_path):
     20 invece di 21."""
     async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
         for i in range(21):
-            app["memory_store"].remember(f"Promemoria numero {i} sulla caldaia")
+            app[MEMORY_STORE_KEY].remember(f"Promemoria numero {i} sulla caldaia")
         risposta = await create_tool_dispatcher(
             app, soffitto=consente(None, ruolo="amministratore")).dispatch(
             "search", {"genere": "ricordo"})

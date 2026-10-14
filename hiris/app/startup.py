@@ -17,20 +17,31 @@ from pathlib import Path
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .action.actuator import ActionActuator
-from .action.construction.revisions import ConstructionStore
-from .action.construction.workshop import Workshop
-from .action.journal import Journal
-from .action.registry import ServiceRegistry
-from .agent.bridge_governor import _bridge_notices, _recompute_chain
+from .action.actuator import ACTUATOR_KEY, ActionActuator
+from .action.construction.revisions import CONSTRUCTIONS_KEY, ConstructionStore
+from .action.construction.workshop import WORKSHOP_KEY, Workshop
+from .action.installation import INSTALLATION_TASK_KEY
+from .action.journal import JOURNAL_KEY, Journal
+from .action.registry import SERVICE_REGISTRY_KEY, ServiceRegistry
+from .agent.bridge_governor import (
+    AGENT_WORKER_TASK_KEY,
+    RECOMPUTE_CHAIN_KEY,
+    _bridge_notices,
+    _recompute_chain,
+)
+from .api.handlers_config import THEME_KEY
+from .api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from .api.servizi import SERVICES_KEY
 from .api.shell import _read_static_pages
-from .chat_settings import ChatSettings, file_lacks_retention_days
+from .chat_settings import CHAT_SETTINGS_KEY, ChatSettings, file_lacks_retention_days
+from .chat_store import CHAT_STORE_KEY
 from .chat_store import open_store as open_chat_store
+from .claude_runner import CLAUDE_RUNNER_KEY
 from .conservazione import cancella_residui, decidi_vault, nightly, reasoning_sweep
 from .home_space import historian
 from .home_space.behavior import reread_dashboards
 from .home_space.historian import house_timezone
-from .home_space.reader import HomeSpace
+from .home_space.reader import HOME_SPACE_KEY, HomeSpace
 from .home_space.redaction import home_assistant_folder
 from .home_space.registry_follower import schedule_registry_rebuild
 from .home_space.rounds import (
@@ -44,15 +55,25 @@ from .home_space.rounds import (
 )
 from .home_space.topology import rebuild
 from .keeper.exchange import interpreta_promise
-from .keeper.store import AgendaStore
-from .keeper.sweeper import Sweeper, _promise_delivery
-from .memory.store import MemoryStore
+from .keeper.store import AGENDA_KEY, AgendaStore
+from .keeper.sweeper import SWEEPER_KEY, Sweeper, _promise_delivery
+from .llm_router import LLM_ROUTER_KEY
+from .memory.store import MEMORY_STORE_KEY, MemoryStore
 from .mind import report
 from .mind.analyst_round import analyst_round
-from .mind.conditions_round import watch_automation_outcomes, watch_system_conditions
-from .mind.day_report import backfill_one_report, reaggregate_last_two_days, write_day_report
-from .mind.judgments import build_judgments
-from .mind.knowledge import KnowledgeStore
+from .mind.conditions_round import (
+    TRACES_BOOT_TS_KEY,
+    watch_automation_outcomes,
+    watch_system_conditions,
+)
+from .mind.day_report import (
+    BACKFILL_QUIET_KEY,
+    backfill_one_report,
+    reaggregate_last_two_days,
+    write_day_report,
+)
+from .mind.judgments import TYPE_JUDGMENTS_KEY, TYPE_JUDGMENTS_STATUS_KEY, build_judgments
+from .mind.knowledge import KNOWLEDGE_KEY, KnowledgeStore
 from .mind.observer_round import hold_watcher_statistic_ids, reconsideration_round
 from .mind.proposer_round import proposer_beat
 from .mind.realignment import disconnection_recorder, mirror_reload_listener
@@ -60,23 +81,37 @@ from .mind.recipe_round import recipe_round
 from .mind.reconciliation import after_rebuild
 from .mind.seed import REPO_PRIORITY, attribute_seed, judgment_seed, meaning_seed
 from .mind.state_words import prime_state_translations
-from .mind.store import ObservationsStore
-from .mind.watcher import Watcher
+from .mind.store import OBSERVATIONS_KEY, ObservationsStore
+from .mind.watcher import WATCHER_KEY, Watcher
+from .models_store import MODELS_CONFIG_KEY
+from .provider_occurrences import OCCURRENCES_KEY
 from .providers import (
     CLAUDE,
+    CLAUDE_CREDENTIAL_KEY,
+    LOCAL_MODEL_URL_KEY,
     OLLAMA,
     OPENAI,
+    OPENAI_CREDENTIAL_KEY,
     OPENROUTER,
+    OPENROUTER_CREDENTIAL_KEY,
     SUBSCRIPTION,
     can_answer_at_startup,
     credentials_present,
     outside_chain,
     providers_in_chain,
 )
-from .proxy.entity_cache import EntityCache
-from .proxy.ha_client import HAClient
-from .proxy.state_translations import StateTranslations
-from .reasoning.consegna import _chat_reply_submitter
+from .proxy.entity_cache import ENTITY_CACHE_KEY, EntityCache
+from .proxy.ha_client import HA_CLIENT_KEY, HAClient
+from .proxy.state_translations import STATE_TRANSLATIONS_KEY, StateTranslations
+from .reasoning.consegna import SUBMIT_CHAT_REPLY_KEY, _chat_reply_submitter
+from .reasoning.queue import REASONING_QUEUE_KEY
+from .steering import BRIDGE_ACTIVE_KEY
+from .storage import DATA_DIR_KEY
+from .usage.store import USAGE_KEY
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+SCHEDULER_KEY = web.AppKey("scheduler")
 
 logger = logging.getLogger(__name__)
 
@@ -122,14 +157,14 @@ def _open_knowledge(app, data_dir: str) -> None:
             except Exception as close_error:
                 logger.warning("sapere: chiusura dopo il guasto non riuscita (%s: %s)",
                                type(close_error).__name__, close_error)
-        app["knowledge"] = None
-        app["type_judgments"], app["type_judgments_status"] = build_judgments(
+        app[KNOWLEDGE_KEY] = None
+        app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = build_judgments(
             None, unavailable_reason=reason)
         return
     if seeded:
         logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')", seeded)
-    app["knowledge"] = knowledge
-    app["type_judgments"], app["type_judgments_status"] = build_judgments(knowledge)
+    app[KNOWLEDGE_KEY] = knowledge
+    app[TYPE_JUDGMENTS_KEY], app[TYPE_JUDGMENTS_STATUS_KEY] = build_judgments(knowledge)
 
 
 #: Quanto l'avvio aspetta che Home Assistant confermi l'iscrizione prima di
@@ -169,11 +204,11 @@ def mark_triggered_automation(app, event_data: dict) -> None:
         return
     entity_id = event_data.get("entity_id")
     if isinstance(entity_id, str):
-        app["watcher"].mark_automation(entity_id)
+        app[WATCHER_KEY].mark_automation(entity_id)
 
 
 async def reload_inventory_job(app, ha_client) -> None:
-    await reload_entity_inventory(app.get("entity_cache"), ha_client)
+    await reload_entity_inventory(app.get(ENTITY_CACHE_KEY), ha_client)
 
 
 async def reread_problems_job(app, ha_client) -> None:
@@ -230,7 +265,7 @@ async def nightly_aggregation_job(app, ha_client) -> None:
         # FUORI da qui il warning contestualizzato non partirebbe --
         # l'eccezione finirebbe nel registro di apscheduler senza il
         # prefisso «cervello:», e la notte salterebbe in silenzio.
-        timezone = house_timezone(app.get("home_space_store"))
+        timezone = house_timezone(app.get(HOME_SPACE_KEY))
         ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
         # **IL RESOCONTO** (spec §9), per la strada unica: la notte
         # rifa' ieri anche se c'e' gia'.
@@ -247,7 +282,7 @@ async def sweeper_interpret(app, promise: dict) -> dict:
 
 
 async def keeper_heartbeat_job(app) -> None:
-    await app["sweeper"].batti(time.time())
+    await app[SWEEPER_KEY].batti(time.time())
 
 
 # Il modello per provider, come LETTURA e non come valore. È la metà
@@ -264,7 +299,7 @@ async def keeper_heartbeat_job(app) -> None:
 # di un salvataggio.
 def model_reader(app, provider: str):
     def read() -> str:
-        return ((app.get("models_config") or {})
+        return ((app.get(MODELS_CONFIG_KEY) or {})
                 .get("provider_models", {}).get(provider, ""))
     return read
 
@@ -273,7 +308,7 @@ def local_model(app) -> str:
     """Il modello di Ollama non vive in `provider_models` (è un fantasma
     lì: `_clean_provider_models` lo scarta in lettura e in scrittura): la
     sua unica casa è `models_config["ollama"]["modello"]`."""
-    return (app.get("models_config") or {}).get(OLLAMA.id, {}).get("modello", "")
+    return (app.get(MODELS_CONFIG_KEY) or {}).get(OLLAMA.id, {}).get("modello", "")
 
 
 def reapply_chain(app) -> None:
@@ -293,7 +328,7 @@ async def _on_startup(app: web.Application) -> None:
     # store: va risolta prima che qualunque middleware possa servire una
     # richiesta.
     data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
-    app["data_dir"] = data_dir
+    app[DATA_DIR_KEY] = data_dir
     # CR-1: le reti sorgenti fidate. Il bypass dell'ingress vale solo per le
     # richieste che vengono di li', cosi' un `X-Ingress-Path` falsificato da un
     # client diretto (LAN, o un tunnel da un'altra macchina) non scavalca il
@@ -317,7 +352,7 @@ async def _on_startup(app: web.Application) -> None:
             "è fidata e ogni richiesta dovrà autenticarsi. Correggi il campo "
             "nelle opzioni dell'add-on, oppure svuotalo per tornare al "
             "predefinito")
-    app["supervisor_ingress_cidrs"] = [str(r) for r in _reti]
+    app[INGRESS_CIDRS_KEY] = [str(r) for r in _reti]
     ha_base_url = os.environ.get("HA_BASE_URL", "http://supervisor/core")
     if not ha_base_url.startswith("http://supervisor"):
         logger.warning(
@@ -328,13 +363,13 @@ async def _on_startup(app: web.Application) -> None:
         token=os.environ.get("SUPERVISOR_TOKEN", ""),
     )
     await ha_client.start()
-    app["ha_client"] = ha_client
+    app[HA_CLIENT_KEY] = ha_client
 
     # Cosa Home Assistant sa fare, in questa casa. Costruito vuoto: si carica
     # al primo uso (`ensure_fresh`), non all'avvio -- un caricamento qui
     # allungherebbe il boot per una cosa che potrebbe non servire in questa
     # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
-    app["service_registry"] = ServiceRegistry()
+    app[SERVICE_REGISTRY_KEY] = ServiceRegistry()
 
     # Il sapere: cio' che HIRIS ha capito, con la provenienza e le prove
     # (fetta «il sapere e le ricette», 12/09/2026, spec §8).
@@ -360,7 +395,7 @@ async def _on_startup(app: web.Application) -> None:
     # rilegge (`HAClient._listen`).
     entity_cache = EntityCache()
     ha_client.add_state_listener(entity_cache.on_state_changed)
-    app["entity_cache"] = entity_cache
+    app[ENTITY_CACHE_KEY] = entity_cache
 
     # L'anagrafe nasce qui, vuota, e non piu' accanto alla sua prima
     # lettura (piu' sotto): l'iscrizione alle integrazioni le consegna le
@@ -368,7 +403,7 @@ async def _on_startup(app: web.Application) -> None:
     # Finche' la prima ricostruzione non e' riuscita le tiene solo in
     # `app["ha_integrations"]` (`HomeSpace.hold_integrations`).
     home_space_store = HomeSpace(data_dir, mirror=entity_cache)
-    app["home_space_store"] = home_space_store
+    app[HOME_SPACE_KEY] = home_space_store
     ha_client.add_integration_listener(integration_follower(app))
 
     # **Chi tiene una copia della casa si iscrive PRIMA del websocket**
@@ -390,8 +425,8 @@ async def _on_startup(app: web.Application) -> None:
         schedule_registry_rebuild(ha_client, home_space_store,
                                   then=lambda: after_rebuild(app)))
     ha_client.add_topology_listener(
-        mirror_reload_listener(ha_client, entity_cache, lambda: app.get("watcher")))
-    ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get("watcher")))
+        mirror_reload_listener(ha_client, entity_cache, lambda: app.get(WATCHER_KEY)))
+    ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get(WATCHER_KEY)))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
     # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
     ha_config_dir = home_assistant_folder()
@@ -412,7 +447,7 @@ async def _on_startup(app: web.Application) -> None:
     # comando. Installare un'integrazione emette una raffica di eventi, e una
     # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
     # qualcuno chiede di agire.
-    _service_registry = app["service_registry"]
+    _service_registry = app[SERVICE_REGISTRY_KEY]
     ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
 
     await _open_websocket(ha_client)
@@ -436,7 +471,7 @@ async def _on_startup(app: web.Application) -> None:
     # a ogni turno e dal primo. La lettura pigra e' rimasta -- `read` continua
     # a costare zero finche' la casa non cambia versione o lingua -- ma adesso
     # c'e' qualcuno che la fa partire.
-    app["state_translations"] = StateTranslations(ha_client)
+    app[STATE_TRANSLATIONS_KEY] = StateTranslations(ha_client)
 
     # I guasti che Home Assistant ha gia' diagnosticato. Qui la PRIMA lettura,
     # accanto all'inventario perche' e' la stessa specie di dato: una
@@ -454,17 +489,17 @@ async def _on_startup(app: web.Application) -> None:
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
     # perche' e' il suo unico ingresso.
-    app["observations"] = ObservationsStore(
+    app[OBSERVATIONS_KEY] = ObservationsStore(
         os.path.join(data_dir, "osservazioni.db"))
     # La quiete del recupero delle cronache (`BACKFILL_QUIET_S`): nasce qui,
     # prima che aiohttp congeli l'app, perche' il giro la usa ad app avviata.
-    app["backfill_quiet"] = {}
+    app[BACKFILL_QUIET_KEY] = {}
     # Il sapere e' nato piu' sopra, prima della cache delle entita'.
     # L'osservatore riceve il sapere: da li' legge **quali attributi valga la
     # pena tenere** per un tipo (spec §5.4). Senza, scriverebbe come prima e
     # l'esempio fondativo del cervello -- «il riscaldamento parte alle 15:30,
     # la casa e' calda alle 16:30» -- resterebbe non rispondibile.
-    app["watcher"] = Watcher(app["observations"], knowledge=app["knowledge"])
+    app[WATCHER_KEY] = Watcher(app[OBSERVATIONS_KEY], knowledge=app[KNOWLEDGE_KEY])
     # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
     # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
     # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
@@ -472,12 +507,12 @@ async def _on_startup(app: web.Application) -> None:
     # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
     # utile: da quando dura. **Prima** del primo giro delle condizioni, qui
     # sotto. Non solleva mai (vedi il suo docstring).
-    app["watcher"].rebuild_conditions()
+    app[WATCHER_KEY].rebuild_conditions()
     # LO STESSO rubinetto che alimenta lo specchio, non un secondo: due
     # sorgenti degli stessi eventi sarebbero due cose che possono divergere.
     # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
     # lo specchio sia aggiornato prima.
-    ha_client.add_state_listener(app["watcher"].watch_reading)
+    ha_client.add_state_listener(app[WATCHER_KEY].watch_reading)
 
     # L'istante di avvio di QUESTO processo (giro di correzioni Task 4):
     # serve al cursore delle tracce di automazione in
@@ -489,7 +524,7 @@ async def _on_startup(app: web.Application) -> None:
     # stesso: quella funzione gira ogni due minuti, e fissare l'istante ad
     # ogni chiamata lo farebbe scivolare in avanti a ogni giro invece di
     # restare l'istante del boot.
-    app["automation_traces_boot_ts"] = time.time()
+    app[TRACES_BOOT_TS_KEY] = time.time()
 
     # L'evento delle automazioni (Task 4 di «le tracce e il log»,
     # AUTOMATION_TRIGGERED_EVENT in `proxy/ha_client.py`): segna soltanto,
@@ -519,7 +554,7 @@ async def _on_startup(app: web.Application) -> None:
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
     # porta la riceve qui sotto.
-    app["journal"] = Journal(os.path.join(data_dir, "azioni.db"))
+    app[JOURNAL_KEY] = Journal(os.path.join(data_dir, "azioni.db"))
 
     # L'archivio delle promesse (`keeper/store.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
@@ -528,7 +563,7 @@ async def _on_startup(app: web.Application) -> None:
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
-    app["agenda"] = AgendaStore(os.path.join(data_dir, "promesse.db"))
+    app[AGENDA_KEY] = AgendaStore(os.path.join(data_dir, "promesse.db"))
 
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
     # (`action/actuator.py`). Sta QUI, e non accanto a `service_registry` piu'
@@ -539,9 +574,9 @@ async def _on_startup(app: web.Application) -> None:
     # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
     # via `create_tool_dispatcher`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
-    app["action_actuator"] = ActionActuator(ha_client, app["service_registry"],
-                                      app.get("entity_cache"), app["journal"],
-                                      home_space_store=app.get("home_space_store"))
+    app[ACTUATOR_KEY] = ActionActuator(ha_client, app[SERVICE_REGISTRY_KEY],
+                                      app.get(ENTITY_CACHE_KEY), app[JOURNAL_KEY],
+                                      home_space_store=app.get(HOME_SPACE_KEY))
 
     # L'archivio delle costruzioni e l'officina (fetta «costruire»,
     # docs/design/2026-08-22-costruire-in-home-assistant.md). Nascono QUI e non
@@ -549,12 +584,12 @@ async def _on_startup(app: web.Application) -> None:
     # e il canale HA. Non riceve la porta e non la usa: sono due canali di
     # scrittura diversi -- «un canale, una porta», spec §2.1 -- e l'officina
     # non chiama mai un servizio.
-    app["constructions"] = ConstructionStore(
+    app[CONSTRUCTIONS_KEY] = ConstructionStore(
         os.path.join(data_dir, "costruzioni.db"))
 
-    app["workshop"] = Workshop(
-        ha_client, app["constructions"], app["journal"],
-        read_timezone=lambda: house_timezone(app.get("home_space_store")))
+    app[WORKSHOP_KEY] = Workshop(
+        ha_client, app[CONSTRUCTIONS_KEY], app[JOURNAL_KEY],
+        read_timezone=lambda: house_timezone(app.get(HOME_SPACE_KEY)))
 
     # L'archivio dei modelli si legge prima di costruire `LLMRouter`, piu' sotto:
     # la catena si compone da `chain_order`.
@@ -565,7 +600,7 @@ async def _on_startup(app: web.Application) -> None:
     # copia e' avvenuta da tempo (misurato il 02/10/2026: `seminato` vero).
     # L'archivio e' la sola fonte, e i campi che non ha partono dai
     # predefiniti di `load_models_config`.
-    app["models_config"] = load_models_config(data_dir)
+    app[MODELS_CONFIG_KEY] = load_models_config(data_dir)
 
     # Task 5 SDD casa: l'anagrafe (nata piu' sopra, prima del websocket) si
     # costruisce all'avvio e si rifa' quando la casa cambia. La costruzione
@@ -636,7 +671,7 @@ async def _on_startup(app: web.Application) -> None:
     # (`core_config_updated`), e un fuso cotto qui sarebbe quello dell'avvio.
     from .usage.store import UsageStore
 
-    app["usage"] = UsageStore(
+    app[USAGE_KEY] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
         read_timezone=lambda: house_timezone(home_space_store))
 
@@ -697,7 +732,7 @@ async def _on_startup(app: web.Application) -> None:
     # fare qui: a differenza dell'anagrafe non c'e' nulla da ricostruire
     # all'avvio.
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
-    app["memory_store"] = memory_store
+    app[MEMORY_STORE_KEY] = memory_store
 
     # L'archivio dei servizi accoppiati (22/09/2026). Qui non vive nessun
     # segreto: solo chiavi PUBBLICHE, il ruolo che il proprietario ha dato e lo
@@ -715,11 +750,11 @@ async def _on_startup(app: web.Application) -> None:
     # Le impostazioni della chat: un bot solo, senza id, coi default nel codice
     # (vedi `chat_settings.py`).
     chat_settings = ChatSettings.load(data_dir)
-    app["chat_settings"] = chat_settings
+    app[CHAT_SETTINGS_KEY] = chat_settings
     # L'archivio della chat, come gli altri (D-27): la finestra la legge dalle
     # impostazioni a ogni potatura, perche' la pagina la cambia a caldo.
-    app["chat_store"] = open_chat_store(
-        data_dir, read_retention_days=lambda: app["chat_settings"].retention_days)
+    app[CHAT_STORE_KEY] = open_chat_store(
+        data_dir, read_retention_days=lambda: app[CHAT_SETTINGS_KEY].retention_days)
 
     # `giorni_conservazione` arriva al disco al primo avvio. `load()` da' il
     # default quando la chiave non c'e', ma non lo SCRIVE, e `save()` ha un solo
@@ -785,9 +820,9 @@ async def _on_startup(app: web.Application) -> None:
     # l'add-on gira davvero.
     scheduler = AsyncIOScheduler()
     scheduler.start()
-    app["scheduler"] = scheduler
+    app[SCHEDULER_KEY] = scheduler
 
-    app["theme"] = os.environ.get("THEME", "auto")
+    app[THEME_KEY] = os.environ.get("THEME", "auto")
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")
@@ -803,10 +838,10 @@ async def _on_startup(app: web.Application) -> None:
     # Le credenziali stanno nell'app, dove le leggono anche la pagina Modelli e
     # `/api/models`: la tabella dei provider le misura da qui
     # (`providers.credentials_present`), all'avvio come in ogni richiesta.
-    app["claude_api_key"] = api_key
-    app["openai_api_key"] = openai_api_key
-    app["openrouter_api_key"] = openrouter_api_key
-    app["local_model_url"] = local_model_url
+    app[CLAUDE_CREDENTIAL_KEY] = api_key
+    app[OPENAI_CREDENTIAL_KEY] = openai_api_key
+    app[OPENROUTER_CREDENTIAL_KEY] = openrouter_api_key
+    app[LOCAL_MODEL_URL_KEY] = local_model_url
 
     # ── Le credenziali, e nient'altro ──────────────────────────────────
     # fetta «la catena diventa l'unica verita'»: qui c'erano i cinque
@@ -1078,7 +1113,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe e del comportamento qui sopra: si dichiara e si prosegue,
     # e le promesse `in_corso` restano tali fino al prossimo riavvio.
     try:
-        app["agenda"].risana(now=time.time())
+        app[AGENDA_KEY].risana(now=time.time())
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
@@ -1087,7 +1122,7 @@ async def _on_startup(app: web.Application) -> None:
     # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
     # nessuna `apply`, e resterebbe un fantasma fino alla potatura.
     try:
-        app["constructions"].risana(now=time.time())
+        app[CONSTRUCTIONS_KEY].risana(now=time.time())
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
@@ -1100,9 +1135,9 @@ async def _on_startup(app: web.Application) -> None:
     # Fetta «il seguito delle chat divise» (spec 2026-09-26 §2.4): l'esito
     # torna a chi l'ha chiesta -- il recapito, la riga nel filo e il soffitto
     # riletto al risveglio (`_promise_delivery`, qui sopra nel modulo).
-    app["sweeper"] = Sweeper(
-        app["agenda"],
-        execute=app["action_actuator"].execute,
+    app[SWEEPER_KEY] = Sweeper(
+        app[AGENDA_KEY],
+        execute=app[ACTUATOR_KEY].execute,
         interpreta=partial(sweeper_interpret, app),
         **_promise_delivery(app),
     )
@@ -1128,9 +1163,9 @@ async def _on_startup(app: web.Application) -> None:
     reasoning_queue = ReasoningQueue(
         os.path.join(data_dir, "reasoning.db"),
         read_timezone=lambda: house_timezone(home_space_store))
-    app["reasoning_queue"] = reasoning_queue
+    app[REASONING_QUEUE_KEY] = reasoning_queue
 
-    app["submit_chat_reply"] = _chat_reply_submitter(app, data_dir)
+    app[SUBMIT_CHAT_REPLY_KEY] = _chat_reply_submitter(app, data_dir)
 
     # La spazzata della coda del ponte: `conservazione.reasoning_sweep`.
     scheduler.add_job(
@@ -1161,15 +1196,15 @@ async def _on_startup(app: web.Application) -> None:
     # (`_PROVIDER_MODEL_KEYS` non lo contiene, `_clean_provider_models` lo
     # scarta in lettura E in scrittura -- e resta così: NON è un doppione da
     # far rivivere).
-    _ollama_model = (app["models_config"].get(OLLAMA.id) or {}).get("modello", "")
-    _risponde = can_answer_at_startup(_credentials, app["models_config"])
+    _ollama_model = (app[MODELS_CONFIG_KEY].get(OLLAMA.id) or {}).get("modello", "")
+    _risponde = can_answer_at_startup(_credentials, app[MODELS_CONFIG_KEY])
 
     claude_runner = None
     if api_key and _credentials[CLAUDE.id]:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             read_model=model_reader(app, CLAUDE.id),
-            log_usage=app["usage"].log,
+            log_usage=app[USAGE_KEY].log,
         )
 
     # I quattro contatori di prima entrano nell'archivio UNA volta sola, come
@@ -1178,14 +1213,14 @@ async def _on_startup(app: web.Application) -> None:
     # e' meglio che spalmarlo. Stanno nella cartella dei dati: fino
     # all'08/10/2026 il primo si leggeva da `USAGE_DATA_PATH`, una variabile
     # che `run.sh` non esportava (D6 della Tappa 8).
-    app["usage"].importa_legacy([
+    app[USAGE_KEY].importa_legacy([
         os.path.join(data_dir, name)
         for name in ("usage.json", "usage_openai.json", "usage_openrouter.json",
                      "usage_ollama.json")
     ], now=time.time())
     # I residui si cancellano DOPO l'importazione: un contatore registrato
     # come importato e' un residuo come gli altri (D6).
-    cancella_residui(data_dir, imported=app["usage"].legacy_imported())
+    cancella_residui(data_dir, imported=app[USAGE_KEY].legacy_imported())
 
     openai_runner = None
     if openai_api_key and _credentials[OPENAI.id]:
@@ -1193,7 +1228,7 @@ async def _on_startup(app: web.Application) -> None:
             base_url=OPENAI.api_base,
             api_key=openai_api_key,
             read_model=model_reader(app, OPENAI.id),
-            log_usage=app["usage"].log,
+            log_usage=app[USAGE_KEY].log,
         )
 
     ollama_runner = None
@@ -1214,10 +1249,10 @@ async def _on_startup(app: web.Application) -> None:
             # Dall'ARCHIVIO, non da `OLLAMA_REQUEST_TIMEOUT`: è lo stesso
             # numero che la pagina Modelli mostra sul connettore, e leggerlo in
             # due posti era la seconda rappresentazione (invariante 1).
-            timeout_s=(app["models_config"].get(OLLAMA.id) or {}).get(
+            timeout_s=(app[MODELS_CONFIG_KEY].get(OLLAMA.id) or {}).get(
                 "timeout_s", OLLAMA.reply_timeout_s),
             read_model=partial(local_model, app),
-            log_usage=app["usage"].log,
+            log_usage=app[USAGE_KEY].log,
         )
     if _risponde[OLLAMA.id]:
         # Quick reachability check — warn but don't abort startup.
@@ -1251,7 +1286,7 @@ async def _on_startup(app: web.Application) -> None:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             read_model=model_reader(app, OPENROUTER.id),
-            log_usage=app["usage"].log,
+            log_usage=app[USAGE_KEY].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
@@ -1282,7 +1317,7 @@ async def _on_startup(app: web.Application) -> None:
     # numerato, col suo connettore, e nessun messaggio ci sarebbe mai passato.
     # Un anello a schermo che non risponde mai e' esattamente la bugia che
     # questa fetta ritira, e la differenza fra i due dizionari e' UNA riga.
-    _chain = providers_in_chain(app["models_config"].get("chain_order") or [], _risponde)
+    _chain = providers_in_chain(app[MODELS_CONFIG_KEY].get("chain_order") or [], _risponde)
     # Nessuna perdita in silenzio: chi ha una credenziale e NON sta in catena
     # non viene consultato, e prima `reconcile_chain` lo accodava da solo. Il
     # cambio di comportamento si dichiara nel registro, dove un operatore lo
@@ -1307,13 +1342,13 @@ async def _on_startup(app: web.Application) -> None:
             # via. Lo stesso oggetto che la pagina Modelli legge: se fossero
             # due, divergerebbero -- e la pagina racconterebbe un traffico che
             # non e' quello che c'e' stato.
-            registry=app["occurrence_registry"],
+            registry=app[OCCURRENCES_KEY],
         )
-        app["claude_runner"] = claude_runner  # backward compat (may be None)
-        app["llm_router"] = router
+        app[CLAUDE_RUNNER_KEY] = claude_runner  # backward compat (may be None)
+        app[LLM_ROUTER_KEY] = router
     else:
-        app["claude_runner"] = None
-        app["llm_router"] = None
+        app[CLAUDE_RUNNER_KEY] = None
+        app[LLM_ROUTER_KEY] = None
 
     # ── Rimettere in vigore, a caldo ──────────────────────────────────────
     # Fuori da entrambi i rami, e con UNA implementazione sola: il ramo `else`
@@ -1326,7 +1361,7 @@ async def _on_startup(app: web.Application) -> None:
     # che rimette in vigore sia la STESSA che mette in vigore la prima volta:
     # se le due derivazioni potessero divergere, divergerebbero all'avvio,
     # dove ogni prova le guarda, invece che al primo salvataggio di un utente.
-    app["recompute_chain"] = partial(reapply_chain, app)
+    app[RECOMPUTE_CHAIN_KEY] = partial(reapply_chain, app)
     reapply_chain(app)
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
@@ -1356,7 +1391,7 @@ async def _on_startup(app: web.Application) -> None:
     # ponte. Sono l'ultima cosa dell'avvio perche' sono le prime che un
     # operatore cerca in coda al registro quando la chat costa piu' del
     # previsto.
-    for _notice in _bridge_notices(bool(app.get("bridge_active")),
+    for _notice in _bridge_notices(bool(app.get(BRIDGE_ACTIVE_KEY)),
                                    _credentials[SUBSCRIPTION.id]):
         logger.warning(_notice)
 
@@ -1374,7 +1409,7 @@ async def _on_cleanup(app: web.Application) -> None:
     # that wait; on timeout we give up on a clean join and move on rather
     # than hang shutdown, and TimeoutError is suppressed same as
     # CancelledError since either outcome means "stop waiting, proceed".
-    aw = app.get("agent_worker_task")
+    aw = app.get(AGENT_WORKER_TASK_KEY)
     if aw is not None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
@@ -1382,52 +1417,52 @@ async def _on_cleanup(app: web.Application) -> None:
     # L'installazione (`start_installation`): puo' essere
     # ancora in attesa del nucleo. Non tiene niente da chiudere, quindi si
     # ferma e si aspetta senza tetto proprio.
-    installation = app.get("installation_task")
+    installation = app.get(INSTALLATION_TASK_KEY)
     if installation is not None:
         installation.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await installation
-    if "reasoning_queue" in app:
-        app["reasoning_queue"].close()
-    if "memory_store" in app:
-        app["memory_store"].close()
+    if REASONING_QUEUE_KEY in app:
+        app[REASONING_QUEUE_KEY].close()
+    if MEMORY_STORE_KEY in app:
+        app[MEMORY_STORE_KEY].close()
     # I due archivi del Task 7 (keeper): stessa disciplina dei due qui
     # sopra -- senza chiuderli un riavvio lascerebbe il file sqlite bloccato.
-    if "agenda" in app:
-        app["agenda"].close()
-    if "journal" in app:
-        app["journal"].close()
+    if AGENDA_KEY in app:
+        app[AGENDA_KEY].close()
+    if JOURNAL_KEY in app:
+        app[JOURNAL_KEY].close()
     # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
     # dell'officina (`action/construction/revisions.py`), costruito in
     # `_on_startup` accanto a `app["journal"]`. Stessa disciplina dei due
     # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
     # al riavvio.
-    if "constructions" in app:
-        app["constructions"].close()
+    if CONSTRUCTIONS_KEY in app:
+        app[CONSTRUCTIONS_KEY].close()
     # I CONSUMI e i SERVIZI accoppiati. Tutti e due mancavano da qui -- `usage`
     # da mesi, `servizi` dal giorno in cui e' nato (22/09/2026) -- e nessuna
     # delle prove accanto poteva accorgersene, perche' ognuna nominava a mano
     # l'archivio che il suo autore ricordava. Li ha trovati il cancello
     # derivato `tests/test_archivi_chiusi.py`, che da oggi li chiede al codice.
-    if "usage" in app:
-        app["usage"].close()
-    if "servizi" in app:
-        app["servizi"].close()
+    if USAGE_KEY in app:
+        app[USAGE_KEY].close()
+    if SERVICES_KEY in app:
+        app[SERVICES_KEY].close()
     # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
     # del cervello (`mind/store.py`), costruito in `_on_startup`
     # accanto a `app["journal"]`. Stessa disciplina degli archivi qui sopra:
     # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
-    if "observations" in app:
-        app["observations"].close()
+    if OBSERVATIONS_KEY in app:
+        app[OBSERVATIONS_KEY].close()
     # Il sapere (`mind/knowledge.py`, fetta «il sapere e le ricette»): stessa
     # disciplina dell'archivio qui sopra, con una differenza sola -- la chiave
     # puo' esserci e valere `None`, quando all'avvio il sapere non si e' aperto
     # (`_open_knowledge`, Task 7b). Per questo si guarda il valore, non la
     # presenza della chiave.
-    if app.get("knowledge") is not None:
-        app["knowledge"].close()
+    if app.get(KNOWLEDGE_KEY) is not None:
+        app[KNOWLEDGE_KEY].close()
     # `wait=False`: non si aspettano i job in corso al momento dello shutdown.
-    if "scheduler" in app:
-        app["scheduler"].shutdown(wait=False)
-    await app["ha_client"].stop()
+    if SCHEDULER_KEY in app:
+        app[SCHEDULER_KEY].shutdown(wait=False)
+    await app[HA_CLIENT_KEY].stop()
     close_all_stores()

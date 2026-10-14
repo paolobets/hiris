@@ -5,7 +5,10 @@ Uscito da `server.py` per solo spostamento (Tappa 7, Task 11).
 from aiohttp import web
 
 from ..conservazione import declarations
+from ..mind.day_report import LAST_REPAIR_KEY
+from ..mind.judgments import TYPE_JUDGMENTS_STATUS_KEY
 from ..version import read_version
+from .shell import BUILD_STAMP_KEY
 from .soffitto import restricted_person
 
 
@@ -46,10 +49,10 @@ async def handle_health(request: web.Request) -> web.Response:
     # decisione scritta accanto allo schema, non una manopola.
     if restricted_person(request):
         return web.json_response({"status": "ok", "version": read_version(),
-                                  "build": request.app.get("build_stamp", "")})
+                                  "build": request.app.get(BUILD_STAMP_KEY, "")})
     return web.json_response({"status": "ok", "version": read_version(),
-                              "build": request.app.get("build_stamp", ""),
+                              "build": request.app.get(BUILD_STAMP_KEY, ""),
                               "ponte": last_bridge_init(),
-                              "riparazione": request.app.get("ultima_riparazione"),
-                              "istantanea": request.app.get("type_judgments_status"),
+                              "riparazione": request.app.get(LAST_REPAIR_KEY),
+                              "istantanea": request.app.get(TYPE_JUDGMENTS_STATUS_KEY),
                               "conservazione": declarations(request.app)})

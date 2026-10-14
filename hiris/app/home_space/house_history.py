@@ -35,6 +35,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from aiohttp import web
+
 from ..proxy._sanitize import sanitize_structure, sanitize_traceback, truncate_with_marker
 from ..proxy.entity_cache import VALUES, automation_config_id, unreadable_inventory_error
 from ..proxy.ha_client import SHAPE, _failure
@@ -64,6 +66,11 @@ from .render import depth_for, render_entity
 from .topology import live_name
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
+
+#: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
+#: stringa (X-32, Chiusura dello sprint).
+STATISTIC_IDS_HELD_KEY = web.AppKey("statistic_ids_held")
+STATISTIC_IDS_LOCK_KEY = web.AppKey("statistic_ids_lock")
 
 if TYPE_CHECKING:
     from .house import House
@@ -1703,15 +1710,15 @@ async def statistic_ids_for_round(app, ha_client, *,
     due. Il secondo aspetta il primo, e trova la sua lettura (o, dopo un
     guasto, richiede).
     """
-    lock = app.get("statistic_ids_lock")
+    lock = app.get(STATISTIC_IDS_LOCK_KEY)
     if lock is None:
-        lock = app["statistic_ids_lock"] = asyncio.Lock()
+        lock = app[STATISTIC_IDS_LOCK_KEY] = asyncio.Lock()
     async with lock:
         moment = time.monotonic() if now is None else now
-        held = app.get("statistic_ids_held")
+        held = app.get(STATISTIC_IDS_HELD_KEY)
         if held is not None and moment - held[0] < STATISTIC_IDS_MEMORY_S:
             return held[1]
         reading = await ha_client.statistic_ids()
         if not isinstance(reading, dict):
-            app["statistic_ids_held"] = (moment, reading)
+            app[STATISTIC_IDS_HELD_KEY] = (moment, reading)
         return reading

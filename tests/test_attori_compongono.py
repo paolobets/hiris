@@ -83,6 +83,7 @@ from hiris.app.home_space.topology import live_mirror
 from hiris.app.mind import observer, recipe_turn
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.proxy.entity_cache import _to_minimal
+from hiris.app.startup import SCHEDULER_KEY
 from tests._avvio import started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
@@ -221,7 +222,7 @@ def _job_sources(app) -> tuple[set[str], set[pathlib.Path]]:
     Un lavoro iscritto come `functools.partial(funzione, app)` si guarda
     nella funzione che avvolge (`.func`): e' cosi' che `server.py` iscrive i
     lavori usciti in `conservazione.py` (Tappa 8)."""
-    jobs = app["scheduler"].get_jobs()
+    jobs = app[SCHEDULER_KEY].get_jobs()
     funcs = [getattr(job.func, "func", job.func) for job in jobs]
     names = {func.__name__ for func in funcs}
     files = {pathlib.Path(sys.modules[func.__module__].__file__) for func in funcs}

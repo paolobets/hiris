@@ -35,6 +35,8 @@ import time
 
 from aiohttp import web
 
+from ..usage.store import USAGE_KEY
+
 logger = logging.getLogger(__name__)
 
 #: Quanti giorni si guardano quando il chiamante non lo dice. Sette e' la
@@ -56,7 +58,7 @@ async def handle_misure(request) -> web.Response:
     specie del turno e' cio' che distingue «l'analista spende cosi'» da «la
     chat spende cosi'»: un carico senza il suo turno non risponde a niente.
     """
-    archivio = request.app.get("usage")
+    archivio = request.app.get(USAGE_KEY)
     if archivio is None:
         # All'avvio, o su un'installazione che non ha ancora misurato. Una
         # rotta di servizio che risponde 500 manda chi la usa a cercare un

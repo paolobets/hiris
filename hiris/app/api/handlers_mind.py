@@ -42,9 +42,10 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
+from ..mind.knowledge import KNOWLEDGE_KEY
 from ..mind.report import BACKFILL_EVERY_MINUTES
 from ..mind.scope import OWNER
-from ..mind.store import READING_RETENTION_S
+from ..mind.store import OBSERVATIONS_KEY, READING_RETENTION_S
 from ..mind.view import mind_view
 from .boundary import error_response, json_object
 from .soffitto import subject_name
@@ -126,7 +127,7 @@ async def handle_set_objective(request) -> web.Response:
     criterio, e chi ha premuto salva deve sapere che non e' stato scritto
     niente.
     """
-    store = request.app.get("observations")
+    store = request.app.get(OBSERVATIONS_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     body = await json_object(request)
@@ -187,7 +188,7 @@ async def handle_set_judgment(request) -> web.Response:
     riga e' il soggetto che il confine ha attaccato alla richiesta, mai un
     campo del corpo.
     """
-    if request.app.get("knowledge") is None:
+    if request.app.get(KNOWLEDGE_KEY) is None:
         return error_response(503, "il sapere non e' disponibile")
     body = await json_object(request)
     if ("valore" not in body
@@ -242,7 +243,7 @@ async def handle_set_scope(request) -> web.Response:
     scrive solo chi amministra (il gesto della sua riga in
     `admission.ADMISSION`), come i giudizi sui tipi. E' una scrittura: passa dal `csrf_middleware`.
     """
-    store = request.app.get("observations")
+    store = request.app.get(OBSERVATIONS_KEY)
     if store is None:
         return error_response(503, "archivio non disponibile")
     body = await json_object(request)
@@ -341,7 +342,7 @@ async def handle_knowledge(request) -> web.Response:
     quelle di `non_capito` (`_fact_row`), con la sua fonte: per un significato
     e' la citazione, col tag (B-47).
     """
-    sapere = request.app.get("knowledge")
+    sapere = request.app.get(KNOWLEDGE_KEY)
     if sapere is None:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()

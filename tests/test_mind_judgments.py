@@ -6,6 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from hiris.app.mind.judgments import TYPE_JUDGMENTS_KEY, TYPE_JUDGMENTS_STATUS_KEY
+from hiris.app.mind.knowledge import KNOWLEDGE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -173,9 +177,9 @@ def test_sapere_che_NON_si_apre_NON_ferma_avvio_e_la_salute_dice_l_errore(tmp_pa
     app = {}
     with caplog.at_level(logging.ERROR, logger=startup.logger.name):
         startup._open_knowledge(app, str(tmp_path))
-    assert app["knowledge"] is None
-    assert app["type_judgments"] is tv.REPO_JUDGMENTS
-    status = app["type_judgments_status"]
+    assert app[KNOWLEDGE_KEY] is None
+    assert app[TYPE_JUDGMENTS_KEY] is tv.REPO_JUDGMENTS
+    status = app[TYPE_JUDGMENTS_STATUS_KEY]
     assert status["stato"] == "solo seme"
     assert "OperationalError: unable to open database file" in status["perche"], status
     assert status["impronta"] == tv.REPO_JUDGMENTS.chronicle_fingerprint()
@@ -197,20 +201,20 @@ def test_seme_che_solleva_CHIUDE_archivio_e_torna_al_seme(tmp_path, monkeypatch)
     monkeypatch.setattr(startup, "KnowledgeStore", _open)
     app = {}
     startup._open_knowledge(app, str(tmp_path))
-    assert app["knowledge"] is None
+    assert app[KNOWLEDGE_KEY] is None
     assert [store.closed for store in opened] == [True]
-    assert "RuntimeError: disco pieno" in app["type_judgments_status"]["perche"]
+    assert "RuntimeError: disco pieno" in app[TYPE_JUDGMENTS_STATUS_KEY]["perche"]
 
 
 def test_sapere_che_si_apre_arriva_in_app_seminato(tmp_path):
     app = {}
     startup._open_knowledge(app, str(tmp_path))
     try:
-        assert isinstance(app["knowledge"], KnowledgeStore)
-        assert app["type_judgments_status"]["stato"] == "sapere"
-        assert app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()
+        assert isinstance(app[KNOWLEDGE_KEY], KnowledgeStore)
+        assert app[TYPE_JUDGMENTS_STATUS_KEY]["stato"] == "sapere"
+        assert app[TYPE_JUDGMENTS_KEY].rows() == tv.REPO_JUDGMENTS.rows()
     finally:
-        app["knowledge"].close()
+        app[KNOWLEDGE_KEY].close()
 
 
 def test_chiusura_regge_il_sapere_assente():
@@ -227,7 +231,7 @@ def test_chiusura_regge_il_sapere_assente():
 
     house = CasaFinta(synthetic_inputs())
 
-    asyncio.run(startup._on_cleanup({"knowledge": None, "ha_client": house}))
+    asyncio.run(startup._on_cleanup({KNOWLEDGE_KEY: None, HA_CLIENT_KEY: house}))
 
     assert house.calls == []
 
@@ -238,7 +242,7 @@ def _app_seminata(tmp_path):
     s = _sapere(tmp_path)
     s.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
     j, stato = build_judgments(s)
-    return s, {"knowledge": s, "type_judgments": j, "type_judgments_status": stato}
+    return s, {KNOWLEDGE_KEY: s, TYPE_JUDGMENTS_KEY: j, TYPE_JUDGMENTS_STATUS_KEY: stato}
 
 
 def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
@@ -248,18 +252,18 @@ def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
     INSIEME) -- rossa."""
     s, app = _app_seminata(tmp_path)
     try:
-        prima = app["type_judgments_status"]
+        prima = app[TYPE_JUDGMENTS_STATUS_KEY]
         esito = _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                                field="genere", value="presenza", now=lambda: 2.0)
         assert genre_for("binary_sensor.fp300", "occupancy",
-                         judgments=app["type_judgments"]) == "presenza"
+                         judgments=app[TYPE_JUDGMENTS_KEY]) == "presenza"
         impronta = esito["istantanea"]["impronta"]
-        assert impronta == app["type_judgments"].chronicle_fingerprint()
+        assert impronta == app[TYPE_JUDGMENTS_KEY].chronicle_fingerprint()
         assert impronta != prima["impronta"]
-        assert app["type_judgments_status"] is not prima
-        assert app["type_judgments_status"] == {"stato": "sapere", "perche": None,
+        assert app[TYPE_JUDGMENTS_STATUS_KEY] is not prima
+        assert app[TYPE_JUDGMENTS_STATUS_KEY] == {"stato": "sapere", "perche": None,
                                                 "impronta": impronta}
-        assert esito["istantanea"] == app["type_judgments_status"]
+        assert esito["istantanea"] == app[TYPE_JUDGMENTS_STATUS_KEY]
         assert esito["riga"] == {"soggetto_genere": "tipo",
                                  "soggetto": "binary_sensor.occupancy",
                                  "campo": "genere", "valore": "presenza",
@@ -281,10 +285,10 @@ def test_tornare_seme(tmp_path):
     try:
         _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value="sicurezza", now=lambda: 2.0)
-        assert app["type_judgments"].rows() != tv.REPO_JUDGMENTS.rows()
+        assert app[TYPE_JUDGMENTS_KEY].rows() != tv.REPO_JUDGMENTS.rows()
         esito = _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                                value=None, now=lambda: 3.0)
-        assert app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()
+        assert app[TYPE_JUDGMENTS_KEY].rows() == tv.REPO_JUDGMENTS.rows()
         assert esito["riga"]["chi"] == SEED_AUTHOR
         _scrivi(app, subject_kind="entita", subject="switch.x", field="genere",
                        value="nessuno", now=lambda: 4.0)
@@ -293,7 +297,7 @@ def test_tornare_seme(tmp_path):
                                value=None, now=lambda: 5.0)
         assert s.get("entita", "switch.x", "genere") is None
         assert esito["riga"] is None
-        assert app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()
+        assert app[TYPE_JUDGMENTS_KEY].rows() == tv.REPO_JUDGMENTS.rows()
     finally:
         s.close()
 
@@ -311,7 +315,7 @@ def test_tornare_seme_RIAGGANCIA_riga_seme(tmp_path):
         s.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
         assert s.get("tipo", "light", "genere").value == "nessuno"
         j, stato = build_judgments(s)
-        app = {"knowledge": s, "type_judgments": j, "type_judgments_status": stato}
+        app = {KNOWLEDGE_KEY: s, TYPE_JUDGMENTS_KEY: j, TYPE_JUDGMENTS_STATUS_KEY: stato}
         _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value=None, now=lambda: 2.0)
         rilascio = Fact(subject_kind="tipo", subject="light", field="genere",
@@ -328,7 +332,7 @@ def test_porta_RIFIUTA_fatto_ha_genere_inventato_ARCHIVIO_intatto(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         righe = [(f.subject_kind, f.subject, f.field, f.value, f.who) for f in s.judgment_rows()]
-        stato = app["type_judgments_status"]
+        stato = app[TYPE_JUDGMENTS_STATUS_KEY]
         rifiutate = [
             ("tipo", "climate", "capability_names", "{}"),       # fatto di HA
             ("tipo", "select", "attributi_assumibili", "{}"),    # D1: resta codice
@@ -348,7 +352,7 @@ def test_porta_RIFIUTA_fatto_ha_genere_inventato_ARCHIVIO_intatto(tmp_path):
                            value=["off"])
         assert [(f.subject_kind, f.subject, f.field, f.value, f.who)
                 for f in s.judgment_rows()] == righe
-        assert app["type_judgments_status"] is stato
+        assert app[TYPE_JUDGMENTS_STATUS_KEY] is stato
     finally:
         s.close()
 
@@ -390,7 +394,7 @@ def test_porta_RIFIUTA_da_sapere_subito_SENZA_riposo_ne_lavoro(tmp_path):
                        value='["off"]')
         _scrivi(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
                        value="si")
-        assert app["type_judgments"].da_sapere_subito("update") is True
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("update") is True
     finally:
         s.close()
 
@@ -468,7 +472,7 @@ def test_livello_ammesso_LETTO_lettore(tmp_path, kind, subject, field, value, le
     s, app = _app_seminata(tmp_path)
     try:
         _scrivi(app, subject_kind=kind, subject=subject, field=field, value=value)
-        assert letta(app["type_judgments"])
+        assert letta(app[TYPE_JUDGMENTS_KEY])
     finally:
         s.close()
 
@@ -518,8 +522,8 @@ def test_scrittura_NON_IN_VIGORE_si_dichiara(tmp_path):
         assert "solo seme" in str(preso.value) and "light" in str(preso.value)
         assert preso.value.status["stato"] == "solo seme"
         assert preso.value.row["valore"] == "presenza"
-        assert app["type_judgments_status"]["stato"] == "solo seme"
-        assert app["type_judgments"] is tv.REPO_JUDGMENTS
+        assert app[TYPE_JUDGMENTS_STATUS_KEY]["stato"] == "solo seme"
+        assert app[TYPE_JUDGMENTS_KEY] is tv.REPO_JUDGMENTS
         assert s.get("tipo", "binary_sensor.occupancy", "genere").value == "presenza"
     finally:
         s.close()
@@ -527,7 +531,7 @@ def test_scrittura_NON_IN_VIGORE_si_dichiara(tmp_path):
 
 def test_senza_sapere_porta_RIFIUTA():
     """Mutazione: togliere la guardia -- `AttributeError`, non un rifiuto."""
-    app = {"type_judgments": tv.REPO_JUDGMENTS}
+    app = {TYPE_JUDGMENTS_KEY: tv.REPO_JUDGMENTS}
     with pytest.raises(JudgmentRefused):
         _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value="sicurezza")
@@ -540,7 +544,7 @@ async def test_salute_espone_stato_ISTANTANEA():
     _, stato = build_judgments(None)
     # `get`: una richiesta vera ce l'ha, e la salute la usa per sapere da che
     # strada arriva (spec 2026-09-27, R-2.23). Nessuna strada: come lo sviluppo.
-    request = SimpleNamespace(app={"type_judgments_status": stato}, get={}.get)
+    request = SimpleNamespace(app={TYPE_JUDGMENTS_STATUS_KEY: stato}, get={}.get)
     response = await server.handle_health(request)
     assert json.loads(response.body)["istantanea"] == stato
 
@@ -572,7 +576,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
                                field="genere", value="presenza", now=lambda: 2.0)
         assert esito["istantanea"]["stato"] == "sapere"
         assert "da" not in esito, "`da` nel listato e' l'origine della RIGA: non si riusa qui"
-        stato = app["type_judgments_status"]
+        stato = app[TYPE_JUDGMENTS_STATUS_KEY]
         assert set(stato) == {"stato", "perche", "impronta"}
 
         response = await server.handle_health(SimpleNamespace(app=app, get={}.get))
@@ -613,8 +617,8 @@ def test_l_archivio_che_SOLLEVA_scrivendo_diventa_un_rifiuto_dichiarato(tmp_path
     from hiris.app.mind.judgments import JudgmentStoreFailed
 
     s, app = _app_seminata(tmp_path)
-    giudizi_iniziali = app["type_judgments"]
-    stato_iniziale = app["type_judgments_status"]
+    giudizi_iniziali = app[TYPE_JUDGMENTS_KEY]
+    stato_iniziale = app[TYPE_JUDGMENTS_STATUS_KEY]
     try:
         def _rotto(_fact):
             raise sqlite3.OperationalError("disco pieno")
@@ -624,8 +628,8 @@ def test_l_archivio_che_SOLLEVA_scrivendo_diventa_un_rifiuto_dichiarato(tmp_path
             _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                            field="genere", value="presenza", now=lambda: 2.0)
         assert "disco pieno" in str(preso.value)
-        assert app["type_judgments"] is giudizi_iniziali
-        assert app["type_judgments_status"] is stato_iniziale
+        assert app[TYPE_JUDGMENTS_KEY] is giudizi_iniziali
+        assert app[TYPE_JUDGMENTS_STATUS_KEY] is stato_iniziale
     finally:
         s.close()
 
@@ -740,10 +744,10 @@ def test_la_porta_scrive_da_sapere_subito_su_un_dominio_e_su_una_coppia(tmp_path
                                field="da_sapere_subito", value="si", now=lambda: 5.0)
         assert esito["riga"]["campo"] == "da_sapere_subito"
         assert esito["riga"]["chi"] == "Paolo"
-        assert app["type_judgments"].da_sapere_subito("binary_sensor", "motion") is True
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("binary_sensor", "motion") is True
         _scrivi(app, subject_kind="tipo", subject="light",
                        field="da_sapere_subito", value="si", now=lambda: 6.0)
-        assert app["type_judgments"].da_sapere_subito("light") is True
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("light") is True
     finally:
         s.close()
 
@@ -769,19 +773,19 @@ def test_il_SI_basta_il_LAVORO_da_solo_senza_riposo(tmp_path):
     """
     s, app = _app_seminata(tmp_path)
     try:
-        assert not app["type_judgments"].resting_of("update")
-        assert not app["type_judgments"].working_of("update")
+        assert not app[TYPE_JUDGMENTS_KEY].resting_of("update")
+        assert not app[TYPE_JUDGMENTS_KEY].working_of("update")
         _scrivi(app, subject_kind="tipo", subject="update", field="lavoro",
                        value='{"installing": "sta installando un aggiornamento"}',
                        now=lambda: 5.0)
-        assert not app["type_judgments"].resting_of("update")  # il riposo resta assente
+        assert not app[TYPE_JUDGMENTS_KEY].resting_of("update")  # il riposo resta assente
         _scrivi(app, subject_kind="tipo", subject="update",
                        field="da_sapere_subito", value="si", now=lambda: 6.0)
-        assert app["type_judgments"].da_sapere_subito("update") is True
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("update") is True
         # E la regola usa il lavoro, senza nessun riposo da consultare.
-        assert app["type_judgments"].stato_da_sapere_subito(
+        assert app[TYPE_JUDGMENTS_KEY].stato_da_sapere_subito(
             "update", None, "installing") is True
-        assert app["type_judgments"].stato_da_sapere_subito("update", None, "off") is False
+        assert app[TYPE_JUDGMENTS_KEY].stato_da_sapere_subito("update", None, "off") is False
     finally:
         s.close()
 
@@ -805,14 +809,14 @@ def test_la_porta_scrive_un_ELENCO_di_stati_e_NON_chiede_riposo_ne_lavoro(tmp_pa
     """
     s, app = _app_seminata(tmp_path)
     try:
-        assert not app["type_judgments"].resting_of("update")
-        assert not app["type_judgments"].working_of("update")
+        assert not app[TYPE_JUDGMENTS_KEY].resting_of("update")
+        assert not app[TYPE_JUDGMENTS_KEY].working_of("update")
         esito = _scrivi(app, subject_kind="tipo", subject="update",
                                field="da_sapere_subito", value='["failed"]', now=lambda: 5.0)
         assert esito["riga"]["valore"] == '["failed"]'
-        assert app["type_judgments"].da_sapere_subito("update") == frozenset({"failed"})
-        assert app["type_judgments"].stato_da_sapere_subito("update", None, "failed") is True
-        assert app["type_judgments"].stato_da_sapere_subito("update", None, "idle") is False
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("update") == frozenset({"failed"})
+        assert app[TYPE_JUDGMENTS_KEY].stato_da_sapere_subito("update", None, "failed") is True
+        assert app[TYPE_JUDGMENTS_KEY].stato_da_sapere_subito("update", None, "idle") is False
     finally:
         s.close()
 
@@ -857,17 +861,17 @@ def test_da_sapere_subito_torna_al_seme_come_gli_altri(tmp_path):
         # Un tipo DEL SEME, corretto e poi rimesso: torna «si», non sparisce.
         _scrivi(app, subject_kind="tipo", subject="alarm_control_panel",
                        field="da_sapere_subito", value="no", now=lambda: 5.0)
-        assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is False
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("alarm_control_panel") is False
         _scrivi(app, subject_kind="tipo", subject="alarm_control_panel",
                        field="da_sapere_subito", value=None, now=lambda: 6.0)
-        assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is True
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("alarm_control_panel") is True
         # Un tipo che il seme NON ha: il ritorno al seme la cancella.
         _scrivi(app, subject_kind="tipo", subject="light",
                        field="da_sapere_subito", value="si", now=lambda: 7.0)
         esito = _scrivi(app, subject_kind="tipo", subject="light",
                                field="da_sapere_subito", value=None, now=lambda: 8.0)
         assert esito["riga"] is None
-        assert app["type_judgments"].da_sapere_subito("light") is False
+        assert app[TYPE_JUDGMENTS_KEY].da_sapere_subito("light") is False
     finally:
         s.close()
 
@@ -884,7 +888,7 @@ def test_una_correzione_di_da_sapere_subito_NON_cambia_l_impronta(tmp_path):
     """
     s, app = _app_seminata(tmp_path)
     try:
-        prima = app["type_judgments_status"]["impronta"]
+        prima = app[TYPE_JUDGMENTS_STATUS_KEY]["impronta"]
         esito = _scrivi(app, subject_kind="tipo", subject="light",
                                field="da_sapere_subito", value="si", now=lambda: 5.0)
         assert esito["istantanea"]["impronta"] == prima
@@ -977,7 +981,7 @@ def test_un_soggetto_integrazione_con_una_forma_che_nessuna_chiave_incontra_e_ri
         # rifiuta TUTTO passerebbe la prova qui sopra.
         _scrivi(app, subject_kind="integrazione", subject="hydrawise",
                        field="impalcatura", value="si", now=lambda: 2.0)
-        assert app["type_judgments"].is_scaffolding("hydrawise") is True
+        assert app[TYPE_JUDGMENTS_KEY].is_scaffolding("hydrawise") is True
     finally:
         s.close()
 

@@ -3,6 +3,15 @@ import time
 
 import pytest_asyncio
 
+from hiris.app.api.credenziali import CREDENTIALS_KEY
+from hiris.app.api.handlers_config import THEME_KEY
+from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
+from hiris.app.api.servizi import SERVICES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+
 # Allow unauthenticated non-ingress requests in the test suite.
 # The middleware deny-by-default is for production safety; tests hit the server
 # directly without HA Supervisor Ingress forwarding X-Ingress-Path.
@@ -54,11 +63,11 @@ def credenziale_ponte(app, segreto: str) -> dict:
 
     from hiris.app.api import credenziali
 
-    if app.get("credenziali") is None:
+    if app.get(CREDENTIALS_KEY) is None:
         credenziali.prepara_credenziali(app)
     adesso = time.time()
-    app["credenziali"][segreto] = {"mestiere": "ponte", "scade": adesso + 3600}
-    assert credenziali.riconosci(app["credenziali"], segreto, adesso=adesso), (
+    app[CREDENTIALS_KEY][segreto] = {"mestiere": "ponte", "scade": adesso + 3600}
+    assert credenziali.riconosci(app[CREDENTIALS_KEY], segreto, adesso=adesso), (
         "la forma della credenziale finta non combacia più con quella vera"
     )
     return {"X-HIRIS-Internal-Token": segreto}
@@ -96,20 +105,20 @@ async def ponte_produzione(aiohttp_client, tmp_path, monkeypatch):
     finto_ha.stop = AsyncMock()
     finto_ha.add_state_listener = MagicMock()
     finto_ha.start_websocket = AsyncMock()
-    app["ha_client"] = finto_ha
-    app["chat_settings"] = ChatSettings()
-    app["claude_runner"] = None
-    app["theme"] = "auto"
+    app[HA_CLIENT_KEY] = finto_ha
+    app[CHAT_SETTINGS_KEY] = ChatSettings()
+    app[CLAUDE_RUNNER_KEY] = None
+    app[THEME_KEY] = "auto"
     # La sorgente del client di test e' un loopback, che NON sta nella rete del
     # Supervisor: nessun bypass dell'ingress, si passa per forza dalla
     # credenziale. E' il caso del worker del ponte, che gira nel container.
-    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
+    app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
     app.on_startup.clear()
     app.on_cleanup.clear()
 
     intestazioni = credenziale_ponte(app, "credenziale-di-turno-della-prova")
     coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
-    app["reasoning_queue"] = coda
+    app[REASONING_QUEUE_KEY] = coda
     client = await aiohttp_client(app)
     try:
         yield client, coda, app, intestazioni
@@ -131,9 +140,9 @@ def servizio_approvato(app, ruolo: str, nome: str = "retropanel",
     pubblica = base64.b64encode(
         privata.public_key().public_bytes_raw()).decode("ascii")
     adesso = time.time()
-    app["servizi"].presenta(nome=nome, chiave=pubblica, indirizzo="192.168.1.31",
+    app[SERVICES_KEY].presenta(nome=nome, chiave=pubblica, indirizzo="192.168.1.31",
                             now_ts=adesso)
-    app["servizi"].approva(pubblica, ruolo=ruolo, specie=specie, now_ts=adesso)
+    app[SERVICES_KEY].approva(pubblica, ruolo=ruolo, specie=specie, now_ts=adesso)
     return privata, pubblica
 
 

@@ -14,6 +14,10 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 
+from aiohttp import web
+
+from .storage import DATA_DIR_KEY
+
 logger = logging.getLogger(__name__)
 
 _ENTRY_POINT_BY_AUTH = {"ingress": "pannello", "canale": "firma", "no_token": "sviluppo"}
@@ -91,6 +95,9 @@ class SyncTurnsInFlight:
 
     def busy(self, thread: ChatThread) -> bool:
         return self._counts.get(thread, 0) > 0
+
+
+SYNC_TURNS_KEY = web.AppKey("sync_turns", SyncTurnsInFlight)
 
 
 def new_subject(specie: str, *, ident: str | None = None, nome: str | None = None,
@@ -204,9 +211,10 @@ async def adopt_if_owner(app, request, thread: ChatThread) -> None:
     """
     from . import chat_store
     from .api.soffitto import is_owner
+    from .keeper.store import AGENDA_KEY
 
-    data_dir = app["data_dir"]
-    agenda = app.get("agenda")
+    data_dir = app[DATA_DIR_KEY]
+    agenda = app.get(AGENDA_KEY)
     soggetto = request.get("soggetto") or {}
     if thread.entry_point != "pannello" or soggetto.get("specie") != "persona":
         return

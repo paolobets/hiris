@@ -18,6 +18,9 @@ from pathlib import Path
 import aiohttp
 import pytest
 
+from hiris.app.action.registry import SERVICE_REGISTRY_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
@@ -542,7 +545,7 @@ async def test_al_risveglio_col_registro_dei_servizi_fresco_nessuna_lettura():
     registry = ServiceRegistry()
     await registry.ensure_fresh(ha)
     before = _services_read(ha)
-    app = {"ha_client": ha, "service_registry": registry}
+    app = {HA_CLIENT_KEY: ha, SERVICE_REGISTRY_KEY: registry}
 
     esito = await sweeper._promise_delivery(app)["recipients"](
         {"specie": "persona", "id": USER_ID})

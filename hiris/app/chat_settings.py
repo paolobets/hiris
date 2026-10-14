@@ -15,6 +15,8 @@ import logging
 import os
 from dataclasses import dataclass
 
+from aiohttp import web
+
 from .storage import write_json_atomic
 
 logger = logging.getLogger(__name__)
@@ -220,3 +222,6 @@ class ChatSettings:
             "restrict_to_home": self.restrict_to_home,
             "giorni_conservazione": self.retention_days,
         })
+
+
+CHAT_SETTINGS_KEY = web.AppKey("chat_settings", ChatSettings)

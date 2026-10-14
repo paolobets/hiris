@@ -15,6 +15,8 @@ import json
 import logging
 import time
 
+from aiohttp import web
+
 from ..home_space.ha_vocabulary import (
     config_entry_is_healthy,
     config_entry_is_ignored,
@@ -1219,3 +1221,6 @@ class Watcher:
         `sensor`, il triplo delle righe misurato il 15/09/2026)."""
         if isinstance(reading, (set, frozenset)):
             self._statistic_ids = frozenset(reading)
+
+
+WATCHER_KEY = web.AppKey("watcher", Watcher)

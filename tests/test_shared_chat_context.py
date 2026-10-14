@@ -28,6 +28,17 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.api.soffitto import ROLES_KEY
+from hiris.app.chat_settings import CHAT_SETTINGS_KEY
+from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
+from hiris.app.home_space.reader import HOME_SPACE_KEY
+from hiris.app.llm_router import LLM_ROUTER_KEY
+from hiris.app.memory.store import MEMORY_STORE_KEY
+from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from hiris.app.storage import DATA_DIR_KEY
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
@@ -75,7 +86,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     data_dir = str(tmp_path)
     _semina_sessione_chiusa(data_dir, "parlato di irrigazione del giardino")
 
-    app = {"home_space_store": archivio_casa}
+    app = {HOME_SPACE_KEY: archivio_casa}
     contesto = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
 
     assert "## La casa" in contesto
@@ -93,7 +104,7 @@ def test_le_sessioni_precedenti_di_un_filo_non_entrano_nel_contesto_di_un_altro(
     _semina_sessione_chiusa(data_dir, "Paolo ha parlato del regalo per Marta",
                             thread=PAOLO)
 
-    app = {"home_space_store": archivio_casa}
+    app = {HOME_SPACE_KEY: archivio_casa}
     context_marta = compose_chat_context(app, data_dir, thread=MARTA, soggetto=None)
     context_paolo = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
 
@@ -118,7 +129,7 @@ def test_un_archivio_guasto_si_dichiara_nel_contesto(tmp_path):
     `compose_briefing` -- rossa (`ProgrammingError`)."""
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     memoria.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
-    app = {"home_space_store": _semina_casa(tmp_path), "memory_store": memoria}
+    app = {HOME_SPACE_KEY: _semina_casa(tmp_path), MEMORY_STORE_KEY: memoria}
 
     # non deve sollevare
     contesto = compose_chat_context(app, str(tmp_path), thread=PAOLO, soggetto=None)
@@ -299,21 +310,21 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
         os.makedirs(data_dir, exist_ok=True)
         runner = RunnerFinto("risposta sincrona")
         app = web.Application(middlewares=[_finto_confine])
-        app["llm_router"] = runner
-        app["claude_runner"] = runner
-        app["chat_settings"] = ChatSettings(
+        app[LLM_ROUTER_KEY] = runner
+        app[CLAUDE_RUNNER_KEY] = runner
+        app[CHAT_SETTINGS_KEY] = ChatSettings(
             name="t", system_prompt="Sei HIRIS.", max_chat_turns=0)
-        app["data_dir"] = data_dir
-        app["bridge_active"] = ponte_attivo
+        app[DATA_DIR_KEY] = data_dir
+        app[BRIDGE_ACTIVE_KEY] = ponte_attivo
         # La casa che non serve niente (Tappa 2, Task 12): il ruolo lo porta
         # il confine finto qui sopra, e la chat non rilegge Home Assistant.
         # Prima qui c'era una finta di `users()` che nessuno chiamava
         # (misurato il 03/10/2026: zero comandi); una lettura nuova su questo
         # percorso ora fa cadere la prova col suo nome.
-        app["ha_client"] = CasaFinta({})
-        app["ruoli"] = {"quando": 0.0, "per_id": {}}
+        app[HA_CLIENT_KEY] = CasaFinta({})
+        app[ROLES_KEY] = {"quando": 0.0, "per_id": {}}
         q = ReasoningQueue(str(tmp_sub / "reasoning.db"))
-        app["reasoning_queue"] = q
+        app[REASONING_QUEUE_KEY] = q
         app.router.add_post("/api/chat", handle_chat)
         return app, q, runner
 

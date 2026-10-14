@@ -17,6 +17,8 @@ import logging
 import secrets
 import threading
 
+from aiohttp import web
+
 from ..chat_thread import subject_from_key, subject_key_for
 from ..home_space.historian import instant_epoch, local_date
 from ..home_space.privacy import POSITION_ATTRIBUTES
@@ -1279,3 +1281,6 @@ class UsageStore:
         with self._lock:
             return [row[0] for row in self._conn.execute(
                 "SELECT percorso FROM legacy_importati ORDER BY percorso")]
+
+
+USAGE_KEY = web.AppKey("usage", UsageStore)

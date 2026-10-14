@@ -17,6 +17,9 @@ from pathlib import Path
 
 import pytest
 
+from hiris.app.mind.store import OBSERVATIONS_KEY
+from hiris.app.mind.watcher import WATCHER_KEY
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -67,7 +70,7 @@ def _app(tmp_path) -> dict:
     # riceveva grezzi, la rotta letti).
     for outcome in (ATTEMPT_DONE, ATTEMPT_FAILED):
         store.record_attempt(when_ts=1787000000.0, outcome=outcome)
-    return {"observations": store, "watcher": _Osservatore()}
+    return {OBSERVATIONS_KEY: store, WATCHER_KEY: _Osservatore()}
 
 
 class _Richiesta:
@@ -206,13 +209,13 @@ async def test_senza_osservatore_e_senza_letture_si_dice_cosa_manca(tmp_path):
     """Un archivio assente non e' un archivio vuoto: la rotta risponde 503,
     lo strumento un `errore` che lo dice."""
     app = _app(tmp_path)
-    app.pop("watcher")
+    app.pop(WATCHER_KEY)
     answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
         "mind", {"cosa": "scope"})
     assert "osservatore non e' disponibile" in answer["errore"]
     assert (await handle_watching(_Richiesta(app))).status == 503
 
-    app.pop("observations")
+    app.pop(OBSERVATIONS_KEY)
     answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
         "mind", {"cosa": "resoconti"})
     assert "archivio del cervello" in answer["errore"]

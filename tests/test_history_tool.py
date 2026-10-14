@@ -314,7 +314,7 @@ def test_il_dispatcher_riceve_la_cronaca_dall_app():
     """Senza, «per mano di HIRIS» non uscirebbe mai.
 
     Mutazione ESEGUITA: `journal=None` in `create_tool_dispatcher` -- rossa."""
-    assert 'journal=app.get("journal")' in inspect.getsource(
+    assert 'journal=app.get(JOURNAL_KEY)' in inspect.getsource(
         handlers_chat.create_tool_dispatcher)
 
 
