@@ -2373,8 +2373,9 @@ def _govern_bridge_worker(app) -> None:
         # ogni altra integrazione, e finirebbe nella riga di comando del
         # sottoprocesso -- leggibile da qualunque processo del container.
         #
-        # Adesso e' una credenziale che vive dieci minuti e vale solo per il
-        # ponte. Il sottoprocesso la riceve dalle STESSE intestazioni (vedi
+        # Adesso e' una credenziale che vive il doppio del turno piu' lungo
+        # ammesso (`credenziali.durata_ponte_s`) e vale solo per il ponte. Il
+        # sottoprocesso la riceve dalle STESSE intestazioni (vedi
         # `runner.reason`, che ne ricava `token` e `forms`), quindi anche
         # `--mcp-config` e la redazione dell'eco la seguono senza una riga in
         # piu'. Serve solo alla rotta degli strumenti: la coda il lavoratore

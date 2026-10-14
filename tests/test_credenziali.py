@@ -126,3 +126,26 @@ def test_il_contenitore_nasce_quando_l_app_si_compone():
     credenziali.prepara_credenziali(app)
 
     assert app["credenziali"] == {}
+
+
+@pytest.mark.parametrize("scadenza_min", [5, 30, 120])
+def test_la_credenziale_del_ponte_copre_il_turno_piu_lungo_ammesso(scadenza_min):
+    """S-24: il worker chiede la credenziale a ogni giro, e un turno che parte
+    adesso puo' durare fino a `ponte.scadenza_min`. Qualunque sia il momento
+    in cui la chiede, la credenziale che riceve deve vivere almeno quanto quel
+    turno: una che scade a meta' farebbe fallire il turno con un 401 che
+    nessuno saprebbe leggere. Fino al 14/10/2026 viveva dieci minuti fissi, e
+    con una scadenza oltre i cinque minuti il caso esisteva.
+
+    Rossa prima della correzione con 30 e 120 minuti (la credenziale viveva
+    600 s); con 5 verde gia' allora, e resta verde: il predefinito non
+    cambia."""
+    turno_s = scadenza_min * 60
+    app = {"credenziali": {}, "credenziale_ponte": {},
+           "models_config": {"ponte": {"scadenza_min": scadenza_min}}}
+    for adesso in range(0, 6 * turno_s, 37):
+        segreto = credenziali.credenziale_ponte_viva(app, adesso=float(adesso))
+        riga = credenziali.riconosci(app["credenziali"], segreto, adesso=float(adesso))
+        assert riga is not None and riga["scade"] - adesso >= turno_s, (
+            f"a {adesso} s la credenziale vive ancora "
+            f"{riga and riga['scade'] - adesso} s, il turno fino a {turno_s} s")

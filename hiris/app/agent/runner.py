@@ -3,8 +3,9 @@
 Gira dentro l'add-on (`run_loop`, avviato da `server.py`), e la coda la legge
 direttamente: si sveglia quando un turno viene accodato, non la interroga a
 intervalli (A-23). La credenziale di TURNO -- coniata da `server.py`, vive
-dieci minuti (`api/credenziali.PONTE_S`) -- serve alla rotta degli strumenti
-(`/api/mcp`), che la CLI chiama da un altro processo.
+il doppio del turno piu' lungo (`api/credenziali.durata_ponte_s`) -- serve
+alla rotta degli strumenti (`/api/mcp`), che la CLI chiama da un altro
+processo.
 
 **Cosa puo' il ponte.** LEGGE la casa e la memoria e puo' AGIRE su di essa,
 con lo stesso catalogo della chat sincrona (`home_space/tools.KNOWLEDGE_TOOLS`):
