@@ -1597,17 +1597,22 @@ def sealed_log(entries: list, seal) -> list[dict]:
 
 
 async def read_log(ha) -> dict:
-    """Il registro degli errori di Home Assistant, grezzo: `{"voci"}` o la
-    busta del guasto, intera (`read_failure`).
+    """Il registro degli errori di Home Assistant, grezzo: `{"voci": [...]}`
+    o la busta del guasto, intera.
 
     L'unica lettura del registro: la chiedono gli errori di `history`
     (`read_errors`, che sigilla le voci prima di farne righe) e il giro delle
     condizioni (`server.watch_system_conditions`, A-41: fino al 14/10/2026
-    leggeva da se'), che passa le voci all'osservatore com'erano."""
-    answer = await ha.system_log()
-    if not isinstance(answer, dict) or not isinstance(answer.get("voci"), list):
-        return read_failure(answer, "il registro di Home Assistant non ha risposto")
-    return answer
+    leggeva da se'), che passa le voci all'osservatore com'erano.
+
+    **La forma la controlla il client, una volta** (`HAClient.system_log`:
+    `voci` e' una lista, o la busta di `forma`; lo provano
+    `test_ha_client_busta.py` e `test_ha_client_system_log.py`). Fino al
+    14/10/2026 la ricontrollava anche questa funzione, ed era un secondo
+    controllo dello stesso fatto: tolto, la suite restava verde (N161-2,
+    revisore giro 161), perche' il client lo aveva gia' fatto. Un controllo
+    solo, dove la forma di Home Assistant si conosce."""
+    return await ha.system_log()
 
 
 async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> dict:
