@@ -433,7 +433,6 @@ def test_il_giro_scrive_la_fotografia_in_ram(tmp_path):
     assert app["tree_comparison"]["aree_totali"] == 3
     assert app["tree_comparison"]["letto_il"]
     assert len(app["tree_comparison"]["guardate"]) == 1
-    archivio.close()
 
 
 def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
@@ -446,7 +445,6 @@ def test_il_giro_ruota_fra_una_chiamata_e_l_altra(tmp_path):
     asyncio.run(giro())
     asyncio.run(giro())
     assert _asked_areas(house) == ["bagno", "cucina", "sala", "bagno"]
-    archivio.close()
 
 
 def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
@@ -461,7 +459,6 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
     assert all(g["errore"] for g in app["tree_comparison"]["guardate"])
     testo, _ = compose_briefing(app)
     assert "non si sono potute controllare" in testo
-    archivio.close()
 
 
 def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
@@ -477,7 +474,6 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
     assert asyncio.run(tree_comparison_round(app, _ClienteVecchio())()) is None
     assert asyncio.run(tree_comparison_round(app, None)()) is None
     assert "tree_comparison" not in app
-    archivio.close()
 
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
@@ -516,7 +512,6 @@ async def test_api_casa_mostra_la_divergenza_sull_albero(aiohttp_client, tmp_pat
     corpo = await (await client.get("/api/home-space")).json()
     assert corpo["confronto"]["guardate"][0]["in_piu"] == ["light.fantasma"]
     assert corpo["confronto"]["aree_totali"] == 3
-    archivio.close()
 
 
 @pytest.mark.asyncio
@@ -532,7 +527,6 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
 
     corpo = await (await client.get("/api/home-space")).json()
     assert corpo["confronto"] is None
-    archivio.close()
 
 
 @pytest.mark.parametrize("confronto", [

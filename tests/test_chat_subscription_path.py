@@ -1041,7 +1041,6 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
             ruolo=soffitto_atteso.get("ruolo"),
             role_known=_ruolo_letto(soffitto_atteso))
     finally:
-        archivio_casa.close()
         archivio_memoria.close()
 
 

@@ -45,8 +45,7 @@ def _house(main_config, extra=(), unavailable=(), **kwargs) -> CasaFinta:
 @pytest.fixture
 def archivio(tmp_path):
     a = HomeSpace(str(tmp_path / "casa.db"))
-    yield a
-    a.close()
+    return a
 
 
 @pytest.mark.asyncio

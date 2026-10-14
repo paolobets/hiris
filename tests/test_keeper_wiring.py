@@ -19,7 +19,7 @@ import sys
 import time as _time_module
 from pathlib import Path
 from unittest import mock
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 import pytest_asyncio
@@ -30,8 +30,10 @@ from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.api.soffitto import consente
 from hiris.app.chat_thread import ChatThread
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
+from hiris.app.memory.store import MemoryStore
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -203,25 +205,19 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
 
 
 @pytest.mark.asyncio
-async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
-    """`app["home_space_store"]` (`HomeSpaceStore`, ambito `casa`) e
-    `app["memory_store"]` (`MemoryStore`, Task 5) esponevano due nomi
-    diversi per la stessa azione -- `.chiudi()` contro `.close()` -- perche'
-    i due sottosistemi erano a meta' del passaggio all'inglese in due
-    momenti diversi. La fetta «la rinomina» (Task 8) chiude quel divario:
-    ora entrambi espongono `.close()`, e questo test verifica che
-    `_on_cleanup` chiami quel nome su entrambi, non che ne usi due diversi.
+async def test_il_cleanup_chiude_la_memoria_e_non_chiede_niente_all_anagrafe():
+    """`_on_cleanup` chiude `app["memory_store"]` con `.close()`, e non chiede
+    niente a `app["home_space_store"]`: l'anagrafe vive in memoria e non ha
+    niente da chiudere. Il suo `close()` vuoto e' uscito con M-51 (14/10/2026)
+    insieme alla chiamata in `_on_cleanup`.
 
-    Trovato dalla review del Task 5 per mutazione, quando l'asimmetria era
-    ancora vera: rimettere `.chiudi()` su `archivio_memoria` lasciava la
-    suite verde (nessun altro test lo copriva), e HIRIS sarebbe uscito verde
-    di cancello e di suite per poi sollevare `AttributeError` allo
-    SPEGNIMENTO, lasciando il file sqlite bloccato -- esattamente il guasto
-    che il commento sopra `if "memory_store" in app` descrive. La
-    guardia resta valida oggi nella direzione opposta: se una delle due
-    tornasse a `.chiudi()` da sola, questo test lo direbbe."""
-    archivio_casa_finto = MagicMock()
-    archivio_memoria_finto = MagicMock()
+    Le finte hanno la forma del vero (`create_autospec`, T-04): una
+    `MagicMock` nuda rispondeva a qualunque nome, compreso un `close()` che
+    l'anagrafe non ha piu'. Mutazione ESEGUITA (14/10/2026): rimessa la
+    chiamata `app["home_space_store"].close()` in `_on_cleanup` -- rossa
+    (`AttributeError`, la finta non ha quel metodo)."""
+    archivio_casa_finto = create_autospec(HomeSpace, instance=True)
+    archivio_memoria_finto = create_autospec(MemoryStore, instance=True)
     app = {
         "ha_client": CasaFinta({}),
         "home_space_store": archivio_casa_finto,
@@ -230,10 +226,8 @@ async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
 
     await server._on_cleanup(app)
 
-    archivio_casa_finto.close.assert_called_once()
     archivio_memoria_finto.close.assert_called_once()
-    archivio_casa_finto.chiudi.assert_not_called()
-    archivio_memoria_finto.chiudi.assert_not_called()
+    assert archivio_casa_finto.mock_calls == []
 
 
 # ── Il dispatcher riceve DUE parametri nuovi, non uno ────────────────────────

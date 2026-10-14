@@ -49,8 +49,7 @@ _CONFIG = {
 @pytest.fixture
 def archivio(tmp_path):
     a = HomeSpace(str(tmp_path))
-    yield a
-    a.close()
+    return a
 
 
 # --- la distillazione: cosa entra, cosa resta fuori ------------------------
@@ -350,5 +349,4 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             "l'unita' propria dell'entita' deve arrivare, e vincere su quella "
             "della casa")
     finally:
-        archivio.close()
         memoria.close()

@@ -34,6 +34,7 @@ from casa_finta import CasaFinta
 from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.chat_thread import ChatThread
+from hiris.app.memory.store import MemoryStore
 from tests.test_chat_briefing import _semina_casa
 
 # Fetta «le chat divise»: le sessioni precedenti sono quelle del filo per cui
@@ -81,7 +82,6 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     assert "## Sessioni precedenti" in contesto
     assert "irrigazione del giardino" in contesto
 
-    archivio_casa.close()
 
 
 def test_le_sessioni_precedenti_di_un_filo_non_entrano_nel_contesto_di_un_altro(tmp_path):
@@ -99,39 +99,31 @@ def test_le_sessioni_precedenti_di_un_filo_non_entrano_nel_contesto_di_un_altro(
     assert "regalo per Marta" not in context_marta
     assert "Cucina" in context_marta
     assert "regalo per Marta" in context_paolo
-    archivio_casa.close()
 
 
 # ---------------------------------------------------------------------------
-# ② Un `archivio_casa` che solleva (guasto, non semplicemente assente) non
-# fa sollevare `compose_chat_context`: restituisce il testo di guasto,
-# copiato alla lettera dal blocco pre-estrazione (stesso principio di
+# ② Un archivio che solleva (guasto, non semplicemente assente) non fa
+# sollevare `compose_chat_context`: restituisce il testo di guasto (stesso
+# principio di
 # test_chat_briefing.py::test_un_archivio_guasto_non_fa_rispondere_500_alla_chat).
 # ---------------------------------------------------------------------------
 
-def test_un_archivio_chiuso_non_ferma_piu_il_nucleo(tmp_path):
-    """**Cio' che la fetta del 10/09/2026 ha comprato, misurato qui.**
+def test_un_archivio_guasto_si_dichiara_nel_contesto(tmp_path):
+    """L'archivio guasto e' quello della memoria, chiuso sotto la chat. Fino
+    al 14/10/2026 la prova chiudeva l'anagrafe, il cui `close()` non faceva
+    niente (M-51, uscito): verde senza guastare nulla (T-06).
 
-    Prima l'anagrafe viveva su disco: chiudere la connessione voleva dire
-    nucleo non componibile, e la prova verificava che almeno lo DICESSE invece
-    di sollevare. Adesso l'anagrafe e il comportamento si tengono a memoria, e
-    un archivio chiuso -- che ormai custodisce solo le plance e la cornice --
-    non ha piu' niente da rompere: il nucleo si compone lo stesso, con la casa
-    dentro.
+    Mutazione ESEGUITA (14/10/2026): tolto il `try/except` di
+    `compose_briefing` -- rossa (`ProgrammingError`)."""
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    memoria.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
+    app = {"home_space_store": _semina_casa(tmp_path), "memory_store": memoria}
 
-    Mutazione che la uccide: rimettere la lettura dell'anagrafe dietro
-    l'archivio (il nucleo tornerebbe a essere il testo di guasto).
-    """
-    home_space = _semina_casa(tmp_path)
-    home_space.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
-    data_dir = str(tmp_path)
-
-    app = {"home_space_store": home_space}
     # non deve sollevare
-    contesto = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
+    contesto = compose_chat_context(app, str(tmp_path), thread=PAOLO, soggetto=None)
 
-    assert "nucleo non si e' potuto comporre" not in contesto
-    assert "Cucina" in contesto
+    assert "nucleo non si e' potuto comporre" in contesto
+
 
 def test_non_restituisce_mai_la_stringa_vuota_con_app_vuota(tmp_path):
     app: dict = {}

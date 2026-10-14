@@ -17,16 +17,13 @@ def _nucleo(integrazioni):
 
 def test_il_motivo_del_guasto_si_conserva(tmp_path):
     a = HomeSpace(str(tmp_path))
-    try:
-        a.hold_registries({"integrazioni": [
-            {"domain": "reolink", "title": "Reolink", "state": "setup_retry",
-             "reason": "timeout durante la connessione"},
-        ]}, [])
-        voce = a.read()["integrazioni"][0]
-        assert voce["stato"] == "setup_retry"
-        assert voce["motivo"] == "timeout durante la connessione"
-    finally:
-        a.close()
+    a.hold_registries({"integrazioni": [
+        {"domain": "reolink", "title": "Reolink", "state": "setup_retry",
+         "reason": "timeout durante la connessione"},
+    ]}, [])
+    voce = a.read()["integrazioni"][0]
+    assert voce["stato"] == "setup_retry"
+    assert voce["motivo"] == "timeout durante la connessione"
 
 
 def test_un_integrazione_caduta_si_dichiara_col_motivo():
@@ -85,14 +82,11 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     vecchio.close()
 
     a = HomeSpace(percorso)
-    try:
-        a.hold_registries({"integrazioni": [
-            {"domain": "reolink", "title": "Reolink", "state": "setup_error",
-             "reason": "credenziali rifiutate"},
-        ]}, [])
-        assert a.read()["integrazioni"][0]["motivo"] == "credenziali rifiutate"
-    finally:
-        a.close()
+    a.hold_registries({"integrazioni": [
+        {"domain": "reolink", "title": "Reolink", "state": "setup_error",
+         "reason": "credenziali rifiutate"},
+    ]}, [])
+    assert a.read()["integrazioni"][0]["motivo"] == "credenziali rifiutate"
 
 
 def test_due_voci_con_lo_stesso_nome_non_si_ripetono():
@@ -216,15 +210,12 @@ def test_l_origine_si_conserva_nell_anagrafe(tmp_path):
     """Il filtro puo' esistere solo se il dato arriva: `source` si buttava
     esattamente come si buttava `reason` prima della fetta di agosto."""
     a = HomeSpace(str(tmp_path))
-    try:
-        a.hold_registries({"integrazioni": [
-            {"domain": "fritz", "title": "Fritz-esterno", "state": "not_loaded",
-             "source": "ignore"},
-        ]}, [])
-        voce = a.read()["integrazioni"][0]
-        assert voce["origine"] == "ignore"
-    finally:
-        a.close()
+    a.hold_registries({"integrazioni": [
+        {"domain": "fritz", "title": "Fritz-esterno", "state": "not_loaded",
+         "source": "ignore"},
+    ]}, [])
+    voce = a.read()["integrazioni"][0]
+    assert voce["origine"] == "ignore"
 
 
 def test_un_archivio_gia_esistente_guadagna_la_colonna_origine(tmp_path):
@@ -242,14 +233,11 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna_origine(tmp_path):
     vecchio.close()
 
     a = HomeSpace(percorso)
-    try:
-        a.hold_registries({"integrazioni": [
-            {"domain": "fritz", "title": "Fritz", "state": "not_loaded",
-             "source": "ignore"},
-        ]}, [])
-        assert a.read()["integrazioni"][0]["origine"] == "ignore"
-    finally:
-        a.close()
+    a.hold_registries({"integrazioni": [
+        {"domain": "fritz", "title": "Fritz", "state": "not_loaded",
+         "source": "ignore"},
+    ]}, [])
+    assert a.read()["integrazioni"][0]["origine"] == "ignore"
 
 
 def test_la_sezione_dei_guasti_ha_un_tetto_anche_per_le_integrazioni():

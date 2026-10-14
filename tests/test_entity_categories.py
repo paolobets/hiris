@@ -76,7 +76,6 @@ def casa(tmp_path):
     a = HomeSpace(str(tmp_path))
     a.hold_registries(_REGISTRI, [])
     letta = a.read()
-    a.close()
     return letta
 
 
@@ -209,11 +208,8 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     vecchio.close()
 
     a = HomeSpace(percorso)
-    try:
-        a.hold_registries(_REGISTRI, [])
-        letta = a.read()
-    finally:
-        a.close()
+    a.hold_registries(_REGISTRI, [])
+    letta = a.read()
     voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
     assert voce["categorie"] == {"automation": "01luci"}
     assert view(House(letta, Mirror()), [], [], "entita",

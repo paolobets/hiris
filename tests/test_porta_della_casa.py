@@ -228,10 +228,7 @@ async def test_col_registro_dei_piani_caduto_la_porta_lo_dichiara(tmp_path, memo
     casa = _semina_casa(tmp_path, casa={**_CASA_BRIEFING, "piani": []}, comportamento=[])
     casa.hold({**_CASA_BRIEFING, "piani": []}, ["piani"],
               reference_frame={"fuso": "Europe/Rome"})
-    try:
-        r = await ToolDispatcher(casa, memoria).dispatch("search", arguments)
-    finally:
-        casa.close()
+    r = await ToolDispatcher(casa, memoria).dispatch("search", arguments)
     assert any("piani" in m for m in r["non_ho_potuto_guardare"]), r
 
 
@@ -309,7 +306,6 @@ def big_door(tmp_path):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     yield ToolDispatcher(casa, memoria, cache=_BigMirror(home))
     memoria.close()
-    casa.close()
 
 
 def _size(answer: dict) -> int:

@@ -62,7 +62,6 @@ def casa(tmp_path):
     a = HomeSpace(str(tmp_path))
     a.hold_registries(_REGISTRI, [])
     letta = a.read()
-    a.close()
     return letta
 
 

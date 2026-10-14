@@ -676,7 +676,6 @@ async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
             "search", {"genere": "entita", "riferimento": "light.alberello"})
     finally:
         memoria.close()
-        casa.close()
     esito = risposta["voci"][0]
     assert esito["esiste"] is True
     assert "comandi" in esito, (
@@ -711,7 +710,6 @@ async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
             "search", {"genere": "ricordo", "riferimento": 1})
     finally:
         memoria.close()
-        casa.close()
     # La risposta e' davvero passata dalla porta: senza, la prova sarebbe
     # verde anche con uno strumento rifiutato, che non scalda niente.
     assert risposta["profondita"] == "completa"

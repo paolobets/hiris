@@ -173,7 +173,6 @@ def moving_door(tmp_path):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     yield ToolDispatcher(casa, memoria, cache=_MovingMirror())
     memoria.close()
-    casa.close()
 
 
 def _dove_sono(risposta: dict) -> list[str]:

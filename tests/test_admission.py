@@ -1468,7 +1468,6 @@ async def test_il_CORPO_di_un_automazione_e_degli_amministratori(tmp_path, ruolo
     script = await chat.dispatch("search", {"genere": "script",
                                             "riferimento": "script.buonanotte"})
     memoria.close()
-    casa_seminata.close()
 
     assert ("CORPO-RISERVATO" in json_text(automazione)) is vede
     assert ("solo agli amministratori" in json_text(automazione)) is not vede

@@ -3841,8 +3841,6 @@ async def _on_cleanup(app: web.Application) -> None:
             await installation
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
-    if "home_space_store" in app:
-        app["home_space_store"].close()
     if "memory_store" in app:
         app["memory_store"].close()
     # I due archivi del Task 7 (keeper): stessa disciplina dei due qui

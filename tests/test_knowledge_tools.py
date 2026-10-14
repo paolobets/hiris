@@ -64,8 +64,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO_LETTO):
 @pytest.fixture
 def archivio_casa(tmp_path):
     a = _semina_casa(tmp_path)
-    yield a
-    a.close()
+    return a
 
 
 @pytest.fixture
@@ -81,8 +80,7 @@ def archivio_casa_ambiguo(tmp_path):
         "entita": [],
     }
     a = _semina_casa(tmp_path, casa=casa, comportamento=[])
-    yield a
-    a.close()
+    return a
 
 
 @pytest.fixture
@@ -1404,7 +1402,6 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     await d.dispatch("remember", {"testo": "ancora dopo, stesso stato"})
     assert len(chiamate) == 2  # ma ora si riusa, a stato invariato
 
-    vuoto.close()
 
 
 class _CacheConUnita:

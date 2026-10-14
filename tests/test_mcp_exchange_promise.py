@@ -135,7 +135,6 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         close_all_stores()
         promesse.close()
         memoria.close()
-        casa.close()
 
 
 def _crea_in_corso(promesse) -> str:

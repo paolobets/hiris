@@ -79,8 +79,7 @@ def memoria(tmp_path):
 @pytest.fixture
 def casa(tmp_path):
     a = HomeSpace(str(tmp_path / "casa.db"))
-    yield a
-    a.close()
+    return a
 
 
 def _dispatcher(casa, memoria, ha=None, actuator=None):
@@ -263,18 +262,15 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
     inosservata. E si guarda anche la cartella, cosi' nemmeno un archivio
     NUOVO nato di fianco puo' sfuggire."""
     archivio = HomeSpace(str(tmp_path))
-    try:
-        def _impronta():
-            tenuto = (archivio.read(), archivio.behavior(), archivio.dashboards(),
-                      archivio.reference_frame(), archivio.unread_bodies())
-            attorno = sorted((f.name, f.stat().st_size) for f in tmp_path.iterdir())
-            return hashlib.sha256(f"{tenuto}{attorno}".encode()).hexdigest()
+    def _impronta():
+        tenuto = (archivio.read(), archivio.behavior(), archivio.dashboards(),
+                  archivio.reference_frame(), archivio.unread_bodies())
+        attorno = sorted((f.name, f.stat().st_size) for f in tmp_path.iterdir())
+        return hashlib.sha256(f"{tenuto}{attorno}".encode()).hexdigest()
 
-        prima = _impronta()
-        ha = _house({"automation": ["automation.a"], "scene": ["scene.sera"]})
-        esito = await _dispatcher(archivio, memoria, ha=ha).dispatch(
-            "related", {"genere": "entita", "riferimento": "light.corridoio"})
-        assert esito["legami"]
-        assert _impronta() == prima, "i legami sono momentanei: non si archiviano"
-    finally:
-        archivio.close()
+    prima = _impronta()
+    ha = _house({"automation": ["automation.a"], "scene": ["scene.sera"]})
+    esito = await _dispatcher(archivio, memoria, ha=ha).dispatch(
+        "related", {"genere": "entita", "riferimento": "light.corridoio"})
+    assert esito["legami"]
+    assert _impronta() == prima, "i legami sono momentanei: non si archiviano"

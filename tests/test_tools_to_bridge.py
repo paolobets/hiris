@@ -640,7 +640,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     dell'app, che e' l'argomento con cui il disegno ha scartato un
     sottoprocesso stdio."""
     client, coda, app, intestazioni = ponte_produzione
-    casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
+    _casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
     try:
         base = _base_url(client)
         adesso = time.time()
@@ -745,7 +745,6 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             "in cucina si cena alle 20"]
     finally:
         memoria.close()
-        casa.close()
 
 
 def _riga_init(*, stato: str = "connected", nomi=None) -> str:

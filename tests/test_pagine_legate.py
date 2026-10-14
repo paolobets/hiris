@@ -74,10 +74,7 @@ async def test_home_space_route_sends_measurement_names(aiohttp_client, tmp_path
     app["home_space_store"] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
-    try:
-        body = await (await client.get("/api/home-space")).json()
-    finally:
-        store.close()
+    body = await (await client.get("/api/home-space")).json()
     # Valori E ordine: e' l'ordine in cui la casa si legge, sul nucleo e
     # sulla pagina.
     assert list(body["nomi_misure"].items()) == list(_MEASUREMENT_NAMES.items())
@@ -267,10 +264,7 @@ async def test_home_space_route_sends_register_names(aiohttp_client, tmp_path):
     app["home_space_store"] = store
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
-    try:
-        body = await (await client.get("/api/home-space")).json()
-    finally:
-        store.close()
+    body = await (await client.get("/api/home-space")).json()
     assert list(body["nomi_registri"]) == list(TABLES)
     assert body["nomi_registri"] == register_names()
     # «Categorie» e' la parola di Home Assistant, non una nostra (3.22.3).

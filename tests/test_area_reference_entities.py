@@ -29,11 +29,8 @@ _REGISTRI = {
 
 def _casa(tmp_path):
     a = HomeSpace(str(tmp_path))
-    try:
-        a.hold_registries(_REGISTRI, [])
-        return a.read()
-    finally:
-        a.close()
+    a.hold_registries(_REGISTRI, [])
+    return a.read()
 
 
 def test_l_archivio_conserva_le_entita_di_riferimento(tmp_path):
@@ -80,9 +77,6 @@ def test_un_archivio_gia_esistente_guadagna_le_colonne(tmp_path):
     vecchio.close()
 
     a = HomeSpace(percorso)
-    try:
-        a.hold_registries(_REGISTRI, [])
-        area = next(x for x in a.read()["aree"] if x["id"] == "soggiorno")
-        assert area["entita_temperatura"] == "sensor.soggiorno_temp"
-    finally:
-        a.close()
+    a.hold_registries(_REGISTRI, [])
+    area = next(x for x in a.read()["aree"] if x["id"] == "soggiorno")
+    assert area["entita_temperatura"] == "sensor.soggiorno_temp"
