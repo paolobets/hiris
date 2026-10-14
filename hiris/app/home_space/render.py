@@ -1154,14 +1154,14 @@ _PROMISE_INSTANTS = {"quando_ts": "quando", "nata_ts": "nata_il",
 
 
 def render_promise(promise: dict) -> dict:
-    """La resa di UNA promessa verso il modello: la forma di
+    """La resa di UNA promessa, per il modello e per la pagina: la forma di
     `keeper.promise.serializza`, con gli istanti in ISO nell'ora della
     promessa (`fuso`, la stessa dell'istantanea) invece che in epoch.
 
     C-32/C-39 (Paolo, 13/10/2026, «come consigliato»): verso il modello ogni
     istante era ISO con l'offset tranne i cinque della promessa. La pagina
-    Impegni legge ancora `serializza`, coi numeri: la sua forma cambia con
-    C-17 (le date della pagina nell'ora della casa).
+    Impegni riceve la stessa forma dalle sue rotte, e mostra gli istanti nel
+    fuso del browser: il passaggio all'ora della casa e' C-17.
 
     `None` resta `null` (`instant_out`): una promessa mai risvegliata non ha
     `risvegliata_il`, e lo dice. L'ordine delle chiavi resta quello di
