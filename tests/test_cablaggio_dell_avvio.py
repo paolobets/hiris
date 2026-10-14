@@ -194,7 +194,8 @@ async def test_unfinished_constructions_heal_before_the_heartbeat(startup_steps)
     riaprendo lo stato fantasma che il risanamento chiude.
 
     Mutazione ESEGUITA: il blocco `app[CONSTRUCTIONS_KEY].risana(...)` spostato
-    dopo `scheduler.add_job(_battito, ...)` -- rossa."""
+    dopo `scheduler.add_job(_battito, ...)` -- rossa. `_battito` e' diventata
+    `startup.keeper_heartbeat_job` alla Chiusura (F8, 14/10/2026)."""
     assert (_first(startup_steps, "constructions_risana")
             < _first(startup_steps, "add_job:hiris_keeper_heartbeat"))
 
@@ -352,7 +353,9 @@ async def test_the_automation_event_marks_the_automation(started_app):
     Si manda l'evento a chi l'avvio ha iscritto, e si guarda l'osservatore.
 
     Mutazione ESEGUITA: commentata
-    `ha_client.add_automation_listener(_mark_triggered_automation)` -- rossa."""
+    `ha_client.add_automation_listener(_mark_triggered_automation)` -- rossa. Dal
+    14/10/2026 (F8) la riga e' `add_automation_listener(partial(
+    mark_triggered_automation, app))`, in `startup.py`."""
     entity_id = "automation.prova_cablaggio_avvio"
     for listener in started_app[HA_CLIENT_KEY].registered("automation"):
         listener({"entity_id": entity_id, "name": "Prova di cablaggio"})
@@ -535,7 +538,8 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
     due derivazioni potessero divergere, divergerebbero all'avvio, dove ogni
     prova le guarda.
 
-    Mutazione ESEGUITA: tolta la chiamata `_rimetti_in_vigore()` dall'avvio --
+    Mutazione ESEGUITA: tolta la chiamata `_rimetti_in_vigore()` (dal 14/10/2026, F8:
+    `reapply_chain(app)`) dall'avvio --
     rossa (nessun ricalcolo all'avvio). Mutazione ESEGUITA:
     `app[RECOMPUTE_CHAIN_KEY] = ...` spostata dentro il ramo `else` -- rossa."""
     monkeypatch.setenv("CLAUDE_API_KEY", "sk-prova-cablaggio")

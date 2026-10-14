@@ -49,7 +49,8 @@ from hiris.app.startup import live_values
 # ── L'avvio vero, con gli `add_job` registrati ─────────────────────────────
 #
 # Fino al 03/10/2026 i blocchi dell'avvio (costruzione di cronaca, promesse e
-# porta; risanamento, orologio e battito; la chiusura `_battito`) si
+# porta; risanamento, orologio e battito; la chiusura `_battito`, dal 14/10/2026
+# `keeper_heartbeat_job`) si
 # ritagliavano dal testo di `_on_startup` e si eseguivano isolati, con doppi
 # al posto dello schedulatore. Adesso l'app si avvia davvero
 # (`tests/_avvio.py::started_with`): lo schedulatore e' quello vero, e una
@@ -161,7 +162,8 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(tmp_path):
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(recorded_startup):
-    """Mutazione ESEGUITA (03/10/2026): `_battito` chiama
+    """Mutazione ESEGUITA (03/10/2026): `_battito` (dal 14/10/2026, F8:
+    `startup.keeper_heartbeat_job`) chiama
     `app[SWEEPER_KEY].batti()` senza l'istante -- rossa."""
     app, _jobs = recorded_startup
     battito = app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat").func

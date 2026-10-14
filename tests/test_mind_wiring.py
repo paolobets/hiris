@@ -379,7 +379,8 @@ def test_senza_osservatore_non_scrive_niente():
 # --------------------------------------------------------------------------
 # Correzione punto 2 (task-5-fix-brief.md): se il fuso non si legge, quel
 # giorno non viene aggregato MAI PIU' -- `fuso` e `ieri` erano calcolati
-# FUORI dal try di `_aggrega_ieri`. Due correzioni distinte: (a) il minimo,
+# FUORI dal try di `_aggrega_ieri` (dal 14/10/2026, F8:
+# `startup.nightly_aggregation_job`). Due correzioni distinte: (a) il minimo,
 # le due righe dentro il try; (b) la cura vera, la riaggregazione
 # incondizionata degli ultimi due giorni pieni all'avvio.
 # --------------------------------------------------------------------------
@@ -1826,7 +1827,8 @@ async def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(started_app, cap
     """Giro di correzioni 1, punto 8 (MEDIO): **il lavoro periodico non era
     pinnato da nessuna prova**.
 
-    `_recupero_resoconti` (in `_on_startup`, registrato ogni 5 minuti come
+    `_recupero_resoconti` (in `_on_startup`; dal 14/10/2026, F8,
+    `startup.report_backfill_job`, registrato ogni 5 minuti come
     `hiris_mind_backfill`) chiama `backfill_one_report` dentro un
     `except Exception` che logga e passa. Un nome sbagliato -- ed e'
     esattamente cio' che il rinominare del Task 6 rischiava, `server.py`

@@ -93,7 +93,8 @@ def test_i_nomi_sconosciuti_e_i_doppioni_cadono():
 # vera) e quella che pubblica in `app[MODEL_CHAIN_KEY]`.
 #
 # Perche' anche la consegna al router e non solo `app[MODEL_CHAIN_KEY]`: poche
-# righe sotto, l'avvio chiama `_rimetti_in_vigore()` -> `_recompute_chain`, che
+# righe sotto, l'avvio chiama `reapply_chain(app)` (fino al 14/10/2026
+# `_rimetti_in_vigore()`) -> `_recompute_chain`, che
 # RISCRIVE `app[MODEL_CHAIN_KEY]` e `router._chat_policy` con la stessa regola
 # riletta dal router. Guardando solo `app[MODEL_CHAIN_KEY]`, un difetto del
 # blocco dell'avvio sarebbe coperto dal ricalcolo, e la prova resterebbe verde.
@@ -470,7 +471,9 @@ async def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_model
       rossa (nessun runner locale);
     - `if _risponde["ollama"]:` (la verifica) -> `if local_model_url:` --
       rossa (la verifica parte senza un modello, e il registro lo dice);
-    - `read_model=_local_model` -> `read_model=_model_of("openai")` -- rossa."""
+    - `read_model=_local_model` -> `read_model=_model_of("openai")` -- rossa.
+    Dal 14/10/2026 (F8) le due letture sono `startup.local_model` e
+    `startup.model_reader`."""
     with caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
         async with _started(tmp_path, ["claude"], credentials=("claude",),
                             ollama_url=UNREACHABLE_OLLAMA) as (app, _chains):
@@ -515,7 +518,8 @@ async def test_ogni_runner_riceve_la_lettura_del_SUO_provider(tmp_path):
     adesso ogni runner dell'avvio vero dice quale modello legge.
 
     Mutazione ESEGUITA (03/10/2026): il runner di OpenAI costruito con
-    `read_model=_model_of("openrouter")` -- rossa."""
+    `read_model=_model_of("openrouter")` -- rossa. Dal 14/10/2026 (F8):
+    `read_model=model_reader(app, OPENROUTER.id)`."""
     scelti = {"claude": "modello-di-claude", "openai": "modello-di-openai",
               "openrouter": "modello-di-openrouter"}
     async with _started(tmp_path, ["claude", "openai", "openrouter"],

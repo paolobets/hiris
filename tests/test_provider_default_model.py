@@ -233,7 +233,8 @@ async def test_la_lettura_dell_avvio_vede_l_archivio_RIASSEGNATO(started_runners
     di `app`, ogni salvataggio sarebbe rimasto invisibile ai runner -- che e'
     esattamente il difetto da cui questo task esiste.
 
-    Mutazione ESEGUITA (03/10/2026): `_model_of` legge il dizionario preso
+    Mutazione ESEGUITA (03/10/2026): `_model_of` (dal 14/10/2026, F8:
+    `startup.model_reader`) legge il dizionario preso
     alla costruzione (`cfg = app.get("models_config")` fuori da `read`) --
     rossa."""
     leggi = _reader(started_runners, "claude")
@@ -253,7 +254,8 @@ async def test_la_lettura_del_locale_NON_passa_da_provider_models(started_runner
     altri troverebbe sempre "" e il runner locale partirebbe senza modello.
 
     Mutazione ESEGUITA (03/10/2026): il runner locale costruito con
-    `read_model=_model_of("ollama")` -- rossa (`'un-fantasma'`)."""
+    `read_model=_model_of("ollama")` -- rossa (`'un-fantasma'`). Dal 14/10/2026
+    (F8) le due letture sono `startup.model_reader` e `startup.local_model`."""
     modello_locale = _reader(started_runners, "ollama")
     with _assigned(started_runners,
                    {"ollama": {"modello": "llama3.1:8b"},
