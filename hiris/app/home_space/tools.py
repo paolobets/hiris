@@ -138,7 +138,7 @@ from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
 from .render import DEPTHS, depth_for, render_entity, render_promise
-from .topology import Mirror, visibility
+from .topology import DISABLED, Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
@@ -1829,7 +1829,7 @@ class ToolDispatcher:
         # D7: le disabilitate non si cercano; ogni altra classe si'.
         unnamed = [e for e in house.home_space.get("entita") or []
                      if not (e.get("nome") or "").strip()
-                     and visibility(e)[0] != "disabilitata"]
+                     and visibility(e)[0] != DISABLED]
         if unnamed and not mirror.readable:
             message = (
                 f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "

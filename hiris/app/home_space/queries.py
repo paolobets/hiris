@@ -65,6 +65,8 @@ from .render import (
     rows_depth,
 )
 from .topology import (
+    DISABLED,
+    HIDDEN,
     is_pseudo_area,
     visibility,
 )
@@ -400,9 +402,9 @@ def _view_device(house: House, memories: list[dict], reference,
     raw_device_entities = house.device_entities(reference)
     # La classe dalla regola unica (B-01): qui era scritta in linea.
     classes = [(e, visibility(e)[0]) for e in raw_device_entities]
-    disabled_count = sum(1 for _e, cls in classes if cls == "disabilitata")
-    raw_hidden = [e for e, cls in classes if cls == "nascosta"]
-    raw_visible = [e for e, cls in classes if cls not in ("disabilitata", "nascosta")]
+    disabled_count = sum(1 for _e, cls in classes if cls == DISABLED)
+    raw_hidden = [e for e, cls in classes if cls == HIDDEN]
+    raw_visible = [e for e, cls in classes if cls not in (DISABLED, HIDDEN)]
     # Le righe dalla resa, come quelle dell'area: la stessa entita' e' la
     # stessa cosa da tutte le porte (fino all'08/10/2026 qui la riga visibile
     # si componeva in linea, una terza copia del dizionario base).
@@ -659,8 +661,8 @@ def _view_integration(house: House, reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
     # D7: questa porta conta ogni classe tranne le disabilitate (i totali
     # dell'integrazione sono tutte le sue entita' che hanno uno stato).
-    own = [e for e in matching if visibility(e)[0] != "disabilitata"]
-    disabled = [e for e in matching if visibility(e)[0] == "disabilitata"]
+    own = [e for e in matching if visibility(e)[0] != DISABLED]
+    disabled = [e for e in matching if visibility(e)[0] == DISABLED]
     # I due stati dal vocabolario, col loro nome (B-09, B-55; Tappa 3, Task 8).
     mute = [e for e in own if mirror.state.get(e["id"]) == STATE_UNAVAILABLE]
     unknown = [e for e in own if mirror.state.get(e["id"]) == STATE_UNKNOWN]

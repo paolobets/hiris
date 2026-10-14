@@ -53,7 +53,10 @@ from .house import House
 from .queries import sanitized_memories
 from .render import BODY_UNKNOWN
 from .topology import (
+    DISABLED,
+    HIDDEN,
     PROBLEM_SEVERITY,
+    SERVICE,
     VISIBLE,
     id_marker,
     name_with_id,
@@ -591,7 +594,7 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     # Le disabilitate non hanno uno stato da dire: fuori. Le nascoste e quelle
     # di servizio si' (D7: questa porta conta tutte le classi tranne una).
     active_entities = [e for e in home_space.get("entita", [])
-                       if visibility(e)[0] != "disabilitata"]
+                       if visibility(e)[0] != DISABLED]
     if not active_entities:
         return False
     # «Leggibile» = non uno dei due «non lo so» del vocabolario (B-08; Tappa 3,
@@ -735,7 +738,7 @@ def _capability_signature(capabilities: dict) -> tuple[tuple[str, str | None], .
                         if isinstance(name, str)))
 
 
-def _capability_lines(attributes: dict[str, dict] | None,
+def _capability_lines(attributes: dict[str, dict],
                       unreliable_state: bool,
                       visible_entity_ids: frozenset[str]) -> tuple[list[str], list[int], bool]:
     """Cosa si puo' CHIEDERE alle cose di questa casa, aggregato per firma.
@@ -743,12 +746,13 @@ def _capability_lines(attributes: dict[str, dict] | None,
     Restituisce `(righe, pesi, aggregabile)`. I pesi sono paralleli alle righe:
     quante entita' ogni riga rappresenta -- serve al taglio, che dichiara
     ENTITA' escluse e non righe (stessa disciplina dei conteggi della casa).
-    L'ultimo e' falso in due casi diversi, e nessuno dei due entra
-    nell'ordine di taglio: quando la sezione porta una DICHIARAZIONE invece
-    delle capacita' (lo stato non e' stato letto, oppure nessuna entita' ne
-    dichiara) -- tagliare la frase «non ho guardato» ricrea esattamente il
-    silenzio che quella frase esiste per rompere; e quando `attributes` e'
-    `None`, dove le righe sono zero e la sezione non compare affatto.
+    L'ultimo e' falso quando la sezione porta una DICHIARAZIONE invece delle
+    capacita' (lo stato non e' stato letto, oppure nessuna entita' ne
+    dichiara), e allora non entra nell'ordine di taglio: tagliare la frase
+    «non ho guardato» ricrea esattamente il silenzio che quella frase esiste
+    per rompere. Fino al 14/10/2026 c'era un secondo caso, `attributes`
+    `None` («il chiamante non ha guardato»): gli attributi vengono dallo
+    specchio della casa del turno (N158-2), che e' sempre un dizionario.
 
     **Perche' questa sezione esiste.** Dalla 3.23.0 HIRIS sa dire che
     l’Alberello fa colore fra 1500 e 9000 K -- ma solo se il modello guarda
@@ -774,14 +778,6 @@ def _capability_lines(attributes: dict[str, dict] | None,
             "le cose di questa casa sanno fare -- non è lo stesso di 'non sanno "
             "fare nientè.")
         ], [1], False)
-    if attributes is None:
-        # Il chiamante non ha guardato. **Silenzio**, e non una frase: e' la
-        # stessa regola gia' scritta per `problems` e per `comparison` -- «e'
-        # l'unico caso in cui tacere non afferma niente». Una sezione che
-        # dicesse «non lette» su ogni composizione che non le cabla
-        # occuperebbe il posto piu' letto del prodotto per dichiarare un
-        # limite del CHIAMANTE, non della casa.
-        return ([], [], False)
     counted: dict[tuple[str, tuple], int] = {}
     for entity_id, baskets in attributes.items():
         if entity_id not in visible_entity_ids:
@@ -1456,9 +1452,8 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
 DEFAULT_CAP = 6800
 
 
-def compose(home_space: dict, behavior: list[dict], memories: list[dict],
-            state: dict, cap: int = DEFAULT_CAP,
-            unavailable: tuple[str, ...] = (),
+def compose(behavior: list[dict], memories: list[dict],
+            cap: int = DEFAULT_CAP,
             reliable_state: bool = True,
             behavior_problems: tuple[str, ...] = (),
             unread_bodies: dict[str, str] | None = None,
@@ -1466,7 +1461,6 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             reference_frame: dict | None = None,
             problems: dict | None = None,
             comparison: dict | None = None,
-            attributes: dict[str, dict] | None = None,
             *, house: House) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
@@ -1486,15 +1480,18 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     aperto il modello la prenderebbe per la risposta. Lo stato vivo si chiede
     a `search`, che lo legge nel momento in cui serve.
 
-    `attributes` sono le ceste degli attributi vivi, entita' per entita', come
-    `topology.live_mirror` le consegna gia' al chiamante. Servono a una cosa
-    sola qui dentro: la sezione «cosa si puo' chiedere», che aggrega le
-    CAPACITA' (mai i valori correnti -- vedi `_capability_lines`). `None`
-    significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
-    niente»: la sezione lo dichiara, come `problems` e `comparison` qui sotto.
+    **Dalla casa del turno** (`house`, N158-2, Chiusura, 14/10/2026: fino ad
+    allora arrivavano anche come argomenti, accanto alla casa da cui il
+    chiamante li prendeva) vengono l'anagrafe, i registri caduti, lo stato e
+    gli attributi:
 
-    `unavailable` sono i registri dell'anagrafe che non hanno risposto
-    all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
+    gli attributi (`house.mirror.attributes`) sono le ceste degli attributi
+    vivi, entita' per entita'. Servono a una cosa sola qui dentro: la sezione
+    «cosa si puo' chiedere», che aggrega le CAPACITA' (mai i valori correnti
+    -- vedi `_capability_lines`).
+
+    I registri caduti (`house.unavailable`) sono quelli dell'anagrafe che non
+    hanno risposto all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
     casa" ne' "cio' che HIRIS ignora" potrebbero nominare la lacuna piu'
     grave che esista: una casa letta a meta' che il nucleo racconterebbe
     come una casa piccola (o senz'area) invece che come una casa non letta
@@ -1503,7 +1500,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     incompatibile. Una casa
     non ancora letta non e' una casa cambiata.
 
-    `reliable_state=False` dichiara esplicitamente che di `state` non ci si
+    `reliable_state=False` dichiara esplicitamente che dello stato non ci si
     puo' fidare (es. una lettura iniziata ma non ancora conclusa): senza un
     modo per dirlo, il chiamante non avrebbe potuto distinguere "ho letto lo
     stato ed e' vuoto/sospetto" da "questo e' lo stato vero". Anche senza
@@ -1515,7 +1512,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     `problems` sono i guasti che Home Assistant ha GIA' diagnosticato
     (`repairs/list_issues`, letti da `HAClient.problems()`), nella forma in cui
     quella funzione li restituisce: `{"problemi": [...]}` o `{"errore": ...}`.
-    Arrivano come ARGOMENTO, come `state` e `reference_frame`, perche'
+    Arrivano come ARGOMENTO, come `reference_frame`, perche'
     questa funzione non apre connessioni. `None` significa «il chiamante non ha
     chiesto» e non «non c'e' niente che non va»: vedi `_problems_notice`, che
     decide anche cosa dire e cosa tacere.
@@ -1535,8 +1532,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     un'automazione di cui non si conosce il corpo non arriverebbe
     mai al modello.
 
-    `house` e' la casa del turno (`house.House`), da cui `home_space` e
-    `unavailable` vengono gia'. Le si chiedono l'albero (`House.hierarchy`,
+    `house` e' la casa del turno (`house.House`). Le si chiedono anche l'albero (`House.hierarchy`,
     R18: il turno di chat lo costruisce una volta e lo condivide con gli
     strumenti) e i nomi dei dispositivi delle annotazioni (`House.name`),
     invece di rifarne qui l'indice dall'anagrafe (A-16, Chiusura,
@@ -1557,6 +1553,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     docstring del modulo: non e' "cosa e' recuperabile" (lo e' tutto), e'
     "cosa il modello perde la possibilita' di sapere che esiste".
     """
+    home_space, unavailable = house.home_space, house.unavailable
+    state, attributes = house.mirror.state, house.mirror.attributes
     notices: list[str] = []
 
     # DUE ELENCHI, non uno, e la differenza e' quella che ha fatto sbagliare
@@ -1623,7 +1621,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
     # senza chiamare uno strumento per ognuna delle sedici aree. `search` le
     # riporta con `includi_nascoste`: la conoscenza c'e', qui c'e' il numero.
-    hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == "nascosta"]
+    hidden = [e for e in home_space.get("entita", []) if visibility(e)[0] == HIDDEN]
     if hidden:
         n = len(hidden)
         entry = _plural(n, "entità nascosta", "entità nascoste")
@@ -1649,7 +1647,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # nascoste. Fino al 04/10/2026 quest'ultima si contava in tutti e due i
     # conteggi, e la somma delle righe del nucleo superava le entita' vere;
     # `search` la contava gia' una volta sola, fra le nascoste.
-    service = [e for e in home_space.get("entita", []) if visibility(e)[0] == "servizio"]
+    service = [e for e in home_space.get("entita", []) if visibility(e)[0] == SERVICE]
     if service:
         n = len(service)
         # NON `_plural()`: "entita' di servizio" e' invariante al plurale in

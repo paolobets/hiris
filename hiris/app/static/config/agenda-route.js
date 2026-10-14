@@ -42,8 +42,9 @@
    Tre cose che la guida chiede esplicitamente:
    1. `in_corso` sta nella sezione «In sospeso» insieme a `in_attesa` (non e'
       ancora concluso), ma SOLO `in_attesa` ha il bottone disdici:
-      `AgendaStore.cancel()` scrive `WHERE stato='in_attesa'`, quindi un
-      bottone su una riga `in_corso` sarebbe piu' confuso di nessun bottone.
+      `AgendaStore.cancel()` scrive `WHERE stato=CANCELLABLE`, e la promessa
+      arriva con `disdicibile` (C-10, 14/10/2026), quindi un bottone su una
+      riga `in_corso` sarebbe piu' confuso di nessun bottone.
    2. Nessun `window.confirm()`: disdire non distrugge niente, la riga passa
       allo storico con `stato:'disdetta'`, resta leggibile per sempre ed e'
       reversibile chiedendo di nuovo a voce -- diverso dalla cancellazione di
@@ -148,8 +149,8 @@ window.HirisAgendaRoute = (function () {
      (guida §3, stesso principio di rendiAncore in memory-route.js): rosso
      solo per un vero fallimento, ambra per tutto il resto (compresa la
      nota su una "mantenuta" con motivo -- §6 della spec). */
-  function reasonColor(state) {
-    return state === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)';
+  function reasonColor(p) {
+    return p.fallita ? 'var(--err-ink)' : 'var(--warn-ink)';
   }
 
   function formatSnapshot(snapshot) {
@@ -213,7 +214,7 @@ window.HirisAgendaRoute = (function () {
      `motivo` che l'utente vede e' gia' `esito.errore` (`keeper/sweeper.py::
      _keep_fai`): la stessa frase, non un secondo dettaglio da aprire. */
   function addExecutionDetail(line, p) {
-    if (!(p.specie === 'fai' && p.stato === 'mantenuta' && p.esecuzione_id)) return;
+    if (!(p.specie === 'fai' && p.mantenuta && p.esecuzione_id)) return;
 
     var group = el('div', 'field-group');
     group.style.marginTop = '8px';
@@ -288,10 +289,10 @@ window.HirisAgendaRoute = (function () {
     body.appendChild(el('div', 'field-hint', p.specie));
     line.appendChild(body);
 
-    /* Condizione ESATTA `stato === 'in_attesa'`, non "riga in questa
-       sezione": `in_corso` ci sta (non e' ancora concluso) ma non e'
-       disdicibile (`AgendaStore.cancel` scrive WHERE stato='in_attesa'). */
-    if (p.stato === 'in_attesa') {
+    /* `disdicibile`, non "riga in questa sezione": `in_corso` ci sta (non
+       e' ancora concluso) ma non si disdice. La regola e' quella di
+       `AgendaStore.cancel`, e la manda `serializza` (C-10, 14/10/2026). */
+    if (p.disdicibile) {
       var btn = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Disdici');
       btn.type = 'button';
       btn.setAttribute('data-disdici', p.id);
@@ -353,9 +354,9 @@ window.HirisAgendaRoute = (function () {
     /* Il motivo MAI per `disdetta`, come nella pagina Costruzioni: il «no»
        di una persona non e' un fallimento, e non si colora come uno
        (ux-ui-specialist, 08/10/2026: una regola sola per le due code). */
-    if (p.motivo && p.stato !== 'disdetta') {
+    if (p.motivo && !p.disdetta) {
       var reason = el('p', null, p.motivo);
-      reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p.stato);
+      reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p);
       line.appendChild(reason);
     }
 
@@ -364,7 +365,7 @@ window.HirisAgendaRoute = (function () {
        §6, §8.2) -- anche quando HIRIS ha concluso "in silenzio"
        (`avvisare:false`): questa pagina e' di sola lettura, quindi non
        importa se non e' arrivata una notifica. */
-    if (p.specie === 'chiedi' && p.stato === 'mantenuta' && p.testo) {
+    if (p.specie === 'chiedi' && p.mantenuta && p.testo) {
       var group = el('div', 'field-group');
       group.style.marginTop = '8px';
       group.appendChild(el('div', 'fg-label', 'HIRIS ha risposto'));

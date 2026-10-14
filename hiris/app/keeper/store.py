@@ -31,6 +31,7 @@ from ..storage import (
     table_columns,
 )
 from .promise import (
+    CANCELLABLE,
     HOUSE_SUSPENDED_CAP,
     STATES_CONCLUSI,
     STATES_ESITO,
@@ -484,7 +485,7 @@ class AgendaStore:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato=?, closed_ts=? "
                 f"WHERE id=? AND stato=? AND {thread_condition()}",
-                (CANCELLED, now, promise_id, PENDING, *thread_params(thread)))
+                (CANCELLED, now, promise_id, CANCELLABLE, *thread_params(thread)))
             self._conn.commit()
             riuscita = cur.rowcount == 1
         row = self.read_in_thread(promise_id, thread)
