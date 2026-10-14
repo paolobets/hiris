@@ -35,6 +35,7 @@ from aiohttp import web
 
 from ..chat_thread import unknown_id_text
 from ..home_space.historian import home_space_zone, house_clock, house_timezone, instant_out
+from ..home_space.reader import HOME_SPACE_KEY
 from .boundary import error_response, json_object
 from .canali import PUO, RUOLI, SERVICE_SPECIES
 from .servizi import (
@@ -118,7 +119,7 @@ def listing(archivio, adesso: float, app) -> dict:
              STATE_REVOKED: "revocati"}
     sections: dict[str, list] = {section: [] for section in where.values()}
     # Gli istanti nell'ora della casa (C-17): la pagina ne mostra le cifre.
-    zone = home_space_zone(house_timezone(app.get("home_space_store")))
+    zone = home_space_zone(house_timezone(app.get(HOME_SPACE_KEY)))
     for row in archivio.elenco(now_ts=adesso):
         sections[where[row["stato"]]].append(
             {**row, "visto_ts": instant_out(row["visto_ts"], zone),
@@ -168,7 +169,7 @@ async def handle_services(request: web.Request) -> web.Response:
     finestra = request.app.get(SERVICE_WINDOW_KEY)
     return web.json_response({
         "servizi": listing(archivio, adesso, request.app),
-        "orologio": house_clock(house_timezone(request.app.get("home_space_store")), adesso),
+        "orologio": house_clock(house_timezone(request.app.get(HOME_SPACE_KEY)), adesso),
         "finestra": {"aperta": finestra_aperta(finestra, adesso=adesso),
                      "resta_s": round(finestra_resta(finestra, adesso=adesso))},
         "ruoli": roles(), "specie": species()})

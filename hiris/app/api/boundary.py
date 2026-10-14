@@ -30,6 +30,7 @@ import json
 from aiohttp import web
 
 from ..home_space.historian import house_clock, house_timezone
+from ..home_space.reader import HOME_SPACE_KEY
 
 
 def occurrence_out(occurrence: dict) -> dict:
@@ -55,7 +56,7 @@ def house_clock_of(app) -> dict:
     una persona (C-17, `historian.house_clock`), col fuso letto dall'anagrafe
     dell'applicazione. Una funzione sola per tutte le rotte che lo mandano:
     il fuso si legge sempre dallo stesso posto."""
-    return house_clock(house_timezone(app.get("home_space_store")))
+    return house_clock(house_timezone(app.get(HOME_SPACE_KEY)))
 
 
 def error_body(text: str, **fields) -> dict:

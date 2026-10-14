@@ -367,7 +367,7 @@ async def handle_knowledge(request) -> web.Response:
         return error_response(503, "il sapere non e' disponibile")
     names = mind_view(request.app).device_names()
     listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
-    zone = historian.home_space_zone(historian.house_timezone(request.app.get("home_space_store")))
+    zone = historian.home_space_zone(historian.house_timezone(request.app.get(HOME_SPACE_KEY)))
     # Ogni `quando_ts` nell'ora della casa (C-17), come le letture di
     # `MindView`; e l'orologio, con cui la pagina dice «oggi».
     return web.json_response({"orologio": house_clock_of(request.app)} | historian.instants_out({

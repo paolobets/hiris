@@ -42,6 +42,7 @@ from ..action.journal import JOURNAL_KEY
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..home_space.historian import home_space_zone, house_timezone, instant_out
+from ..home_space.reader import HOME_SPACE_KEY
 from ..mind import automate_turn
 from ..mind.store import OBSERVATIONS_KEY
 from ..states import PENDING, SUSPENDED
@@ -85,7 +86,7 @@ def _born_in_house_hour(app, row: dict) -> dict:
     (la data nel «Rimetto ... com'era il 12/10/2026»). Si converte all'uscita,
     dopo l'ordinamento: dentro il server l'istante resta un numero, e
     `_both_queues` ordina su quello. Il nome non cambia (la rinomina e' T7)."""
-    zone = home_space_zone(house_timezone(app.get("home_space_store")))
+    zone = home_space_zone(house_timezone(app.get(HOME_SPACE_KEY)))
     return {**row, "creata_ts": instant_out(row.get("creata_ts"), zone)}
 
 
