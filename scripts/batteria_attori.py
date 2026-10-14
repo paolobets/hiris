@@ -47,7 +47,7 @@ si conta troncato da QUEL campo, col tetto proprio di ogni mestiere -- quale
 fosse il tetto non conta piu'. I turni registrati PRIMA non hanno quell'esito
 (si dicevano «riusciti»): per loro resta la regola di prima, l'uscita
 ESATTAMENTE uguale al tetto di chi non ne dichiarava uno
-(`_OLD_FACTORY_CEILING`, il predefinito di `claude_runner.chat()` uscito il
+(`_OLD_FACTORY_CAP`, il predefinito di `claude_runner.chat()` uscito il
 13/10/2026). E' la regola che ha misurato i 7 su 8
 dell'analista, e serve a confrontare il dopo con quel prima. Un troncato non
 e' un fallito: le due colonne non si sommano.
@@ -127,7 +127,7 @@ from hiris.app.steering import ANALYST_SPECIES, REFUSED, SPECIE, SUCCEEDED, TRUN
 #: 13/10/2026 (D-13: ogni mestiere dichiara il suo). E' un fatto storico, non
 #: una lettura: serve solo a leggere i turni registrati prima del 05/10/2026,
 #: che non portano l'esito `troncato`.
-_OLD_FACTORY_CEILING = 4096
+_OLD_FACTORY_CAP = 4096
 
 #: L'etichetta di chi non porta una causa. E' della batteria, non del prodotto:
 #: il prodotto non ha una causa che si chiami cosi'.
@@ -182,12 +182,12 @@ def _shape(problem) -> str:
     return text
 
 
-def _truncated(turn: dict, ceiling: int) -> bool:
+def _truncated(turn: dict, cap: int) -> bool:
     """Un turno troncato: dall'esito, o -- per i turni registrati prima che
     l'esito esistesse -- dall'uscita ESATTAMENTE uguale al tetto."""
     outcome = turn.get("outcome")
     return (outcome == TRUNCATED
-            or (outcome == SUCCEEDED and turn.get("output_tokens") == ceiling))
+            or (outcome == SUCCEEDED and turn.get("output_tokens") == cap))
 
 
 def _analyst(data: list, analyses: list[dict], since_day: str) -> dict:
@@ -228,31 +228,31 @@ def _analyst(data: list, analyses: list[dict], since_day: str) -> dict:
 
 
 def measure(*, data: list, watching: list[dict], reports: list[dict],
-            live_ids: set[str], output_ceiling: int,
-            ceilings: dict[str, int] | None = None,
+            live_ids: set[str], output_cap: int,
+            caps: dict[str, int] | None = None,
             analyses: list[dict] | None = None, since_day: str = "") -> dict:
     """I numeri della batteria. `data` e' cio' che `misure._leggi_remoto`
     restituisce: una coppia (turno, carichi) per turno.
 
-    `ceilings` sono i tetti propri dei mestieri che ne dichiarano uno, da
-    portare accanto ai troncati (gli altri portano `output_ceiling`, che e'
+    `caps` sono i tetti propri dei mestieri che ne dichiarano uno, da
+    portare accanto ai troncati (gli altri portano `output_cap`, che e'
     anche il tetto della regola dei turni di prima); `analyses` le analisi archiviate,
     contate dal giorno `since_day` (`AAAA-MM-GG`) in poi."""
     actors: dict[str, dict] = {}
     durations: dict[str, list[float]] = {}
     for turn, loads in data:
         species = turn.get("species") or "(senza specie)"
-        ceiling = (ceilings or {}).get(species, output_ceiling)
+        cap = (caps or {}).get(species, output_cap)
         row = actors.setdefault(species, {
             "turni": 0, "giri": 0, "token_ingresso": 0, "token_uscita": 0,
-            "troncati": 0, "tetto": ceiling, "rifiutati": 0, "falliti": 0,
+            "troncati": 0, "tetto": cap, "rifiutati": 0, "falliti": 0,
             "giri_senza_token": 0})
         row["turni"] += 1
         row["giri"] += len(loads)
         row["token_uscita"] += turn.get("output_tokens") or 0
         outcome = turn.get("outcome")
         # La regola di prima col tetto di allora, quello di fabbrica (G49-1).
-        row["troncati"] += 1 if _truncated(turn, output_ceiling) else 0
+        row["troncati"] += 1 if _truncated(turn, output_cap) else 0
         row["rifiutati"] += 1 if outcome == REFUSED else 0
         row["falliti"] += 0 if outcome in (SUCCEEDED, TRUNCATED, REFUSED) else 1
         durations.setdefault(species, []).append((turn.get("duration_ms") or 0) / 1000)
@@ -329,8 +329,8 @@ def main() -> None:
     since = today - timedelta(days=max(1, int(args.giorni)) - 1)
     result = measure(data=data, watching=watching, reports=reports,
                      live_ids={row["entity_id"] for row in states},
-                     output_ceiling=_OLD_FACTORY_CEILING,
-                     ceilings={ANALYST_SPECIES: MAX_ANSWER_TOKENS},
+                     output_cap=_OLD_FACTORY_CAP,
+                     caps={ANALYST_SPECIES: MAX_ANSWER_TOKENS},
                      analyses=analyses, since_day=since.isoformat())
     print(json.dumps(result, ensure_ascii=False, indent=1))
     if not result["turni_letti"]:

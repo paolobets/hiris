@@ -295,8 +295,8 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 
     known = json.loads((Path(__file__).resolve().parents[1] / "scripts"
                         / "doppioni_noti.json").read_text(encoding="utf-8"))
-    assert len(known) == KNOWN_CEILING, (
-        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CEILING}")
+    assert len(known) == KNOWN_CAP, (
+        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CAP}")
 
 
 # 11 dalla Tappa 7 T9 (07/10/2026): i quattro vocabolari dei provider fra
@@ -309,5 +309,19 @@ def test_l_elenco_dei_noti_puo_solo_accorciarsi():
 # 8 dalla Tappa 8 T4 (08/10/2026): le parole degli stati delle costruzioni e
 # delle promesse non hanno piu' una copia in JavaScript (`states.READABLE`,
 # C-10) -- la pagina riceve la frase dalla rotta.
-KNOWN_CEILING = 8
+# 7 dalla Chiusura, F2 (13/10/2026): i nomi dei registri non hanno piu' una
+# copia in common.js -- la pagina li riceve in `nomi_registri` (C-10).
+# 6 dalla Chiusura, F2 (13/10/2026): i ruoli e le specie dei servizi arrivano
+# dalla rotta con le loro frasi, e i servizi gia' divisi per stato (C-10).
+# 4 dalla Chiusura, F2 (13/10/2026): il nome dei domini costruibili e dei gesti
+# delle costruzioni arriva dalla rotta (`construction_words`, C-10).
+# 2 dalla Chiusura, F2 (13/10/2026): la lettura del costo arriva dalla rotta dei
+# consumi; i nomi dei campi del sapere sono dichiarati (C-10).
+# 1 dalla Chiusura, F2 (13/10/2026): le parti di una misura arrivano gia' in
+# ordine (`report.value_parts`, C-10).
+# 0 dalla Chiusura, F2 (13/10/2026): `{entita, integrazione, tipo}` era un falso
+# reperto -- l'elisione «un'entita'» in un commento di watcher-lavoro.js, una
+# chiave `tipo:` di raggruppamento e il prefisso `integrazione:` citato in un
+# commento. Il commento e' riscritto; nessuna copia del vocabolario c'era.
+KNOWN_CAP = 0
 

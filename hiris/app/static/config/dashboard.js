@@ -26,49 +26,16 @@
 window.HirisDashboard = (function () {
   'use strict';
 
-  /* Toni: il colore non e' decorazione, distingue i tre stati. Sono i token
-     *-ink, non `--warn`/`--err`: quelli nascono per pallini e riempimenti e sul
-     tema chiaro -- che e' il predefinito -- stanno a 2.04:1 e 4.05:1. Qui
-     colorano il TESTO con cui HIRIS dice «questo non l'ho letto», cioe' la
-     frase per cui questa pagina esiste: era servita dal colore meno leggibile
-     dell'intera tavolozza. */
-  var TONE_UNKNOWN = 'color:var(--warn-ink)';
-  var TONE_PROBLEM = 'color:var(--err-ink)';
-  var TONE_CALM = 'color:var(--text-3)';
-
-  /* `NOMI_REGISTRI` e `nomiRegistriInItaliano` vivono in common.js. */
+  /* Toni, righe, elenchi, sezioni e la lettura vivono in common.js (C-20). */
+  var line = pageLine;
+  var list = pageList;
+  var section = pageSection;
+  var read = readJson;
 
   var NOMI_COMPORTAMENTO = {
     automazione: 'Automazioni',
     script: 'Script'
   };
-
-  function line(parent, text, style) {
-    var p = el('p', 'sc-desc', text);
-    if (style) p.style.cssText = style;
-    parent.appendChild(p);
-    return p;
-  }
-
-  function list(parent, voci) {
-    var ul = el('ul');
-    ul.style.cssText = 'margin:4px 0 0;padding-left:20px;color:var(--text-2);font-size:var(--fs-13)';
-    voci.forEach(function (v) { ul.appendChild(el('li', null, v)); });
-    parent.appendChild(ul);
-    return ul;
-  }
-
-  function section(outlet, title, subtitle) {
-    var card = el('section', 'section-card');
-    var head = el('div', 'sc-header');
-    head.appendChild(el('h2', 'sc-title', title));
-    if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
-    card.appendChild(head);
-    var body = el('div', 'sc-body');
-    card.appendChild(body);
-    outlet.appendChild(card);
-    return body;
-  }
 
   /* I registri caduti, per NOME: `non_disponibili` porta voci come "piani" o
      "categorie:script" (il perche' dopo i due punti, vedi
@@ -240,14 +207,14 @@ window.HirisDashboard = (function () {
       line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONE_UNKNOWN);
     } else {
       line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
-      tile(body, home_space.conteggi, NOMI_REGISTRI, unavailableRegisters(home_space.non_disponibili));
+      tile(body, home_space.conteggi, home_space.nomi_registri, unavailableRegisters(home_space.non_disponibili));
     }
 
     threeStates(body, onlyIfLoaded(home_space.anagrafe_letta_il, home_space.non_disponibili), {
       ignoto: 'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutti i registri hanno risposto.',
       pieno: 'Registri che non hanno risposto all’ultima lettura:'
-    }, nomiRegistriInItaliano);
+    }, function (voci) { return nomiRegistriInItaliano(voci, home_space.nomi_registri); });
 
     /* Comportamento */
     var comp = home_space.comportamento || {};
@@ -283,9 +250,9 @@ window.HirisDashboard = (function () {
     /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
        SOPRA l'elenco dei file non letti (il `threeStates` subito qui sotto): due
        frasi adiacenti che si smentivano. Questo blocco parla soltanto delle
-       voci che sono state lette -- id duplicati, script vuoti, voci
-       malformate -- e ora lo dice invece di promettere che non c'e' rimasto
-       niente in sospeso in tutta la lettura. */
+       voci che sono state lette -- i problemi che `behavior.reread()` scrive
+       con le sue parole (D-49) -- e ora lo dice invece di promettere che non
+       c'e' rimasto niente in sospeso in tutta la lettura. */
     threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.problemi), withoutAllClear({
       ignoto: 'Non si sa se nelle voci lette ci siano incongruenze: la lettura non è avvenuta.',
       vuoto: 'Nelle voci lette non c’è nessuna incongruenza.',
@@ -372,23 +339,6 @@ window.HirisDashboard = (function () {
   }
 
   /* --------------------------------------------------------------- mount */
-
-  /* Un errore di rete NON degrada in una pagina vuota: la sezione dice che
-     non ha potuto leggere, e la console porta il dettaglio tecnico. Una
-     pagina che tace su una fetch caduta e' indistinguibile da una casa
-     senza niente dentro -- il difetto ricorrente n.1 di questo prodotto. */
-  function renderSectionError(outlet, title, text, err) {
-    console.error('[cosa-hiris-sa] ' + title, err);
-    var body = section(outlet, title, null);
-    line(body, text, TONE_PROBLEM);
-  }
-
-  function read(path) {
-    return fetch(path).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    });
-  }
 
   function mount() {
     var outlet = document.getElementById('route-outlet');

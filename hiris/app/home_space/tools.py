@@ -105,6 +105,7 @@ from ..proxy.state_translations import read_for_house
 from ..usage.giro import pesa_in_caratteri
 from . import historian
 from .appointments import merge_calendars
+from .behavior import without_body
 from .energy import energy_dashboard
 from .ha_vocabulary import HA_LINK_TYPE
 from .house import House
@@ -129,12 +130,14 @@ from .privacy import (
     ADMIN_ONLY_HISTORY_KINDS,
     HA_CORE_USER_SERVICES,
     cover_reserved_body,
+    redact_row,
 )
 from .queries import related as _readable_links
+from .queries import rows_left
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .redaction import home_assistant_seal
-from .render import DEPTHS, depth_for, render_entity
+from .render import DEPTHS, depth_for, render_entity, render_promise
 from .topology import Mirror, visibility
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -261,7 +264,7 @@ _COUNT_RULE = (
     "richiama con `includi_nascoste` -- «nessuna luce accesa» e' falso se le "
     "accese sono nascoste. Con `oltre` ne restano: **prima restringi** con un "
     "filtro, scorri col suo `salta` solo se ti servono tutte (ogni pagina e' "
-    "un giro); `salta_oltre_la_fine` vuol dire che hai saltato oltre "
+    "un giro); `disponibili` vuol dire che hai saltato oltre "
     "l'ultima, e le voci ci sono. "
 )
 
@@ -1003,8 +1006,8 @@ MAX_CALENDAR_DAYS_BACK = 365
 DEFAULT_CALENDAR_DAYS_AHEAD = 30
 
 
-def _clamp_days(raw, *, default: float, ceiling: float) -> float:
-    """Qualunque cosa -> un numero di giorni fra 0 e `ceiling`.
+def _clamp_days(raw, *, default: float, cap: float) -> float:
+    """Qualunque cosa -> un numero di giorni fra 0 e `cap`.
 
     Contratto totale (NaN, stringhe, numeri fuori scala diventano tutti il
     default, mai un'eccezione) e minimo a 0 apposta: qui 0 e' un valore
@@ -1019,14 +1022,14 @@ def _clamp_days(raw, *, default: float, ceiling: float) -> float:
         return default
     if math.isnan(number):
         return default
-    return min(float(ceiling), max(0.0, number))
+    return min(float(cap), max(0.0, number))
 
 
-def _days_beyond(raw, ceiling: float) -> bool:
+def _days_beyond(raw, cap: float) -> bool:
     """Un numero di giorni chiesto oltre il tetto. Cio' che non e' un numero
     lo ferma gia' `dispatch` contro il `type` dello schema."""
     return (isinstance(raw, int | float) and not isinstance(raw, bool)
-            and not math.isnan(raw) and raw > ceiling)
+            and not math.isnan(raw) and raw > cap)
 
 
 def _days_said(raw) -> str:
@@ -1261,7 +1264,7 @@ def _cap_note(occurrence: dict, cap: CharCap) -> dict:
     """La risposta con la frase del tetto nel suo `oltre`, se ne ha uno: chi
     legge sa perche' le voci si fermano li', e che le altre ci sono."""
     beyond = occurrence.get("oltre")
-    if not isinstance(beyond, dict) or "restano" not in beyond:
+    if not isinstance(beyond, dict) or not beyond.get("restano"):
         return occurrence
     return {**occurrence, "oltre": {
         **beyond, "suggerimento": (f"la risposta superava il tetto di {cap.chars} "
@@ -1504,10 +1507,20 @@ class ToolDispatcher:
             return None
         return self._memory.fetch(limit=self._memory.count())
 
-    def _missing_resource(self, tool: Tool) -> str | None:
-        """Quale archivio serve a questo strumento (`Tool.resources`) e non
-        c'e'."""
-        for which in tool.resources:
+    def _unavailable(self, name: str, resources: tuple[str, ...]) -> dict | None:
+        """L'`errore` di uno strumento a cui manca un archivio, o `None`. La
+        stessa frase per la riga (`dispatch`, `Tool.resources`) e per i
+        gestori che chiedono un archivio solo con certi argomenti (`history`
+        fuori dagli errori, l'energia di `mind`): fino al 13/10/2026 quei due
+        avevano la loro, scritta in linea (D-41)."""
+        missing = self._missing_resource(resources)
+        if missing is None:
+            return None
+        return {"errore": f"«{name}» non e' disponibile: {missing}."}
+
+    def _missing_resource(self, resources: tuple[str, ...]) -> str | None:
+        """Quale di questi archivi (`Tool.resources`) non c'e'."""
+        for which in resources:
             if which == "casa" and self._home_space is None:
                 return "la conoscenza della casa non e' ancora stata caricata"
             if which == "memoria" and self._memory is None:
@@ -1556,9 +1569,9 @@ class ToolDispatcher:
         # LEGGIBILI. Dire cosa manca e' anche l'unico modo perche' il modello
         # possa spiegarlo all'utente invece di riprovare all'infinito.
         tool = _TOOL_PER_NAME.get(name)
-        missing = None if tool is None else self._missing_resource(tool)
+        missing = None if tool is None else self._unavailable(name, tool.resources)
         if missing is not None:
-            return {"errore": f"«{name}» non e' disponibile: {missing}."}
+            return missing
         if tool is None:
             # NON "non inventare nomi di tool": se il modello ha chiamato
             # questo nome, gliel'abbiamo dato NOI in un turno precedente (un
@@ -1799,10 +1812,14 @@ class ToolDispatcher:
         # non lo guarda, e dirlo spegnerebbe `nulla_riconosciuto`.
         if memories and self._memory is None:
             entries.append((_MEMORY_UNREAD, False))
-        unread_bodies = self._home_space.unread_bodies()
-        if unread_bodies:
+        # Le voci senza corpo con la regola del nucleo e di `/api/home-space`
+        # (`behavior.without_body`, B-39, Chiusura, 13/10/2026): fino
+        # ad allora qui si contava il solo `unread_bodies`.
+        unknown = without_body(self._home_space.behavior(),
+                               self._home_space.unread_bodies())
+        if unknown:
             message = (
-                f"di {len(unread_bodies)} fra automazioni e script non si conosce "
+                f"di {len(unknown)} fra automazioni e script non si conosce "
                 "il corpo: cosa fanno non e' cercabile adesso, e potrebbe "
                 "riguardare proprio cio' che stai cercando.")
             entries.append((message, False))
@@ -2186,7 +2203,7 @@ class ToolDispatcher:
         occurrence = self._agenda.create(data, thread=self._thread, now=_time.time())
         if "errore" in occurrence:
             return occurrence
-        result = {"promessa": without_thread(occurrence["promessa"])}
+        result = {"promessa": render_promise(without_thread(occurrence["promessa"]))}
         if verb == "chiedi":
             # Solo per sapere SE una strada c'e': la notifica partira' al
             # risveglio, dal recapito risolto allora (se nel frattempo la
@@ -2243,12 +2260,12 @@ class ToolDispatcher:
         """
         show_all = bool(arguments.get("tutte"))
         rows, left = self._agenda.page(thread=self._thread, solo_in_sospeso=not show_all)
-        answer: dict = {"promesse": [without_thread(r) for r in rows]}
+        answer: dict = {"promesse": [render_promise(without_thread(r)) for r in rows]}
         if left > 0:
             # C-39: le promesse che la pagina non mostra si dichiarano, nella
             # forma di `oltre` delle altre risposte (`restano`). Niente
             # `salta`: lo strumento non ha un argomento per la pagina dopo.
-            answer["oltre"] = {"restano": left}
+            answer["oltre"] = rows_left(left)
         return answer
 
     def _cancel(self, arguments: dict[str, Any]) -> dict:
@@ -2262,7 +2279,8 @@ class ToolDispatcher:
         occurrence = self._agenda.cancel(identifier.strip(), thread=self._thread,
                                          now=_time.time())
         if "promessa" in occurrence:
-            return {**occurrence, "promessa": without_thread(occurrence["promessa"])}
+            return {**occurrence,
+                    "promessa": render_promise(without_thread(occurrence["promessa"]))}
         return occurrence
 
     async def _propose(self, arguments: dict[str, Any], *, masked: bool) -> dict:
@@ -2423,8 +2441,11 @@ class ToolDispatcher:
         zone = historian.home_space_zone(self._timezone())
         house = House.read_ids(self._home_space, self._cache, entities)
         now = historian.instant_out(time.time(), zone)
-        return [{**render_entity(house, identifier, "corta", zone=zone,
-                                 judgments=self._judgments), "quando": now}
+        # Il filtro di riservatezza come da `search`/`view`/`history` (C-05):
+        # la zona di chi si muove non esce da una porta sola.
+        return [{**redact_row(render_entity(house, identifier, "corta", zone=zone,
+                                            judgments=self._judgments)),
+                 "quando": now}
                 for identifier in entities]
 
     def _timezone(self) -> str | None:
@@ -2516,9 +2537,9 @@ class ToolDispatcher:
             known = self._home_space.read() if self._home_space is not None else {}
             return await read_errors(self._ha, query, seal=self._seal(),
                                      manifest=manifest_of(known))
-        if self._home_space is None:
-            return {"errore": "`history` non e' disponibile: la conoscenza della casa "
-                              "non e' ancora stata caricata."}
+        missing = self._unavailable("history", ("casa",))
+        if missing is not None:
+            return missing
         # UNA casa per tutta la chiamata, la stessa del turno.
         return await read_history(self._ha, query, self._turn_house(),
                                   self._home_space.behavior(), cache=self._cache,
@@ -2557,19 +2578,19 @@ class ToolDispatcher:
         # Oltre il tetto si RIFIUTA, non si taglia (B9, approvata il
         # 05/10/2026; B-33): come `history` oltre i 90 giorni. Tagliato in
         # silenzio, il modello credeva di aver letto la finestra chiesta.
-        too_far = [f"{key} arriva al massimo a {ceiling} giorni (chiesti {_days_said(value)})"
-                   for key, ceiling in (("giorni_avanti", MAX_CALENDAR_DAYS_AHEAD),
+        too_far = [f"{key} arriva al massimo a {cap} giorni (chiesti {_days_said(value)})"
+                   for key, cap in (("giorni_avanti", MAX_CALENDAR_DAYS_AHEAD),
                                         ("giorni_indietro", MAX_CALENDAR_DAYS_BACK))
                    for value in [arguments.get(key)]
-                   if _days_beyond(value, ceiling)]
+                   if _days_beyond(value, cap)]
         if too_far:
             return {"errore": "«calendar»: " + "; ".join(too_far)
                     + ". Restringi la finestra."}
         ahead = _clamp_days(arguments.get("giorni_avanti"),
                             default=DEFAULT_CALENDAR_DAYS_AHEAD,
-                            ceiling=MAX_CALENDAR_DAYS_AHEAD)
+                            cap=MAX_CALENDAR_DAYS_AHEAD)
         behind = _clamp_days(arguments.get("giorni_indietro"),
-                             default=0, ceiling=MAX_CALENDAR_DAYS_BACK)
+                             default=0, cap=MAX_CALENDAR_DAYS_BACK)
         # L'elenco dallo specchio (A-34, F1 della Chiusura): uno specchio che
         # non si legge (`Mirror.readable`, composto in `read_mirror`) non e'
         # «nessun calendario», si dice -- con le parole dell'inventario.
@@ -2613,7 +2634,8 @@ class ToolDispatcher:
         if arguments.get("giorno") is not None and not reading.by_day:
             daily = ", ".join(sorted(key for key, row in MIND_READINGS.items() if row.by_day))
             return {"errore": f"«giorno» vale solo per {daily}, non per «{what}»."}
-        return await reading.serve(self, arguments.get("giorno"))
+        return (self._unavailable("mind", reading.resources)
+                or await reading.serve(self, arguments.get("giorno")))
 
     def _mind_missing(self, *, store: bool = True) -> dict | None:
         """Cosa manca alle letture del cervello, o `None`: le letture stesse
@@ -2659,7 +2681,9 @@ class ToolDispatcher:
             return {"analisi": self._mind.analyses()}
         found = self._mind.analysis(day)
         if found is None:
-            return {"errore": f"il giorno {day} non e' stato analizzato"}
+            # Come la rotta: ogni quanto l'analista guarda (C-11).
+            return {"errore": f"il giorno {day} non e' stato analizzato",
+                    "analista_ogni_s": self._mind.analyst_every_s()}
         return {"analisi": found}
 
     async def _mind_energy(self, _day) -> dict:
@@ -2671,9 +2695,6 @@ class ToolDispatcher:
 
         `statistiche` resta `None`: l'elenco delle statistiche lo chiede il
         giro delle ricette, e qui «non l'ho chiesto» si dice com'e'."""
-        if self._ha is None or self._home_space is None:
-            return {"errore": "la dashboard Energia si legge da Home Assistant, "
-                              "e il collegamento o la casa non ci sono."}
         dashboard = await energy_dashboard(self._ha, self._home_space, self._turn_house())
         if dashboard is None:
             return {"errore": "la dashboard Energia non e' stata letta: Home Assistant "
@@ -2692,6 +2713,9 @@ class MindReading:
     `giorno`."""
     serve: Callable[..., Any]
     by_day: bool = False
+    #: Gli archivi della lettura, come `Tool.resources` per una riga: li
+    #: chiede `_read_mind` prima di servirla (D-41).
+    resources: tuple[str, ...] = ()
 
 
 #: Le letture dello strumento `mind`, per `cosa`. **E' la tabella del
@@ -2703,7 +2727,7 @@ MIND_READINGS: dict[str, MindReading] = {
     "obiettivo": MindReading(ToolDispatcher._mind_objective),
     "resoconti": MindReading(ToolDispatcher._mind_reports, by_day=True),
     "analisi": MindReading(ToolDispatcher._mind_analyses, by_day=True),
-    "energia": MindReading(ToolDispatcher._mind_energy),
+    "energia": MindReading(ToolDispatcher._mind_energy, resources=("ha", "casa")),
 }
 
 MIND_TOOL_DEF = {
@@ -2773,8 +2797,9 @@ TOOLS: tuple[Tool, ...] = (
          read_only=True),
     # Nessun permesso, come `search` e `history` (D6 del piano): le stesse
     # cose sono gia' visibili nella pagina del cervello a chiunque entri.
-    # Nessun archivio nella riga: ogni lettura dice da se' cosa le manca
-    # (`_mind_missing`), e l'energia non passa dalle letture del cervello.
+    # Nessun archivio nella riga: ogni lettura dichiara i suoi
+    # (`MindReading.resources`, l'energia: canale e casa), e le letture del
+    # cervello dicono da se' cosa manca a loro (`_mind_missing`).
     Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True),
 )
 

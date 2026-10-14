@@ -1,8 +1,9 @@
 """Le tre rotte delle promesse: guardare, disdire, e guardare cosa e' cambiato.
 
 Non serializzano niente per conto proprio. La forma di una promessa e' UNA, e
-vive in `keeper/promise.py::serializza` (gia' usata dall'archivio): se
-questa rotta ne costruisse una sua, la pagina e la chat mostrerebbero due
+vive in `keeper/promise.py::serializza` (gia' usata dall'archivio), resa con
+gli istanti in ISO da `home_space/render.render_promise` come per lo strumento
+(C-32, 13/10/2026): se questa rotta ne costruisse una sua, la pagina e la chat mostrerebbero due
 cose diverse della stessa promessa il primo giorno in cui qualcuno aggiunge
 un campo da una parte sola.
 
@@ -43,6 +44,7 @@ from ..chat_thread import (
     unknown_id_text,
     without_thread,
 )
+from ..home_space.render import render_promise
 from .boundary import error_response, json_object, occurrence_out
 from .soffitto import restricted_person
 
@@ -67,8 +69,11 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
     # adottano prima di agire -- rispondono come per un id che non esiste.
     await adopt_if_owner(request.app, request, thread)
     show_all = request.query.get("all") in ("1", "true", "si")
-    rows = store.list(thread=thread, solo_in_sospeso=not show_all, limit=200)
-    return web.json_response({"agenda": [without_thread(r) for r in rows]})
+    rows, left_out = store.page(thread=thread, solo_in_sospeso=not show_all, limit=200)
+    # La finestra si dichiara (C-14, 13/10/2026): `total` e `shown`, come la
+    # pagina della memoria. Fino ad allora oltre le 200 la pagina taceva.
+    return web.json_response({"agenda": [render_promise(without_thread(r)) for r in rows],
+                              "total": len(rows) + left_out, "shown": len(rows)})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
@@ -83,7 +88,7 @@ async def handle_delete_promise(request: web.Request) -> web.Response:
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
     return web.json_response(occurrence_out(
-        {**occurrence, "promessa": without_thread(occurrence["promessa"])}))
+        {**occurrence, "promessa": render_promise(without_thread(occurrence["promessa"]))}))
 
 
 async def handle_mark_read(request: web.Request) -> web.Response:
@@ -113,11 +118,11 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     # lascerebbe passare decine di migliaia di identificatori. Non e' una
     # difesa da attacco -- questa rotta sta dietro CSRF e in rete locale --
     # e' che un 400 dice la verita' e un 500 no. Le promesse in sospeso hanno
-    # un tetto (`promise.HOUSE_CEILING_IN_SOSPESO`) e lo storico e' potato
+    # un tetto (`promise.HOUSE_SUSPENDED_CAP`) e lo storico e' potato
     # (`keeper/store.CONSERVAZIONE`): la pagina non ne disegnera' mai
     # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
     if len(ids) > _MAX_IDS:
-        return error_response(400, f"troppi identificatori in una volta (il tetto e' {_MAX_IDS}).")
+        return error_response(400, f"troppi identificatori in una volta (il tetto è {_MAX_IDS}).")
     return web.json_response({"marked": store.mark_read(
         ids, thread=request_thread(request), now=time.time())})
 

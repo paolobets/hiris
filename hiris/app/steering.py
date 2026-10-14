@@ -82,15 +82,15 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     """
     if not subscription_has_token():
         return False, "manca il token"
-    ceiling = int(
+    cap = int(
         (app.get("models_config") or {})
         .get("ponte", {})
         .get("tetto_giornaliero",
              _STORE_DEFAULTS["ponte"]["tetto_giornaliero"]))
-    if app["reasoning_queue"].count_exchanges_today() >= ceiling:
+    if app["reasoning_queue"].count_exchanges_today() >= cap:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "
-            "alla catena.", ceiling)
+            "alla catena.", cap)
         return False, "tetto giornaliero"
     return True, ""
 

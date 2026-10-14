@@ -25,13 +25,13 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 48 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 25 namespace pubblicati su `window` e 23 nomi nudi di `common.js` (19
-  // funzioni e quattro costanti: `SUBSCRIPTION_ONLY_COST_LABEL`, dal collaudo
-  // 3.22 C5, letta da `config/usage-route.js`; `NOMI_REGISTRI`, letta da
-  // `config/dashboard.js`; `SOGLIE_ATTESA` e `FRASI_ATTESA`, con
-  // `stopwatchText`, lette dalla chat e dal «Rifalla» delle Proposte, attori
-  // Task 4.4). Contati il 06/10/2026 dall'elenco qui sotto.
+  // Non sono scelti: sono i nomi che un file LEGGE senza dichiararli -- i
+  // namespace pubblicati su `window` e i nomi nudi di `common.js` (funzioni e
+  // poche costanti: `SUBSCRIPTION_ONLY_COST_LABEL`, dal collaudo 3.22 C5;
+  // `SOGLIE_ATTESA` e `FRASI_ATTESA`, con `stopwatchText`, attori Task 4.4; i
+  // tre `TONE_*` delle pagine di sola lettura, C-20). Quanti sono lo dice
+  // l'elenco qui sotto, e `scripts/sponde_js.py` lo conta a ogni push: un
+  // numero scritto qui invecchiava da solo (diceva 48 quando erano 50).
   //
   // `common.js` dichiara altri nomi nudi che NON stanno qui, ed e' deliberato
   // -- `_setUsageText`, `_showUsageRows`, `savedTheme`, `THEME_KEY`, le due
@@ -86,10 +86,17 @@
     "clearEl": "readonly",
     "currentTheme": "readonly",
     "el": "readonly",
-    "NOMI_REGISTRI": "readonly",
     "nomiRegistriInItaliano": "readonly",
     "pad2": "readonly",
     "renderError": "readonly",
+    "pageLine": "readonly",
+    "pageList": "readonly",
+    "pageSection": "readonly",
+    "readJson": "readonly",
+    "renderSectionError": "readonly",
+    "TONE_CALM": "readonly",
+    "TONE_PROBLEM": "readonly",
+    "TONE_UNKNOWN": "readonly",
     "setDisclosure": "readonly",
     "stateLabel": "readonly",
     "stateBadge": "readonly",
@@ -146,7 +153,6 @@
         "clearEl": "writable",
         "currentTheme": "writable",
         "el": "writable",
-        "NOMI_REGISTRI": "writable",
         "nomiRegistriInItaliano": "writable",
         "pad2": "writable",
         "renderError": "writable",

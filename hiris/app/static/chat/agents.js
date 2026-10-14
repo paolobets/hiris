@@ -144,6 +144,10 @@
       if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
       var data = await r.json();
       state.maxChatTurns = data.max_chat_turns || 0;
+      /* Il tetto di un messaggio lo dice il server (413 oltre): il campo non
+         lascia scrivere di piu', e la pagina non scrive un numero suo. */
+      state.maxMessageChars = data.max_message_chars || 0;
+      if (state.maxMessageChars) state.els.input.maxLength = state.maxMessageChars;
       updateAgentPill(data.name);
     } catch (e) {
       console.error('loadSettings failed', e);
@@ -173,7 +177,10 @@
            al momento del disegno -- vedi chat/messages.js::appendMsg. */
         window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content, true, m.timestamp);
       });
-      state.turnCount = msgs.filter(function(m) { return m.role === 'user'; }).length;
+      /* C-15: i turni li conta il server, con la funzione del tetto. Contarli
+         qui sui `messages` diceva meno del vero oltre il trentesimo turno:
+         la storia arriva tagliata a 30 coppie, il tetto conta tutto. */
+      state.turnCount = data.turni || 0;
       updateTurnCounter();
       checkTurnLimit();
       return true;

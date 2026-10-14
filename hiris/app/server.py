@@ -2605,7 +2605,7 @@ def _chat_reply_submitter(app, data_dir: str):
 #: macchina, quando l'add-on parte prima del nucleo (`startup: services`) e
 #: il websocket riprova ogni `RECONNECT_DELAY_S` (dieci secondi): oltre il
 #: tetto l'avvio legge lo stesso, e lascia la rilettura alla prima connessione.
-FIRST_CONNECTION_CEILING_S = 10
+FIRST_CONNECTION_CAP_S = 10
 
 
 async def _open_websocket(ha_client) -> bool:
@@ -2621,12 +2621,12 @@ async def _open_websocket(ha_client) -> bool:
     """
     await ha_client.start_websocket()
     with contextlib.suppress(TimeoutError):
-        await asyncio.wait_for(ha_client.ws_ready.wait(), FIRST_CONNECTION_CEILING_S)
+        await asyncio.wait_for(ha_client.ws_ready.wait(), FIRST_CONNECTION_CAP_S)
     if ha_client.ws_ready.is_set():
         return True
     logger.warning(
         "Home Assistant non ha confermato l'iscrizione entro %ss: leggo la casa "
-        "lo stesso, e la rileggo alla prima connessione", FIRST_CONNECTION_CEILING_S)
+        "lo stesso, e la rileggo alla prima connessione", FIRST_CONNECTION_CAP_S)
     ha_client.reread_after_first_connection()
     return False
 
@@ -3425,7 +3425,7 @@ async def _on_startup(app: web.Application) -> None:
 
     scheduler.add_job(
         _anello_analista,
-        trigger="interval", minutes=60,
+        trigger="interval", minutes=report.ANALYST_EVERY_MINUTES,
         id="hiris_mind_analyst", replace_existing=True,
         misfire_grace_time=1800,
     )

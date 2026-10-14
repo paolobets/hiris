@@ -4,7 +4,7 @@ import os
 import pytest
 
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.promise import CEILING_IN_SOSPESO
+from hiris.app.keeper.promise import SUSPENDED_CAP
 from hiris.app.keeper.store import CONSERVAZIONE, AgendaStore
 from hiris.app.states import CANCELLED, readable
 
@@ -95,7 +95,7 @@ def test_una_presa_in_corso_al_riavvio_diventa_fallita_e_non_riparte(archivio):
 
     p = archivio.read(ident)
     assert p["stato"] == "fallita"
-    assert "si e' fermato" in p["motivo"]
+    assert "si è fermato" in p["motivo"]
     assert archivio.scadute(ADESSO + 999) == []  # non torna in circolo
 
 
@@ -135,11 +135,11 @@ def test_una_promessa_presa_non_si_disdice(archivio):
 
 
 def test_il_tetto_delle_in_sospeso_rifiuta_nominandolo(archivio):
-    for _ in range(CEILING_IN_SOSPESO):
+    for _ in range(SUSPENDED_CAP):
         assert "errore" not in archivio.create(_fai(), thread=PAOLO, now=ADESSO)
     esito = archivio.create(_fai(), thread=PAOLO, now=ADESSO)
     assert "errore" in esito
-    assert str(CEILING_IN_SOSPESO) in esito["errore"]
+    assert str(SUSPENDED_CAP) in esito["errore"]
 
 
 def test_elenca_in_sospeso_include_anche_in_corso(archivio):
@@ -161,14 +161,14 @@ def test_elenca_in_sospeso_include_anche_in_corso(archivio):
 
 def test_lo_stato_in_corso_conta_nel_tetto_delle_in_sospeso(archivio):
     """Una promessa presa dall'orologio (`in_corso`) e' ancora sospesa, e
-    deve continuare a occupare un posto sotto `CEILING_IN_SOSPESO` -- se
+    deve continuare a occupare un posto sotto `SUSPENDED_CAP` -- se
     contasse solo `in_attesa`, l'orologio potrebbe far salire il numero vero
     di promesse in volo oltre il tetto nella finestra fra `prendi` e
     `concludi`.
 
     Mutazione che deve farlo fallire: contare `stato='in_attesa'` invece di
     `stato IN (states.SUSPENDED)` in `create()`."""
-    for _ in range(CEILING_IN_SOSPESO - 1):
+    for _ in range(SUSPENDED_CAP - 1):
         archivio.create(_fai(), thread=PAOLO, now=ADESSO)
     ultima = archivio.create(_fai(),
                             thread=PAOLO, now=ADESSO)["promessa"]["id"]

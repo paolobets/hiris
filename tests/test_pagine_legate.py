@@ -18,7 +18,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api import servizi
-from hiris.app.api.handlers_home_space import handle_get_home_space
+from hiris.app.api.handlers_home_space import handle_get_home_space, register_names
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.house import _EXCLUDED_KEY
 from hiris.app.home_space.reader import TABLES, HomeSpace
@@ -118,30 +118,97 @@ def test_constructions_page_keeps_no_pending_states():
 
 
 # -- C-10: gli stati dei servizi ----------------------------------------------
-# Gli stati si chiedono all'archivio facendolo lavorare: presentarsi, essere
-# approvati, essere revocati.
-# Mutazione eseguita: `stato='revocato'` -> `stato='revocata'` in
-# `ServiziStore.revoca` -> rossa.
+# Gli stati vivono in `servizi.STATE_*`; la rotta divide i servizi nelle tre
+# sezioni della pagina (`handlers_servizi.listing`), e la pagina non ne tiene
+# una copia. Supera il giro 2 del 05/10 (n.7), per D2 della Chiusura.
+# Mutazioni ESEGUITE (13/10/2026): rimessa in services-route.js la scelta per
+# stato (`righe(['in_attesa'])`) -> rossa la seconda; `STATE_REVOKED` a
+# «revocata» con l'SQL che scrive ancora il letterale -> rossa la prima.
 
-def test_service_states_match_store(tmp_path):
+def test_service_sections_follow_the_store_states(tmp_path):
+    from hiris.app.api.handlers_servizi import listing
     store = servizi.ServiziStore(str(tmp_path / "servizi.db"))
-    # Un ruolo e una specie qualunque fra quelli ammessi, chiesti per stringa:
-    # questa prova non lega ruoli e specie al JavaScript, e nominarli nel
-    # codice la farebbe passare per il loro legame agli occhi di
-    # `scripts/doppioni.py` (`_costanti_gia_legate`).
     role, kind = vars(servizi)["RUOLI"][0], vars(servizi)["SERVICE_SPECIES"][0]
     try:
-        pending = store.presenta(nome="n", chiave="k", indirizzo="i", now_ts=1.0)["stato"]
-        store.approva("k", ruolo=role, specie=kind, now_ts=2.0)
-        authorized = store.autorizzato("k")["stato"]
-        store.revoca("k", now_ts=3.0)
-        revoked = store.elenco(now_ts=4.0)[0]["stato"]
+        for key in ("a", "b", "c"):
+            store.presenta(nome=key, chiave=key, indirizzo="i", now_ts=1.0)
+        store.approva("b", ruolo=role, specie=kind, now_ts=2.0)
+        store.approva("c", ruolo=role, specie=kind, now_ts=2.0)
+        store.revoca("c", now_ts=3.0)
+        sections = listing(store, 4.0)
     finally:
         store.close()
+    assert {name: [r["nome"] for r in rows] for name, rows in sections.items()} == \
+        {"da_decidere": ["a"], "accoppiati": ["b"], "revocati": ["c"]}
+
+
+def test_services_page_keeps_no_states():
     source = _js("config/services-route.js")
-    js = {state for group in re.findall(r"righe\(\[([^\]]*)\]\)", source)
-          for state in re.findall(r"'([^']*)'", group)}
-    assert js == {pending, authorized, revoked}
+    states = {servizi.STATE_PENDING, servizi.STATE_AUTHORIZED, servizi.STATE_REVOKED}
+    assert len(states) == 3
+    copied = sorted(state for state in states
+                    if f"'{state}'" in source or f'"{state}"' in source)
+    assert not copied, f"services-route.js tiene gli stati dei servizi: {copied}"
+
+
+# -- C-10: le parole delle costruzioni ----------------------------------------
+# Il nome del dominio e del gesto le manda la rotta (`construction_words`), con
+# le chiavi dei loro padroni: i domini costruibili di `HAClient` e i gesti
+# dell'officina. La pagina tiene solo il colore del gesto.
+# Mutazioni ESEGUITE (13/10/2026): aggiunto «input_boolean» ai domini
+# costruibili -> rossa la prima; rimessa in constructions-route.js la mappa
+# `DOMAIN_NAME` -> rossa la seconda.
+
+def test_construction_words_cover_their_owners():
+    from hiris.app.action.construction.workshop import OPERATIONS
+    from hiris.app.api.handlers_constructions import _DOMAIN_WORDS, _GESTURE_WORDS
+    from hiris.app.proxy.ha_client import HAClient
+    assert set(_DOMAIN_WORDS) == set(HAClient.CONFIGURABLE_DOMAINS)
+    assert set(_GESTURE_WORDS) == set(OPERATIONS)
+
+
+def test_constructions_page_keeps_no_construction_words():
+    from hiris.app.api.handlers_constructions import _DOMAIN_WORDS, _GESTURE_WORDS
+    source = _js("config/constructions-route.js")
+    words = list(_DOMAIN_WORDS.values()) + [word for word, _ in _GESTURE_WORDS.values()]
+    assert len(words) >= 6
+    copied = [w for w in words if f"'{w}'" in source]
+    assert not copied, f"constructions-route.js ricopia le parole delle costruzioni: {copied}"
+
+
+# -- C-10: come si legge un costo ---------------------------------------------
+# Quali stati sono numeri, quale e' il pavimento e le parole degli altri li dice
+# la rotta dei consumi (`handlers_usage._cost_reading`, su ogni riga e ogni
+# secchiello); la pagina tiene solo la tipografia. Supera la nota della Tappa 4
+# (C-08: «le parole dei costi restano testo di pagina»), per D2 della Chiusura.
+# Mutazioni ESEGUITE (13/10/2026): aggiunto «stimato» a `STATES` -> rossa la
+# prima; rimessa in usage-route.js la mappa delle parole -> rossa la terza.
+
+def test_cost_reading_partitions_the_usage_states():
+    from hiris.app.api.handlers_usage import _COST_FLOOR, _COST_NUMBERS, _COST_WORDS
+    from hiris.app.usage.vocabulary import STATES
+    assert sorted([*_COST_NUMBERS, *_COST_WORDS]) == sorted(STATES)
+    assert _COST_FLOOR in _COST_WORDS
+
+
+def test_every_usage_row_carries_its_cost_reading():
+    from hiris.app.api.handlers_usage import _counters_out
+    row = {"richieste": 1, "token_in": 1, "token_out": 1, "cache_lettura": 0,
+           "cache_scrittura": 0, "costo_usd": 0.5, "costo_stato": "non_noto",
+           "errori_rate_limit": 0}
+    out = _counters_out(row)
+    assert (out["cost_is_number"], out["cost_is_floor"], out["cost_word"]) == \
+        (False, True, "Prezzo sconosciuto")
+    out = _counters_out({**row, "costo_stato": "reale"})
+    assert (out["cost_is_number"], out["cost_is_floor"], out["cost_word"]) == (True, False, None)
+    assert _counters_out({**row, "costo_stato": "futuro"})["cost_word"] == "futuro"
+
+
+def test_usage_page_keeps_no_cost_words():
+    from hiris.app.api.handlers_usage import _COST_WORDS
+    source = _js("config/usage-route.js")
+    copied = [w for w in _COST_WORDS.values() if w in source]
+    assert not copied, f"usage-route.js ricopia le parole del costo: {copied}"
 
 
 # -- C-11: gli orari dello scheduler ------------------------------------------
@@ -184,15 +251,45 @@ def test_report_pages_keep_no_scheduler_copy():
 
 
 # -- C-10: i nomi dei registri ------------------------------------------------
-# `NOMI_REGISTRI` (common.js) e' TESTO DI PAGINA -- le parole con cui la home e
-# l'albero nominano i registri -- e resta nel JavaScript: nel server non c'e'
-# una tabella di quelle parole da cui riceverle. Le CHIAVI invece sono un fatto
-# del server, le tabelle dell'anagrafe: un registro nuovo senza la sua parola
-# comparirebbe col nome grezzo, e questa prova lo dice prima.
-# Mutazione eseguita: aggiunta "zone" a `reader.TABLES` -> rossa.
+# Le parole con cui la home e l'albero nominano i registri le manda il server
+# (`nomi_registri` di `GET /api/home-space`), con le chiavi chieste a
+# `reader.TABLES`; la pagina non ne tiene una copia. Supera la decisione del
+# giro 2 del 05/10 (n.6: «restano nel JS, legate da una prova»): D2 della
+# Chiusura vuole un vocabolario chiuso in una casa sola.
+# Mutazioni ESEGUITE (13/10/2026): rimessa in common.js la mappa
+# `NOMI_REGISTRI` -> rossa la seconda; tolto `nomi_registri` dal ramo senza
+# archivio -> rossa la prima.
 
-def test_register_names_cover_reader_tables():
-    assert set(_js_object(_js("common.js"), "NOMI_REGISTRI")) == set(TABLES)
+@pytest.mark.asyncio
+async def test_home_space_route_sends_register_names(aiohttp_client, tmp_path):
+    store = HomeSpace(str(tmp_path))
+    app = web.Application()
+    app["home_space_store"] = store
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    try:
+        body = await (await client.get("/api/home-space")).json()
+    finally:
+        store.close()
+    assert list(body["nomi_registri"]) == list(TABLES)
+    assert body["nomi_registri"] == register_names()
+    # «Categorie» e' la parola di Home Assistant, non una nostra (3.22.3).
+    assert register_names()["categorie"] == "Categorie"
+
+    app = web.Application()
+    app["home_space_store"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    body = await (await client.get("/api/home-space")).json()
+    assert body["nomi_registri"] == register_names()
+
+
+def test_no_page_keeps_the_register_names():
+    words = set(register_names().values())
+    assert len(words) == len(TABLES), "la derivazione non porta piu' i nomi dei registri"
+    copies = [path.name for path in STATIC.rglob("*.js")
+              if all(f"'{w}'" in path.read_text(encoding="utf-8") for w in words)]
+    assert not copies, f"pagine che ricopiano i nomi dei registri: {copies}"
 
 
 # -- C-10: i prefissi dei soggetti di sistema ---------------------------------

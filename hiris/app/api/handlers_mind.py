@@ -156,6 +156,10 @@ async def handle_set_objective(request) -> web.Response:
                               "scritto": bool(written)})
 
 
+# DOPPIONE DICHIARATO: i nomi dei campi del corpo, non un vocabolario
+# La pagina del sapere li scrive nel corpo della POST perche' sono il contratto
+# della rotta, come ogni chiave di una risposta che una pagina legge: non c'e'
+# un insieme di valori da tenere uguale (C-10, Chiusura F2, 13/10/2026).
 _JUDGMENT_TEXT_KEYS = ("soggetto_genere", "soggetto", "campo")
 
 #: L'autore di un giudizio quando nessuno sa dirne il nome (un ingress senza
@@ -289,16 +293,24 @@ async def handle_analysis(request) -> web.Response:
         return web.json_response({"analisi": view.analyses()})
     found = view.analysis(day)
     if found is None:
-        return error_response(404, f"il giorno {day} non e' stato analizzato")
+        # `analista_ogni_s`: ogni quanto l'analista guarda. La pagina lo dice
+        # («non ha ancora guardato»), e lo riceve invece di saperlo (C-11).
+        return error_response(404, f"il giorno {day} non e' stato analizzato",
+                              analista_ogni_s=view.analyst_every_s())
     return web.json_response({"analisi": found})
 
 
 
-def _fact_row(fact) -> dict:
+def _fact_row(fact, names: dict) -> dict:
     """Una riga del sapere per la pagina, **in una forma sola** per ogni
     elenco di `handle_knowledge` (fondamenta 3). La chiave di chi l'ha
-    scritta (`said_by`) non esce: alla pagina serve il nome."""
-    return {"specie": fact.subject_kind, "soggetto": fact.subject,
+    scritta (`said_by`) non esce: alla pagina serve il nome.
+
+    `nome` (C-13, 13/10/2026): il nome di adesso del dispositivo, come lo
+    portano le `ricette` (`MindView.device_names`); `None` per gli altri
+    generi di soggetto. Fino ad allora la pagina mostrava l'id nudo."""
+    name = names.get(fact.subject) if fact.subject_kind == "dispositivo" else None
+    return {"specie": fact.subject_kind, "soggetto": fact.subject, "nome": name,
             "campo": fact.field, "valore": fact.value,
             "provenienza": fact.provenance, "verifica": fact.verification,
             "prove": fact.evidence, "fonte": fact.source,
@@ -350,10 +362,10 @@ async def handle_knowledge(request) -> web.Response:
     listed = sapere.field_rows((MEANING_FIELD, ATTRIBUTE_FIELD, DECLINED_FIELD))
     return web.json_response({
         "conteggi": sapere.summary(),
-        "non_capito": [_fact_row(f) for f in sapere.not_understood()],
-        "significati": [_fact_row(f) for f in listed if f.field == MEANING_FIELD],
-        "attributi": [_fact_row(f) for f in listed if f.field == ATTRIBUTE_FIELD],
-        "rifiuti": [_fact_row(f) for f in listed if f.field == DECLINED_FIELD],
+        "non_capito": [_fact_row(f, names) for f in sapere.not_understood()],
+        "significati": [_fact_row(f, names) for f in listed if f.field == MEANING_FIELD],
+        "attributi": [_fact_row(f, names) for f in listed if f.field == ATTRIBUTE_FIELD],
+        "rifiuti": [_fact_row(f, names) for f in listed if f.field == DECLINED_FIELD],
         "giudizi": judgment_listing(sapere),
         "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
                            for question in OPEN_QUESTIONS],

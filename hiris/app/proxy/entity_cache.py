@@ -128,10 +128,10 @@ def unreadable_inventory_error(cache) -> dict | None:
     entita', o senza luci accese, esiste davvero -- e prosegue.
     """
     if cache is None:
-        logger.warning("lettura entita' rifiutata: nessun inventario configurato")
+        logger.warning("lettura entità rifiutata: nessun inventario configurato")
         return {"error": NO_INVENTORY_ERROR}
     if not inventory_is_readable(cache):
-        logger.warning("lettura entita' rifiutata: inventario non ancora caricato")
+        logger.warning("lettura entità rifiutata: inventario non ancora caricato")
         return {"error": INVENTORY_NOT_READY_ERROR}
     return None
 
@@ -251,9 +251,9 @@ _ATTRIBUTES_PROMOTED_TO_THEIR_OWN_KEY = frozenset({
 # Netatmo, fuori standard -- ed e' il motivo per cui accanto ai nomi serve
 # anche una regola sul VALORE.
 _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
-    "access_token": "un token di accesso al flusso di questa entita'",
-    "entity_picture": "un indirizzo di immagine che puo' contenere un token",
-    "entity_picture_local": "un indirizzo di immagine che puo' contenere un token",
+    "access_token": "un token di accesso al flusso di questa entità",
+    "entity_picture": "un indirizzo di immagine che può contenere un token",
+    "entity_picture_local": "un indirizzo di immagine che può contenere un token",
     "vpn_url": "un indirizzo remoto raggiungibile con la credenziale nel percorso",
     "local_url": "un indirizzo locale con la stessa credenziale",
     "uri_supported": "un indirizzo interno del dispositivo",

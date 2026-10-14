@@ -65,7 +65,7 @@ HUMAN_ACTORS = ("pagina",)
 #: lettore che sceglie la proposta quando l'utente non l'ha nominata -- e
 #: due frasi diverse per lo stesso rifiuto insegnerebbero al modello che
 #: sono due casi diversi.
-_BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
+_BORN_THIS_TURN = ("questa proposta è nata in questo stesso turno: te l’ho "
              "mostrata, ora dimmi tu se procedere.")
 
 #: Il rifiuto di un id che non esiste -- e, dal Task 7 «confirm resta nel
@@ -84,7 +84,7 @@ _UNKNOWN_ID = unknown_id_text("nessuna proposta")
 #: cosa che esiste gia', bruciando un posto sotto il tetto per un doppione.
 #: Non le nomina (decisione 4): dice solo che una pagina le mostra.
 _ORPHANS_ELSEWHERE = ("ci sono proposte in sospeso che non sono nate in questa "
-                     "conversazione: si confermano dalla pagina Costruzioni.")
+                     "conversazione: si confermano dalla pagina Proposte.")
 
 OPERATIONS = ("crea", "modifica", "cancella")
 
@@ -481,7 +481,7 @@ class Workshop:
             # La frase dello stato, dal vocabolario (Tappa 8, D4): fino
             # all'08/10/2026 una tabella di questo modulo traduceva quattro
             # parole, e le altre uscivano grezze.
-            return refused("quella proposta non e' piu' in attesa: "
+            return refused("quella proposta non è più in attesa: "
                            f"{readable(proposal['stato'])}.")
         cancello = self._cancello(proposal, actor, exchange)
         if cancello is not None:
@@ -496,7 +496,7 @@ class Workshop:
         # e' l'unico punto in cui chi arriva prima puo' davvero vincere.
         claimed = self._store.claim(proposal_id, now=now)
         if "errore" in claimed:
-            return refused("quella proposta e' gia' stata presa in carico da "
+            return refused("quella proposta è già stata presa in carico da "
                            "un’altra richiesta.")
 
         # S-17: la casa e' ancora com'era quando la proposta e' nata? Dopo la
@@ -551,13 +551,13 @@ class Workshop:
             if arrived:
                 riuscito = True
                 arrived_notice = ("Home Assistant non ha risposto alla scrittura, "
-                                  "ma rileggendo l’oggetto la trovo: e' arrivata.")
+                                  "ma rileggendo l’oggetto la trovo: è arrivata.")
             else:
                 note = await self._disfa(nati, senza_id)
                 return self._fallita(
                     proposal, now, actor,
                     f"{written['errore']}, e rileggendo {domain}.{key} la "
-                    f"scrittura non c’e': non e' arrivata.{note}",
+                    f"scrittura non c’è: non è arrivata.{note}",
                     cause=written, subject=subject)
 
         if not riuscito:
@@ -608,7 +608,7 @@ class Workshop:
             # silenzio qui e' la stessa spazzatura invisibile.
             lost = ", ".join(unmatched)
             unlabelled = ("non ho trovato nel registro di Home Assistant "
-                          f"l’entita' nata da {lost}: quell’oggetto non porta "
+                          f"l’entità nata da {lost}: quell’oggetto non porta "
                           "l’etichetta HIRIS, e da qui non risulta mio.")
             notice = f"{notice} {unlabelled}" if notice else unlabelled
 
@@ -727,7 +727,7 @@ class Workshop:
         # porta un turno -- la pagina.
         if not exchange or not proposal["turno"]:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
-                    "apri la pagina Costruzioni e conferma di la'.")
+                    "apri la pagina Proposte e conferma di la'.")
         if proposal["turno"] == exchange:
             return _BORN_THIS_TURN
         return None
@@ -787,15 +787,15 @@ class Workshop:
                                "rifatto dopo che l’avevo cancellato, e rimetterlo "
                                "com’era lo sovrascriverebbe.")}
         if loaded.get("assente"):
-            return {"errore": (f"{domain}.{key} non c’e' piu' in casa tua: e' stato "
+            return {"errore": (f"{domain}.{key} non c’è più in casa tua: è stato "
                                "cancellato dopo la mia proposta. Non lo ricreo.")}
         if "errore" in loaded:
-            return {"errore": f"non ho potuto rileggere com’e' adesso: {loaded['errore']}",
+            return {"errore": f"non ho potuto rileggere com’è adesso: {loaded['errore']}",
                     "causa": loaded}
         if loaded["corpo"] != proposal["prima"]:
-            return {"errore": (f"{domain}.{key} e' cambiato da quando te l’ho "
+            return {"errore": (f"{domain}.{key} è cambiato da quando te l’ho "
                                "proposto: scrivere adesso cancellerebbe quella "
-                               "modifica. Riproponi e riparto da com’e' ora.")}
+                               "modifica. Riproponi e riparto da com’è ora.")}
         return None
 
     async def _rete(self, call) -> dict:
@@ -937,7 +937,7 @@ class Workshop:
         la busta del silenzio come causa: la pagina risponde 503."""
         domain, key = proposal["dominio"], proposal["chiave"]
         reason = (f"Home Assistant non ha risposto alla scrittura, e non sono "
-                  f"riuscito a rileggere {domain}.{key}: non so se e' arrivata. "
+                  f"riuscito a rileggere {domain}.{key}: non so se è arrivata. "
                   "Non disfo niente: controlla in Home Assistant.")
         lasciati = [f"{d}.{h}" for d, h in nati] + [f"un helper {d} senza id"
                                                    for d in senza_id]
@@ -986,12 +986,12 @@ class Workshop:
             return [], None
         if index is None:
             return [], ("ho scritto, ma non sono riuscito a rileggere il registro "
-                        "delle entita': controlla in Home Assistant.")
+                        "delle entità: controlla in Home Assistant.")
         entity_id = index.get((_entity_platform(domain), key))
         if entity_id is None:
-            return [], ("Home Assistant ha accettato la scrittura ma l’entita' non e' "
+            return [], ("Home Assistant ha accettato la scrittura ma l’entità non è "
                         "ancora comparsa: potrebbe servire un riavvio, o la ricarica "
-                        "non e' andata a buon fine.")
+                        "non è andata a buon fine.")
         return [entity_id], None
 
     def _helper_entities(self, born: list[tuple[str, str]],
@@ -1148,13 +1148,13 @@ class Workshop:
         spec, non un ramo dormiente.
         """
         if actor not in HUMAN_ACTORS:
-            return refused("un ripristino si conferma dalla pagina Costruzioni.")
+            return refused("un ripristino si conferma dalla pagina Proposte.")
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))
         if row["stato"] not in (APPLIED, UNCERTAIN):
-            return refused("quella costruzione non e' mai stata applicata: "
-                           "non c’e' niente da rimettere.")
+            return refused("quella costruzione non è mai stata applicata: "
+                           "non c’è niente da rimettere.")
         prima = row["prima"]
         domain, key = row["dominio"], row["chiave"]
         uncertain = row["stato"] == UNCERTAIN
@@ -1165,7 +1165,7 @@ class Workshop:
                 # Solo il fatto, non la causa (N84-1, giro 84): la casa com'era
                 # prima la lascia anche un ripristino gia' riuscito, e la riga
                 # resta `incerta` -- «non era arrivata» sarebbe falso.
-                return refused(f"{domain}.{key} e' gia' com’era prima: non c’e' "
+                return refused(f"{domain}.{key} è già com’era prima: non c’è "
                                "niente da rimettere.")
         if prima is None:
             # Ripristinare una CREAZIONE significa cancellare cio' che e' nato.
@@ -1180,7 +1180,7 @@ class Workshop:
         if uncertain:
             preview = ("Non sapevo se la scrittura del "
                        f"{self._data(row['creata_ts'])} fosse arrivata: "
-                       f"{domain}.{key} non e' piu' com’era prima, quindi "
+                       f"{domain}.{key} non è più com’era prima, quindi "
                        "rimetto il prima.")
         proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,

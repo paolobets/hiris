@@ -72,8 +72,8 @@ window.HirisWatcherRoute = (function () {
       /* Il degrado dichiarato: lo script della scheda non ha caricato. Si dice,
          invece di lasciare un pannello vuoto che sembra «non c'e' niente». */
       clearEl(scheda.corpo);
-      S.line(scheda.corpo, 'Questa scheda non ha caricato. Ricarica la pagina; ' +
-        'se non basta, l’aggiornamento dell’add-on è a metà.', S.TONE_PROBLEM);
+      pageLine(scheda.corpo, 'Questa scheda non ha caricato. Ricarica la pagina; ' +
+        'se non basta, l’aggiornamento dell’add-on è a metà.', TONE_PROBLEM);
       return;
     }
     scheda.caricata = true;

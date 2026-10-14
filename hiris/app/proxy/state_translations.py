@@ -92,7 +92,7 @@ def component_key(domain: str, written_class: str, *rest: str) -> str:
 # sola.
 
 SILENCE_UNREACHABLE = "non ho potuto chiedere"
-SILENCE_ABSENT = "ho chiesto e non c’e'"
+SILENCE_ABSENT = "ho chiesto e non c’è"
 SILENCE_UNDEFINED = "ho chiesto una cosa che non esiste"
 
 
@@ -313,7 +313,7 @@ def published_pair(component_resources, *, domain, device_class=None) -> dict:
     """
     if not isinstance(component_resources, dict) or not component_resources:
         return unreachable("le traduzioni di Home Assistant non sono state lette: "
-                           "senza di loro nessuna coppia si puo' ricostruire")
+                           "senza di loro nessuna coppia si può ricostruire")
     written_class = device_class or NO_DEVICE_CLASS
     words = {}
     for state in PAIR_STATES:
@@ -325,14 +325,14 @@ def published_pair(component_resources, *, domain, device_class=None) -> dict:
         return known(tuple(words[state] for state in PAIR_STATES))
     if not words:
         return absent(
-            f"il tipo {written} non pubblica ne' `.state.on` ne' `.state.off`: "
-            "non e' un tipo che sta acceso o spento")
+            f"il tipo {written} non pubblica né `.state.on` né `.state.off`: "
+            "non è un tipo che sta acceso o spento")
     present = next(state for state in PAIR_STATES if state in words)
     missing = next(state for state in PAIR_STATES if state not in words)
     return absent(
         f"la coppia di {written} non si ricostruisce: Home Assistant pubblica "
         f"«{words[present]}» per `{present}` e nessuna chiave `.state.{missing}`. "
-        "Meta' coppia non si consegna: sarebbe una parola di questo tipo "
+        "Metà coppia non si consegna: sarebbe una parola di questo tipo "
         "accanto a una parola di un altro")
 
 
@@ -364,7 +364,7 @@ def rendered_state(state, *, domain, device_class=None, translations) -> dict:
     if not isinstance(resources, dict) or not resources:
         return undefined(
             "Home Assistant ha risposto senza errore e con zero chiavi: la "
-            "categoria chiesta non e' fra quelle che pubblica")
+            "categoria chiesta non è fra quelle che pubblica")
     text = str(state)
     if device_class and text in PAIR_STATES:
         # **La coppia, non la sola meta' che serve adesso.** Un tipo con classe
@@ -471,7 +471,7 @@ async def read_for_house(cache, reference_frame: dict | None) -> dict:
     casa): fino al 12/10/2026 (Tappa 9, F5) erano due copie, e la terza
     sarebbe nata con la pagina."""
     if cache is None:
-        return {"lette": False, "motivo": "la lettura delle traduzioni non e' collegata"}
+        return {"lette": False, "motivo": "la lettura delle traduzioni non è collegata"}
     frame = reference_frame or {}
     try:
         return await cache.read(ha_version=frame.get("versione_ha"),
@@ -540,7 +540,7 @@ class StateTranslations:
         key = (ha_version, language)
         if not language:
             return {"lette": False,
-                    "motivo": "la lingua della casa non e' nota: l’anagrafe non ha "
+                    "motivo": "la lingua della casa non è nota: l’anagrafe non ha "
                               "ancora letto il sistema di riferimento di Home Assistant"}
         async with self._lock:
             # Il controllo della cache sta DENTRO il lock, e ce n'e' uno solo.

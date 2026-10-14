@@ -246,12 +246,12 @@ def _write_mark(mark: str) -> None:
 #: misura: e' una scelta. Il Supervisor avvia l'add-on prima del nucleo
 #: (`startup: services`), e dopo un riavvio della macchina il nucleo puo'
 #: metterci minuti; oltre questo tetto la voce resta com'era, e lo si dice.
-SYNC_CEILING_S = 600
+SYNC_CAP_S = 600
 
 #: Quanto si aspetta lo slug dal Supervisor. Una scelta, non una misura: era
 #: il tetto del client suo di `panel_visibility.read_own_slug`, e la domanda
 #: e' una sola, all'avvio, a un servizio della stessa macchina.
-SLUG_CEILING_S = 10
+SLUG_CAP_S = 10
 
 
 async def sync_panel_visibility(app) -> None:
@@ -266,24 +266,24 @@ async def _sync(app) -> None:
     access = app["non_admin_access"]
     ha = app["ha_client"]
     try:
-        own = await asyncio.wait_for(ha.own_slug(), timeout=SLUG_CEILING_S)
+        own = await asyncio.wait_for(ha.own_slug(), timeout=SLUG_CAP_S)
     except TimeoutError:
-        own = {"errore": f"il Supervisor non ha risposto entro {SLUG_CEILING_S} s"}
+        own = {"errore": f"il Supervisor non ha risposto entro {SLUG_CAP_S} s"}
     if "errore" in own:
         logger.warning("voce di menu: non tocco niente, manca lo slug di HIRIS: %s",
                        own["errore"])
         return
     try:
-        await asyncio.wait_for(_apply(ha, own["slug"], access), timeout=SYNC_CEILING_S)
+        await asyncio.wait_for(_apply(ha, own["slug"], access), timeout=SYNC_CAP_S)
     except TimeoutError:
         if not ha.ws_ready.is_set():
             logger.warning("voce di menu: Home Assistant non si è collegato entro %d s, "
                            "nessun comando mandato: la voce resta com'era "
-                           "(non_admin_access=%s)", SYNC_CEILING_S, access)
+                           "(non_admin_access=%s)", SYNC_CAP_S, access)
         else:
             logger.warning("voce di menu: Home Assistant non ha risposto entro %d s, "
                            "la voce resta com'era (non_admin_access=%s)",
-                           SYNC_CEILING_S, access)
+                           SYNC_CAP_S, access)
 
 
 async def _apply(ha, slug: str, access: bool) -> None:
@@ -343,11 +343,11 @@ async def install(app) -> None:
     await sync_panel_visibility(app)
     ha = app["ha_client"]
     try:
-        await asyncio.wait_for(ha.ws_ready.wait(), timeout=SYNC_CEILING_S)
+        await asyncio.wait_for(ha.ws_ready.wait(), timeout=SYNC_CAP_S)
     except TimeoutError:
         logger.warning("card HIRIS: Home Assistant non si è collegato entro %d s, "
                        "la disinstallazione si riprova al prossimo avvio",
-                       SYNC_CEILING_S)
+                       SYNC_CAP_S)
         return
     try:
         await disinstalla_card_lovelace(ha, app["data_dir"])

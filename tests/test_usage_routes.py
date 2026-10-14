@@ -135,6 +135,7 @@ def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     assert set(model) == {
         "model", "requests", "token_in", "token_out", "cache_read",
         "cache_write", "cost_usd", "cost_eur", "cost_state",
+        "cost_is_number", "cost_is_floor", "cost_word",
         "rate_limit_errors", "first_use", "last_use",
     }
     assert model["requests"] == 1
@@ -200,10 +201,13 @@ def test_la_storia_ha_una_rotta_sua_con_i_suoi_parametri(app):
     # alla mappa di tornare uno spread: una colonna aggiunta a
     # `consumo_giorno` che comparisse qui da sola fa rosso. `cost_state` c'e'
     # dal 05/10/2026 (C-08, Tappa 4, Task 5): il secchiello e la riga di
-    # modello escono dallo stesso mappatore.
+    # modello escono dallo stesso mappatore. La lettura del costo
+    # (`cost_is_number`, `cost_is_floor`, `cost_word`) dal 13/10/2026, C-10:
+    # la pagina non ricopia piu' gli stati del costo.
     assert set(secchiello) == {
         "requests", "token_in", "token_out", "cache_read", "cache_write",
         "rate_limit_errors", "cost_usd", "cost_eur", "cost_state",
+        "cost_is_number", "cost_is_floor", "cost_word",
     }
     assert secchiello["requests"] == 1
 
@@ -331,3 +335,14 @@ def test_il_secchiello_dice_lo_stato_del_costo_come_la_riga_di_modello(tmp_path)
     comuni = set(modello) & set(secchiello)
     assert comuni == set(secchiello)
     assert {k: modello[k] for k in comuni} == secchiello
+
+
+@pytest.mark.parametrize("cost_eur", [None, 0, 0.0])
+def test_il_pavimento_chiede_un_costo_sopra_lo_zero(cost_eur):
+    """N155-3 (giro 155): un costo `non_noto` e' un pavimento («almeno
+    questo») solo se c'e' un numero sopra lo zero. A zero direbbe «pagato di
+    sicuro 0 EUR, piu' qualcosa». Mutazione del revisore, ora ESEGUITA
+    (13/10/2026): `cost_eur is not None` -- rossa su 0."""
+    floor = handlers_usage._COST_FLOOR
+    assert handlers_usage._cost_reading(floor, cost_eur)["cost_is_floor"] is False
+    assert handlers_usage._cost_reading(floor, 0.01)["cost_is_floor"] is True

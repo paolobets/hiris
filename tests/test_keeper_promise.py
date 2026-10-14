@@ -3,9 +3,10 @@ import re
 from pathlib import Path
 
 from hiris.app.keeper.promise import (
-    CEILING_IN_SOSPESO,
     ORIZZONTE_S,
     STATES_CONCLUSI,
+    STATES_ESITO,
+    SUSPENDED_CAP,
     TOLLERANZA_S,
     delay_reason,
     serializza,
@@ -122,35 +123,39 @@ def test_il_motivo_del_ritardo_dice_i_minuti_misurati():
 
 
 def test_le_costanti_sono_quelle_dichiarate_nella_spec():
-    assert (TOLLERANZA_S, ORIZZONTE_S, CEILING_IN_SOSPESO,
+    assert (TOLLERANZA_S, ORIZZONTE_S, SUSPENDED_CAP,
             CONSERVAZIONE["promesse"][0]) == (120, 30 * 86400, 50, 90)
 
 
 # ---------------------------------------------------------------------------
-# PENDING_STATES / STATE_BADGE (JS): lo stesso insieme di `states.SUSPENDED`
-# e degli stati delle promesse (`states.PROMISE_STATES`, da cui si compone
-# anche `STATES_CONCLUSI`), nel JavaScript della pagina Impegni (review
-# finale, rilievo ②). La parola di ogni stato la manda la rotta dalla Tappa
-# 8 (C-10, `stato_leggibile`): la pagina tiene solo il colore, e la prova
-# lega quello, con la frase che il vocabolario deve avere.
-#
-# Un test gemello, dal lato JavaScript, vive in
-# `tests/js/agenda-route-vocabulary.test.mjs` (stesso confronto, letto
-# nell'altro verso): questo qui chiude specificamente il rilevatore
-# meccanico del progetto, che sa leggere solo prove Python che nominano la
-# costante e leggono un `.js`.
+# STATE_BADGE (JS): ogni stato delle promesse (`states.PROMISE_STATES`, da cui
+# si compone anche `STATES_CONCLUSI`) ha un colore in common.js e una frase
+# nel vocabolario. La parola di ogni stato la manda la rotta dalla Tappa 8
+# (C-10, `stato_leggibile`); «in sospeso» ed «esito da leggere» li manda
+# `serializza` dal 13/10/2026 (C-12, `sospesa`/`esito`), e la pagina Impegni
+# non ne tiene piu' le liste.
 # ---------------------------------------------------------------------------
 
-def _promesse_route_js() -> str:
-    return (BASE / "config" / "agenda-route.js").read_text(encoding="utf-8")
 
+def test_sospesa_ed_esito_li_calcola_serializza_e_disdetta_non_e_un_esito():
+    """C-12: la pagina Impegni teneva `PENDING_STATES` e `OUTCOME_STATES`.
+    Ora ogni promessa porta `sospesa` (`states.SUSPENDED`) ed `esito`
+    (`STATES_ESITO`); `disdetta` e' conclusa ma non e' una notizia.
 
-def test_stati_sospeso_e_lo_stesso_insieme_nel_javascript_della_pagina():
-    js = _promesse_route_js()
-    m = re.search(r"var PENDING_STATES = \[([^\]]*)\];", js)
-    assert m, "PENDING_STATES non trovata in agenda-route.js"
-    dal_js = {s.strip().strip("'\"") for s in m.group(1).split(",") if s.strip()}
-    assert dal_js == set(SUSPENDED)
+    Rossa prima della correzione: `KeyError: 'sospesa'`."""
+    def riga(stato):
+        return {"id": "p1", "specie": "fai", "frase": "x", "quando_ts": 1.0,
+                "quando_detto": None, "fuso": None, "chiamata_json": None,
+                "domanda": None, "istantanea_json": None, "stato": stato,
+                "motivo": None, "esecuzione_id": None, "testo": None,
+                "avvisare": None, "nata_ts": 0.5, "risvegliata_ts": None,
+                "esito_letto_ts": None}
+    for stato in PROMISE_STATES:
+        fuori = serializza(riga(stato))
+        assert fuori["sospesa"] is (stato in SUSPENDED), stato
+        assert fuori["esito"] is (stato in STATES_ESITO), stato
+    disdetta = serializza(riga("disdetta"))
+    assert not disdetta["sospesa"] and not disdetta["esito"]
 
 
 def test_ogni_stato_di_una_promessa_ha_un_badge_e_una_frase():

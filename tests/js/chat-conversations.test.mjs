@@ -312,7 +312,8 @@ test('dopo una ripresa il limite viene dalla storia del server, non da un conteg
     'GET api/chat/conversations': { conversations: DUE },
     'GET api/chat/history': { messages: [
       { role: 'user', content: 'uno' }, { role: 'assistant', content: 'a' },
-      { role: 'user', content: 'due' }, { role: 'assistant', content: 'b' }] },
+      { role: 'user', content: 'due' }, { role: 'assistant', content: 'b' }],
+      turni: 2 },
   });
   await window.HirisChatConversations.refresh();
 

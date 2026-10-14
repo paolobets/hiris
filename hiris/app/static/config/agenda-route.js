@@ -84,31 +84,33 @@ window.HirisAgendaRoute = (function () {
      Costruzioni un'altra: `disdetta` si leggeva «Disdetta» qui e «Declinata
      da te» li'. Anche il colore del badge e' uno per tutte le code
      (`stateBadge`, common.js, 08/10/2026). */
-  var PENDING_STATES = ['in_attesa', 'in_corso'];
-  /* Gli stati che sono una NOTIZIA per chi legge -- gemello di
-     `keeper/promise.py::STATES_ESITO`, legato a quello per VALORI da
-     `tests/js/agenda-route-vocabulary.test.mjs`.
+  /* Cosa vuol dire uno stato per le sezioni -- in sospeso, o un esito da
+     leggere -- lo dice il server su ogni promessa (`sospesa`, `esito`,
+     `keeper/promise.py::serializza`, C-12). Fino al 13/10/2026 la pagina ne
+     teneva le due liste, legate per valori a quelle Python da una prova.
 
-     Non e' il complemento di `PENDING_STATES`, e la differenza e' una sola
-     parola: `disdetta`. Una promessa disdetta non e' un esito che ti e'
-     capitato, e' un ordine che hai dato tu un istante fa. Il filtro qui
-     sotto prima la ricavava per complemento -- comodo, e senza opinioni:
-     prendeva dentro anche quella. Il risultato era che chi premeva
-     «Disdici» si vedeva comparire in cima, sotto gli occhi, una sezione
-     intitolata «da quando non guardavi» che parlava del suo click di un
-     secondo prima; e chi disdiceva dalla chat si accendeva il pallino per
-     essere richiamato a leggere cio' che aveva appena ordinato (review
+     I due insiemi NON sono uno il complemento dell'altro, e la differenza e'
+     una sola parola: `disdetta`. Una promessa disdetta non e' un esito che ti
+     e' capitato, e' un ordine che hai dato tu un istante fa: e' conclusa
+     (non `sospesa`) ma non e' un `esito`. Prima il filtro la ricavava per
+     complemento, e chi premeva «Disdici» si vedeva comparire in cima una
+     sezione «da quando non guardavi» che parlava del suo click (review
      indipendente della fetta, rilievo 5). */
-  var OUTCOME_STATES = ['mantenuta', 'saltata', 'fallita'];
 
   function setStatus(text) {
     var s = byId('agenda-status');
     if (s) s.textContent = text || '';
   }
 
-  /* ── Date e ore (guida §4): sempre da `quando_ts`, mai da `quando_detto`
-     -- quello e' gia' dentro la `frase` verbatim. Il fuso non si mostra:
-     `new Date(ts*1000)` legge gia' quello del browser di chi guarda. ──── */
+  /* ── Date e ore (guida §4): sempre da `quando`, mai da `quando_detto`
+     -- quello e' gia' dentro la `frase` verbatim. Gli istanti arrivano in
+     ISO con l'offset (`render.render_promise`, C-32, 13/10/2026), la stessa
+     forma che riceve il modello; si mostrano ancora nel fuso del browser di
+     chi guarda (C-17 decide se passare all'ora della casa). ──── */
+  function epochOf(instant) {
+    return Date.parse(instant) / 1000;
+  }
+
   function fmtAbsoluteTime(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
@@ -119,8 +121,8 @@ window.HirisAgendaRoute = (function () {
       d.getDate() === hour.getDate();
   }
 
-  function fmtAbsolute(ts) {
-    var d = new Date(ts * 1000);
+  function fmtAbsolute(instant) {
+    var d = new Date(instant);
     var hour = fmtAbsoluteTime(d);
     return isToday(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
   }
@@ -135,9 +137,9 @@ window.HirisAgendaRoute = (function () {
   var RTF = (typeof Intl !== 'undefined' && Intl.RelativeTimeFormat)
     ? new Intl.RelativeTimeFormat('it', { numeric: 'auto' }) : null;
 
-  function fmtRelative(ts) {
+  function fmtRelative(instant) {
     if (!RTF) return '';
-    var diffS = ts - (Date.now() / 1000);
+    var diffS = epochOf(instant) - (Date.now() / 1000);
     if (Math.abs(diffS) < 3600) return RTF.format(Math.round(diffS / 60), 'minute');
     return RTF.format(Math.round(diffS / 3600), 'hour');
   }
@@ -279,7 +281,7 @@ window.HirisAgendaRoute = (function () {
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
     var body = el('div');
-    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts) + ' · ' + fmtRelative(p.quando_ts)));
+    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando) + ' · ' + fmtRelative(p.quando)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
     body.appendChild(phrase);
@@ -340,7 +342,7 @@ window.HirisAgendaRoute = (function () {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
-    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts)));
+    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
@@ -380,10 +382,10 @@ window.HirisAgendaRoute = (function () {
   }
 
   function sortPending(list) {
-    return list.slice().sort(function (a, b) { return a.quando_ts - b.quando_ts; });
+    return list.slice().sort(function (a, b) { return epochOf(a.quando) - epochOf(b.quando); });
   }
   function sortHistory(list) {
-    return list.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
+    return list.slice().sort(function (a, b) { return epochOf(b.quando) - epochOf(a.quando); });
   }
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
   /* Il conteggio dello storico e' passato NEL TITOLO (`Storico (14)`): da
@@ -432,9 +434,12 @@ window.HirisAgendaRoute = (function () {
      lettura e' fallita): un numero vecchio lasciato li' direbbe una cosa
      falsa sul quando, che e' lo stesso difetto del pallino spento per
      errore (`static/pending-badge.js`). */
-  function setHistoryCount(n) {
+  function setHistoryCount(n, tutte) {
     var btn = byId('agenda-history-toggle');
-    if (btn) btn.textContent = n == null ? 'Storico' : ('Storico (' + n + ')');
+    if (!btn) return;
+    if (n == null) { btn.textContent = 'Storico'; return; }
+    btn.textContent = (tutte != null && tutte > n)
+      ? 'Storico (' + n + ' di ' + tutte + ')' : 'Storico (' + n + ')';
   }
 
   /* I numeri di sezione dicono l'ordine di lettura: 01/02/03 con «Esiti da
@@ -526,23 +531,15 @@ window.HirisAgendaRoute = (function () {
       return r.json();
     }).then(function (data) {
       var all = data.agenda || [];
-      var pending = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) !== -1; });
-      var history = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) === -1; });
+      var pending = all.filter(function (p) { return p.sospesa === true; });
+      var history = all.filter(function (p) { return p.sospesa !== true; });
       /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:
-         `esito_letto_ts` e' NULL anche per ogni promessa IN SOSPESO -- non
+         `esito_letto_il` e' NULL anche per ogni promessa IN SOSPESO -- non
          ha ancora un esito da leggere -- quindi il solo campo nullo
-         riempirebbe «Esiti da leggere» di impegni futuri.
-
-         La seconda condizione nomina gli stati, e NON e' il complemento di
-         `PENDING_STATES` come nella prima stesura: il complemento tirava
-         dentro anche `disdetta`, che e' un ordine dell'utente e non una
-         notizia per lui. Vedi `OUTCOME_STATES` in cima al file. Non e' un
-         doppione di `promise.py::STATES_ESITO`: e' il suo gemello, e
-         `agenda-route-vocabulary.test.mjs` li lega per valori -- che e'
-         esattamente cio' che `scripts/doppioni.py` chiede per smettere di
-         segnalarli. */
+         riempirebbe «Esiti da leggere» di impegni futuri. La seconda e'
+         `esito`, che il server calcola (vedi in cima al file). */
       var unread = all.filter(function (p) {
-        return OUTCOME_STATES.indexOf(p.stato) !== -1 && p.esito_letto_ts == null;
+        return p.esito === true && p.esito_letto_il == null;
       });
       /* «Esiti da leggere» si disegna per PRIMA: e' quella che decide su
          quale copia di una riga ripetuta va il rivelatore «Cosa è
@@ -550,7 +547,18 @@ window.HirisAgendaRoute = (function () {
       var disegnati = renderUnread(unread);
       renderPending(pendingBody, pendingDesc, pending, load);
       renderHistory(historyBody, historyDesc, history, disegnati);
-      setHistoryCount(history.length);
+      /* La finestra (C-14): oltre le 200 il server lo dice con `total`. Le
+         escluse sono le piu' vecchie (l'ordine e' per `quando`
+         decrescente), cioe' tutte dello storico: le in sospeso stanno in cima
+         e il loro tetto per filo (`SUSPENDED_CAP`, 50) e' sotto la
+         finestra. */
+      var fuori = (typeof data.total === 'number' && typeof data.shown === 'number')
+        ? Math.max(0, data.total - data.shown) : 0;
+      setHistoryCount(history.length, history.length + fuori);
+      if (fuori) {
+        historyBody.appendChild(el('p', 'field-hint',
+          'Stai vedendo le ' + data.shown + ' promesse più recenti su ' + data.total + ' in tutto.'));
+      }
       renumberSections();
       segnaLetti(disegnati);
     }).catch(function (err) {

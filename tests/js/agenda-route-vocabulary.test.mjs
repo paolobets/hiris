@@ -12,10 +12,10 @@ import { FRASI, tupla } from './helpers/stati.mjs';
    (`stato_leggibile`, C-10). Le pagine non tengono piu' una tabella delle
    parole (`STATE_LABEL`, uscita l'08/10/2026); il COLORE del badge e' uno
    per tutte le code (`STATE_BADGE` in common.js, dall'08/10/2026) e, la
-   pagina Impegni, tiene i due filtri delle sue sezioni
-   (`PENDING_STATES`, `OUTCOME_STATES`). Sono quelle copie che possono
-   divergere in silenzio, e questo file le lega ai vocabolari Python per
-   VALORI, mai per nomi.
+   pagina Impegni, teneva i due filtri delle sue sezioni
+   (`PENDING_STATES`, `OUTCOME_STATES`), usciti il 13/10/2026 (C-12): ora
+   `sospesa` ed `esito` arrivano con la promessa. Questo file lega ai
+   vocabolari Python per VALORI, mai per nomi, cio' che resta in JS.
 
    Review finale della fetta «lo schedulatore», rilievo ②: uno stato non
    conclusivo aggiunto in Python e dimenticato nel JavaScript sparirebbe in
@@ -36,27 +36,11 @@ const COSTRUZIONI_JS = readFileSync(
 const COMMON_JS = readFileSync(
   new URL('../../hiris/app/static/common.js', import.meta.url), 'utf8');
 
-function elencoJs(sorgente, nome) {
-  const m = sorgente.match(new RegExp('var ' + nome + ' = \\[([^\\]]*)\\]'));
-  assert.ok(m, nome + ' non trovata');
-  return m[1].split(',').map((s) => s.trim()).filter(Boolean)
-    .map((s) => s.replace(/^["']|["']$/g, ''));
-}
-
 function chiaviDiOggetto(sorgente, nome) {
   const m = sorgente.match(new RegExp('var ' + nome + ' = \\{([\\s\\S]*?)\\};'));
   assert.ok(m, nome + ' non trovata');
   return new Set(Array.from(m[1].matchAll(/(\w+):/g)).map((mm) => mm[1]));
 }
-
-test('gli stati in sospeso: lo stesso insieme in states.py (SUSPENDED) e in agenda-route.js (PENDING_STATES)', () => {
-  const python = tupla('SUSPENDED');
-  // Se questa riga fallisse, il problema e' la lettura del sorgente Python,
-  // non ancora un confronto col JS.
-  assert.deepEqual(new Set(python), new Set(['in_attesa', 'in_corso']));
-  assert.deepEqual(new Set(elencoJs(AGENDA_JS, 'PENDING_STATES')), new Set(python),
-    'gli stati "in sospeso" devono essere lo stesso insieme in Python e in JavaScript');
-});
 
 test('ogni stato di una promessa ha un badge in common.js e una frase in states.py', () => {
   const stati = tupla('PROMISE_STATES');
@@ -106,14 +90,15 @@ test('le pagine non tengono piu\' una tabella delle parole: la frase arriva dall
   }
 });
 
-/* Il terzo vocabolario: gli stati che sono una NOTIZIA (`STATES_ESITO` /
-   `OUTCOME_STATES`). Non coincide con quello dei conclusi: `disdetta` e'
-   fuori, perche' una promessa disdetta e' un ordine dell'utente, non un
-   esito che gli e' capitato. */
-test('gli stati che sono una notizia: lo stesso insieme in promise.py (STATES_ESITO) e in agenda-route.js (OUTCOME_STATES)', () => {
-  const python = tupla('STATES_ESITO', PROMESSA_PY);
-  assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'fallita']));
-  assert.deepEqual(new Set(elencoJs(AGENDA_JS, 'OUTCOME_STATES')), new Set(python));
+/* Il terzo vocabolario: gli stati che sono una NOTIZIA (`STATES_ESITO`).
+   Non coincide con quello dei conclusi: `disdetta` e' fuori, perche' una
+   promessa disdetta e' un ordine dell'utente, non un esito che gli e'
+   capitato. Dal 13/10/2026 (C-12) la pagina non ne tiene una copia: legge
+   `esito` e `sospesa` dalla promessa (`serializza`). */
+test('la pagina Impegni non tiene piu\' le liste degli stati: legge sospesa ed esito', () => {
+  assert.doesNotMatch(AGENDA_JS, /var (PENDING|OUTCOME)_STATES\b/);
+  assert.match(AGENDA_JS, /p\.sospesa === true/);
+  assert.match(AGENDA_JS, /p\.esito === true/);
 });
 
 test('«disdetta» e\' conclusa ma NON e\' una notizia: i due insiemi differiscono di lei sola', () => {

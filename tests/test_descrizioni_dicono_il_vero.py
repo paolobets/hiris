@@ -316,9 +316,14 @@ def _healthy(app):
 def _bodies_read(app):
     """La casa dell'avvio con ogni corpo letto: a freddo i corpi non si
     archiviano (manca `secrets.yaml`), e un corpo non letto e' un guasto di
-    adesso che spegne `nulla_riconosciuto` (`ToolDispatcher._blind_spots`)."""
+    adesso che spegne `nulla_riconosciuto` (`ToolDispatcher._blind_spots`).
+    Le due strade insieme, come le conta `behavior.without_body` (B-39): i
+    corpi non letti e le voci archiviate senza corpo."""
     store = app["home_space_store"]
-    with mock.patch.object(store, "unread_bodies", return_value={}):
+    read = [{**entry, "corpo": {} if entry.get("corpo") is None else entry["corpo"]}
+            for entry in store.behavior()]
+    with (mock.patch.object(store, "unread_bodies", return_value={}),
+          mock.patch.object(store, "behavior", return_value=read)):
         yield _dispatcher(app)
 
 

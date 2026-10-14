@@ -2094,10 +2094,10 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # questa coda passa dalla copia redatta, non da `proc.stdout`.
         tail = stdout.strip()[-200:]
         notice = (
-            f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si e' "
-            "chiusa senza il messaggio finale del modello: quello che e' "
-            "arrivato non e' una risposta completa, e non te la presento come "
-            "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
+            f"{_INCOMPLETE_STREAM_SENTINEL} In questo turno la risposta si è "
+            "chiusa senza il messaggio finale del modello: quello che è "
+            "arrivato non è una risposta completa, e non te la presento come "
+            "tale. Riprova; se succede a ogni turno, il formato della CLI è "
             "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
         # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un

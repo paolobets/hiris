@@ -96,14 +96,32 @@ def test_una_riga_incerta_sopravvive_alla_potatura(archivio):
     assert riga["stato"] == UNCERTAIN
 
 
-def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
+#: I motivi del riavvio COME LI SCRIVEVA `risana` (23/08 e 07/09/2026),
+#: copiati qui come letterali e non chiesti alla costante: la prova deve
+#: arrossire se la costante cambia e la migrazione la segue (N156-1).
+_RESTART_REASONS_THEN = (
+    ("l'add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+    ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+)
+
+
+@pytest.mark.parametrize("motivo", _RESTART_REASONS_THEN)
+def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path, motivo):
     """Le righe che `risana` chiudeva `rifiutata` col motivo del riavvio
     passano a `incerta`; una `rifiutata` con un altro motivo resta un guasto,
     e la migrazione 7 la porta alla parola del vocabolario, `fallita`.
 
-    Mutazione ESEGUITA (07/10/2026): in `_migration_6` `AND motivo=?`
+    La riga porta il motivo com'era scritto ALLORA (N156-1, giro 156): fino
+    al 13/10/2026 la prova scriveva la costante viva, e quando C-26 ne ha
+    cambiato le lettere la migrazione ha smesso di riconoscere le righe vere
+    senza che niente arrossisse.
+
+    Mutazioni ESEGUITE: (07/10/2026) in `_migration_6` `AND motivo=?`
     sostituito da `AND ? IS NOT NULL` -- rossa su `r2` diventata `incerta`;
-    ripristinata e verificata col confronto del file."""
+    (14/10/2026) `_migration_6` che confronta solo `REASON_RESTARTED` --
+    rossa su tutte e due le righe di allora, diventate `fallita`."""
     db = str(tmp_path / "c.db")
     a = ConstructionStore(db)
     r1 = _proponi(a, key="k1")["id"]
@@ -111,7 +129,7 @@ def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
     a.close()
     c = sqlite3.connect(db)
     c.execute("UPDATE costruzioni SET stato='rifiutata', motivo=? WHERE id=?",
-              (REASON_RESTARTED, r1))
+              (motivo, r1))
     c.execute("UPDATE costruzioni SET stato='rifiutata', motivo=? WHERE id=?",
               ("Home Assistant ha detto di no", r2))
     c.execute("PRAGMA user_version=5")
@@ -121,6 +139,26 @@ def test_la_migrazione_v6_porta_a_incerta_solo_le_risanate(tmp_path):
     a = ConstructionStore(db)
     assert a.read(r1, now=ADESSO)["stato"] == UNCERTAIN
     assert a.read(r2, now=ADESSO)["stato"] == "fallita"
+    a.close()
+
+
+def test_la_migrazione_v6_riconosce_anche_il_motivo_di_oggi(tmp_path):
+    """Una riga col testo della costante viva (nessuna riga vera lo porta
+    con `rifiutata`, ma la migrazione lo ammette) passa anch'essa a
+    `incerta`."""
+    db = str(tmp_path / "c.db")
+    a = ConstructionStore(db)
+    r1 = _proponi(a, key="k1")["id"]
+    a.close()
+    c = sqlite3.connect(db)
+    c.execute("UPDATE costruzioni SET stato='rifiutata', motivo=? WHERE id=?",
+              (REASON_RESTARTED, r1))
+    c.execute("PRAGMA user_version=5")
+    c.commit()
+    c.close()
+
+    a = ConstructionStore(db)
+    assert a.read(r1, now=ADESSO)["stato"] == UNCERTAIN
     a.close()
 
 
@@ -484,3 +522,19 @@ def test_una_riga_guasta_si_salta_negli_elenchi_e_vale_assente_da_sola(archivio,
     assert len(detti) == 2, detti
     assert all(d.startswith("costruzioni:") for d in detti)
     assert any(rotta in d for d in detti)
+
+
+def test_count_conta_cio_che_list_elencherebbe_senza_tetto(archivio):
+    """C-14 (13/10/2026): la pagina dichiara «le 200 piu' recenti su N», e N
+    lo dice l'archivio con lo stesso filtro di `list`. Rossa prima della
+    correzione: `AttributeError: count`."""
+    for chiave in ("1", "2", "3"):
+        _proponi(archivio, key=chiave)
+    assert len(archivio.list(now=ADESSO, limit=2)) == 2
+    assert archivio.count(now=ADESSO) == 3
+    assert archivio.count(now=ADESSO, pending_only=True) == len(
+        archivio.list(now=ADESSO, pending_only=True))
+    # Le scadute non sono pendenti, ne' per `list` ne' per `count`.
+    dopo = ADESSO + archivio.DEADLINE_S + 1
+    assert archivio.count(now=dopo, pending_only=True) == len(
+        archivio.list(now=dopo, pending_only=True)) == 0

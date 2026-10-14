@@ -34,7 +34,7 @@ import batteria_attori
 from hiris.app import steering
 from hiris.app.mind import analyst
 
-CEILING = 4096
+CAP = 4096
 
 
 def _turn(species, output_tokens, *, duration_ms=1000, outcome="riuscito", iterations=1):
@@ -58,7 +58,7 @@ DATA = [
 
 def _measure(**changes):
     arguments = {"data": DATA, "watching": [], "reports": [], "live_ids": set(),
-                 "output_ceiling": CEILING}
+                 "output_cap": CAP}
     return batteria_attori.measure(**{**arguments, **changes})
 
 
@@ -346,10 +346,10 @@ def test_l_analista_porta_il_suo_tetto_ma_la_regola_di_prima_usa_quello_di_allor
     quello: un `riuscito` lungo quanto il tetto di OGGI non e' troncato
     (G49-1)."""
     data = [(_turn(ANALYST, 8000), [_load(30000)]),
-            (_turn(ANALYST, CEILING), [_load(30000)]),
-            (_turn(ANALYST, CEILING), [_load(30000)]),
+            (_turn(ANALYST, CAP), [_load(30000)]),
+            (_turn(ANALYST, CAP), [_load(30000)]),
             (_turn(ANALYST, 300, outcome=steering.TRUNCATED), [_load(30000)])]
-    row = _measure(data=data, ceilings={ANALYST: 8000})["attori"][ANALYST]
+    row = _measure(data=data, caps={ANALYST: 8000})["attori"][ANALYST]
     assert row["troncati"] == 3
     assert row["tetto"] == 8000
     assert row["token_ingresso_per_giro"] == 30000

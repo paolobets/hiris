@@ -220,8 +220,8 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     testo = corpo["text"]
     riepilogo = corpo["summary"]
     # Il nucleo dice "non ho guardato", non "va tutto bene".
-    assert "non si e' potuto guardare" in testo or "non si e’ potuto guardare" in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
+    assert "non si è potuto guardare" in testo or "non si e’ potuto guardare" in testo
+    assert any("non è stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 @pytest.mark.asyncio

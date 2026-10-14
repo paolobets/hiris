@@ -96,6 +96,13 @@ def file_lacks_retention_days(data_dir: str) -> bool:
 #: `chat_store`, che fino alla Tappa 8 ricopiavano il 90 sei volte.
 DEFAULT_RETENTION_DAYS = 90
 
+#: Il tetto in caratteri di un messaggio di chat: oltre, `POST /api/chat`
+#: risponde 413. Non e' un'impostazione -- nessuna interfaccia lo cambia --
+#: ma la pagina lo legge da `GET /api/chat-settings` (`max_message_chars`)
+#: per metterlo sul campo, invece di scriversi il numero (parere
+#: ux-ui-specialist, 13/10/2026).
+MESSAGE_CAP = 4000
+
 
 @dataclass
 class ChatSettings:

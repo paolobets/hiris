@@ -16,6 +16,7 @@ from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
 from hiris.app.action.write_outcome import refused
 from hiris.app.api.handlers_constructions import (
+    construction_words,
     handle_confirm_construction,
     handle_get_construction,
     handle_get_constructions,
@@ -43,6 +44,9 @@ class FintoArchivio:
         if pending_only:
             return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
+
+    def count(self, *, now, pending_only=False):
+        return len(self.list(now=now, pending_only=pending_only))
 
     def read(self, ident, *, now):
         for r in self._righe:
@@ -182,12 +186,13 @@ async def test_l_elenco_di_default_da_tutto_e_col_filtro_solo_le_aperte():
     tutte = _corpo(await handle_get_constructions(FintaRichiesta(app)))
     # L'INVOLUCRO, per nome: e' il contratto che la pagina legge
     # (`static/config/constructions-route.js::dati.constructions`), e nessun
-    # altro test di questa rotta lo nomina.
-    assert set(tutte) == {"constructions"}
+    # altro test di questa rotta lo nomina. `total`/`shown` dichiarano la
+    # finestra dal 13/10/2026 (C-14).
+    assert set(tutte) == {"constructions", "total", "shown"}
     assert [c["id"] for c in tutte["constructions"]] == ["a", "b"]
     aperte = _corpo(await handle_get_constructions(
         FintaRichiesta(app, query={"pending_only": "1"})))
-    assert set(aperte) == {"constructions"}
+    assert set(aperte) == {"constructions", "total", "shown"}
     assert [c["id"] for c in aperte["constructions"]] == ["a"]
 
 
@@ -228,6 +233,36 @@ async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
     corpo = json.loads(risposta.body)
     assert set(corpo) == {"construction"}
     assert corpo["construction"]["id"] == "p1"
+
+
+@pytest.mark.asyncio
+async def test_le_parole_della_costruzione_escono_uguali_dalle_due_porte():
+    """C-10 (Chiusura, F2): il nome del dominio, l'articolo, la parola del
+    gesto e se tocca un oggetto che c'era li manda il server, e la pagina non
+    ne tiene una copia. Elenco e singola le portano uguali (fondamenta 3).
+
+    Mutazione ESEGUITA (13/10/2026): tolto `**construction_words(row)` dalla
+    singola -> rossa."""
+    righe = [{"id": "m1", "stato": "applicata", "gesto": "modifica", "dominio": "scene",
+              "prima": {"name": "Sera"}},
+             {"id": "c1", "stato": "in_attesa", "gesto": "crea", "dominio": "automation"},
+             {"id": "x1", "stato": "in_attesa", "gesto": "nuovo_gesto", "dominio": "nuovo"}]
+    app = _app(FintoArchivio(righe))
+    elenco = {c["id"]: c for c in _corpo(await handle_get_constructions(FintaRichiesta(app)))
+              ["constructions"]}
+    assert {k: elenco["m1"][k] for k in ("dominio_nome", "articolo", "gesto_leggibile",
+                                          "esisteva")} == \
+        {"dominio_nome": "Scena", "articolo": "la scena", "gesto_leggibile": "Modificata",
+         "esisteva": True}
+    assert elenco["c1"]["esisteva"] is False
+    # Un dominio o un gesto che le parole non conoscono esce col suo nome.
+    assert (elenco["x1"]["dominio_nome"], elenco["x1"]["gesto_leggibile"]) == \
+        ("nuovo", "nuovo_gesto")
+    for ident, riga in elenco.items():
+        singola = _corpo(await handle_get_construction(FintaRichiesta(app, ident=ident)))
+        assert {k: singola["construction"][k] for k in ("dominio_nome", "articolo",
+                                                         "gesto_leggibile", "esisteva")} == \
+            {k: riga[k] for k in ("dominio_nome", "articolo", "gesto_leggibile", "esisteva")}
 
 
 @pytest.mark.asyncio
@@ -674,3 +709,26 @@ async def test_ogni_riga_dice_se_e_sospesa_con_la_regola_della_sua_coda(tmp_path
         assert singola["construction"]["sospesa"] is True
     finally:
         osservazioni.close()
+
+
+@pytest.mark.asyncio
+async def test_l_elenco_dichiara_la_finestra_con_total_e_shown():
+    """C-14 (13/10/2026): `total` conta le due code intere, `shown` le righe
+    mandate; le stesse chiavi della memoria e degli Impegni.
+    Rossa prima della correzione: `KeyError: 'total'`."""
+    app = _app(FintoArchivio([{"id": "c1", "stato": "in_attesa", "gesto": "crea",
+                               "dominio": "automation"}]))
+    corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
+    assert (corpo["total"], corpo["shown"]) == (1, 1)
+
+
+@pytest.mark.parametrize("gesto", ["modifica", "cancella"])
+def test_esisteva_chiede_il_prima_letto(gesto):
+    """N155-3 (giro 155): un gesto che tocca cio' che c'era dice «esisteva»
+    solo con il `prima` letto. Senza, la pagina direbbe «toccava un oggetto
+    che c'era» di una riga che non lo sa. Mutazione del revisore, ora ESEGUITA
+    (13/10/2026): `touches` senza il controllo su `prima` -- rossa."""
+    assert construction_words({"dominio": "automation", "gesto": gesto,
+                               "prima": None})["esisteva"] is False
+    assert construction_words({"dominio": "automation", "gesto": gesto,
+                               "prima": {"alias": "x"}})["esisteva"] is True

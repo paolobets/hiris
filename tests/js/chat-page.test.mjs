@@ -125,6 +125,38 @@ test('inviare un messaggio fa POST a api/chat con X-Requested-With (niente più 
   assert.equal('chatbot_id' in body, false, 'un solo assistente non ha piu\' bisogno di dirsi quale');
 });
 
+test('un messaggio troppo lungo (413) torna nel campo, non resta inviato e non conta un turno', async (t) => {
+  /* Parere ux-ui-specialist del 13/10/2026. Mutazione che la uccide:
+     togliere il ramo 413 -- la bolla resterebbe «inviata», il turno contato
+     e il campo vuoto. */
+  const { window, document } = setupChat(t);
+  window.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('api/chat-settings')) {
+      return { ok: true, status: 200, json: async () => ({ max_chat_turns: 0, max_message_chars: 4000 }) };
+    }
+    if (u.endsWith('api/chat')) {
+      return { ok: false, status: 413, json: async () => ({ error: 'Frase del server.' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  await window.HirisChatAgents.loadSettings();
+  const input = document.getElementById('input');
+  assert.equal(input.maxLength, 4000, 'il tetto del campo e\' quello dichiarato dal server');
+  const prima = window.HirisChatState.turnCount;
+
+  await window.HirisChatSend.send('un messaggio lunghissimo');
+
+  assert.equal(input.value, 'un messaggio lunghissimo', 'il testo torna nel campo');
+  assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'niente bolla «inviata»');
+  assert.equal(window.HirisChatState.turnCount, prima, 'il turno non si conta');
+  /* La frase e' quella del server, la pagina aggiunge solo il consiglio
+     (N155-2). Mutazione ESEGUITA il 13/10/2026: la frase ricomposta nella
+     pagina col tetto di `maxMessageChars` -- rossa. */
+  assert.match(document.body.textContent,
+    /Frase del server\. Accorcialo o dividilo in due messaggi\./);
+});
+
 // ---------------------------------------------------------------------------
 // Risposta 202 (chat via abbonamento) -> il polling completa e la risposta
 // viene renderizzata nella bolla placeholder.
@@ -394,7 +426,7 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
       return { ok: true, status: 200, json: async () => ({ messages: [
         { role: 'user', content: 'ciao' },
         { role: 'assistant', content: 'risposta salvata' },
-      ] }) };
+      ], turni: 1 }) };
     }
     return { ok: true, status: 200, json: async () => ({}) };
   };
@@ -409,6 +441,26 @@ test('restore() ricarica la history salvata della conversazione', async (t) => {
     'il welcome si nasconde quando c\'e\' history');
   assert.equal(window.HirisChatState.turnCount, 1,
     'un turno utente contato dalla history ricaricata');
+});
+
+test('il contatore dei turni viene dal server, non dalla storia tagliata (C-15)', async (t) => {
+  /* La storia arriva tagliata a 30 coppie; il tetto conta l'intera
+     conversazione. Mutazione ESEGUITA il 13/10/2026: il conteggio sui
+     `messages` rimesso in chat/agents.js -- rossa (1 contro 31). */
+  const { window } = setupChat(t);
+  window.fetch = async (url) => {
+    if (String(url).includes('/history')) {
+      return { ok: true, status: 200, json: async () => ({ messages: [
+        { role: 'user', content: 'trentunesima' },
+        { role: 'assistant', content: 'risposta' },
+      ], turni: 31 }) };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+
+  await window.HirisChatAgents.restore();
+
+  assert.equal(window.HirisChatState.turnCount, 31);
 });
 
 // ---------------------------------------------------------------------------

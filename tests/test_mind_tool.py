@@ -32,7 +32,8 @@ from hiris.app.home_space.tools import (
     MIND_TOOL_DEF,
     ToolDispatcher,
 )
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind import analyst, report
+from hiris.app.mind.store import ATTEMPT_DONE, ATTEMPT_FAILED, ObservationsStore
 
 #: Il soffitto che il costruttore pretende (decisione 13, Tappa 7, Task 7):
 #: qui si prova altro, non il permesso.
@@ -60,7 +61,12 @@ def _app(tmp_path) -> dict:
     store.replace_report(DAY, {"giorno": DAY, "misure": [
         {"soggetto": "dev_a", "misura": "consumo", "valore": 3.2}], "cronaca": []})
     store.replace_analysis(DAY, {"giorno": DAY, "osservazioni": [
-        {"soggetto": "dev_a", "testo": "consuma piu' del solito"}]})
+        {"soggetto": "dev_a", "testo": "consuma piu' del solito", "innesco": 2}]})
+    # Un tentativo per esito: la lettura dei tentativi (`attempt_out`) deve
+    # arrivare uguale dalle due porte (N155-1, giro 155: lo strumento li
+    # riceveva grezzi, la rotta letti).
+    for outcome in (ATTEMPT_DONE, ATTEMPT_FAILED):
+        store.record_attempt(when_ts=1787000000.0, outcome=outcome)
     return {"observations": store, "watcher": _Osservatore()}
 
 
@@ -147,7 +153,31 @@ async def test_un_giorno_mai_aggregato_si_dice_come_lo_dice_la_rotta(tmp_path):
     assert "non e' stato aggregato" in answer["errore"]
     assert answer["ora_notturna"] == _body(page)["ora_notturna"]
     answer = await dispatcher.dispatch("mind", {"cosa": "analisi", "giorno": "2026-01-01"})
+    page = await handle_analysis(_Richiesta(app, {"day": "2026-01-01"}))
+    assert page.status == 404
     assert "non e' stato analizzato" in answer["errore"]
+    # Ogni quanto gira l'analista, dalle due porte con lo stesso numero, quello
+    # che lo schedulatore usa (C-11).
+    assert answer["analista_ogni_s"] == _body(page)["analista_ogni_s"] \
+        == report.ANALYST_EVERY_MINUTES * 60
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("day", [DAY, None])
+async def test_l_innesco_arriva_anche_a_parole(tmp_path, day):
+    """«2» non vuol dire niente da solo (fondamenta 1): ogni osservazione
+    porta `innesco_parole`, da `analyst.TRIGGER_WORDS`, per il giorno chiesto
+    e per le ultime analisi. La rotta ha la stessa forma (la parita' qui
+    sopra); la pagina «Cosa fare» la legge invece di tenerne una copia (C-11).
+
+    Mutazione ESEGUITA: `_worded` tolto da `MindView.analysis` -- rossa sul
+    giorno chiesto (`KeyError: 'innesco_parole'`)."""
+    app = _app(tmp_path)
+    dispatcher = create_tool_dispatcher(app, soffitto=_AMMINISTRATORE)
+    answer = await dispatcher.dispatch("mind", {"cosa": "analisi", "giorno": day}
+                                       if day else {"cosa": "analisi"})
+    found = answer["analisi"] if day else answer["analisi"][0]
+    assert found["osservazioni"][0]["innesco_parole"] == analyst.TRIGGER_WORDS[2]
 
 
 @pytest.mark.asyncio

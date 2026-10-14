@@ -1,7 +1,8 @@
 """I tre strumenti delle promesse, e le verifiche che fanno ALLA NASCITA."""
+import json
 import os
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import ClassVar
 
@@ -117,6 +118,31 @@ async def test_promesse_elenca_cio_che_e_in_sospeso(promesse):
         "domanda": "e' aumentata?"})
     esito = await d.dispatch("agenda", {})
     assert len(esito["promesse"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_gli_istanti_di_una_promessa_arrivano_al_modello_in_iso(promesse):
+    """C-32/C-39: verso il modello ogni istante e' ISO con l'offset, e la
+    promessa era l'unica eccezione -- cinque istanti in epoch, con i nomi in
+    `_ts`. Da tutte e tre le porte (`promise`, `agenda`, `cancel`) esce la
+    resa della promessa, `render.render_promise`.
+
+    Rossa prima del fix: `quando_ts` era un numero."""
+    d = _dispatcher(promesse)
+    in_an_hour = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+    creata = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "x",
+        "quando": in_an_hour.astimezone(timezone(timedelta(hours=2))).isoformat(),
+        "domanda": "e' aumentata?"})
+    elenco = await d.dispatch("agenda", {"tutte": True})
+    disdetta = await d.dispatch("cancel", {"id": creata["promessa"]["id"]})
+    for promessa in (creata["promessa"], elenco["promesse"][0], disdetta["promessa"]):
+        assert not [k for k in promessa if k.endswith("_ts")], promessa
+        # Nessun fuso dichiarato a questo dispatcher: l'istante esce in UTC,
+        # con l'offset scritto (`historian.instant_out`).
+        assert promessa["quando"] == in_an_hour.isoformat()
+        assert promessa["nata_il"].endswith("+00:00")
+    assert disdetta["promessa"]["chiusa_il"].endswith("+00:00")
 
 
 @pytest.mark.asyncio
@@ -356,6 +382,25 @@ async def test_l_istantanea_del_chiedi_resta_alla_profondita_corta(promesse):
     media = render_entity(casa, "sensor.camera_t", "media")
     assert set(media) != set(corta)  # la prova distingue le due profondita'
     assert set(esito["promessa"]["istantanea"][0]) == set(corta) | {"quando"}
+
+
+@pytest.mark.asyncio
+async def test_l_istantanea_passa_dal_filtro_di_riservatezza(promesse):
+    """C-05: la zona di chi si muove non esce dalla promessa se non esce da
+    `search`/`view`/`history`. Prima l'istantanea rendeva l'entita' con
+    `render_entity` e la consegnava senza `privacy.redact_row`: «Lavoro»
+    usciva da `promise` e da `agenda`, e da nessun'altra porta.
+
+    Rossa prima del fix (lo stato era «Lavoro»)."""
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheConUnaPersona())
+    esito = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "verifica dove e' Marta",
+        "quando": _fra(60),
+        "domanda": "e' tornata?", "da_confrontare": ["person.marta"]})
+    misura = esito["promessa"]["istantanea"][0]
+    assert misura["id"] == "person.marta"
+    assert misura["stato"] == "not_home"
+    assert "Lavoro" not in json.dumps(esito, ensure_ascii=False)
 
 
 @pytest.mark.asyncio
@@ -648,3 +693,13 @@ class _CacheFinta(MirrorById):
              "unit": "°C", "domain": "sensor", "device_class": "temperature",
              "state_class": "measurement", "last_changed": None},
         ]
+
+
+class _CacheConUnaPersona(_CacheFinta):
+    """Lo specchio con una persona fuori casa, in una zona che ha un nome."""
+
+    def all_states(self):
+        return super().all_states() + [
+            {"id": "person.marta", "state": "Lavoro", "name": "Marta",
+             "unit": None, "domain": "person", "device_class": None,
+             "state_class": None, "last_changed": None}]

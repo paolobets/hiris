@@ -325,7 +325,7 @@ def _scansione() -> dict[str, str]:
 # 2. i MISTI che la misura ha tenuto fuori apposta (`_normalize_con_mappa`,
 #    `cost_da_listino`; il primo dei quattro, `_accoda_al_bridge`, e' uscito
 #    il 02/09 diventando `_enqueue_to_bridge`; il quarto,
-#    `CEILING_IN_SOSPESO`, non compare qui perche' porta `in`, forma esclusa);
+#    `CEILING_IN_SOSPESO`, e' uscito il 13/10/2026 diventando `SUSPENDED_CAP`);
 # 3. i TRE falsi positivi noti -- **annotati uno per uno ACCANTO alla
 #    loro voce**, in cima all'elenco, e non qui: una decisione che vive
 #    lontano da cio' che decide non la legge nessuno. Erano sei: `O_CREAT`/
@@ -403,7 +403,7 @@ _NOTE_ITALIANE = frozenset({
     "col_token_del_piano", "come_stringa", "commenti_di", "con_free", "con_gratuiti",
     "con_registro_caduto", "corpo_ricevuto_dal_modello", "cost_da_listino", "da_anchor",
     "da_http", "da_quante", "da_risolvere", "da_run_sh", "da_salvare",
-    "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dal_js", "dall_area",
+    "da_sempre", "da_strumento", "da_ts", "dai_guasti", "dal_dispositivo", "dall_area",
     "dall_entita", "dall_init", "dalla_sonda", "detto_da", "dopo_nuovo", "dopo_riavvio",
     "e_contenitore", "e_def", "e_intestazione",
     "fra_parentesi",

@@ -1,4 +1,4 @@
-"""Le cinque rotte della pagina Costruzioni.
+"""Le cinque rotte della pagina Proposte (le rotte restano `constructions`, C-18).
 
 Non serializzano niente per conto proprio: la forma di una costruzione e' UNA
 e vive in `action/construction/revisions.py::_row`, gia' usata dall'archivio.
@@ -36,6 +36,7 @@ import time
 
 from aiohttp import web
 
+from ..action.construction.workshop import ARTICOLO_DETERMINATIVO
 from ..action.write_outcome import silent
 from ..chat_thread import subject_from_thread, unknown_id_text, without_thread
 from ..mind import automate_turn
@@ -62,8 +63,15 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     # sul disco prima di elencare, e la chat poteva confermarne una che
     # nessuno aveva ancora aperto (misura del Task 4.0 degli attori).
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
-    return web.json_response(
-        {"constructions": await _both_queues(request.app, store, pending_only)})
+    rows = await _both_queues(request.app, store, pending_only)
+    # La finestra si dichiara (C-14, 13/10/2026): ogni coda e' tagliata alle
+    # sue 200 piu' recenti, e `total` conta le due intere. Le stesse chiavi
+    # della memoria e degli Impegni.
+    observations = request.app.get("observations")
+    total = store.count(now=time.time(), pending_only=pending_only) + (
+        observations.count_proposals(pending_only=pending_only)
+        if observations is not None else 0)
+    return web.json_response({"constructions": rows, "total": total, "shown": len(rows)})
 
 
 #: Chi applica una proposta. Le costruibili le scrive HIRIS in Home Assistant
@@ -104,6 +112,31 @@ async def _out(app, row: dict, approved: list[dict]) -> dict:
                                              approved=approved)}
 
 
+#: Le parole di una costruzione per chi la legge in pagina (C-10): il nome del
+#: dominio e, per ogni gesto, la parola del badge e se tocca un oggetto che
+#: c'era gia'. Le chiavi sono di altri: i domini costruibili
+#: (`HAClient.CONFIGURABLE_DOMAINS`) e i gesti dell'officina
+#: (`workshop.OPERATIONS`): `tests/test_pagine_legate.py` le confronta, e un
+#: dominio o un gesto nuovo senza parole esce comunque col suo nome. L'articolo e' quello
+#: dell'officina (`workshop.ARTICOLO_DETERMINATIVO`), che lo usa nelle sue
+#: anteprime. Fino al 13/10/2026 tutto questo era una copia nel JavaScript.
+_DOMAIN_WORDS = {"automation": "Automazione", "script": "Script", "scene": "Scena"}
+_GESTURE_WORDS = {"crea": ("Creata", False), "modifica": ("Modificata", True),
+                  "cancella": ("Cancellata", True)}
+
+
+def construction_words(row: dict) -> dict:
+    """I campi in parole di una costruzione: `dominio_nome`, `articolo`,
+    `gesto_leggibile`, `esisteva` (un gesto che tocca cio' che c'era, con il
+    `prima` letto)."""
+    domain, gesture = row.get("dominio"), row.get("gesto")
+    word, touches = _GESTURE_WORDS.get(gesture, (gesture, False))
+    return {"dominio_nome": _DOMAIN_WORDS.get(domain, domain),
+            "articolo": ARTICOLO_DETERMINATIVO.get(domain),
+            "gesto_leggibile": word,
+            "esisteva": touches and row.get("prima") is not None}
+
+
 def _construction_suspended(row: dict) -> bool:
     """Se una costruzione aspetta ancora: `states.SUSPENDED`, anche `in_corso`
     (rivendicata e non ancora decisa). E' il campo `sospesa` delle righe
@@ -134,7 +167,8 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     built = store.list(now=time.time(), pending_only=pending_only, limit=200)
     origins = (observations.proposal_origins(row["id"] for row in built)
                if observations is not None else {})
-    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS,
+    rows = [{**await _out(app, row, approved), **construction_words(row),
+             "chi_applica": _APPLIES_HIRIS,
              "sospesa": _construction_suspended(row),
              "nata_da": origins.get(row["id"])}
             for row in built]
@@ -170,6 +204,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
         return error_response(404, _NOT_FOUND)
     return web.json_response(
         {"construction": {**await _out(request.app, row, approved_services(request.app)),
+                          **construction_words(row),
                           "sospesa": _construction_suspended(row)}})
 
 

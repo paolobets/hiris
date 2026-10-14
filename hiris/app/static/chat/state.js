@@ -38,6 +38,9 @@
        erano mappe indicizzate per agentId, con un id solo dentro. `maxChatTurns`
        viene da `GET /api/chat-settings` (chat/agents.js::loadSettings). */
     maxChatTurns: 0,
+    /* Il tetto in caratteri di un messaggio, come lo dichiara il server in
+       `GET /api/chat-settings` (`max_message_chars`); 0 finche' non si sa. */
+    maxMessageChars: 0,
     turnCount: 0,
     isLoading: false,
     /* La frase di quando HIRIS non si raggiunge, per la bolla di un invio

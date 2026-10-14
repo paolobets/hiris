@@ -266,10 +266,10 @@ def test_history_says_unknown_with_no_key():
 # e' `keeper/promise.serializza`, l'unica forma della promessa per lo
 # strumento e per la pagina: li' l'istante esce nell'ora della casa, col fuso
 # che la promessa stessa porta (`fuso`, fondamenta 1). Nessuna pagina legge
-# `quando` della misura (cercato in `static/` l'11/10/2026): `quando_ts`,
-# `nata_ts`, `risvegliata_ts` ed `esito_letto_ts` invece la pagina Impegni li
-# legge come numeri, e restano epoch finche' la pagina non cambia con loro
-# (Task 4, passo 6).
+# `quando` della misura (cercato in `static/` l'11/10/2026). Gli altri istanti
+# della promessa (`quando_ts`, `nata_ts`, ...) restano epoch in `serializza` e
+# escono in ISO da `home_space/render.render_promise`, per il modello e per la
+# pagina Impegni (C-32, C-39, 13/10/2026).
 
 def _promise_row(snapshot, fuso="Europe/Rome") -> dict:
     import json

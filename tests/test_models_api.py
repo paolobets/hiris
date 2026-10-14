@@ -235,7 +235,7 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     # E la frase che chiude la catena e' della CATENA, non dell'ultima riga:
     # quale sia l'ultima cambia con un gesto, e la pagina riordina da se'.
     assert body["fine_catena"] == (
-        "ultimo della catena: se non risponde, la chat da' errore".replace("da'", "dà"))
+        "ultimo della catena: se non risponde, la chat dà errore".replace("da'", "dà"))
     assert all(r["connettore"] == "" for r in body["fuori_catena"]), (
         "chi sta fuori non ha un «dopo»: non e' in nessuna sequenza"
     )

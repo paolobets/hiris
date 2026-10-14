@@ -113,7 +113,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
 async def handle_patch_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
-        return error_response(503, "l’archivio della memoria non e' disponibile")
+        return error_response(503, "l’archivio della memoria non è disponibile")
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
@@ -124,7 +124,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     # richiesta, e' l'assenza del ricordo stesso -- 404, non 400.
     existing = store.get(memory_id)
     if existing is None:
-        return error_response(404, f"nessun ricordo con id {memory_id}")
+        return _memory_not_found(memory_id)
 
     body = await json_object(request)
 
@@ -258,10 +258,19 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
 async def handle_delete_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
-        return error_response(503, "l’archivio della memoria non e' disponibile")
+        return error_response(503, "l’archivio della memoria non è disponibile")
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
         return error_response(400, "id non valido")
+    # Come la correzione (C-51, 13/10/2026): un ricordo che non c'e' non si
+    # cancella con successo, si dichiara assente -- fino ad allora 204.
+    if store.get(memory_id) is None:
+        return _memory_not_found(memory_id)
     store.dimentica(memory_id)
     return web.Response(status=204)
+
+
+def _memory_not_found(memory_id: int) -> web.Response:
+    """Il 404 di un ricordo assente, uno per le due porte che lo toccano."""
+    return error_response(404, f"nessun ricordo con id {memory_id}")

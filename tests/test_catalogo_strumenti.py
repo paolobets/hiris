@@ -97,7 +97,7 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # `history` dice che per gli errori puo' essere una libreria; per non salire,
 # la stessa descrizione non dice piu' «sola» della chiamata ne' «di Home
 # Assistant» del riavvio. Misurato: 29.138.
-CATALOG_CEILING = 29138
+CATALOG_CAP = 29138
 
 
 def catalog_chars(definitions) -> int:
@@ -111,7 +111,7 @@ def test_il_catalogo_non_supera_la_soglia():
     """Mutazione ESEGUITA il 05/10/2026: un carattere in piu' nella
     descrizione di `cancel` -- rossa con «catalogo: 32854 > soglia 32853»."""
     size = catalog_chars(KNOWLEDGE_TOOLS)
-    assert size <= CATALOG_CEILING, f"catalogo: {size} > soglia {CATALOG_CEILING}"
+    assert size <= CATALOG_CAP, f"catalogo: {size} > soglia {CATALOG_CAP}"
 
 
 def _tool_definition_names() -> set[str]:

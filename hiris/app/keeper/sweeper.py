@@ -218,7 +218,7 @@ class Sweeper:
                 self._tell(promise, kept_message(promise, notice))
         else:
             error = (occurrence.get("errore")
-                     or "non e' andata, e non so dire perche'.")
+                     or "non è andata, e non so dire perché.")
             closed = self._store.concludi(
                 promise["id"], state=FAILED, now=now, reason=error,
                 execution_id=occurrence.get("esecuzione_id"))
@@ -280,7 +280,7 @@ class Sweeper:
         if not self._store.concludi(promise["id"], state=KEPT, now=now,
                                     reason=note or None, text=text,
                                     avvisare=avvisare):
-            logger.info("promessa %s: gia' conclusa, nessuna consegna",
+            logger.info("promessa %s: già conclusa, nessuna consegna",
                         promise["id"])
             return
 

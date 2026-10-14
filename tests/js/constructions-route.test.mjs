@@ -4,13 +4,16 @@ import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 import { conFrase, etichetta } from './helpers/stati.mjs';
+import { conParole } from './helpers/costruzioni.mjs';
 
 /* Una risposta della rotta come la manda il server: ogni riga con la frase
-   del suo stato (`stato_leggibile`, C-10 della Tappa 8), chiesta al
-   vocabolario e non ricopiata qui. */
+   del suo stato (`stato_leggibile`, C-10 della Tappa 8) e le parole del suo
+   dominio e del suo gesto (C-10 della Chiusura), chieste ai sorgenti e non
+   ricopiate qui. */
 function conFrasi(risposta) {
   return risposta && Array.isArray(risposta.constructions)
-    ? { ...risposta, constructions: risposta.constructions.map(conFrase) } : risposta;
+    ? { ...risposta, constructions: risposta.constructions.map((r) => conParole(conFrase(r))) }
+    : risposta;
 }
 
 /* La pagina carica common.js per primo (le utilita' scritte una volta):
@@ -924,4 +927,22 @@ test('un rifacimento che non riesce lascia la richiesta scritta', async () => {
   assert.match(stato.textContent, /il modello non ha risposto: riprova\./);
   bottone(/^Rifalla$/).click();
   assert.equal(dom.window.document.querySelector('textarea').value, 'dopo le 14');
+});
+
+test('oltre la finestra la pagina lo dice, dentro no (C-14)', async () => {
+  /* Parere ux-ui-specialist del 13/10/2026: una riga field-hint, solo quando
+     il server ne ha di piu' (`total` > `shown`). Mutazione ESEGUITA: la riga
+     tolta -- rossa. */
+  const righe = [{ id: 'c1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
+    chiave: '1', anteprima: '', prima: null, dopo: { alias: 'Uno' }, creata_ts: 1756000000 }];
+  const tagliata = montaCon({ constructions: righe, total: 450, shown: 1 });
+  await tagliata.dom.window.HirisConstructions.mount(
+    tagliata.dom.window.document.getElementById('route-outlet'));
+  assert.match(tagliata.dom.window.document.body.textContent,
+    /Stai vedendo le 1 costruzioni più recenti su 450 in tutto\./);
+
+  const intera = montaCon({ constructions: righe, total: 1, shown: 1 });
+  await intera.dom.window.HirisConstructions.mount(
+    intera.dom.window.document.getElementById('route-outlet'));
+  assert.doesNotMatch(intera.dom.window.document.body.textContent, /più recenti su/);
 });

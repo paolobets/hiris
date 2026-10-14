@@ -535,9 +535,9 @@ def test_al_riavvio_un_fai_e_un_chiedi_dicono_cose_DIVERSE(archivio):
     p_chiedi = archivio.read(chiedi)
     assert p_fai["stato"] == "fallita" and p_chiedi["stato"] == "fallita"
 
-    assert "non so se fosse gia' partita" in p_fai["motivo"], (
+    assert "non so se fosse già partita" in p_fai["motivo"], (
         "per un'azione il dubbio e' se la casa sia stata toccata: resta")
-    assert "non so se fosse gia' partita" not in p_chiedi["motivo"], (
+    assert "non so se fosse già partita" not in p_chiedi["motivo"], (
         "un `chiedi` non tocca la casa: quel dubbio li' non esiste")
     assert "non ho toccato niente" in p_chiedi["motivo"]
     assert "notifica" in p_chiedi["motivo"], (

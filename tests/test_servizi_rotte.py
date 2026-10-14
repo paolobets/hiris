@@ -124,7 +124,7 @@ async def test_con_la_finestra_APERTA_un_servizio_si_presenta(cliente):
     corpo = await risposta.json()
     assert len(corpo["codice"]) == 4
     elenco = await (await cliente.get("/api/services", headers=_chi("u-admin"))).json()
-    assert elenco["servizi"][0]["stato"] == "in_attesa"
+    assert elenco["servizi"]["da_decidere"][0]["stato"] == "in_attesa"
 
 
 @pytest.mark.asyncio
@@ -205,12 +205,12 @@ async def test_il_giro_intero_accoppia_e_poi_revoca(cliente):
         "/api/services/approve", headers=_chi("u-admin"),
         json={"chiave": chiave, "ruolo": "utente", "specie": "luogo"})
     assert approvato.status == 200
-    riga = (await approvato.json())["servizi"][0]
+    riga = (await approvato.json())["servizi"]["accoppiati"][0]
     assert riga["stato"] == "autorizzato" and riga["ruolo"] == "utente"
 
     revocato = await cliente.post("/api/services/revoke", headers=_chi("u-admin"),
                                   json={"chiave": chiave})
-    assert (await revocato.json())["servizi"][0]["stato"] == "revocato"
+    assert (await revocato.json())["servizi"]["revocati"][0]["stato"] == "revocato"
 
 
 @pytest.mark.asyncio
@@ -294,11 +294,21 @@ async def test_l_elenco_dice_i_ruoli_e_le_specie_possibili(cliente):
     possiede. Due elenchi degli stessi valori divergerebbero al primo che se ne
     aggiunge uno.
 
+    Dal 13/10/2026 (C-10) arrivano nell'ordine della scelta e con le frasi
+    della pagina: la pagina non ne tiene piu' nessuna copia. Le chiavi sono
+    quelle di `canali`, chieste li'.
+
     Mutazione: non mandarli -- rossa."""
+    from hiris.app.api.canali import PUO, RUOLI, SERVICE_SPECIES
     corpo = await (await cliente.get("/api/services", headers=_chi("u-admin"))).json()
 
-    assert corpo["ruoli"] == ["amministratore", "utente", "lettore"]
-    assert corpo["specie"] == ["integrazione", "luogo"]
+    assert sorted(r["ruolo"] for r in corpo["ruoli"]) == sorted(RUOLI)
+    assert corpo["ruoli"][0]["ruolo"] == "utente", "il preselezionato e' il caso comune"
+    assert all(r["concede"] and r["effetto"] for r in corpo["ruoli"])
+    assert {r["ruolo"] for r in corpo["ruoli"] if r["amministra"]} == \
+        {ruolo for ruolo, gesti in PUO.items() if gesti["amministrare"]}
+    assert [s["specie"] for s in corpo["specie"]] == list(SERVICE_SPECIES)
+    assert all(s["cos_e"] for s in corpo["specie"])
 
 
 @pytest.mark.asyncio
@@ -333,4 +343,4 @@ async def test_leggere_l_elenco_NON_scrive_l_archivio(cliente):
     corpo = await (await cliente.get("/api/services", headers=_chi("u-admin"))).json()
 
     assert disco() == prima
-    assert [r["nome"] for r in corpo["servizi"]] == []
+    assert corpo["servizi"] == {"da_decidere": [], "accoppiati": [], "revocati": []}

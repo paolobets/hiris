@@ -25,7 +25,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.api.admission import NOT_ADMITTED
 from hiris.app.api.handlers_memory import handle_get_memories
 from hiris.app.api.handlers_settings import _payload
-from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_settings import MESSAGE_CAP, ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import subject_key_for
 from hiris.app.keeper.store import AgendaStore
@@ -150,7 +150,8 @@ async def test_PIN_le_impostazioni_dell_amministratore_sono_TUTTE(casa):
     assert corpo == _payload(SETTINGS)
     assert set(corpo) == {"name", "system_prompt", "response_mode", "thinking_budget",
                           "max_chat_turns", "restrict_to_home", "retention_days",
-                          "response_modes", "default_system_prompt"}
+                          "response_modes", "default_system_prompt", "max_message_chars",
+                          "thinking_budget_min"}
 
 
 # --- le sue memorie (spec §4, security-constraints 3.1-3.8) ------------------
@@ -399,12 +400,14 @@ async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, ute
 @pytest.mark.asyncio
 @pytest.mark.parametrize("utente", ["u-marta", "u-lettore"])
 async def test_a_chi_non_amministra_solo_cio_che_la_CHAT_usa(casa, utente):
-    """R-2.24: `chat/agents.js::loadSettings` legge `name` e
-    `max_chat_turns`, e nient'altro. Il prompt di sistema, quello di difetto,
-    la conservazione e il resto restano alla pagina Impostazioni."""
+    """R-2.24: `chat/agents.js::loadSettings` legge `name`, `max_chat_turns`
+    e, dal 13/10/2026, `max_message_chars` (il tetto del campo), e
+    nient'altro. Il prompt di sistema, quello di difetto, la conservazione e
+    il resto restano alla pagina Impostazioni."""
     corpo = await (await casa.get("/api/chat-settings", headers=_persona(utente))).json()
 
-    assert corpo == {"name": "Casa", "max_chat_turns": 7}
+    assert corpo == {"name": "Casa", "max_chat_turns": 7,
+                     "max_message_chars": MESSAGE_CAP}
 
 
 @pytest.mark.asyncio

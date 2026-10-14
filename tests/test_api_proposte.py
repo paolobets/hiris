@@ -243,6 +243,9 @@ class _FintaOfficina:
             return [r for r in self._righe if r["stato"] == "in_attesa"]
         return list(self._righe)
 
+    def count(self, *, now, pending_only=False):
+        return len(self.list(now=now, pending_only=pending_only))
+
     def count_pending(self, now=None):
         return len([r for r in self._righe if r["stato"] == "in_attesa"])
 

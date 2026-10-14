@@ -57,7 +57,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._casa_sintetica import synthetic_inputs
 
 #: Le letture dell'INTERA casa: stati e registri. Sono quelle che R18 vuole a una.
-WHOLE_HOUSE_CEILINGS = {"get_states": 1, "read_registries": 1}
+WHOLE_HOUSE_CAPS = {"get_states": 1, "read_registries": 1}
 #: Cio' che non e' una domanda alla casa: il ciclo di vita, gli ascoltatori
 #: (iscriversi non e' bussare) e cio' che la casa finta registra.
 NOT_QUESTIONS = ("ws_ready", "start", "stop", "start_websocket", "calls", "connections",
@@ -111,9 +111,9 @@ def test_l_avvio_legge_la_casa_intera_non_piu_di_oggi(tmp_path, capsys):
     # e' piu' agganciato: la prova non guarderebbe niente e resterebbe verde.
     assert counted.get("read_registries"), counted
     assert counted.get("get_states"), counted
-    over = {name: counted.get(name, 0) for name, ceiling in WHOLE_HOUSE_CEILINGS.items()
-            if counted.get(name, 0) > ceiling}
-    assert not over, f"letture dell'intera casa oltre il tetto {WHOLE_HOUSE_CEILINGS}: {over}"
+    over = {name: counted.get(name, 0) for name, cap in WHOLE_HOUSE_CAPS.items()
+            if counted.get(name, 0) > cap}
+    assert not over, f"letture dell'intera casa oltre il tetto {WHOLE_HOUSE_CAPS}: {over}"
 
 
 # ── le connessioni: la casa finta avvisa come il client vero ────────────────
@@ -238,7 +238,7 @@ def test_l_avvio_finisce_anche_se_home_assistant_non_risponde(tmp_path, monkeypa
     from hiris.app import server
     from hiris.app.proxy import ha_client as ha_client_module
 
-    monkeypatch.setattr(server, "FIRST_CONNECTION_CEILING_S", 0.05)
+    monkeypatch.setattr(server, "FIRST_CONNECTION_CAP_S", 0.05)
     # Dopo il rifiuto il client aspetta: la connessione non arriva durante
     # l'avvio, come quando il nucleo non e' ancora su.
     monkeypatch.setattr(ha_client_module, "AUTH_RETRY_FIRST_S", 3600)

@@ -22,15 +22,15 @@ from ..answer_reasons import NO_ANSWER_REASON
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
-from ..states import CANCELLED, FAILED, KEPT, SKIPPED, readable
+from ..states import CANCELLED, FAILED, KEPT, SKIPPED, SUSPENDED, readable
 
 VERB = ("fai", "chiedi")
 #: Gli stati che chiudono una promessa. Le parole vivono nel vocabolario
 #: (`states.py`, Tappa 8, D4): qui si dice solo quali sono le conclusive di
 #: questa coda. L'insieme «in sospeso» e' `states.SUSPENDED`, la sua casa
 #: sola: fino all'08/10/2026 ce n'era una copia qui e una in
-#: `action/construction/revisions.py`. `tests/js/agenda-route-vocabulary.test.mjs`
-#: lega questi insiemi al JavaScript della pagina Impegni.
+#: `action/construction/revisions.py`. Dal 13/10/2026 (C-12) la pagina Impegni
+#: non ne tiene copie: legge `sospesa` ed `esito` da `serializza`.
 STATES_CONCLUSI = (KEPT, SKIPPED, CANCELLED, FAILED)
 
 # Gli stati che sono una NOTIZIA per chi legge -- `STATES_CONCLUSI` meno
@@ -68,13 +68,13 @@ ORIZZONTE_S = 30 * 86400
 # 2026-09-26 §2): con un tetto della casa, le promesse di Marta avrebbero
 # potuto togliere a Paolo il diritto di prometterne una -- e il messaggio di
 # rifiuto gli avrebbe parlato di promesse che non vede.
-CEILING_IN_SOSPESO = 50
+SUSPENDED_CAP = 50
 # **E il totale resta limitato** (ruling 2.6 della revisione di sicurezza): un
 # tetto solo per filo lascerebbe il totale crescere col numero dei fili, e i
 # fili li moltiplica chiunque arrivi da un ingresso diverso. 200 tiene il disco
 # della scheda SD e il battito dell'orologio (che legge le scadute ogni 15
 # secondi) nell'ordine di grandezza di oggi: quattro fili pieni, non di piu'.
-HOUSE_CEILING_IN_SOSPESO = 200
+HOUSE_SUSPENDED_CAP = 200
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
@@ -90,6 +90,10 @@ _CHIAVI = (
     "thread",
     # Quando si e' conclusa (G-20, Tappa 8): `risvegliata_ts` e' la presa.
     "closed_ts",
+    # Cosa vuol dire lo stato, calcolato qui (C-12, Chiusura, 13/10/2026):
+    # in sospeso (`states.SUSPENDED`) e un esito da leggere (`STATES_ESITO`).
+    # La pagina Impegni ne teneva le due liste sue.
+    "sospesa", "esito",
 )
 
 
@@ -116,8 +120,8 @@ PHRASE_CAP = 200
 # persona vera ha un telefono e forse un tablet; un recapito che ne
 # risolvesse dieci farebbe di un esito dieci notifiche. Il limite
 # accettato: nessun freno GLOBALE sulle push in questa fetta -- il numero
-# delle promesse e' gia' limitato (`CEILING_IN_SOSPESO`,
-# `HOUSE_CEILING_IN_SOSPESO`), e questo tetto limita il resto.
+# delle promesse e' gia' limitato (`SUSPENDED_CAP`,
+# `HOUSE_SUSPENDED_CAP`), e questo tetto limita il resto.
 MAX_SERVICES_PER_PROMISE = 3
 
 
@@ -328,6 +332,10 @@ def serializza(row) -> dict:
         "thread": thread_from_columns(_column(row, "subject_key"),
                                       _column(row, "entry_point")),
         "closed_ts": _column(row, "closed_ts"),
+        # `disdetta` e' conclusa ma non e' un esito: e' un ordine appena dato
+        # (vedi `STATES_ESITO`). Le due domande hanno due risposte.
+        "sospesa": row["stato"] in SUSPENDED,
+        "esito": row["stato"] in STATES_ESITO,
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

@@ -229,7 +229,7 @@ def test_le_parole_del_pannello_non_vivono_nella_pagina():
     corpo = _codice_senza_commenti(js)
     for parola in ("Letti da", "Elenco di riserva", "riavvio dell'add-on",
                    "Anthropic", "openrouter.ai", "api.openai.com",
-                   "nascondi i gratuiti", "il piu' rapido"):
+                   "nascondi i gratuiti", "il più rapido"):
         assert parola not in corpo, (
             f"«{parola}» e' una parola del prodotto: viene dal payload"
         )

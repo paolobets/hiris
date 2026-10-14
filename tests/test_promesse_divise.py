@@ -134,13 +134,13 @@ def test_create_non_scrive_mai_il_recapito(archivio):
 def test_il_tetto_delle_cinquanta_e_per_filo(archivio):
     """2.6: Paolo pieno non ferma Marta."""
     adesso = time.time()
-    for n in range(promise_module.CEILING_IN_SOSPESO):
+    for n in range(promise_module.SUSPENDED_CAP):
         _crea(archivio, PAOLO, n, adesso=adesso)
 
     oltre = archivio.create(_chiedi(99, adesso=adesso), thread=PAOLO, now=adesso)
     assert "errore" in oltre
-    assert str(promise_module.CEILING_IN_SOSPESO) in oltre["errore"]
-    assert archivio._count(PAOLO, pending=True) == promise_module.CEILING_IN_SOSPESO
+    assert str(promise_module.SUSPENDED_CAP) in oltre["errore"]
+    assert archivio._count(PAOLO, pending=True) == promise_module.SUSPENDED_CAP
 
     assert "errore" not in archivio.create(_chiedi(0, adesso=adesso),
                                            thread=MARTA, now=adesso)
@@ -149,7 +149,7 @@ def test_il_tetto_delle_cinquanta_e_per_filo(archivio):
 def test_il_tetto_della_casa_regge_qualunque_numero_di_fili(archivio):
     """2.6 (ruling): il totale e' limitato anche con mille fili diversi."""
     adesso = time.time()
-    tetto = promise_module.HOUSE_CEILING_IN_SOSPESO
+    tetto = promise_module.HOUSE_SUSPENDED_CAP
     for n in range(tetto):
         _crea(archivio, ChatThread(f"persona:p{n}", "pannello"), n, adesso=adesso)
 
@@ -741,7 +741,7 @@ async def test_l_agenda_dichiara_le_promesse_che_non_mostra(archivio):
     I numeri si chiedono al tetto per filo, non si scrivono qui: 50 in
     sospeso piu' 7 disdette sono 57 promesse del filo."""
     adesso = time.time()
-    tetto = promise_module.CEILING_IN_SOSPESO
+    tetto = promise_module.SUSPENDED_CAP
     for n in range(7):
         disdetta = archivio.cancel(_crea(archivio, PAOLO, n, adesso=adesso),
                                    thread=PAOLO, now=adesso)

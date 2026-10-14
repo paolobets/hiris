@@ -204,6 +204,27 @@ def _entity_rows(house: House, entries: list[dict], depth: str, *, zone=None,
 #: dettaglio si costruisce qui, e la porta lo importa: una cifra sola.
 ROWS_MAX = 50
 
+#: Le chiavi di `oltre`, da ogni porta (C-66, 13/10/2026): `restano` sempre;
+#: `salta` per chiedere la pagina dopo; `suggerimento` come restringere o
+#: perche' la risposta si ferma li'; `disponibili` quante righe ci sono in
+#: tutto, quando si e' saltato oltre la fine; `gruppi` i gruppi da cui restano,
+#: nelle righe annidate di una scheda. Fino ad allora erano sei forme.
+BEYOND_KEYS = frozenset({"restano", "salta", "suggerimento", "disponibili", "gruppi"})
+
+
+def rows_left(left: int, *, skip: int | None = None, hint: str | None = None,
+              **more) -> dict:
+    """La forma unica di `oltre` (`BEYOND_KEYS`): `left` righe restano."""
+    out: dict = {"restano": left}
+    if skip is not None:
+        out["salta"] = skip
+    if hint is not None:
+        out["suggerimento"] = hint
+    out.update(more)
+    assert set(out) <= BEYOND_KEYS, set(out) - BEYOND_KEYS
+    return out
+
+
 #: Gli elenchi di righe annidati nel dettaglio completo, nell'ordine in cui
 #: si spende il tetto: prima le visibili, poi le nascoste.
 _NESTED_ROWS = ("entita", "entita_nascoste")
@@ -241,7 +262,7 @@ def _nested_rows(house: House, groups: dict[str, list[dict]], depth: str, hint: 
             out[key] = _entity_rows(house, kept, depth, zone=zone,
                                     translations=translations, judgments=judgments)
     if left:
-        out["oltre"] = {**left, "suggerimento": hint}
+        out["oltre"] = rows_left(sum(left.values()), hint=hint, gruppi=left)
     return out
 
 

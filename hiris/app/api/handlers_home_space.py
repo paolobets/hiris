@@ -27,6 +27,24 @@ from ..proxy.state_translations import read_for_house
 
 logger = logging.getLogger(__name__)
 
+#: Le parole con cui una persona legge i registri dell'anagrafe (C-10). Stavano
+#: nel JavaScript (`NOMI_REGISTRI`, common.js), legate alle tabelle da una
+#: prova: dalla Chiusura (D2) un vocabolario chiuso ha una casa sola, e la
+#: pagina lo riceve in `nomi_registri`. Le chiavi sono `reader.TABLES`, e
+#: `register_names()` le chiede a lei: un registro nuovo senza la sua parola
+#: esce col nome della tabella, mai vuoto.
+_REGISTER_WORDS = {
+    "piani": "Piani", "aree": "Aree", "dispositivi": "Dispositivi", "entita": "Entità",
+    "etichette": "Etichette", "categorie": "Categorie", "integrazioni": "Integrazioni",
+}
+
+
+def register_names() -> dict[str, str]:
+    """Il nome leggibile di ogni registro dell'anagrafe, nell'ordine di
+    `reader.TABLES`."""
+    return {table: _REGISTER_WORDS.get(table, table) for table in TABLES}
+
+
 #: Cio' che l'albero toglie dalla resa media di un'entita' (Tappa 9, F5, D1),
 #: ognuno col suo perche': `area` e' il ramo in cui l'entita' sta, lo stesso
 #: fatto scritto due volte; `attributi` sono le ceste dello stato, che la
@@ -111,6 +129,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # Un vocabolario, non un fatto della casa: esce anche qui, e la
             # risposta ha la stessa forma nei due rami.
             "nomi_misure": _MEASUREMENT_NAMES,
+            "nomi_registri": register_names(),
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi`,
@@ -164,6 +183,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # casa si legge: la tabella del nucleo, mandata a chi disegna l'albero
         # invece di ricopiata nel JavaScript (C-09, Tappa 4, Task 5).
         "nomi_misure": _MEASUREMENT_NAMES,
+        # I nomi dei registri, per leggere `conteggi` e `non_disponibili`
+        # (C-10): stessa ragione di `nomi_misure`.
+        "nomi_registri": register_names(),
         # Ogni entita' e' la resa media, meno `_TREE_DROPS` (Tappa 9, F5).
         "piani": _tree(house, translations, zone),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
@@ -196,9 +218,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # fatto diverso da un corpo assente, e non va confuso con esso.
             "senza_corpo": unknown_bodies,
             # Cio' che l'ultima lettura NON ha potuto concludere con
-            # certezza (id duplicati, script vuoti, voci malformate) e i
-            # file che non si sono letti, con la ragione. Li costruisce
-            # `behavior.reread()`.
+            # certezza e i file che non si sono letti, con la ragione. Li
+            # costruisce `behavior.reread()`, con le sue parole: oggi l'unico
+            # problema che scrive e' il `secrets.yaml` non letto (D-49).
             "problemi": store.behavior_problems(),
             "corpi_non_letti": store.unread_bodies(),
             # La replica conservata (G-16): `None` quando e' quella

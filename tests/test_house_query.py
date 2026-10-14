@@ -18,7 +18,7 @@ T0 = 1_790_700_000.0
 #: garanzia: un caso di prova con 50 righe ricche arriva a ~32.700 caratteri
 #: (re-review, 30/09/2026) -- oltre questa soglia, ma ~13.000 token, ben sotto
 #: il limite del ponte. Le case di questi cancelli stanno sotto i 30.000.
-BRIDGE_CEILING_CHARS = 30_000
+BRIDGE_CAP_CHARS = 30_000
 
 
 def _luce(i, a, **k):
@@ -479,7 +479,7 @@ def test_su_una_casa_grande_nessuna_risposta_supera_la_soglia_del_ponte():
     for argomenti in ({}, {"stato": "on"}, {"dominio": "light"}, {"salta": 50}):
         r = hq.query_house(House(casa, _specchio(stati)), [],
                            hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
-        assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CEILING_CHARS, argomenti
+        assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CAP_CHARS, argomenti
 
 
 # -- Review finale della fetta (30/09/2026): alias, filtri, riferimenti -------
@@ -730,8 +730,8 @@ def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():
     for salta in (10, 20):
         pagina, oltre = hq.page_rows(righe, salta, 4)
         assert pagina == []
-        assert oltre["disponibili"] == 10
-        assert f"salta={salta} supera le 10 righe" in oltre["salta_oltre_la_fine"]
+        assert oltre["disponibili"] == 10 and oltre["restano"] == 0
+        assert f"salta={salta} supera le 10 righe" in oltre["suggerimento"]
     assert hq.page_rows(righe, 20, 0) == ([], None)
     assert hq.page_rows([], 0, 4) == ([], None)
     risposta = _chiedi(dominio="light", salta=5)
@@ -805,3 +805,35 @@ def test_nessun_genere_del_comportamento_scritto_a_mano():
                     if isinstance(node, ast.Constant) and node.value in own]
              for name in ("house_query.py", "house_history.py")}
     assert found == {"house_query.py": [], "house_history.py": []}, found
+
+
+def test_si_ordina_per_stato_col_nome_del_campo():
+    """C-03: l'ordine si chiede col nome del campo su cui si ordina, `stato`.
+    `ordina="valore"` ordinava sul campo `stato` con un nome che il
+    vocabolario dichiara tolto (`field_vocabulary.FIELDS["stato"]`).
+    Rossa prima del fix: `stato` non era fra gli ordini."""
+    from hiris.app.home_space.field_vocabulary import FIELDS
+
+    assert "stato" in hq.ORDERS
+    assert not set(hq.ORDERS) & FIELDS["stato"].replaces
+    righe = [{"id": "b", "stato": "21.5"}, {"id": "c", "stato": "off"},
+             {"id": "a", "stato": "3"}]
+    assert [r["id"] for r in sorted(righe, key=hq._sort_key("stato"))] == ["a", "b", "c"]
+
+
+def test_oltre_ha_una_forma_sola():
+    """C-66: `oltre` aveva sei forme -- `{restano, salta}`, piu' `consiglio`
+    nella storia, `{disponibili, salta_oltre_la_fine}` oltre la fine,
+    `{restano, suggerimento}` nei calendari, `{restano}` nell'agenda,
+    `{entita, entita_nascoste, suggerimento}` nelle righe annidate. Ora le
+    compone `queries.rows_left`: `restano` sempre, e solo le chiavi di
+    `BEYOND_KEYS`."""
+    from hiris.app.home_space.queries import BEYOND_KEYS, rows_left
+
+    assert rows_left(3) == {"restano": 3}
+    assert rows_left(3, skip=7, hint="restringi") == {
+        "restano": 3, "salta": 7, "suggerimento": "restringi"}
+    _, oltre = hq.page_rows(list(range(10)), 20, 4)
+    assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 0
+    _, oltre = hq.page_rows(list(range(10)), 0, 4)
+    assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 6

@@ -84,6 +84,11 @@ NIGHTLY_MINUTE = 20
 #: e la riceve da `GET /api/mind/knowledge`.
 BACKFILL_EVERY_MINUTES = 5
 
+#: Ogni quanto gira l'analista (`server.py`, lavoro `hiris_mind_analyst`). La
+#: dice la pagina «Cosa fare» quando un giorno non e' ancora analizzato, e la
+#: riceve dal 404 di `GET /api/mind/analysis` (C-11, Chiusura).
+ANALYST_EVERY_MINUTES = 60
+
 #: Le chiavi del corpo di un episodio che entrano nell'indice: **cio' che
 #: dopo non si recupera piu'**, perche' dipende da com'era la casa allora.
 #:
@@ -560,6 +565,18 @@ def _split_value(line: dict):
             value, key=lambda k: (_KEY_ORDER.get(k, 9), str(k)))]
     return [(None, value)]
 
+
+def value_parts(line: dict) -> list[dict]:
+    """Le parti del valore di una misura, **gia' in ordine di lettura**:
+    `[{chiave, valore}]`, con `chiave` a `None` per un valore gia' numerico.
+
+    La pagina le riceve cosi' invece di ricopiare `_KEY_ORDER` (C-10,
+    13/10/2026): l'ordine in cui si raccontano «media, minimo, massimo» vive
+    qui, una volta. Una misura senza valore non ha parti.
+    """
+    return [{"chiave": k, "valore": v} for k, v in _split_value(line)
+            if v is not _MISSING]
+
 # ---------------------------------------------------------------------------
 # Il resoconto come lo legge la PAGINA (spec 2026-09-18 §3).
 #
@@ -618,6 +635,9 @@ def as_page(report: dict, *, judgments, manifest: Manifest,
     loro livello non dipende dai giudizi.
     """
     page = dict(report)
+    if report.get("misure") is not None:
+        page["misure"] = [{**m, "parti": value_parts(m)} if "valore" in m else m
+                          for m in report["misure"]]
     chronicle = report.get("cronaca")
     if chronicle is None:
         page["primo_piano"] = []

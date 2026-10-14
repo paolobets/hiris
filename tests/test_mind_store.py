@@ -1716,3 +1716,16 @@ def test_resoconto_e_analisi_ricevono_l_istante_da_chi_chiama(tmp_path):
     finally:
         store.close()
     assert righe == {"resoconto": 1_790_000_000.0, "analisi": 1_790_000_060.0}
+
+
+def test_count_proposals_conta_cio_che_proposals_elencherebbe(archivio):
+    """C-14 (13/10/2026): la pagina delle Costruzioni dichiara la finestra, e
+    il conto delle proposte a mano lo dice l'archivio con lo stesso filtro.
+    Rossa prima della correzione: `AttributeError: count_proposals`."""
+    for impronta in ("a", "b", "c"):
+        archivio.add_proposal(text=impronta, perche="x", fingerprint=impronta,
+                              prova={"v": 1}, stakes=None, now_ts=1.0)
+    assert len(archivio.proposals(limit=2)) == 2
+    assert archivio.count_proposals() == 3
+    assert archivio.count_proposals(pending_only=True) == len(
+        archivio.proposals(pending_only=True))

@@ -31,10 +31,10 @@ from ..storage import (
     table_columns,
 )
 from .promise import (
-    CEILING_IN_SOSPESO,
-    HOUSE_CEILING_IN_SOSPESO,
+    HOUSE_SUSPENDED_CAP,
     STATES_CONCLUSI,
     STATES_ESITO,
+    SUSPENDED_CAP,
     serializza,
     validate,
 )
@@ -192,7 +192,7 @@ def _migration_4(conn) -> None:
     `ALTER TABLE` solo se la colonna manca -- un archivio che nasce oggi la
     porta gia' da `_SCHEMA` (stesso pattern di `revisions.py::_migration_2`).
     **Nessun indice**: le letture per filo restano entro il tetto della casa
-    (`HOUSE_CEILING_IN_SOSPESO` in sospeso, piu' novanta giorni di storico),
+    (`HOUSE_SUSPENDED_CAP` in sospeso, piu' novanta giorni di storico),
     e l'indice su `stato` le serve gia'. Le righe esistenti restano NULL:
     sono di prima, e le adotta il proprietario (`chat_thread.adopt_if_owner`).
     """
@@ -347,23 +347,23 @@ class AgendaStore:
 
         Due tetti, in quest'ordine: quello del filo (e' il caso normale, e il
         messaggio parla delle TUE promesse) e quello della casa (vedi
-        `promise.HOUSE_CEILING_IN_SOSPESO` per il perche').
+        `promise.HOUSE_SUSPENDED_CAP` per il perche').
         """
         reason = validate(data, now=now)
         if reason is not None:
             return {"errore": reason}
         with self._lock:
             mine = self._count(thread, pending=True)
-            if mine >= CEILING_IN_SOSPESO:
+            if mine >= SUSPENDED_CAP:
                 return {"errore": (
-                    f"hai gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' "
+                    f"hai gia' {SUSPENDED_CAP} promesse in sospeso, che e' "
                     "il tetto che HIRIS si e' dato: disdicine una prima di "
                     "farne un'altra."
                 )}
             house = self._conn.execute(
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
-            if house >= HOUSE_CEILING_IN_SOSPESO:
+            if house >= HOUSE_SUSPENDED_CAP:
                 # Senza numeri e senza «gli altri» (extra 1 del Task 3): chi
                 # legge questo rifiuto non deve poter contare l'attivita' dei
                 # fili che non vede.
@@ -495,7 +495,7 @@ class AgendaStore:
         # La frase dello stato, non la parola dell'archivio (C-54, Tappa 8):
         # «e' gia' in_corso» arrivava al modello, e da li' a una persona.
         return {
-            "errore": ("quella promessa non e' piu' in attesa ({}): non si disdice, "
+            "errore": ("quella promessa non è più in attesa ({}): non si disdice, "
                        "si legge.").format(readable(row["stato"]))
         }
 
@@ -525,12 +525,12 @@ class AgendaStore:
         non c'e'.
         """
         _REASON_FAI = (
-            "l’add-on si e' fermato mentre la manteneva: non l’ho ripetuta, "
-            "perche' non so se fosse gia' partita.")
+            "l’add-on si è fermato mentre la manteneva: non l’ho ripetuta, "
+            "perché non so se fosse già partita.")
         _REASON_CHIEDI = (
-            "l’add-on si e' fermato mentre guardavo: non ho toccato niente in "
-            "casa, ma non so se la notifica fosse gia' partita. Non l’ho "
-            "ripetuta: l’ora che mi avevi dato e' passata, e una risposta "
+            "l’add-on si è fermato mentre guardavo: non ho toccato niente in "
+            "casa, ma non so se la notifica fosse già partita. Non l’ho "
+            "ripetuta: l’ora che mi avevi dato è passata, e una risposta "
             "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(
@@ -607,7 +607,7 @@ class AgendaStore:
 
     def _count(self, thread: ChatThread, *, pending: bool) -> int:
         """Quante promesse ha questo filo -- con `pending`, quante in sospeso:
-        cio' che il tetto per filo (`CEILING_IN_SOSPESO`) misura. Senza il
+        cio' che il tetto per filo (`SUSPENDED_CAP`) misura. Senza il
         lock: la chiamano `create` e `page`, che lo tengono gia'."""
         where = (f"stato IN ({_SOSPESI}) AND {thread_condition()}" if pending
                  else thread_condition())

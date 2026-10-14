@@ -41,6 +41,18 @@ from .scope import ANALYST, OWNER
 #: sotto il quale il conto non si puo' fare affatto.
 MINIMUM_HISTORY = 3
 
+#: I tre inneschi **a parole**, per chi legge un'osservazione: «1» non vuol
+#: dire niente da solo (fondamenta 1). Li attacca `mind/view` a ogni
+#: osservazione, per la pagina «Cosa fare» e per lo strumento `mind`; fino al
+#: 13/10/2026 la pagina ne teneva una copia sua (C-11). Il prompt
+#: dell'analista (`analyst_turn`) dice la stessa idea al modello, con le sue
+#: parole.
+TRIGGER_WORDS = {
+    1: "è cambiato, e non è spiegato",
+    2: "è stabile e costa",
+    3: "non c’è più",
+}
+
 
 #: Le chiavi che fanno l'IDENTITA' di un'osservazione -- e quindi della domanda
 #: che l'attuatore ne fa, e della proposta che ne nasce: chi, cosa si misura, quale

@@ -83,7 +83,7 @@ window.HirisWatcherLavoro = (function () {
   'use strict';
 
   var S = HirisWatcherShared;
-  var line = S.line;
+  var line = pageLine;
   var subheading = S.subheading;
   var read = S.read;
   var write = S.write;
@@ -98,9 +98,6 @@ window.HirisWatcherLavoro = (function () {
   var fmtCount = S.fmtCount;
   var fmtDuration = S.fmtDuration;
   var fmtAgo = S.fmtAgo;
-  var TONE_PROBLEM = S.TONE_PROBLEM;
-  var TONE_CALM = S.TONE_CALM;
-  var TONE_UNKNOWN = S.TONE_UNKNOWN;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
 
   /* I tre autori possibili di una decisione dello scope (`author` in
@@ -466,7 +463,7 @@ window.HirisWatcherLavoro = (function () {
       return;
     }
     /* Tecnico e' un soggetto con un prefisso (`log:`, `problema:`,
-       `integrazione:`, `automazione:`): non e' un'entita' della casa, e
+       `integrazione:`, `automazione:`): non e' una cosa della casa, e
        nessuno lo ha scelto. La regola e' quella che la pagina usa gia'
        ovunque per riconoscerli (`parseSubjectPrefix`). */
     var tecnici = watching.filter(function (v) { return !!parseSubjectPrefix(v.soggetto).kind; });
@@ -671,24 +668,18 @@ window.HirisWatcherLavoro = (function () {
       Math.max(0, Date.now() / 1000 - tentativi[inizio + run - 1].quando_ts));
   }
 
-  var ATTEMPT_LABEL = {
-    accodata: 'In attesa', riuscito: 'Riuscito', non_riuscito: 'Non riuscito',
-    scaduta: 'Scaduta'
-  };
-  /* Le stesse tre pastiglie degli stati (`STATE_BADGE`, common.js): lo stesso
-     vocabolario visivo per lo stesso genere di fatto, invece di un semaforo
-     nuovo che questa pagina non ha mai avuto. */
-  /* I due esiti che sono un GUASTO, e contano nella serie. «Scaduta» e' il
-     piano che non ha risposto entro la scadenza; «non riuscito» e' una
-     risposta che non si e' potuta usare, o un modello che non ha risposto
-     affatto. Sono cause diverse e la pagina le nomina diverse, ma per la
-     domanda «sta funzionando?» pesano uguale. */
-  var FAILED = { non_riuscito: true, scaduta: true };
-
-  var ATTEMPT_BADGE = {
-    accodata: 'badge-off', riuscito: 'badge-on', non_riuscito: 'badge-err',
-    scaduta: 'badge-err'
-  };
+  /* L'esito di un tentativo lo legge il server (`attempt_out`,
+     api/handlers_mind.py, G-25): la parola (`esito_leggibile`) e i tre segni
+     `in_attesa`, `riuscito`, `guasto`. «Scaduta» e «non riuscito» sono
+     cause diverse e si dicono diverse, ma per la domanda «sta
+     funzionando?» pesano uguale: tutte e due sono un `guasto`. Qui resta
+     solo il colore, le stesse pastiglie degli stati (`STATE_BADGE`,
+     common.js). */
+  function attemptBadge(t) {
+    if (t.guasto) return 'badge-err';
+    if (t.riuscito) return 'badge-on';
+    return 'badge-off';
+  }
 
   /* 6. I tentativi: **«sta funzionando?»**, che NON e' la domanda del blocco
      qui sopra. `riconsiderazione` dice quand'e' l'ultima volta che la casa e'
@@ -739,11 +730,11 @@ window.HirisWatcherLavoro = (function () {
     // fetta nasce, ricostruito dalla pagina che doveva toglierlo (trovato
     // dalla review indipendente dell'11/09/2026, eseguendo).
     var inizio = 0;
-    while (inizio < tentativi.length && tentativi[inizio].esito === 'accodata') inizio += 1;
+    while (inizio < tentativi.length && tentativi[inizio].in_attesa) inizio += 1;
     var run = 0;
     while (inizio + run < tentativi.length
-           && FAILED[tentativi[inizio + run].esito]) run += 1;
-    var attesa = last.esito === 'accodata';
+           && tentativi[inizio + run].guasto) run += 1;
+    var attesa = !!last.in_attesa;
 
     if (attesa && run === 0) {
       line(body, 'In corso da ' + fmtDuration(Math.max(0, Date.now() / 1000 - last.quando_ts)) +
@@ -753,7 +744,7 @@ window.HirisWatcherLavoro = (function () {
         ', ma i ' + run + ' tentativi di fila non sono riusciti' +
         _sinceWhen(tentativi, inizio, run) + '. L’ultimo fallito: ' +
         (tentativi[inizio].dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
-    } else if (last.esito === 'riuscito') {
+    } else if (last.riuscito) {
       line(body, 'L’ultimo tentativo è riuscito, ' + fmtAgo(last.quando_ts) + ': ' +
         (last.dettaglio || 'senza dettagli') + '.', TONE_CALM);
     } else if (run === 1) {
@@ -775,7 +766,7 @@ window.HirisWatcherLavoro = (function () {
       // funzionando?» moriva. Basta un esito nuovo, e `scaduta` e' arrivato
       // con quella stessa fetta.
       line(body, 'L’ultimo tentativo, ' + fmtAgo(last.quando_ts) + ': ' +
-        (ATTEMPT_LABEL[last.esito] || last.esito) + ' — ' +
+        (last.esito_leggibile || last.esito) + ' — ' +
         (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
     }
 
@@ -788,8 +779,8 @@ window.HirisWatcherLavoro = (function () {
           var item = el('li');
           item.style.cssText = 'display:flex;align-items:baseline;gap:8px;' +
             'margin-bottom:6px;font-size:var(--fs-13);flex-wrap:wrap';
-          item.appendChild(el('span', 'agent-badge ' + (ATTEMPT_BADGE[t.esito] || 'badge-off'),
-            ATTEMPT_LABEL[t.esito] || t.esito));
+          item.appendChild(el('span', 'agent-badge ' + attemptBadge(t),
+            t.esito_leggibile || t.esito));
           item.appendChild(el('span', 'field-hint',
             fmtWhenFull(t.quando_ts) + ' · ' + fmtAgo(t.quando_ts)));
           item.appendChild(el('span', null, t.dettaglio || ''));

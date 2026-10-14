@@ -1,8 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* La scheda «Il giorno» (config/watcher-giorno.js): il resoconto di UN
@@ -33,11 +30,21 @@ function resoconto(extra) {
   return Object.assign({ giorno: '2026-09-13', misure: [], forme: [], cronaca: [] }, extra || {});
 }
 
+/* Le `parti` le scrive il server (`report.value_parts`, C-10): la finta le
+   ricava dal valore nell'ordine in cui la prova lo scrive, senza ricopiare
+   l'ordine di lettura, che vive solo in `mind/report.py`. */
+function partiDi(valore) {
+  if (valore === null || typeof valore !== 'object') return [{ chiave: null, valore: valore }];
+  return Object.keys(valore).map((k) => ({ chiave: k, valore: valore[k] }));
+}
+
 function misura(extra) {
-  return Object.assign({
+  const m = Object.assign({
     soggetto: 'dev1', nome: 'Inverter', misura: 'prodotta',
     operazione: 'somma_periodo', valore: 23.71, unita: 'kWh', copertura: 1,
   }, extra || {});
+  if ('valore' in m && !('parti' in m)) m.parti = partiDi(m.valore);
+  return m;
 }
 
 /* Una misura che NON si e' potuta fare: `valore` va **tolta**, non messa a
@@ -46,6 +53,7 @@ function misura(extra) {
 function nonCalcolabile(nome, perche) {
   const m = misura({ misura: nome, non_calcolabile: perche });
   delete m.valore;
+  delete m.parti;
   delete m.unita;
   delete m.copertura;
   return m;
@@ -627,26 +635,20 @@ test("seam _rendiResoconto: un valore composto MISTO non prende l'unita'", () =>
   assert.doesNotMatch(testo, /°C/);
 });
 
-test('le parti di un valore composto: lo stesso ordine in report.py e in watcher-giorno.js', () => {
-  /* Due elenchi della stessa cosa in due lingue: senza questa prova
-     divergerebbero al primo ritocco, e la pagina direbbe «massimo, media,
-     minimo» mentre il documento dice «media, minimo, massimo» -- lo stesso
-     dato in un ordine che nessuno userebbe parlando.
+test("seam _rendiResoconto: le parti si leggono nell'ordine in cui arrivano", () => {
+  /* L'ordine e' del server (`report.value_parts`): la pagina non riordina.
+     Mutazione che la uccide: rimettere un ordinamento nella pagina. */
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura({ misura: 'temperatura_media_min_max', operazione: 'media_min_max',
+      unita: '°C', valore: { media: 24.12, minimo: 23.4, massimo: 24.3 },
+      parti: [{ chiave: 'massimo', valore: 24.3 }, { chiave: 'media', valore: 24.12 },
+              { chiave: 'minimo', valore: 23.4 }] })],
+  }));
 
-     Mutazione che la uccide: aggiungere una chiave da una parte sola. */
-  const py = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..',
-    'hiris', 'app', 'mind', 'report.py'), 'utf8');
-  const blocco = py.split('_KEY_ORDER = {')[1].split('}')[0];
-  const chiaviPython = [...blocco.matchAll(/"(\w+)":\s*\d+/g)].map((m) => m[1]);
-
-  const js = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..',
-    'hiris', 'app', 'static', 'config', 'watcher-giorno.js'), 'utf8');
-  const elenco = js.split('MEASURE_KEY_ORDER = [')[1].split(']')[0];
-  const chiaviJs = [...elenco.matchAll(/'(\w+)'/g)].map((m) => m[1]);
-
-  assert.deepEqual(chiaviJs, chiaviPython);
+  const testo = corpo.textContent;
+  assert.match(testo, /massimo 24\.3 °C/);
+  assert.ok(testo.indexOf('massimo') < testo.indexOf('media 24.12'));
 });
-
 
 /* -------------------------------------------------------------------------
    Gli elenchi lunghi della scheda (spec §6 applicata al §4A).

@@ -192,6 +192,24 @@ test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', 
   assert.match(testo, /modello \(ponte\)/);
 });
 
+test('seam _rendiSapere: il nome del dispositivo e\' la riga principale, l\'id resta sotto (C-13)', () => {
+  /* Il server manda `nome` accanto a `soggetto` (`_fact_row`, C-13). Senza
+     nome resta l'id, dichiarato come identificatore.
+     Mutazione che la uccide: tornare a `describeWatchedSubject(soggetto, null)`. */
+  const { corpo } = rendiSapere(sapereFinto({ non_capito: [
+    { specie: 'dispositivo', soggetto: 'a1b2c3', nome: 'Inverter del tetto',
+      campo: 'ricetta_non_capita', valore: 'primo', provenienza: 'dedotto' },
+    { specie: 'dispositivo', soggetto: 'd4e5f6', nome: null,
+      campo: 'ricetta_non_capita', valore: 'secondo', provenienza: 'dedotto' },
+  ] }));
+  const titoli = [...corpo.querySelectorAll('.sc-row-title')].map((t) => t.textContent);
+  assert.ok(titoli.includes('Inverter del tetto'), titoli.join(' | '));
+  assert.ok(titoli.some((t) => /identificatore:\s*d4e5f6/.test(t)), titoli.join(' | '));
+  const ids = [...corpo.querySelectorAll('.field-hint.text-mono')].map((n) => n.textContent);
+  assert.ok(ids.includes('a1b2c3'), 'l\'id resta visibile sotto il nome');
+  assert.ok(!ids.includes('d4e5f6'), 'senza nome l\'id non si ripete sotto');
+});
+
 test('seam _rendiSapere: se ha capito tutto, la sezione non compare (e i numeri lo dicono lo stesso)', () => {
   /* **Cambiato il 20/09** (spec §4C: «"Non capito" non compare quando è
      zero»). Prima la sezione occupava la prima riga della scheda per dire che

@@ -47,9 +47,11 @@
 window.HirisTreeRoute = (function () {
   'use strict';
 
-  var TONE_UNKNOWN = 'color:var(--warn-ink)';
-  var TONE_PROBLEM = 'color:var(--err-ink)';
-  var TONE_CALM = 'color:var(--text-3)';
+  /* Toni, righe, elenchi, sezioni e la lettura vivono in common.js (C-20). */
+  var line = pageLine;
+  var list = pageList;
+  var section = pageSection;
+  var read = readJson;
 
   /* Gli stessi id letterali che `topology.py` usa per le pseudo-aree e i
      due piani-contenitore (`_ID_*`). Non sono un'API pubblica dichiarata,
@@ -108,8 +110,8 @@ window.HirisTreeRoute = (function () {
      si legge -- cosi' la stessa casa si legge uguale sul nucleo del modello e
      su questa pagina, e la pagina non ne tiene una copia (C-09). Una chiave
      che HA manda e che la mappa non conosce ancora NON sparisce: compare
-     col suo nome grezzo, stessa regola di `NOMI_REGISTRI` (common.js) e
-     delle "chiavi sconosciute" di dashboard.js. */
+     col suo nome grezzo, stessa regola dei nomi dei registri
+     (`nomiRegistriInItaliano`, common.js) e delle "chiavi sconosciute" di dashboard.js. */
   function homeMeasurements(unit, names) {
     if (!unit) return [];
     names = names || {};
@@ -133,33 +135,6 @@ window.HirisTreeRoute = (function () {
 
   /* Quante voci di un elenco si nominano prima di «e altre N». */
   var NAMED_AT_MOST = 10;
-
-  function line(parent, text, style) {
-    var p = el('p', 'sc-desc', text);
-    if (style) p.style.cssText = style;
-    parent.appendChild(p);
-    return p;
-  }
-
-  function list(parent, voci) {
-    var ul = el('ul');
-    ul.style.cssText = 'margin:4px 0 0;padding-left:20px;color:var(--text-2);font-size:var(--fs-13)';
-    voci.forEach(function (v) { ul.appendChild(el('li', null, v)); });
-    parent.appendChild(ul);
-    return ul;
-  }
-
-  function section(outlet, title, subtitle) {
-    var card = el('section', 'section-card');
-    var head = el('div', 'sc-header');
-    head.appendChild(el('h2', 'sc-title', title));
-    if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
-    card.appendChild(head);
-    var body = el('div', 'sc-body');
-    card.appendChild(body);
-    outlet.appendChild(card);
-    return body;
-  }
 
   /* --------------------------------------------------------- sistema di riferimento */
 
@@ -448,8 +423,8 @@ window.HirisTreeRoute = (function () {
   /* Per ogni registro che non ha risposto, la copia che l'anagrafe tiene al
      suo posto e di quando e' (`non_disponibili_letti_il`, S-36): `null` se
      quel registro non ha mai risposto. Senza la mappa, i soli nomi. */
-  function unavailableWithCopy(unavailable, since) {
-    var names = nomiRegistriInItaliano(unavailable);
+  function unavailableWithCopy(unavailable, since, registerNames) {
+    var names = nomiRegistriInItaliano(unavailable, registerNames);
     if (!since) return names;
     return unavailable.map(function (entry, i) {
       var at = since[entry];
@@ -592,7 +567,7 @@ window.HirisTreeRoute = (function () {
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
         TONE_PROBLEM);
       list(body, unavailableWithCopy(home_space.non_disponibili,
-        home_space.non_disponibili_letti_il));
+        home_space.non_disponibili_letti_il, home_space.nomi_registri));
     } else {
       line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }
@@ -611,21 +586,6 @@ window.HirisTreeRoute = (function () {
       return;
     }
     floor.forEach(function (floor) { renderFloor(body, floor); });
-  }
-
-  function renderTreeError(outlet, err) {
-    console.error('[albero-della-casa] lettura fallita', err);
-    var body = section(outlet, 'Albero della casa', null);
-    line(body,
-      'Non è stato possibile leggere l’albero della casa. Questo non significa che la casa sia vuota: ' +
-      'la richiesta non è andata a buon fine.', TONE_PROBLEM);
-  }
-
-  function read(path) {
-    return fetch(path).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    });
   }
 
   function mount() {
@@ -653,7 +613,9 @@ window.HirisTreeRoute = (function () {
       renderTree(outlet, home_space);
     }, function (err) {
       if (loading.parentNode) loading.parentNode.removeChild(loading);
-      renderTreeError(outlet, err);
+      renderSectionError(outlet, 'Albero della casa',
+        'Non è stato possibile leggere l’albero della casa. Questo non significa che la casa sia vuota: ' +
+        'la richiesta non è andata a buon fine.', err);
     });
   }
 

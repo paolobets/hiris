@@ -32,7 +32,7 @@ commit. Si conta per (file, nome) e non per file: una copia guarita e una nuova 
 compenserebbero, e il cancello resterebbe verde.
 
 **«Puo' solo accorciarsi» e' un tetto, non una serratura.** Il tetto
-(`CEILING`) e' la somma dei conti piu' i secondi chiamanti ammessi da
+(`CAP`) e' la somma dei conti piu' i secondi chiamanti ammessi da
 `SHARED_READS`, e la prova lo vuole ESATTO: scende a ogni copia che esce.
 Niente impedisce meccanicamente di alzarlo insieme all'elenco
 -- servirebbe la storia di git, che in CI non c'e' -- ma farlo e' una riga di
@@ -134,7 +134,7 @@ OWNERS = {
 #: campo omonimo dell'istanza (`disabilitata_da`, due letture in `house.py`,
 #: dichiarate nell'elenco con la ragione). Era 13 prima della Tappa 7, Task 3:
 #: `workshop._reread` non legge piu' gli stati (A-15).
-CEILING = 12
+CAP = 12
 
 #: Le letture del client che il cancello NON puo' attribuire, perche' il nome
 #: e' anche di un'altra funzione del prodotto. Lista di AMMISSIONE: una voce
@@ -631,8 +631,8 @@ def test_la_regola_del_fuori_vive_in_topology_con_le_sue_cause():
 
 def test_l_elenco_puo_solo_accorciarsi():
     total = sum(_known().values()) + sum(len(extra) for extra in SHARED_READS.values())
-    assert total == CEILING, (
-        f"le eccezioni sommano {total}, il tetto e' {CEILING}: quando una copia esce "
+    assert total == CAP, (
+        f"le eccezioni sommano {total}, il tetto e' {CAP}: quando una copia esce "
         "si abbassa il tetto, mai il contrario")
 
 

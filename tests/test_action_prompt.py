@@ -226,7 +226,7 @@ def test_entrambi_i_percorsi_vietano_di_inventare_una_causa():
         assert "problema di comunicazione" in basso and "guasto" in basso, (
             f"il prompt del percorso {percorso} non vieta piu' la diagnosi "
             "inventata: il modello non ha nessun dato sul dispositivo, e "
-            "mandare qualcuno a cercare un guasto inesistente e' peggio che "
+            "mandare qualcuno a cercare un guasto inesistente è peggio che "
             "dire «non lo so»")
         assert "tapparella" in basso or "valvola" in basso, (
             f"il prompt del percorso {percorso} vieta la diagnosi senza dare "
@@ -430,7 +430,7 @@ def test_il_prompt_promette_almeno_le_chiavi_che_raccontano_l_esito():
             assert f"`{chiave}`" in testo, (
                 f"il prompt del percorso {percorso} non nomina piu' `{chiave}`: "
                 "il modello non ha modo di sapere dove guardare per raccontare "
-                "cosa e' successo davvero")
+                "cosa è successo davvero")
 
 
 # -- 5. l'azione che non si vede -------------------------------------------

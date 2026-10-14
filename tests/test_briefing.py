@@ -124,7 +124,7 @@ def test_il_taglio_non_e_mai_silenzioso():
     # (tre lettere comunissime in italiano) -- non dimostrava che il taglio
     # fosse scritto DENTRO il nucleo. Qui si verifica la frase vera, dentro
     # la sezione dedicata, col conteggio giusto.
-    sezione_lacune = testo.split("## Cio' che HIRIS ignora")[1]
+    sezione_lacune = testo.split("## Ciò che HIRIS ignora")[1]
     assert "ricordi non inclusi" in sezione_lacune or "ricordo non incluso" in sezione_lacune
     assert str(riepilogo["excluded_memories"]) in sezione_lacune
 
@@ -288,8 +288,8 @@ def test_un_piano_mostra_l_id_accanto_al_nome_nell_albero():
 
 def test_un_automazione_e_uno_script_mostrano_l_id_accanto_al_nome():
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    sezione_comportamento = testo.split("## Cio' che la casa fa gia' da sola")[-1].split(
-        "## Cio' che le persone")[0]
+    sezione_comportamento = testo.split("## Ciò che la casa fa già da sola")[-1].split(
+        "## Ciò che le persone")[0]
     # Senza il suffisso «(automazione)»/«(script)» dal 30/09/2026: il genere lo
     # dice l'id (test_nucleo_stabile::test_la_riga_del_comportamento_non_ripete_il_genere).
     assert "Sveglia (id: automation.sveglia)" in sezione_comportamento
@@ -303,8 +303,8 @@ def test_stato_vuoto_si_dichiara_non_letto():
     allora la prova chiedeva che «Notevole adesso» non dicesse «Niente di
     notevole», frase che non esiste piu'."""
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, {})
-    assert "non si e' potuto guardare" in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
+    assert "non si è potuto guardare" in testo
+    assert any("non è stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 def test_tutte_entita_unknown_si_dichiara_non_letto():
@@ -313,7 +313,7 @@ def test_tutte_entita_unknown_si_dichiara_non_letto():
     non e' un dato, e' l'assenza di un dato, e il nucleo lo dichiara."""
     stato_unknown = {e["id"]: "unknown" for e in _CASA["entita"]}
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, stato_unknown)
-    assert "non si e' potuto guardare" in testo
+    assert "non si è potuto guardare" in testo
 
 
 def test_chiamante_puo_dichiarare_stato_non_affidabile():
@@ -324,11 +324,11 @@ def test_chiamante_puo_dichiarare_stato_non_affidabile():
               "sensor.cucina_t": "19.5", "binary_sensor.porta": "off"}
     testo_dichiarato, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, calma,
                                   reliable_state=False)
-    assert "non si e' potuto guardare" in testo_dichiarato
+    assert "non si è potuto guardare" in testo_dichiarato
     # la stessa identica casa calma, SENZA la dichiarazione, non lo dice --
     # la firma di prima non lasciava scelta al chiamante.
     testo_normale, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, calma)
-    assert "non si e' potuto guardare" not in testo_normale
+    assert "non si è potuto guardare" not in testo_normale
 
 
 def test_casa_vuota_con_stato_vuoto_non_e_uno_stato_non_letto():
@@ -336,7 +336,7 @@ def test_casa_vuota_con_stato_vuoto_non_e_uno_stato_non_letto():
     guardare, e il nucleo non deve dichiarare di non aver potuto farlo."""
     vuota = {chiave: [] for chiave in _CASA}
     testo, _ = compose(vuota, [], [], {})
-    assert "non si e' potuto guardare" not in testo
+    assert "non si è potuto guardare" not in testo
 
 
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
@@ -410,8 +410,8 @@ def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
     assert len(righe_area) == 20, "la mappa delle aree deve sopravvivere col tetto di default"
 
-    sezione_comportamento = testo.split("## Cio' che la casa fa gia' da sola")[-1].split(
-        "## Cio' che le persone")[0]
+    sezione_comportamento = testo.split("## Ciò che la casa fa già da sola")[-1].split(
+        "## Ciò che le persone")[0]
     righe_automazioni = [l for l in sezione_comportamento.splitlines()
                          if l.strip().startswith("- Automazione")]
     assert len(righe_automazioni) == 40, "le automazioni devono sopravvivere col tetto di default"
@@ -437,8 +437,8 @@ def test_registro_entita_caduto_rende_lo_stato_inaffidabile():
                   "light.corridoio": "on", "light.bagno": "on"}
     testo, riepilogo = compose(casa, [], [], stato_vivo, unavailable=("entita",),
                                reliable_state=True)
-    assert "non si e' potuto guardare" in testo
-    assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
+    assert "non si è potuto guardare" in testo
+    assert any("non è stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
 def test_avviso_corpi_mancanti_conta_non_elenca():
@@ -458,7 +458,7 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
     # sola" (`_behavior_lines` marca ogni voce senza corpo in linea):
     # e' l'AVVISO che non deve piu' duplicarli per esteso, non il nucleo
     # intero a doverli nascondere.
-    sezione_lacune = testo.split("## Cio' che HIRIS ignora")[1]
+    sezione_lacune = testo.split("## Ciò che HIRIS ignora")[1]
     assert "Scena importata" not in sezione_lacune
 
 
@@ -1039,7 +1039,7 @@ def test_un_comportamento_mai_letto_e_conservato_lo_dice_senza_data():
     _, summary = compose(_CASA, [], _RICORDI, _STATO,
                          behavior_kept={"motivo": "inventario non pronto",
                                         "letto_il": None})
-    assert any("non si e' ancora potuto leggere (inventario non pronto)" in a
+    assert any("non si è ancora potuto leggere (inventario non pronto)" in a
                for a in summary["notices"])
 
 

@@ -20,6 +20,7 @@ from hiris.app.api.handlers_settings import (
 )
 from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
 from hiris.app.chat_store import close_all_stores
+from hiris.app.claude_runner import THINKING_BUDGET_MIN
 from hiris.app.server import create_app
 
 ROTTA = "/api/chat-settings"
@@ -85,6 +86,9 @@ async def test_get_porta_anche_i_modi_ammessi_e_il_prompt_di_default(client):
     body = await (await client.get(ROTTA)).json()
     assert body["response_modes"] == list(RESPONSE_MODES)
     assert body["default_system_prompt"] == DEFAULT_SYSTEM_PROMPT
+    # Il minimo del ragionamento, che la pagina scrive nella descrizione
+    # (C-11): lo stesso numero con cui `claude_runner` lo spegne.
+    assert body["thinking_budget_min"] == THINKING_BUDGET_MIN
 
 
 @pytest.mark.asyncio
@@ -439,7 +443,8 @@ async def test_il_get_non_porta_piu_un_modello(client):
     ESATTO delle chiavi, non l'assenza di una: un campo aggiunto in silenzio è
     lo stesso difetto della prossima volta."""
     body = await (await client.get(ROTTA)).json()
-    assert set(body) == set(FIELDS) | {"response_modes", "default_system_prompt"}
+    assert set(body) == set(FIELDS) | {"response_modes", "default_system_prompt",
+                                       "max_message_chars", "thinking_budget_min"}
 
 
 def test_model_non_e_piu_un_campo_ammesso():
@@ -453,3 +458,19 @@ def test_model_non_e_piu_un_campo_ammesso():
         "thinking_budget", "max_chat_turns", "restrict_to_home",
         "retention_days",
     )
+
+
+@pytest.mark.asyncio
+async def test_il_tetto_del_messaggio_e_uno_per_la_chat_e_per_la_pagina(client):
+    """Il 413 di `POST /api/chat` e il `max_message_chars` che la pagina mette
+    sul campo sono lo stesso numero (`chat_settings.MESSAGE_CAP`, 13/10/2026):
+    prima il 4000 era scritto in linea nella rotta e la pagina non lo sapeva.
+
+    Mutazione ESEGUITA: il 4000 rimesso in linea in `handle_chat` e
+    `MESSAGE_CAP` a 3000 -- rossa."""
+    cap = (await (await client.get("/api/chat-settings")).json())["max_message_chars"]
+    assert cap > 0
+    troppo = await client.post("/api/chat", json={"message": "x" * (cap + 1)},
+                               headers={"X-Requested-With": "fetch"})
+    assert troppo.status == 413
+    assert str(cap) in (await troppo.json())["error"]

@@ -12,6 +12,7 @@ from dataclasses import replace
 import pytest
 
 from hiris.app.home_space import tools
+from hiris.app.home_space.house_query import page_rows
 from hiris.app.home_space.tools import CharCap, ToolDispatcher
 from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.usage.giro import pesa_in_caratteri
@@ -351,3 +352,17 @@ async def test_history_scende_di_profondita(tmp_path, monkeypatch):
                         replace(riga, cap=CharCap(tetto, "12/10/2026")))
     risposta = await d.dispatch("history", argomenti)
     assert risposta["profondita"] == "media" and pesa_in_caratteri(risposta) <= tetto
+
+
+def test_oltre_la_fine_il_tetto_non_copre_il_suggerimento_della_pagina():
+    """C-66 (N156-5, giro 156): oltre la fine `oltre` porta `restano: 0` e
+    il suggerimento di `page_rows` («le righe si leggono da salta=0»). La
+    frase del tetto parla delle voci che restano, e qui non ne resta
+    nessuna: non deve prenderne il posto.
+
+    Mutazione ESEGUITA: `not beyond.get("restano")` riportato a
+    `"restano" not in beyond` in `_cap_note` -- rossa."""
+    _, beyond = page_rows(["a", "b", "c"], 5, 10)
+    assert beyond["restano"] == 0
+    risposta = tools._cap_note({"voci": [], "oltre": beyond}, CharCap(10, "12/10/2026"))
+    assert risposta["oltre"] == beyond

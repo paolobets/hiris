@@ -143,13 +143,22 @@
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
+  /* La frase del 413 e' del server (`handlers_chat`, col tetto di
+     `chat_settings.MESSAGE_CAP`): qui si aggiunge solo il consiglio (N155-2,
+     giro 155: la pagina la riscriveva). Il ripiego vale per un 413 che non
+     viene dalla nostra rotta (un proxy davanti). */
+  function tooLongText(serverText) {
+    return (serverText || 'Il messaggio è troppo lungo.')
+      + ' Accorcialo o dividilo in due messaggi.';
+  }
+
   async function send(text) {
     text = (text !== undefined) ? text : state.els.input.value.trim();
     if (!text || state.isLoading) return;
     state.els.input.value = '';
     autoResize();
     setLoadingState(true);
-    window.HirisChatMessages.appendMsg('user', text);
+    var userRow = window.HirisChatMessages.appendMsg('user', text);
     /* L'indicatore d'attesa e la risposta sono LO STESSO NODO, su tutti e due i
        percorsi. Prima il ramo diretto creava una riga d'attesa, la rimuoveva e
        ne aggiungeva un'altra: un fotogramma di vuoto, un cambio d'altezza e uno
@@ -180,6 +189,16 @@
         window.HirisChatMessages.waitSafeOnServer(pending, CHAT_POLL_MAX_MS);
         handedOff = true;
         pollChatReply(data.job_id, pending);
+        return;
+      }
+      if (r.status === 413) {
+        /* Troppo lungo (parere ux-ui-specialist, 13/10/2026): il server non
+           l'ha preso, quindi niente bolla inviata, niente turno contato, e il
+           testo torna nel campo per accorciarlo. */
+        window.HirisChatMessages.updateBubble(pending, tooLongText(data.error));
+        if (userRow && userRow.parentNode) userRow.parentNode.removeChild(userRow);
+        state.els.input.value = text;
+        autoResize();
         return;
       }
       if (data.error === 'max_turns_reached') {

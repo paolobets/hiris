@@ -81,19 +81,20 @@ test('seam _rendiAnalisi: ogni osservazione dice cosa, perché, e cosa cambiereb
   assert.match(testo, /0\.74 kWh/);
 });
 
-test('seam _rendiAnalisi: l’innesco si dice a parole, non col numero', () => {
-  // «1» non vuol dire niente per chi legge: i tre inneschi hanno un nome
-  // nella spec, ed è quello che va in pagina.
-  // Mutazione che la uccide: stampare `o.innesco`.
+test('seam _rendiAnalisi: l’innesco si dice a parole, quelle che manda la rotta (C-11)', () => {
+  // «1» non vuol dire niente per chi legge: la parola arriva accanto al
+  // numero (`innesco_parole`, `mind/analyst.TRIGGER_WORDS`). Parole finte:
+  // se la pagina le scrive, le ha lette dalla rotta e non da una sua copia.
+  // Mutazioni che la uccidono: stampare `o.innesco`; tornare a una tabella
+  // della pagina indicizzata dal numero.
   const { corpo } = rendiAnalisi(analisi([
-    osservazione({ innesco: 1 }),
-    osservazione({ innesco: 2, misura: 'batteria' }),
-    osservazione({ innesco: 3, misura: 'bilancio' }),
+    osservazione({ innesco: 1, innesco_parole: 'PAROLA UNO DAL SERVER' }),
+    osservazione({ innesco: 2, misura: 'batteria', innesco_parole: 'PAROLA DUE DAL SERVER' }),
   ]));
   const testo = corpo.textContent;
-  assert.match(testo, /è cambiato/);
-  assert.match(testo, /stabile e costa/);
-  assert.match(testo, /non c’è più/);
+  assert.match(testo, /Perché lo dice: PAROLA UNO DAL SERVER\./);
+  assert.match(testo, /PAROLA DUE DAL SERVER/);
+  assert.doesNotMatch(testo, /è cambiato|stabile e costa/);
   assert.doesNotMatch(testo, /innesco 1/);
 });
 
@@ -145,6 +146,27 @@ test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
     const testo = ctx.document.getElementById('watcher-panel-cosa-fare').textContent;
     assert.match(testo, /non ha ancora guardato/);
     assert.doesNotMatch(testo, /niente da segnalare/);
+  });
+});
+
+test('mount: il 404 dice ogni quanto gira l’analista col numero della rotta (C-11)', () => {
+  // `analista_ogni_s` arriva col rifiuto (`mind/report.ANALYST_EVERY_MINUTES`).
+  // Un valore che non e' quello vero: la pagina non deve dire «ogni ora».
+  const ctx = montaConServer({ analisiStatus: 404, analisi: { error: 'x', analista_ogni_s: 7200 } });
+  ctx.window.HirisWatcherRoute.mount('cosa-fare');
+  return tick(20).then(function () {
+    const testo = ctx.document.getElementById('watcher-panel-cosa-fare').textContent;
+    assert.match(testo, /Gira ogni 2 ore/);
+    assert.doesNotMatch(testo, /all’ora|ogni ora/);
+  });
+});
+
+test('mount: con 3600 secondi il 404 dice «ogni ora», non «ogni 1 ora»', () => {
+  const ctx = montaConServer({ analisiStatus: 404, analisi: { error: 'x', analista_ogni_s: 3600 } });
+  ctx.window.HirisWatcherRoute.mount('cosa-fare');
+  return tick(20).then(function () {
+    const testo = ctx.document.getElementById('watcher-panel-cosa-fare').textContent;
+    assert.match(testo, /Gira ogni ora,/);
   });
 });
 

@@ -30,13 +30,12 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* Le parole dei cinque stati. Vivono qui e non nel server perche' sono
-     TESTO DI PAGINA -- il server manda lo stato, che e' il fatto. */
-  var Word = {
-    gratuito: 'Gratuito',
-    compreso: "Compreso nell’abbonamento",
-    non_noto: 'Prezzo sconosciuto'
-  };
+  /* Come si legge un costo lo dice il server (`cost_is_number`,
+     `cost_is_floor`, `cost_word`, C-10): le parole degli stati e quali stati
+     sono numeri vivono in `handlers_usage.py`. Qui resta solo la TIPOGRAFIA
+     degli stati che un numero non l'hanno: l'assenza che chiede attenzione,
+     l'assenza neutra, e lo zero letterale per tutto il resto. */
+  var COST_CLASS = { non_noto: 'umr-unknown', compreso: 'umr-included' };
 
   /* L'ordine con cui i provider entrano nel grafico e nella legenda e' quello
      delle sezioni, che il server manda nell'ordine fisso della tabella dei
@@ -51,19 +50,16 @@
      i due stati non convivono mai nella stessa sezione, perche' e' il
      provider a determinarli. */
   function rowCost(m) {
-    if (m.cost_state === 'misurato' || m.cost_state === 'reale') {
+    if (m.cost_is_number) {
       return '<span class="umr-cost">' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    if (m.cost_state === 'non_noto' && m.cost_eur != null && m.cost_eur > 0) {
+    if (m.cost_is_floor) {
       /* Il pavimento a scala di riga: «questo l'ho pagato di sicuro, piu'
          qualcosa che non so». Un concetto solo, a due scale. */
       return '<span class="umr-cost umr-unknown">≥ ' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    var cssClass = m.cost_state === 'non_noto' ? 'umr-cost umr-unknown'
-               : m.cost_state === 'compreso' ? 'umr-cost umr-included'
-               : 'umr-cost umr-free';
-    return '<span class="' + cssClass + '">'
-      + escHtml(Word[m.cost_state] || m.cost_state) + '</span>';
+    return '<span class="umr-cost ' + (COST_CLASS[m.cost_state] || 'umr-free') + '">'
+      + escHtml(m.cost_word || m.cost_state) + '</span>';
   }
 
   function cacheRow(m) {

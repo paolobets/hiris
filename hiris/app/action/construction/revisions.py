@@ -89,7 +89,7 @@ REASON_EXPIRED = "scaduta senza risposta"
 #: Il motivo di una riga rimasta `in_corso` a un riavvio (`risana`). Una
 #: costante perche' la legge anche `_migration_6`, che porta a `incerta` le
 #: righe che `risana` segnava `rifiutata` (oggi `fallita`) fino al 07/10/2026.
-REASON_RESTARTED = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+REASON_RESTARTED = ("l’add-on si è riavviato mentre la stavo applicando: non so "
                     "se la scrittura sia arrivata a Home Assistant.")
 
 #: I giorni dopo cui una proposta si pota: una costante perche' li dichiarano
@@ -111,7 +111,7 @@ _RETENTION_DAYS = 90
 CONSERVAZIONE: Retention = {
     "costruzioni": (
         _RETENTION_DAYS,
-        ("le proposte di costruzione e le versioni: la pagina Costruzioni le "
+        ("le proposte di costruzione e le versioni: la pagina Proposte le "
          "mostra, e «Rimetti com'era» rilegge il «prima»; l'ultima applicata "
          "di ogni oggetto e le incerte restano, perche' portano l'unico «prima» "
          "rimasto"),
@@ -244,10 +244,17 @@ def _migration_6(conn) -> None:
     scrittura sia arrivata»: e la potatura, che protegge solo l'ultima
     `applicata`, poteva poi cancellare l'unico «prima» di un oggetto che Home
     Assistant aveva forse gia' cambiato. Le righe che portano ESATTAMENTE
-    quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca."""
+    quel motivo passano a `incerta`; nessun'altra `rifiutata` si tocca.
+
+    Il motivo si confronta col testo **com'era scritto allora**
+    (`_RETIRED_RESTART_REASONS`), non solo con la costante di oggi: C-26 ne
+    ha cambiato le lettere, e una migrazione legge le righe del passato
+    (N156-1, giro 156)."""
+    reasons = (*_RETIRED_RESTART_REASONS, REASON_RESTARTED)
     conn.execute(
-        "UPDATE costruzioni SET stato=? WHERE stato=? AND motivo=?",
-        (UNCERTAIN, _RETIRED_FAILED, REASON_RESTARTED))
+        "UPDATE costruzioni SET stato=? WHERE stato=? AND motivo IN "
+        f"({', '.join('?' * len(reasons))})",
+        (UNCERTAIN, _RETIRED_FAILED, *reasons))
 
 
 #: La parola con cui fino all'08/10/2026 una costruzione diceva «non sono
@@ -257,6 +264,19 @@ def _migration_6(conn) -> None:
 #: leggere le righe di allora.
 _RETIRED_FAILED = "rifiutata"
 _RETIRED_CANCEL_REASONS = ("rifiutata dalla pagina", "rifiutata dal proprietario")
+
+#: I testi con cui `risana` scriveva il motivo del riavvio sulle righe che
+#: chiudeva `rifiutata`: dal 23/08/2026 (`6dee6a25`) con l'elisione dritta,
+#: dal 07/09/2026 (`7289866a`) con `’`, fino al 07/10/2026, quando il dubbio
+#: ha avuto il suo stato. Dal 13/10/2026 (C-26) la costante porta «è». Testi
+#: storici: non hanno una fonte da interrogare, l'elenco e' il fatto, e
+#: servono solo a `_migration_6` per riconoscere le righe di allora.
+_RETIRED_RESTART_REASONS = (
+    ("l'add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+    ("l’add-on si e' riavviato mentre la stavo applicando: non so "
+     "se la scrittura sia arrivata a Home Assistant."),
+)
 
 #: Le colonne di `costruzioni` alla versione 7, quelle che la ricostruzione
 #: ricopia. Sono la forma di QUEL gradino, e restano ferme come
@@ -503,6 +523,20 @@ class ConstructionStore:
         with self._lock:
             righe = self._conn.execute(sql, params + (int(limit),)).fetchall()
         return _rows(righe)
+
+    def count(self, *, now: float, pending_only: bool = False) -> int:
+        """Quante righe elencherebbe `list` senza tetto, con lo stesso filtro.
+
+        Serve alla pagina per dichiarare la finestra (C-14, Chiusura,
+        13/10/2026): «le 200 piu' recenti su N»."""
+        cutoff = now - self.DEADLINE_S
+        sql = "SELECT COUNT(*) FROM costruzioni"
+        params: tuple = ()
+        if pending_only:
+            sql += f" WHERE stato IN ({_SOSPESI_SQL}) AND NOT {_EXPIRED_SQL}"
+            params = (cutoff,)
+        with self._lock:
+            return int(self._conn.execute(sql, params).fetchone()[0])
 
     def proposed_in(self, exchange: str | None, *, actor: str) -> frozenset[str]:
         """Gli id delle proposte che `actor` ha fatto nel turno `exchange`.

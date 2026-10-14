@@ -128,8 +128,8 @@ window.HirisSettingsRoute = (function () {
       '0 disattiva il ragionamento esteso. Vale solo con i modelli Claude sul ' +
       'percorso diretto: sugli altri backend (OpenAI, OpenRouter, Ollama) e in ' +
       'modalità abbonamento resta salvato ma non ha effetto, e il log lo dice a ' +
-      'ogni turno. Anche sul percorso diretto, sotto i 1024 token o su un modello ' +
-      'che non lo supporta viene disattivato.',
+      'ogni turno. Anche sul percorso diretto, sotto i ' + data.thinking_budget_min +
+      ' token o su un modello che non lo supporta viene disattivato.',
       input('number', data.thinking_budget));
     thinking.min = '0';
 

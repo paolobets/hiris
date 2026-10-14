@@ -206,7 +206,7 @@ SUBSCRIPTION = Provider(
     chain_member=False,
     usage_unit="turni",
     usage_note=("L’abbonamento non espone il prezzo del singolo turno. I token "
-                "si', e sono questi."),
+                "sì, e sono questi."),
     cost_state="compreso",
 )
 

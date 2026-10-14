@@ -24,6 +24,9 @@ function casaLetta(modifiche = {}) {
     anagrafe_letta_il: '2026-08-10T09:00:00',
     non_disponibili: [],
     conteggi: { piani: 2, aree: 7, dispositivi: 31, entita: 190 },
+    // Le parole dei registri le manda il server (`nomi_registri`, C-10).
+    nomi_registri: { piani: 'Piani', aree: 'Aree', dispositivi: 'Dispositivi',
+      entita: 'Entità', categorie: 'Categorie' },
     piani: [],
     comportamento: {
       letto_il: '2026-08-10T09:01:00',
@@ -232,6 +235,11 @@ test('il nome di un registro caduto si legge in italiano, e l’ambito non si bu
     'la stringa tecnica «categorie:script» non va mostrata grezza in una pagina in italiano');
   assert.doesNotMatch(testo, /categorie:script/);
   assert.match(testo, /Piani/, 'un registro senza ambito resta il suo nome italiano');
+});
+
+test('un registro che il server non nomina compare col suo nome grezzo, mai vuoto', async () => {
+  const { testo } = await rendi(casaLetta({ non_disponibili: ['zone', 'piani'] }));
+  assert.match(testo, /ultima lettura:zonePiani/);
 });
 
 test("`senza_corpo: null` non diventa «0», e `0` non diventa «non si sa»", async () => {
