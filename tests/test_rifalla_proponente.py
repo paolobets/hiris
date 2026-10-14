@@ -26,16 +26,27 @@ from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.consegna import consegna
 from hiris.app.reasoning.queue import PRIORITY_CHAT, REASONING_QUEUE_KEY, ReasoningQueue
 from hiris.app.usage.store import USAGE_KEY
+from tests._oggi_fermo import ferma_oggi
 from tests._runner_finto import RunnerFinto
 from tests.test_proponente import (
     _INTENZIONE_BUONA,
-    OGGI,
     _id_nato,
     _Modello,
     _strumenti,
     casa,  # noqa: F401 -- la fixture, la stessa del giro
     osservazioni,
 )
+
+#: Il giorno dell'analisi, come in `test_proponente`: lo scrive `_today_frozen`
+#: a ogni prova, dallo stesso istante che legge il giro.
+OGGI = ""
+
+
+@pytest.fixture(autouse=True)
+def _today_frozen(monkeypatch):
+    # Le fixture prese da `test_proponente` scrivono col suo `OGGI`.
+    ferma_oggi(monkeypatch, __name__, "tests.test_proponente")
+
 
 RICHIESTA = "non toccare il termostato, prova con lo scaldabagno"
 
