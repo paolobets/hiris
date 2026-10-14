@@ -30,6 +30,8 @@ from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_CATEGORY, Stat
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
 
+from tests._anagrafe_finta import AnagrafeFinta
+
 _RISORSE = {"component.binary_sensor.entity_component.gas.name": "Gas"}
 
 
@@ -43,9 +45,6 @@ def _reads(house: CasaFinta) -> int:
     return sum(1 for command, _ in house.calls if command == "frontend/get_translations")
 
 
-class _Casa:
-    def reference_frame(self):
-        return {"versione_ha": "2026.9.4", "lingua": "it"}
 
 
 @pytest.fixture
@@ -69,7 +68,8 @@ async def test_la_cache_dice_se_la_tabella_e_appena_letta():
 
 @pytest.mark.asyncio
 async def test_il_giro_sulla_tabella_in_cache_non_tocca_il_sapere(sapere):
-    app = {"knowledge": sapere, "home_space_store": _Casa(),
+    casa = AnagrafeFinta(cornice={"versione_ha": "2026.9.4", "lingua": "it"})
+    app = {"knowledge": sapere, "home_space_store": casa,
            "state_translations": StateTranslations(_client())}
 
     await prime_state_translations(app)

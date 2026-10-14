@@ -27,6 +27,7 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import analyst
 from hiris.app.mind.scope import ANALYST, OBSERVER, OWNER
 from hiris.app.mind.store import ObservationsStore
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._runner_finto import RunnerFinto
 from tests._specchio_finto import SpecchioFinto, raw_state
 
@@ -197,27 +198,13 @@ async def test_senza_archivio_e_un_503():
 
 # -- L'analista, dalla risposta ----------------------------------------------
 
-class _Anagrafe:
-    """L'archivio dell'anagrafe, con le sole entita' nominate: quanto basta a
-    `House.read` per sapere cosa la casa ha."""
-
-    def __init__(self, *ids):
-        self._ids = ids
-
-    def read(self):
-        # Un'anagrafe mai letta e' `{}` (`reader.py`), non una con zero entita'.
-        if not self._ids:
-            return {}
-        return {"entita": [{"id": i} for i in self._ids], "dispositivi": [], "aree": []}
-
-    def unavailable(self):
-        return ()
-
-    def energy(self):
-        """La dashboard Energia: mai letta (`HomeSpace.energy`)."""
-
-    def reference_frame(self):
-        return {}
+def _anagrafe(*ids):
+    """L'anagrafe vera con le sole entita' nominate: quanto basta a
+    `House.read` per sapere cosa la casa ha. Senza id e' l'anagrafe mai
+    letta (`read()` e' `{}`), non una con zero entita'."""
+    if not ids:
+        return AnagrafeFinta()
+    return AnagrafeFinta({"entita": [{"id": i} for i in ids], "dispositivi": [], "aree": []})
 
 
 def _specchio(*ids) -> SpecchioFinto:
@@ -228,7 +215,7 @@ def _specchio(*ids) -> SpecchioFinto:
 def _casa(*ids):
     """La casa di adesso, letta per intero (anagrafe e specchio), con le sole
     entita' nominate."""
-    return House.read(_Anagrafe(*ids), _specchio(*ids))
+    return House.read(_anagrafe(*ids), _specchio(*ids))
 
 
 def _analisi(*ids):
@@ -344,8 +331,8 @@ def test_una_fonte_viva_rientra(archivio):
 
 @pytest.mark.parametrize("casa", [
     House.read(None, None),
-    House.read(_Anagrafe(), _specchio("sensor.altro")),
-    House.read(_Anagrafe("sensor.altro"), None),
+    House.read(_anagrafe(), _specchio("sensor.altro")),
+    House.read(_anagrafe("sensor.altro"), None),
 ], ids=["niente letto", "anagrafe non letta", "specchio non letto"])
 def test_con_la_casa_non_letta_il_rifiuto_dice_il_vero(archivio, casa):
     """G74-1 (giro 74 del revisore): con l'anagrafe mai letta (`{}`) o lo
@@ -400,7 +387,7 @@ async def test_il_giro_dell_analista_scrive_il_rimetti_e_lo_archivia(archivio):
 
     await server.analyst_round({"observations": archivio, "llm_router": _modello_rimettitore(),
                                 "bridge_active": False,
-                                "home_space_store": _Anagrafe("sensor.pioggia", "sensor.vicino"),
+                                "home_space_store": _anagrafe("sensor.pioggia", "sensor.vicino"),
                                 "entity_cache": _specchio("sensor.pioggia", "sensor.vicino")})
 
     scope = archivio.scope()
@@ -442,7 +429,7 @@ async def test_il_giro_dell_analista_non_rimette_un_entita_che_la_casa_non_ha(ar
 
     await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
                                 "bridge_active": False,
-                                "home_space_store": _Anagrafe("sensor.pioggia"),
+                                "home_space_store": _anagrafe("sensor.pioggia"),
                                 "entity_cache": _specchio("sensor.pioggia")})
 
     assert "sensor.inventato" not in archivio.scope()
@@ -470,7 +457,7 @@ async def test_il_giro_dell_analista_con_la_casa_non_letta_non_mente(archivio):
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa", author=OBSERVER)
 
     await server.analyst_round({"observations": archivio, "llm_router": _modello_inventore(),
-                                "bridge_active": False, "home_space_store": _Anagrafe()})
+                                "bridge_active": False, "home_space_store": _anagrafe()})
 
     assert archivio.scope()["sensor.pioggia"]["autore"] == OBSERVER
     assert "sensor.inventato" not in archivio.scope()

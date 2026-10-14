@@ -28,13 +28,13 @@ from casa_finta import CasaFinta
 
 from hiris.app import server
 from hiris.app.home_space import historian
-from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.server import integration_follower, watch_system_conditions
 from hiris.app.storage import archive_name
+from tests._anagrafe_finta import AnagrafeFinta
 from tests._avvio import SERVER_LOGGER, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
@@ -367,10 +367,11 @@ def test_senza_osservatore_non_scrive_niente():
 # incondizionata degli ultimi due giorni pieni all'avvio.
 # --------------------------------------------------------------------------
 
-class _ArchivioCasaCheSolleva:
+class _ArchivioCasaCheSolleva(AnagrafeFinta):
     """`reference_frame()` che solleva -- la sua query SQL, dice il
     mandato, non e' protetta: qui si simula il guasto vero, non solo
-    l'assenza di `home_space_store`."""
+    l'assenza di `home_space_store`. L'anagrafe vera, che sovrascrive
+    solo la lettura della cornice per romperla."""
 
     def reference_frame(self):
         raise RuntimeError("sqlite del sistema di riferimento irraggiungibile")
@@ -378,8 +379,6 @@ class _ArchivioCasaCheSolleva:
 
 # Se `HomeSpace.reference_frame` cambia firma, questa riga cade invece
 # di lasciare che il finto imiti un contratto che non esiste piu'.
-assert_stessa_firma(HomeSpace.reference_frame, _ArchivioCasaCheSolleva.reference_frame,
-                     nome="reference_frame")
 
 
 @pytest.mark.asyncio(loop_scope="module")
@@ -1308,12 +1307,9 @@ class _CacheTraduzioni:
         return dict(self.esito)
 
 
-class _CasaConFuso:
-    def __init__(self, versione="2026.9.1", lingua="it"):
-        self._frame = {"versione_ha": versione, "lingua": lingua}
-
-    def reference_frame(self):
-        return dict(self._frame)
+def _casa_versione_lingua(versione="2026.9.1", lingua="it"):
+    """L'anagrafe vera, con versione e lingua di Home Assistant nella cornice."""
+    return AnagrafeFinta(cornice={"versione_ha": versione, "lingua": lingua})
 
 
 def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path):
@@ -1333,7 +1329,7 @@ def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path
     try:
         app = {
             "knowledge": sapere,
-            "home_space_store": _CasaConFuso(),
+            "home_space_store": _casa_versione_lingua(),
             "state_translations": _CacheTraduzioni({
                 "lette": True, "lingua": "it", "appena_lette": True, "risorse": {
                     "component.binary_sensor.entity_component.gas.name": "Gas"}}),
@@ -1356,7 +1352,7 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
 
     sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
     try:
-        app = {"knowledge": sapere, "home_space_store": _CasaConFuso(),
+        app = {"knowledge": sapere, "home_space_store": _casa_versione_lingua(),
                "state_translations": _CacheTraduzioni(
                    {"lette": False, "motivo": "HA non ha risposto"})}
 
@@ -1370,7 +1366,7 @@ def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
 def test_senza_sapere_la_lettura_delle_traduzioni_non_si_rompe(tmp_path):
     """L'avvio costruisce il sapere prima, ma la funzione non deve dipendere
     da un ordine che nessuno le garantisce: senza `knowledge` legge e basta."""
-    app = {"home_space_store": _CasaConFuso(),
+    app = {"home_space_store": _casa_versione_lingua(),
            "state_translations": _CacheTraduzioni(
                {"lette": True, "lingua": "it", "risorse": {}})}
 

@@ -32,6 +32,7 @@ from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space import historian
+from tests._anagrafe_finta import AnagrafeFinta
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
@@ -111,17 +112,14 @@ def test_nessuno_costruisce_un_fuso_fuori_da_historian():
 
 # -- le funzioni ---------------------------------------------------------------
 
-class _HomeSpaceStub:
-    def __init__(self, fuso):
-        self._fuso = fuso
-
-    def reference_frame(self):
-        return {"fuso": self._fuso} if self._fuso else {}
+def _anagrafe(fuso):
+    """L'anagrafe vera, con il fuso nella sua cornice (o senza)."""
+    return AnagrafeFinta(cornice={"fuso": fuso} if fuso else {})
 
 
 def test_house_timezone_legge_l_anagrafe_e_tace_senza():
-    assert historian.house_timezone(_HomeSpaceStub("Europe/Rome")) == "Europe/Rome"
-    assert historian.house_timezone(_HomeSpaceStub(None)) is None
+    assert historian.house_timezone(_anagrafe("Europe/Rome")) == "Europe/Rome"
+    assert historian.house_timezone(_anagrafe(None)) is None
     assert historian.house_timezone(None) is None
 
 
@@ -163,7 +161,7 @@ def test_l_etichetta_di_una_sessione_e_il_giorno_della_casa(tmp_path):
     )
     store._conn.commit()
 
-    contesto = compose_chat_context({"home_space_store": _HomeSpaceStub("Europe/Rome")},
+    contesto = compose_chat_context({"home_space_store": _anagrafe("Europe/Rome")},
                                     data_dir, thread=PAOLO, soggetto=None)
 
     assert "[2026-08-22] parlato della caldaia" in contesto, contesto

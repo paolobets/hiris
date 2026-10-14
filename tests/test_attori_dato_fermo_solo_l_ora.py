@@ -49,10 +49,11 @@ from hiris.app.mind.operations import COVERAGE_LOW, FROZEN, MINIMUM_COVERAGE
 from hiris.app.mind.report import build_report, series_of_measures
 from tests._casa_sintetica import synthetic_inputs
 from tests._specchio_finto import SpecchioFinto
-from tests.test_fonte_della_casa import _Store
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
+
+from tests._anagrafe_finta import AnagrafeFinta
 
 TIMEZONE = "Europe/Rome"
 DAY = "2026-10-06"
@@ -83,7 +84,7 @@ def _app():
         "integrazioni": [],
         "dispositivi": [{"id": STATION, "name": "Stazione", "disabled_by": None},
                         {"id": "d_contatore", "name": "Contatore", "disabled_by": None}]})
-    return {"knowledge": object(), "home_space_store": _Store(home_space),
+    return {"knowledge": object(), "home_space_store": AnagrafeFinta(home_space),
             "entity_cache": SpecchioFinto([(
                 {"entity_id": e, "state": "1", "attributes": {"state_class": "measurement"}})
                 for e in STATISTIC_IDS])}
