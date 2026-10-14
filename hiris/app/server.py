@@ -91,6 +91,7 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.store import MemoryStore
 from .mind import analyst, analyst_turn, recipe_turn, report
+from .mind import store as mind_store
 from .mind.analyst_round import ANALYST_DAYS, write_analysis
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
@@ -1324,7 +1325,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             # la faccia di «nessuno ha ancora provato» (rilievo della review
             # indipendente, 11/09/2026).
             store.record_attempt(
-                outcome="non_riuscito",
+                outcome=mind_store.ATTEMPT_FAILED,
                 detail=f"non c'era nessun modello a cui chiedere ({downgrade})"
                 if downgrade else "non c'era nessun modello a cui chiedere",
                 version=read_version())
@@ -2006,13 +2007,13 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
     porta = f" [{route}{', ripiego: ' + downgrade if downgrade else ''}]"
     error = outcome.get("errore")
     if error:
-        store.record_attempt(outcome="non_riuscito", detail=error + porta,
+        store.record_attempt(outcome=mind_store.ATTEMPT_FAILED, detail=error + porta,
                              version=read_version())
     else:
         # Il riassunto di un giro riuscito, nella lingua della pagina.
         summary = (f"{outcome.get('decise', 0)} decisioni su "
                    f"{outcome.get('candidate', 0)} entita' guardate")
-        store.record_attempt(outcome="riuscito", detail=summary + porta,
+        store.record_attempt(outcome=mind_store.ATTEMPT_DONE, detail=summary + porta,
                              version=read_version())
 
 
@@ -2066,9 +2067,9 @@ def _retry_hold(store, *, now: float) -> bool:
     attempts = [a for a in store.recent_attempts() if a["versione"] == versione]
     consecutive = 0
     for attempt in attempts:
-        if attempt["esito"] == "accodata":
+        if mind_store.attempt_out(attempt)["in_attesa"]:
             continue
-        if attempt["esito"] in ("non_riuscito", "scaduta"):
+        if mind_store.attempt_out(attempt)["guasto"]:
             consecutive += 1
             continue
         break
@@ -2138,7 +2139,7 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
     # risponde davvero a «questa risposta l'ho gia' letta?» e' l'esito della
     # lettura.
     decided_ts = turn.get("decided_ts")
-    letti = [a for a in store.recent_attempts() if a["esito"] != "accodata"]
+    letti = [a for a in store.recent_attempts() if a["esito"] != mind_store.ATTEMPT_QUEUED]
     if decided_ts is not None and letti and letti[0]["quando_ts"] >= decided_ts:
         return None, False
     reply = turn_answer(turn)
@@ -2199,7 +2200,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
     # poterlo dire: senza, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
     # questa fetta nasce.
-    store.record_attempt(when_ts=now, outcome="accodata",
+    store.record_attempt(when_ts=now, outcome=mind_store.ATTEMPT_QUEUED,
                          detail=f"chiesto al piano: {reason}",
                          version=read_version())
     logger.info("osservatore: turno accodato al piano (scadenza %d min) -- %s",
