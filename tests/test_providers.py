@@ -328,7 +328,7 @@ def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
     """Il difetto che questo task chiude. Senza il ricalcolo, `catena_modelli`
     resta quella dell'avvio e `_chat_policy` pure: la pagina inviterebbe a un
     gesto e poi lo dimenticherebbe."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(),
                 catena=["openrouter", "claude"])
@@ -346,7 +346,7 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     dell'uno toccherebbe l'altro e i due potrebbero divergere senza che nessuno
     abbia scritto una seconda regola (stessa ragione del `list(_chain)`
     dell'avvio)."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
@@ -360,7 +360,7 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     rimetterebbe in piedi la regola legacy tolta al Task 7: pagina che dice
     «la catena e' vuota, HIRIS non ha a chi chiedere» e chat che risponde lo
     stesso, usando l'ordine di prima."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
@@ -374,7 +374,7 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     """Un anello che il router salta in silenzio, disegnato numerato dalla
     pagina, e' la bugia che questa fetta ritira. La credenziale non basta: il
     ricalcolo guarda i backend che il router ha in mano."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
@@ -387,7 +387,7 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     """Il runner locale nasce con l'indirizzo (e' la credenziale), ma senza un
     modello scelto non puo' rispondere: `_resolve_model` manderebbe "". E' la
     stessa regola dell'avvio (`_risponde`), riletta invece che ricordata."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
@@ -401,7 +401,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     prossimo messaggio ci passa. Il runner locale esiste gia' perche' nasce con
     l'indirizzo -- se nascesse con `address AND modello`, questo gesto
     tornerebbe 200 e non farebbe niente fino al riavvio."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     locale = _RunnerLocale()
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
@@ -415,7 +415,7 @@ def test_il_timeout_del_locale_viene_dall_archivio_a_ogni_ricalcolo():
     """L'unico valore della fetta che non si puo' leggere al momento dell'uso:
     `AsyncOpenAI` cuoce il timeout nel client alla costruzione. Il ricalcolo lo
     riapplica, cosi' anche quel numero vale dal prossimo messaggio."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     locale = _RunnerLocale()
     app = _app(["ollama"], ollama_modello="llama3.1:8b", timeout_s=300,
@@ -430,7 +430,7 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
     solleverebbe `TypeError: 'NoneType' object is not callable`. E la catena
     dev'essere vuota, non l'ordine scritto: senza backend non risponde
     nessuno."""
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     app = _app(["claude", "openrouter"], router=None)
     _recompute_chain(app)
@@ -438,7 +438,7 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
 
 
 def test_il_ricalcolo_regge_un_archivio_assente():
-    from hiris.app.server import _recompute_chain
+    from hiris.app.agent.bridge_governor import _recompute_chain
 
     app: dict = {}
     _recompute_chain(app)

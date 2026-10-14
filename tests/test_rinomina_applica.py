@@ -727,7 +727,11 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # runner). Le nove proposte che restano nel dry-run sono tutte di ALTRI
     # moduli -- cinque nomi importati, due parole chiave di firme altrui -- e
     # non sono residui: sono nomi che questo ambito non possiede.
-    ("agent", "agent", frozenset()),
+    # Il 14/10/2026 (Chiusura, F8 passo 6b) `agent` riceve il governo del
+    # ponte uscito da `server.py`, spostato senza una riga cambiata: porta
+    # `quante` (misurato col dry-run), un nome della radice non convertita.
+    # Si decide con la rinomina di quel file, come i giri di `mind` sotto.
+    ("agent", "agent", frozenset({Path("bridge_governor.py")})),
     # `backends` e' entrato il 01/09 con un residuo dichiarato -- le tre
     # parole della famiglia dei runner, che non si potevano tradurre a meta'
     # perche' `claude_runner.py` portava la stessa interfaccia duck-typed.
@@ -737,7 +741,10 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # aggiornato -- e' la disciplina scritta per `memory/resolver.py`.
     ("backends", "backends", frozenset()),
     ("memory", "memory", frozenset()),
-    ("usage", "usage", frozenset()),
+    # `usage` riceve il 14/10/2026 (F8 passo 6b) `_registra_turno_ponte`,
+    # spostata da `server.py` in `bridge_loads.py` senza una riga cambiata:
+    # `adesso`, `archivio`, `registra`, `soggetto` (misurato col dry-run).
+    ("usage", "usage", frozenset({Path("bridge_loads.py")})),
     # `mind` riceve il 14/10/2026 i giri del cervello usciti da `server.py`
     # (Chiusura, F8 passo 2): spostati SENZA una riga cambiata, quindi con i
     # nomi italiani della radice, che non e' ancora convertita. Rinominarli
@@ -1141,11 +1148,18 @@ _MUTE_PROVVISORIE = {
     # `semina_modello_del_piano -> seed_subscription_model` era il suo ultimo
     # portatore in un ambito che la scrive. Il senso *subscription* resta
     # irraggiungibile per costruzione, com'e' scritto accanto alla sua riga.
-    ("fuori", "radice"), ("riga", "radice"),
+    ("fuori", "radice"),
+    # **`("riga", "radice")` e' uscita il 14/10/2026**: i suoi portatori
+    # hanno lasciato `server.py` con la Chiusura (F8), e la parola li ha
+    # seguiti nelle cartelle qui sotto.
     # `riga` arriva in `mind` il 14/10/2026 con i giri spostati da `server.py`
     # (F8 passo 2): la stessa parola muta della radice, che ha cambiato
     # cartella. Si decide con la rinomina di quei file (vedi `_SORVEGLIATI`).
     ("riga", "mind"),
+    # E in `usage` il 14/10/2026 (F8 passo 6b), con `_registra_turno_ponte`
+    # spostata da `server.py` in `usage/bridge_loads.py`: stessa parola, stesso
+    # rinvio.
+    ("riga", "usage"),
 }
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE

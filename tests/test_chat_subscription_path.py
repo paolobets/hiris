@@ -46,6 +46,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from hiris.app.agent import bridge_governor
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -673,7 +674,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # poter tornare.
 # ---------------------------------------------------------------------------
 
-from hiris.app.server import _bridge_active
+from hiris.app.agent.bridge_governor import _bridge_active
 
 
 @pytest.mark.parametrize("archivio,atteso", [
@@ -743,12 +744,11 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     mano) -- rossa."""
     from unittest import mock
 
-    from hiris.app import server
 
     deciso = object()
-    with mock.patch.object(server, "_bridge_active", return_value=deciso) as combinatore:
+    with mock.patch.object(bridge_governor, "_bridge_active", return_value=deciso) as combinatore:
         app: dict = {"models_config": {"ponte": {"attivo": True}}}
-        server._recompute_chain(app)
+        bridge_governor._recompute_chain(app)
     combinatore.assert_called_once_with(app["models_config"])
     assert app["bridge_active"] is deciso, (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
@@ -894,7 +894,7 @@ def test_il_ponte_non_ha_piu_nessuna_leva_nelle_opzioni_dell_addon():
 # dirlo -- si spostano dove l'archivio c'e'.
 # ---------------------------------------------------------------------------
 
-from hiris.app.server import _bridge_notices
+from hiris.app.agent.bridge_governor import _bridge_notices
 
 
 def test_il_ponte_acceso_senza_token_si_sente_dire_all_avvio():

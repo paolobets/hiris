@@ -43,6 +43,7 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.steering import PROMISE_SPECIES, SPECIES
+from hiris.app.usage import bridge_loads
 from tests.test_construction_workshop import WorkshopHouse, _intento
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -334,7 +335,7 @@ def test_il_registro_dei_turni_scrive_il_soggetto_del_ponte(tmp_path):
     from hiris.app.usage.store import UsageStore
 
     archivio = UsageStore(str(tmp_path / "usage.db"))
-    registra = server._registra_turno_ponte(archivio)
+    registra = bridge_loads._registra_turno_ponte(archivio)
     registra({"species": "chat", "channel": "ponte", "provider": "subscription",
               "model": "m", "duration_ms": 1, "iterations": 1, "tools": [],
               "outcome": "riuscito", "subject": MARTA})

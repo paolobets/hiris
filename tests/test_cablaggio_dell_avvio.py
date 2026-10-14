@@ -34,6 +34,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
+from hiris.app.agent import bridge_governor
 from hiris.app.home_space import historian, registry_follower
 from hiris.app.mind import conditions_round, day_report, realignment
 from hiris.app.mind.store import ObservationsStore
@@ -530,7 +531,7 @@ async def test_startup_and_the_page_take_the_same_road(tmp_path, monkeypatch):
     `app["recompute_chain"] = ...` spostata dentro il ramo `else` -- rossa."""
     monkeypatch.setenv("CLAUDE_API_KEY", "sk-prova-cablaggio")
     recomputed = []
-    real = server._recompute_chain
+    real = bridge_governor._recompute_chain
 
     def spy(app):
         recomputed.append(app)

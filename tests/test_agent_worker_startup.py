@@ -17,8 +17,9 @@ import asyncio
 
 import pytest
 
+from hiris.app.agent import bridge_governor
+from hiris.app.agent.bridge_governor import _govern_bridge_worker, should_start_agent_worker
 from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.server import _govern_bridge_worker, should_start_agent_worker
 
 
 def test_worker_off_by_default(monkeypatch):
@@ -152,11 +153,10 @@ async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(
     consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
-    from hiris.app import server
 
     app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []},
            "reasoning_queue": ReasoningQueue(str(tmp_path / "r.db"))}
-    server._recompute_chain(app)
+    bridge_governor._recompute_chain(app)
 
     assert app["bridge_active"] is True
     compito = app.get("agent_worker_task")
@@ -176,12 +176,11 @@ async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(mo
     secondi finche' l'add-on non viene riavviato -- venticinquemila righe in
     due ore, che e' cio' che ha fatto scorrere via un avvio dal registro."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
-    from hiris.app import server
 
     finto = _CompitoFinto()
     app = {"models_config": {"ponte": {"attivo": False}, "chain_order": []},
            "agent_worker_task": finto}
-    server._recompute_chain(app)
+    bridge_governor._recompute_chain(app)
 
     assert app["bridge_active"] is False
     assert finto.fermato is True

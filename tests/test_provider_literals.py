@@ -141,8 +141,8 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
       rosso sulla catena: il sesto non risponde, e non entra;
     - `compose_topology` con «Fuori dalla catena» sui cinque id di oggi ->
       rosso sulla riga del sesto."""
+    from hiris.app.agent.bridge_governor import _recompute_chain
     from hiris.app.llm_router import LLMRouter
-    from hiris.app.server import _recompute_chain
 
     monkeypatch.setattr(providers, "PROVIDERS", providers.PROVIDERS + (SESTO,))
     app = client.app

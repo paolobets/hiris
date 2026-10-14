@@ -881,11 +881,11 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     per il prossimo messaggio -- il GET la legge da `app["model_chain"]`,
     che il ricalcolo riscrive.
 
-    Qui si usa la funzione VERA (`server._recompute_chain`), non una finta:
+    Qui si usa la funzione VERA (`bridge_governor._recompute_chain`), non una finta:
     di sua natura questa prova esiste per non fidarsi del cablaggio."""
     _with_claude_key(client)
+    from hiris.app.agent.bridge_governor import _recompute_chain
     from hiris.app.llm_router import LLMRouter
-    from hiris.app.server import _recompute_chain
 
     class _Runner:
         pass
