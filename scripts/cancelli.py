@@ -24,7 +24,9 @@ lento. Ognuno dice il suo esito, e basta un no per fermare il push:
    tabelle), nessuna regola strutturale rotta, e nessuna eccezione rimasta a
    coprire qualcosa che non c'e' piu' (`scripts/censimento_eccezioni.json`);
 4. il cancello R19, che legge l'albero del codice (`tests/test_fonte_unica.py`),
-   con le prove del registro.
+   con le prove del registro, e la prova che nessuna eccezione del censimento
+   rimandi a una voce aperta (D2 della Chiusura): il censimento guarda i nomi
+   delle eccezioni, non le loro ragioni (giro 157, R6).
 
 Uso:
   python scripts/cancelli.py
@@ -49,7 +51,9 @@ GATES: tuple[tuple[str, tuple[str, ...]], ...] = (
                   "scripts/doppioni_noti.json")),
     ("censimento", ("scripts/censimento.py", "--cancello")),
     ("fonte unica", ("-m", "pytest", "-q", "-p", "no:cacheprovider",
-                     "tests/test_fonte_unica.py", "tests/test_registro.py")),
+                     "tests/test_fonte_unica.py", "tests/test_registro.py",
+                     ("tests/test_censimento.py::"
+                      "test_nessuna_eccezione_rimanda_a_una_voce_aperta"))),
 )
 
 
