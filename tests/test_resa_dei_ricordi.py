@@ -58,7 +58,7 @@ _DOORS = {
 def test_ogni_porta_della_resa_e_guardata():
     """I chiamanti di `render_memory` si chiedono al sorgente: ognuno ha la sua
     porta in `_DOORS`, e nessuna porta di `_DOORS` e' senza chiamante."""
-    callers = {str(path.relative_to(_APP)) for path in _APP.rglob("*.py")
+    callers = {path.relative_to(_APP).as_posix() for path in _APP.rglob("*.py")
                if path.name != "render.py"
                and re.search(r"\brender_memory\(", path.read_text(encoding="utf-8"))}
     assert callers == set(_DOORS)
