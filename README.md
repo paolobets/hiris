@@ -539,7 +539,9 @@ card tile from your dashboard is the one gesture left to you.
 ## Interface
 
 Opening the add-on shows the chat. A configuration panel is served at
-`/config` as a small single-page app with ten live routes:
+`/config` as a small single-page app. These are its routes; the list is not
+copied by hand and left to age: `tests/js/readme-rotte.test.mjs` compares it,
+both ways, with the routes the panel's router actually registers:
 
 | Route | What it does |
 |---|---|

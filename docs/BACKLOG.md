@@ -53,109 +53,27 @@ col proponente «Fermo»: lo schedulatore chiama `proposer_beat`, che passa al g
 (N141-1). **Il rilascio puo' uscire.** Cio' che aspetta e' `ENABLED = True`, dopo due cose: la
 misura dal vivo dello strato 3 e la diagnosi del passo 1 del 4.0 (le due proposte perse).
 
-### I prossimi passi, in ordine — aperta il 01/10/2026
+### I prossimi passi, in ordine — aperta il 01/10/2026, riscritta il 14/10/2026
 
-`origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»)` · uscite 3.71.0, 3.71.1, 3.72.0, 3.72.1
+`origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»); riscritta alla Chiusura dello sprint «Una fonte sola di verita'» (F9), dal piano della Chiusura approvato dal proprietario il 13/10/2026, sezione «Fuori dalla Chiusura, ma aperti»` · piano: `/mnt/project-files/piani/2026-10-chiusura.md`
 
-Cosa resta dopo le fette «una porta sola» (3.71.x) e «la storia» (3.72.x), nell'ordine deciso.
-Ogni punto ha la sua voce qui sotto, con i dettagli: questa e' solo la rotta.
+Cosa viene dopo lo sprint «Una fonte sola di verita'», nell'ordine. Ogni punto ha la sua voce,
+con i dettagli: questa e' solo la rotta. I passi della versione del 01/10 sono andati cosi': il
+dato fermo e' uscito con la 3.77.0; la verifica dal vivo della storia e la leva `ToolSearch`
+restano nelle loro voci («`history`: cosa va provato dal vivo prima di dirla chiusa», «L5»).
 
-1. **La verifica dal vivo della 3.72.x**, dopo che il proprietario aggiorna l'add-on. La batteria
-   sulle due strade, con le domande di storia (7, 8, 13, 14, 26, 28) lette coi cinque criteri di
-   §8 della spec della storia, piu' le misure che solo una casa vera puo' dare -- voce
-   «`history`: cosa va provato dal vivo prima di dirla chiusa». In piu': la CLI del ponte 2.1.286
-   letta dentro il container (`GET /api/health`, `ponte.cli`, dopo un turno di chat), il passo 4
-   del `Dockerfile` ancora da saldare dalla 2.1.284.
-2. **L5 -- `ToolSearch` spento sul ponte**, prova misurata e da sola. E' la leva piu' grossa
-   rimasta sui token: ogni giro sul ponte costa ~29.000 token fissi, e `ToolSearch` aggiunge un
-   giro a 26 domande su 28 (misurato il 30/09/2026) -- voce «L5».
-3. **Il dato fermo**: insegnare a HIRIS a riconoscere un contatore o una potenza che non si
-   muovono da ore mentre la casa vive (il caso dell'inverter del 30/09) -- voce «Un contatore
-   CONGELATO non si distingue da un giorno a zero». Lavoro di disegno: si comincia dalle domande.
-
-
-### Una fonte sola di verita' per tutta l'app — LO SPRINT IN CORSO — aperta il 01/10/2026
-
-`origine: il proprietario, 01/10/2026 («e' la quinta volta che lo chiedo di fare, deve essere l'ultima»; «alla fine delle analisi creiamo un doc con il risultato e il piano di intervento come requisiti del prossimo sprint»)` · analisi in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · documento dei requisiti: `docs/design/2026-10-01-una-fonte-sola-di-verita.md` · lista di lavoro: `docs/design/2026-10-01-registro-dei-doppioni.md` · misure: `docs/misure/2026-10-tappa-0.md`
-
-**Viene prima della riparazione degli attori** (la voce qui sotto), che riparte sopra la fonte
-unica: il proprietario ha messo in pausa lo strato 1 quando e' emerso che la regola «disabilitata /
-nascosta / di servizio = fuori» e' scritta undici volte e che il modulo nuovo che stavo proponendo
-sarebbe stato la dodicesima copia.
-
-**L'obiettivo, con le sue parole.** In tutta l'app ogni domanda ha una risposta sola, scritta in un
-posto solo, che possa restituire le informazioni necessarie. Tutto e' costruito in modo consistente
-e coerente con la casa. Gli strumenti sono fatti in modo completo, senza doppioni, tutto unificato
-dove possibile in metodi atomici e strutturati, con il livello necessario a rispondere a tutte le
-funzionalita' dell'app. Gli strumenti restituiscono ai modelli il set informativo necessario,
-ottimizzando il consumo di token e la latenza nelle risposte e nel recupero.
-
-**Cosa ha misurato l'analisi (01/10/2026, v3.72.2).** Tutte le 62.703 righe di Python lette per
-intero, il frontend (10.824 righe di JS) letto per intero, la suite misurata come insieme; una sonda
-di parita' ha fatto girare le copie vere delle regole sui dati veri della casa. Il registro conta
-464 voci: 288 di doppione, 79 di codice morto, 77 affermazioni false nei documenti e 20 difetti che
-non sono doppioni (i conti si chiedono a `python scripts/registro.py conta`, non si ricopiano). Fra
-le regole ripetute, nove su tredici danno gia' oggi risposte diverse; sulla casa vera pesano l'area ereditata
-(194 entita' guardabili su 324 arrivano all'osservatore senza area), le ricette che vedono 1.138
-entita' che l'osservatore esclude, e il nome mostrato in due modi.
-
-**Le decisioni gia' prese dal proprietario.** La strada e' una domanda alla volta con la sonda di
-parita' («approccio A»), la destinazione e' il modello unico («approccio B»). I dati verso l'esterno
-si possono modificare. Esce tutto il codice dell'MCP di integrazione esterno (il gateway su .31,
-abbandonato): `GET /api/entities` e le sue prove; **il ponte interno resta**. Il censimento doveva
-essere completo su tutta l'app, strumenti e percorsi verso i modelli compresi.
-
-**Cosa deve contenere il documento dei requisiti.** L'esito dell'analisi; l'obiettivo e le sue
-cinque proprieta'; i requisiti numerati e verificabili; il piano di intervento per tappe, con le
-voci del registro che ciascuna chiude; i criteri di accettazione (registro vuoto, sonda di parita'
-a zero disaccordi, cancello nel pre-push, batteria della chat non peggiorata in token e latenza); le
-decisioni che restano al proprietario; cio' che resta fuori. Il piano di dettaglio di ogni tappa si
-scrive quando la tappa comincia.
-
-**Stato (01/10/2026, sera).** Lo sprint e' partito. Il proprietario ha deciso: i due difetti su dati
-e permessi (S-17 e `GET /api/home-space` a un servizio «lettore») in un rilascio a se' subito dopo
-la Tappa 0; l'ordine **a scaglioni** -- tappe 0-3, poi gli strati 1 e 2 degli attori, poi tappe
-4-6, poi gli strati 3 e 4, poi 7-8. In corso la Tappa 0, «Si toglie e si prepara».
-
-**Stato (02/10/2026, sera).** La Tappa 0 e' scritta per intero sul ramo
-`claude/project-thread-6h94lt` (PR 44) ed **esce come 3.73.0**, per decisione del proprietario. Cosa c'e' dentro: la rete (registro leggibile da un
-programma, sonda di parita', fotografia delle porte, due batterie con la prima misura in token e
-tempi, quattro cancelli nel pre-push e nella CI); le uscite (l'MCP esterno, lo streaming della
-chat, l'embedder, il codice senza chiamanti, il censore dei tipi fra gli attrezzi, la semina delle
-opzioni, undici annunci d'avvio falsi); la migrazione che toglie dal sapere le righe `notevole` e
-`direzione`; i commenti e i documenti che dicevano il falso. La fotografia a freddo delle porte e'
-identica a quella di partenza dopo ogni passo. I conti di oggi si chiedono a
-`python scripts/registro.py conta`; le misure stanno in `docs/misure/2026-10-tappa-0.md`.
-**Deciso dal proprietario il 02/10/2026**: si rilascia come 3.73.0; le dieci operazioni delle sette
-domande restano, per il refactor degli agenti (voce sugli attori qui sotto); i numeri di R18 sono
-approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
-
-#### Tappa 7: le note basse del revisore — aperta il 07/10/2026
-
-`origine: giri 81, 82 e 89 del revisore (/mnt/project-files/revisioni/giro-81.md, giro-82.md e giro-89.md), 07/10/2026; non bloccanti, registrate qui per decisione del coordinatore` · `hiris/app/action/actuator.py` · `docs/design/2026-08-22-costruire-in-home-assistant.md` · `hiris/app/static/hiris-theme.css`
-
-- **N81-1, la spec dice ancora due porte.** Il §2.1 di
-  `docs/design/2026-08-22-costruire-in-home-assistant.md` parla di due porte di scrittura, mentre
-  `CLAUDE.md` («Un canale, una porta») dalla Tappa 7, T4 ne nomina tre. E' una spec viva, e
-  `CLAUDE.md` la cita come fonte del paragrafo. Basta una riga in testa al §2.1 che rimandi a
-  `CLAUDE.md` per la terza porta.
-- **N82-1, il silenzio entra nella cronaca come «non eseguito».** Quando il trasporto tace su
-  `call_service`, la riga di cronaca porta `eseguito=False`, mentre il testo dice «non so se la
-  chiamata è arrivata». Era cosi' anche prima. Ma dalla Tappa 7, T1 la porta dei servizi distingue i
-  due casi, e la cronaca potrebbe dirlo, con un campo o con l'esito «incerto». Fondamenta 1: chi
-  legge la cronaca oggi non sa che quella riga e' un dubbio.
-- **N82-2, il silenzio puo' nascondere un nostro difetto.** `call_service` e le tre primitive
-  catturano `Exception` e la chiamano silenzio, quindi un nostro difetto dentro il blocco (per
-  esempio un `TypeError`) diventerebbe «HA non ha risposto». Il log e' a livello `debug`, senza
-  `exc_info`; `Workshop._rete` usava `exc_info=True` proprio per questo. Le due proposte del
-  revisore: `logger.warning(..., exc_info=True)`, oppure catturare solo `aiohttp.ClientError` e
-  `asyncio.TimeoutError`.
-- **N89-1, i contrasti dei token *-ink non portano il loro nome.** Nel commento sopra i token
-  `--ok-ink`, `--warn-ink` e `--err-ink` di `hiris/app/static/hiris-theme.css`, la frase prima
-  elenca i colori di partenza nell'ordine warn, ok, err («2.04:1 (warn), 2.49:1 (ok), 4.05:1
-  (err)»), e quella dopo da' i contrasti nuovi senza nome, nell'ordine dei token («5.16 / 5.61 /
-  5.44»). Chi legge le due terne di seguito li scambia. Si etichettano: «sul bianco: ok 5.16, warn
-  5.61, err 5.44». E' solo un commento: va bene al prossimo tocco del file.
+1. **Il proponente acceso** (`ENABLED = True` in `mind/proposer_round.py`). Prima la misura dal
+   vivo dell'analista nuovo (strato 3 degli attori) e la diagnosi delle due proposte perse (Task
+   4.0, passo 1); poi un rilascio suo, perche' accenderlo cambia cio' che la casa riceve (D6 della
+   Chiusura: il proponente resta fermo per tutta la Chiusura) -- voce «⚠️ Prima di accendere il
+   proponente».
+2. **Tappa 8, T11: il ponte riconosce la ripresa al tetto.** Aspetta **P7**, la misura sulla CLI
+   vera dal PC (una domanda oltre il tetto, due turni di controllo), che chiede l'ok del
+   proprietario prima di partire -- voce «Il ponte riconosce la ripresa al tetto e dichiara il
+   turno «troncato»».
+3. **Il refactor degli agenti**, che riparte sopra la fonte unica e riceve le voci trasferite dal
+   registro (M-14, D-33) -- voce «Gli attori si riparano dal basso, e l'attuatore e' in pausa»;
+   analisi in `/mnt/project-files/analisi/2026-10-03-refactor-degli-agenti-proposta.md`.
 
 ### Gli attori si riparano dal basso, e l'attuatore e' in pausa — aperta il 01/10/2026
 
@@ -1042,21 +960,32 @@ va corretto, in un posto solo.
 
 ## In attesa
 
-### La credenziale del ponte vive quanto il turno — aperta il 14/10/2026
+### Tappa 7: le note basse del revisore — aperta il 07/10/2026
 
-`origine: F3b della Chiusura (S-24 del registro dei doppioni), accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/agent/bridge_governor.py::_intestazioni_ponte` · `hiris/app/api/credenziali.py`
+`origine: giri 81, 82 e 89 del revisore (/mnt/project-files/revisioni/giro-81.md, giro-82.md e giro-89.md), 07/10/2026; non bloccanti, registrate qui per decisione del coordinatore` · `hiris/app/action/actuator.py` · `docs/design/2026-08-22-costruire-in-home-assistant.md` · `hiris/app/static/hiris-theme.css`
 
-Il ponte chiama `/api/mcp` con una credenziale coniata al claim del turno. La credenziale dura 600 s
-e si rinnova a meta' vita, quindi al claim vive almeno 300 s; la scadenza predefinita di un turno
-(`ponte.scadenza_min`) e' 5 minuti, cioe' 300 s. Con il valore predefinito il guasto non puo'
-succedere. Con `ponte.scadenza_min` oltre 5, invece, un turno lungo puo' sopravvivere alla sua
-credenziale, e le chiamate agli strumenti di HIRIS dopo quel punto verrebbero rifiutate.
-
-Misurato dal PC il 13/10/2026 sul registro dei turni: 127 turni sul ponte dal 02/10 al 13/10,
-durata mediana 10,7 s, p90 24,8 s, massimo 71,3 s; 308 righe su `/api/mcp`, nessun 401. Oggi non
-si vede: diventa vero solo alzando la scadenza.
-
-Correzione: la credenziale coniata al claim vive almeno fino alla scadenza del turno che la usa.
+- **N81-1, la spec dice ancora due porte.** Il §2.1 di
+  `docs/design/2026-08-22-costruire-in-home-assistant.md` parla di due porte di scrittura, mentre
+  `CLAUDE.md` («Un canale, una porta») dalla Tappa 7, T4 ne nomina tre. E' una spec viva, e
+  `CLAUDE.md` la cita come fonte del paragrafo. Basta una riga in testa al §2.1 che rimandi a
+  `CLAUDE.md` per la terza porta.
+- **N82-1, il silenzio entra nella cronaca come «non eseguito».** Quando il trasporto tace su
+  `call_service`, la riga di cronaca porta `eseguito=False`, mentre il testo dice «non so se la
+  chiamata è arrivata». Era cosi' anche prima. Ma dalla Tappa 7, T1 la porta dei servizi distingue i
+  due casi, e la cronaca potrebbe dirlo, con un campo o con l'esito «incerto». Fondamenta 1: chi
+  legge la cronaca oggi non sa che quella riga e' un dubbio.
+- **N82-2, il silenzio puo' nascondere un nostro difetto.** `call_service` e le tre primitive
+  catturano `Exception` e la chiamano silenzio, quindi un nostro difetto dentro il blocco (per
+  esempio un `TypeError`) diventerebbe «HA non ha risposto». Il log e' a livello `debug`, senza
+  `exc_info`; `Workshop._rete` usava `exc_info=True` proprio per questo. Le due proposte del
+  revisore: `logger.warning(..., exc_info=True)`, oppure catturare solo `aiohttp.ClientError` e
+  `asyncio.TimeoutError`.
+- **N89-1, i contrasti dei token *-ink non portano il loro nome.** Nel commento sopra i token
+  `--ok-ink`, `--warn-ink` e `--err-ink` di `hiris/app/static/hiris-theme.css`, la frase prima
+  elenca i colori di partenza nell'ordine warn, ok, err («2.04:1 (warn), 2.49:1 (ok), 4.05:1
+  (err)»), e quella dopo da' i contrasti nuovi senza nome, nell'ordine dei token («5.16 / 5.61 /
+  5.44»). Chi legge le due terne di seguito li scambia. Si etichettano: «sul bianco: ok 5.16, warn
+  5.61, err 5.44». E' solo un commento: va bene al prossimo tocco del file.
 
 ### Un turno fallito del ponte dice perche' — aperta il 14/10/2026
 
@@ -1151,54 +1080,6 @@ Il registro dei modelli scrive `esito.tipo` = `"rifiutato"` anche quando il prov
 nome nella riga del provider (`providerRow` in `models-route.js`, che legge
 `esito.tipo === 'rifiutato'`) e la regola «da quante». Prima del disegno serve il parere
 dell'agente `ux-ui-specialist`.
-
-### `server.py` si spezza alla Chiusura dello sprint — aperta il 06/10/2026
-
-`origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
-
-**Il problema non è la lunghezza, è la fondamenta 4.** `server.py` misurava 5.621 righe il 06/10/2026
-(ramo dello sprint @ `d605aecb`), ma il monolite vero è `_on_startup`: una funzione sola di circa
-1.466 righe con 19 funzioni definite al suo interno, che nessuno può chiamare né provare da fuori.
-Era anche il file più toccato del mese (42 commit), cioè il punto dove i rami paralleli si scontrano.
-
-**Quando:** alla Chiusura dello sprint «Una fonte sola di verità», dopo gli strati 3–4 degli attori
-(che tolgono già `actuator_round` e compagne) e le Tappe 7–8, prima di riscrivere `CLAUDE.md`.
-Mai con altri rami aperti su `server.py`.
-
-**Come:** come la rinomina in inglese — suite verde, un commit per passo, **solo spostamento**
-(se il diff contiene una riga di logica, non è uno spostamento). I passi, da disegnare:
-1. `_on_startup` → funzioni con nome in un modulo di avvio, ognuna chiamabile e provabile;
-2. i giri del cervello (`analyst_round`, `recipe_round`, `reconsideration_round`, scope) in `mind/`;
-3. i rapporti del giorno (`write_day_report`, `backfill_one_report`, `_report_ingredients`…) accanto a `mind/report.py`;
-4. la disinstallazione della card Lovelace in un modulo suo;
-5. la shell HTML (fingerprint, versione, `/api/health`) in `api/`.
-In `server.py` resta `create_app()` con la registrazione delle rotte.
-
-**Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
-si aggiornano nello stesso commit dello spostamento.
-
-**Le chiavi di `app` vanno con lo spostamento (X-31, X-32 del registro; Tappa 9, D2 = B,
-08/10/2026).** Due fatti, letti l'08/10/2026 su `f3af525`:
-- **X-32** — nessuna chiave di `app` e' un `web.AppKey` (zero occorrenze in `hiris/app/`): sono
-  stringhe, e la stessa chiave scritta in due moduli si accorda solo per caso. **Ogni chiave si
-  dichiara come `web.AppKey` nel modulo che la possiede, nello stesso commit che la sposta** da
-  `server.py`: non prima (toccherebbe `server.py` due volte), non in un modulo di sole chiavi
-  (sarebbe una tabella che ricopia i proprietari). Non tutte stanno in `server.py`: le
-  assegnano all'avvio anche `api/soffitto.py`, `api/canali.py`, `api/servizi.py`,
-  `api/credenziali.py`, `api/handlers_mcp.py` e `usage/bridge_loads.py` (che ha gia' la costante
-  del nome, ancora una stringa). Quelle hanno gia' il loro modulo, e diventano `web.AppKey` nel
-  passo in cui si toccano le chiavi di `server.py` che le leggono.
-- **X-31** — la regola «non si scrive in `app[...]` a richiesta servita» e' violata in
-  `api/handlers_models.py` (`request.app["models_config"] = clean`, nel salvataggio della catena) e
-  in `api/handlers_settings.py` (`request.app["chat_settings"] = updated`). Il valore che cambia a
-  richiesta vive in un oggetto che `app` porta dall'avvio (con un metodo per aggiornarlo), non in
-  una riassegnazione della chiave. Si ripara quando la chiave diventa `web.AppKey`, nello stesso
-  commit.
-
-**Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
-porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
-rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
-file: il criterio è un file, un mestiere.
 
 ### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
 
@@ -3296,7 +3177,9 @@ aveva due voci, ora ne ha **diciannove**, di cui **diciassette sono percorsi di 
 resa che parta dal **solo soggetto** — «registro: `aioamazondevices`», «un'integrazione non
 caricata» — e la si condivide con `protagonistName` invece di scriverne una seconda.
 
-### Il README documenta sei rotte che non esistono
+### ~~Il README documenta sei rotte che non esistono~~ — **CHIUSA** il 14/10/2026
+
+`chiusa dalla fetta F9 della Chiusura dello sprint: i sei nomi erano gia' stati corretti il 07/09/2026 (commit f60d19c8, uscito con la v3.22.2) e la voce era rimasta aperta. La tabella «Interface» la confrontava gia' una prova che leggeva il testo di main.js con una regex; da F9 la confronta, nelle due direzioni, tests/js/readme-rotte.test.mjs, che chiede le route al router avviato`
 
 `origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
 
@@ -3927,6 +3810,142 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~La credenziale del ponte vive quanto il turno~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint)
+
+`fatta dalla fetta F8 della Chiusura, commit 35aa99e7 (S-24 del registro, chiudibile al rilascio): la credenziale del ponte vive il doppio del turno piu' lungo`
+
+`origine: F3b della Chiusura (S-24 del registro dei doppioni), accolta dal proprietario il 14/10/2026 («tutti i consigliati»)` · documento: `/mnt/project-files/chiusura/f3b-rapporto.md` · `hiris/app/agent/bridge_governor.py::_intestazioni_ponte` · `hiris/app/api/credenziali.py`
+
+Il ponte chiama `/api/mcp` con una credenziale coniata al claim del turno. La credenziale dura 600 s
+e si rinnova a meta' vita, quindi al claim vive almeno 300 s; la scadenza predefinita di un turno
+(`ponte.scadenza_min`) e' 5 minuti, cioe' 300 s. Con il valore predefinito il guasto non puo'
+succedere. Con `ponte.scadenza_min` oltre 5, invece, un turno lungo puo' sopravvivere alla sua
+credenziale, e le chiamate agli strumenti di HIRIS dopo quel punto verrebbero rifiutate.
+
+Misurato dal PC il 13/10/2026 sul registro dei turni: 127 turni sul ponte dal 02/10 al 13/10,
+durata mediana 10,7 s, p90 24,8 s, massimo 71,3 s; 308 righe su `/api/mcp`, nessun 401. Oggi non
+si vede: diventa vero solo alzando la scadenza.
+
+Correzione: la credenziale coniata al claim vive almeno fino alla scadenza del turno che la usa.
+
+### ~~`server.py` si spezza alla Chiusura dello sprint~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint)
+
+`fatta dalla fetta F8 della Chiusura, 14/10/2026, unita sul ramo d'integrazione @ 1a60d9b8: un commit di solo spostamento per passo, con la fotografia delle porte identica dopo ognuno; in server.py resta create_app. Dove e' andato ogni pezzo: CLAUDE.md, «Niente di nuovo dentro server.py», e il rapporto /mnt/project-files/chiusura/f8-rapporto.md`
+
+`origine: il proprietario, 06/10/2026 («ok si» alla proposta sui file monolitici, dopo la verifica di uno specialista)` · documento: `/mnt/project-files/analisi/2026-10-06-file-monolitici-proposta.md` · `hiris/app/server.py::_on_startup`
+
+**Il problema non è la lunghezza, è la fondamenta 4.** `server.py` misurava 5.621 righe il 06/10/2026
+(ramo dello sprint @ `d605aecb`), ma il monolite vero è `_on_startup`: una funzione sola di circa
+1.466 righe con 19 funzioni definite al suo interno, che nessuno può chiamare né provare da fuori.
+Era anche il file più toccato del mese (42 commit), cioè il punto dove i rami paralleli si scontrano.
+
+**Quando:** alla Chiusura dello sprint «Una fonte sola di verità», dopo gli strati 3–4 degli attori
+(che tolgono già `actuator_round` e compagne) e le Tappe 7–8, prima di riscrivere `CLAUDE.md`.
+Mai con altri rami aperti su `server.py`.
+
+**Come:** come la rinomina in inglese — suite verde, un commit per passo, **solo spostamento**
+(se il diff contiene una riga di logica, non è uno spostamento). I passi, da disegnare:
+1. `_on_startup` → funzioni con nome in un modulo di avvio, ognuna chiamabile e provabile;
+2. i giri del cervello (`analyst_round`, `recipe_round`, `reconsideration_round`, scope) in `mind/`;
+3. i rapporti del giorno (`write_day_report`, `backfill_one_report`, `_report_ingredients`…) accanto a `mind/report.py`;
+4. la disinstallazione della card Lovelace in un modulo suo;
+5. la shell HTML (fingerprint, versione, `/api/health`) in `api/`.
+In `server.py` resta `create_app()` con la registrazione delle rotte.
+
+**Il costo noto:** 76 file di prova importano `server` (13 `monkeypatch` sui suoi attributi):
+si aggiornano nello stesso commit dello spostamento.
+
+**Le chiavi di `app` vanno con lo spostamento (X-31, X-32 del registro; Tappa 9, D2 = B,
+08/10/2026).** Due fatti, letti l'08/10/2026 su `f3af525`:
+- **X-32** — nessuna chiave di `app` e' un `web.AppKey` (zero occorrenze in `hiris/app/`): sono
+  stringhe, e la stessa chiave scritta in due moduli si accorda solo per caso. **Ogni chiave si
+  dichiara come `web.AppKey` nel modulo che la possiede, nello stesso commit che la sposta** da
+  `server.py`: non prima (toccherebbe `server.py` due volte), non in un modulo di sole chiavi
+  (sarebbe una tabella che ricopia i proprietari). Non tutte stanno in `server.py`: le
+  assegnano all'avvio anche `api/soffitto.py`, `api/canali.py`, `api/servizi.py`,
+  `api/credenziali.py`, `api/handlers_mcp.py` e `usage/bridge_loads.py` (che ha gia' la costante
+  del nome, ancora una stringa). Quelle hanno gia' il loro modulo, e diventano `web.AppKey` nel
+  passo in cui si toccano le chiavi di `server.py` che le leggono.
+- **X-31** — la regola «non si scrive in `app[...]` a richiesta servita» e' violata in
+  `api/handlers_models.py` (`request.app["models_config"] = clean`, nel salvataggio della catena) e
+  in `api/handlers_settings.py` (`request.app["chat_settings"] = updated`). Il valore che cambia a
+  richiesta vive in un oggetto che `app` porta dall'avvio (con un metodo per aggiornarlo), non in
+  una riassegnazione della chiave. Si ripara quando la chiave diventa `web.AppKey`, nello stesso
+  commit.
+
+**Fuori da questa voce, per decisione:** `ha_client.py` (grande per la regola «un canale, una
+porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, `queries.py` si
+rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
+file: il criterio è un file, un mestiere.
+
+### ~~Una fonte sola di verita' per tutta l'app~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint) — aperta il 01/10/2026
+
+`origine: il proprietario, 01/10/2026 («e' la quinta volta che lo chiedo di fare, deve essere l'ultima»; «alla fine delle analisi creiamo un doc con il risultato e il piano di intervento come requisiti del prossimo sprint»)` · analisi in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · documento dei requisiti: `docs/design/2026-10-01-una-fonte-sola-di-verita.md` · lista di lavoro: `docs/design/2026-10-01-registro-dei-doppioni.md` · misure: `docs/misure/2026-10-tappa-0.md`
+
+**Viene prima della riparazione degli attori** (la voce qui sotto), che riparte sopra la fonte
+unica: il proprietario ha messo in pausa lo strato 1 quando e' emerso che la regola «disabilitata /
+nascosta / di servizio = fuori» e' scritta undici volte e che il modulo nuovo che stavo proponendo
+sarebbe stato la dodicesima copia.
+
+**L'obiettivo, con le sue parole.** In tutta l'app ogni domanda ha una risposta sola, scritta in un
+posto solo, che possa restituire le informazioni necessarie. Tutto e' costruito in modo consistente
+e coerente con la casa. Gli strumenti sono fatti in modo completo, senza doppioni, tutto unificato
+dove possibile in metodi atomici e strutturati, con il livello necessario a rispondere a tutte le
+funzionalita' dell'app. Gli strumenti restituiscono ai modelli il set informativo necessario,
+ottimizzando il consumo di token e la latenza nelle risposte e nel recupero.
+
+**Cosa ha misurato l'analisi (01/10/2026, v3.72.2).** Tutte le 62.703 righe di Python lette per
+intero, il frontend (10.824 righe di JS) letto per intero, la suite misurata come insieme; una sonda
+di parita' ha fatto girare le copie vere delle regole sui dati veri della casa. Il registro conta
+464 voci: 288 di doppione, 79 di codice morto, 77 affermazioni false nei documenti e 20 difetti che
+non sono doppioni (i conti si chiedono a `python scripts/registro.py conta`, non si ricopiano). Fra
+le regole ripetute, nove su tredici danno gia' oggi risposte diverse; sulla casa vera pesano l'area ereditata
+(194 entita' guardabili su 324 arrivano all'osservatore senza area), le ricette che vedono 1.138
+entita' che l'osservatore esclude, e il nome mostrato in due modi.
+
+**Le decisioni gia' prese dal proprietario.** La strada e' una domanda alla volta con la sonda di
+parita' («approccio A»), la destinazione e' il modello unico («approccio B»). I dati verso l'esterno
+si possono modificare. Esce tutto il codice dell'MCP di integrazione esterno (il gateway su .31,
+abbandonato): `GET /api/entities` e le sue prove; **il ponte interno resta**. Il censimento doveva
+essere completo su tutta l'app, strumenti e percorsi verso i modelli compresi.
+
+**Cosa deve contenere il documento dei requisiti.** L'esito dell'analisi; l'obiettivo e le sue
+cinque proprieta'; i requisiti numerati e verificabili; il piano di intervento per tappe, con le
+voci del registro che ciascuna chiude; i criteri di accettazione (registro vuoto, sonda di parita'
+a zero disaccordi, cancello nel pre-push, batteria della chat non peggiorata in token e latenza); le
+decisioni che restano al proprietario; cio' che resta fuori. Il piano di dettaglio di ogni tappa si
+scrive quando la tappa comincia.
+
+**Stato (01/10/2026, sera).** Lo sprint e' partito. Il proprietario ha deciso: i due difetti su dati
+e permessi (S-17 e `GET /api/home-space` a un servizio «lettore») in un rilascio a se' subito dopo
+la Tappa 0; l'ordine **a scaglioni** -- tappe 0-3, poi gli strati 1 e 2 degli attori, poi tappe
+4-6, poi gli strati 3 e 4, poi 7-8. In corso la Tappa 0, «Si toglie e si prepara».
+
+**Stato (02/10/2026, sera).** La Tappa 0 e' scritta per intero sul ramo
+`claude/project-thread-6h94lt` (PR 44) ed **esce come 3.73.0**, per decisione del proprietario. Cosa c'e' dentro: la rete (registro leggibile da un
+programma, sonda di parita', fotografia delle porte, due batterie con la prima misura in token e
+tempi, quattro cancelli nel pre-push e nella CI); le uscite (l'MCP esterno, lo streaming della
+chat, l'embedder, il codice senza chiamanti, il censore dei tipi fra gli attrezzi, la semina delle
+opzioni, undici annunci d'avvio falsi); la migrazione che toglie dal sapere le righe `notevole` e
+`direzione`; i commenti e i documenti che dicevano il falso. La fotografia a freddo delle porte e'
+identica a quella di partenza dopo ogni passo. I conti di oggi si chiedono a
+`python scripts/registro.py conta`; le misure stanno in `docs/misure/2026-10-tappa-0.md`.
+**Deciso dal proprietario il 02/10/2026**: si rilascia come 3.73.0; le dieci operazioni delle sette
+domande restano, per il refactor degli agenti (voce sugli attori qui sotto); i numeri di R18 sono
+approvati e scritti nella spec; le 23 dichiarazioni `notable` escono.
+
+**Stato (14/10/2026, Chiusura dello sprint).** Lo sprint si chiude in due rilasci (D4 della
+Chiusura): il **rilascio 1** e' la **3.79.0** (14/10/2026), con quasi tutte le voci che cambiano il
+comportamento; il **rilascio 2** porta `server.py` spezzato (F8: in `server.py` resta
+`create_app`) e i documenti (F9). La voce esce con il rilascio 2, che ne scrive versione e data
+nel titolo. Le voci del registro sono tutte chiuse o **trasferite**, col legame alla voce del
+BACKLOG che le porta: C-24 e M-37 a «I fogli di stile», C-25 e C-27 a «La pagina
+dell'osservatore si riprogetta», M-14 e D-33 a «Gli attori si riparano dal basso»
+(`python scripts/registro.py verifica` si ferma se una di quelle voci manca o e' chiusa). Lo sprint
+e' chiuso quando il PC conferma gli otto criteri del §8 della spec, uno per uno con la sua misura:
+l'elenco delle verifiche e' nel §12 della spec e nel rapporto della fetta F9
+(`/mnt/project-files/chiusura/f9-rapporto.md`). Cosa viene dopo: «I prossimi passi», sopra.
 
 ### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso — **USCITA con la v3.23.2**
 

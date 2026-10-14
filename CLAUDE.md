@@ -249,7 +249,11 @@ per-entità) che non ci sono più.
 ## Struttura reale
 
 Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un piano. Ricavata il
-02/10/2026 da `ls` e dai docstring dei moduli. Non porta conteggi: quanti file ha una cartella lo
+14/10/2026 da `ls` e dai docstring dei moduli, e da allora la confronta col disco
+`tests/test_struttura_reale.py`: un modulo nuovo che il blocco non nomina, o un nome del blocco
+che non esiste più, la fanno arrossire (il 14/10 il blocco del 02/10 nominava ancora `model_activation.py`
+e `mind/actuator.py`, usciti nella 3.78.0, e taceva fra gli altri `providers.py`, `states.py` e
+`conservazione.py`, nati dopo). Non porta conteggi: quanti file ha una cartella lo
 dice `ls`, e quante righe ha `server.py` lo dice `wc -l hiris/app/server.py`. Sono numeri che
 invecchiano da soli, non fatti che questo file possa custodire (ci ha già provato tre volte:
 «~1.900», «4.340», «6.229»).
@@ -258,49 +262,85 @@ invecchiano da soli, non fatti che questo file possa custodire (ci ha già prova
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # create_app: registra le rotte, aggancia avvio e chiusura
-    ├── startup.py        # l'avvio e la chiusura: i pezzi d'avvio e i lavori dello schedulatore
-    ├── claude_runner.py · llm_router.py   # la catena: loop agentico Claude, instradamento
-    ├── steering.py       # chi risponde a questo turno: il ponte, o la catena (e il registro dei turni)
-    ├── model_resolution.py · model_activation.py · provider_occurrences.py
-    ├── chat_store.py · chat_thread.py · chat_settings.py
-    ├── options_migration.py
-    ├── config.py · storage.py · version.py
+    ├── server.py         # create_app: registra le rotte, aggancia avvio e chiusura. Non ospita
+    ├── startup.py        # l'avvio e la chiusura (_on_startup, _on_cleanup), i lavori dello
+    │                     # schedulatore con un nome, i valori che cambiano dopo l'avvio
     ├── live_value.py     # LiveValue: il valore di `app` che cambia dopo l'avvio (X-31)
-    ├── api/            handlers_* — la superficie HTTP; ingresso, soffitto, canali,
-    │                   servizi, credenziali: chi entra e cosa puo'
-    ├── home_space/     l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre
-    │                   domande (queries), la porta che interroga la casa e la sua storia
-    │                   (house_query, house_history), gli strumenti della chat (tools), il
-    │                   tempo della casa (historian), i giudizi sui tipi e le loro domande
-    │                   aperte, il filtro di riservatezza (privacy), il sigillo dei segreti
-    │                   (redaction)
+    ├── background.py     # i compiti senza padrone: l'unico posto che ne crea uno
+    ├── claude_runner.py · llm_router.py   # la catena: loop agentico Claude, instradamento
+    ├── steering.py       # chi risponde a questo turno, il ponte o la catena; il registro dei turni
+    ├── answer_reasons.py # le frasi con cui un turno dice perche' non ha una risposta (una foglia)
+    ├── providers.py      # la tabella dei provider: quali esistono, come si chiamano, chi risponde
+    ├── model_resolution.py · models_store.py · provider_occurrences.py · options_migration.py
+    │                     # chi risponde al prossimo messaggio; models_config.json; l'ultimo
+    │                     # esito per provider; le due semine dell'archivio dei modelli
+    ├── chat_store.py · chat_thread.py · chat_settings.py   # conversazione, filo, impostazioni
+    ├── states.py         # le parole degli stati delle tre code: promesse, costruzioni, proposte
+    ├── conservazione.py  # per quanto la casa ricorda: un lavoro notturno pota ogni archivio
+    ├── config.py · storage.py · version.py   # il cambio USD→EUR; SQLite e migrazioni; la versione
+    ├── api/            la superficie HTTP: le rotte (handlers_*.py, un file per mestiere);
+    │                   chi entra e cosa puo' (ingresso.py, admission.py, soffitto.py,
+    │                   canali.py, credenziali.py, servizi.py, middleware_internal_auth.py,
+    │                   middleware_csrf.py); il confine dell'italiano (boundary.py); il guscio
+    │                   HTML e le impronte degli asset (shell.py)
+    ├── home_space/     la casa. L'anagrafe dal vivo (reader.py, topology.py,
+    │                   registry_follower.py) e i giri che la tengono allineata (rounds.py);
+    │                   l'istantanea per turno (house.py) e la sua resa (render.py); il nucleo
+    │                   (briefing.py); le domande (queries.py, house_query.py, house_history.py,
+    │                   counts.py); gli strumenti della chat (tools.py); il tempo (historian.py);
+    │                   cio' che la casa fa da sola (behavior.py), gli impegni (appointments.py),
+    │                   la dashboard Energia (energy.py), il registro di HA (log_source.py); i
+    │                   tipi e le loro domande (type_judgments.py, type_vocabulary.py,
+    │                   open_questions.py); i vocabolari (field_vocabulary.py, ha_vocabulary.py,
+    │                   reference.py); il filtro di riservatezza (privacy.py) e il sigillo dei
+    │                   segreti (redaction.py)
     ├── action/         «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
-    │                   porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
-    │                   construction/ — workshop.py, l'unica porta sul canale della
-    │                   CONFIGURAZIONE — composer.py, advisor.py, revisions.py;
-    │                   installation.py, la porta dell'INSTALLAZIONE (voce di menu, card)
-    ├── mind/           il cervello: osservatore (observer, watcher, scope, facts, report),
-    │                   sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
-    │                   analista (analyst, analyst_turn), proponente (actuator, proposer_turn)
-    ├── memory/         cio' che le persone hanno detto: store, interpretation, resolver
-    ├── keeper/         le promesse dell'utente: promise, store, sweeper, exchange, outcome
-    ├── agent/          runner.py (il lavoratore del ponte: polla la coda) + prompts.py
-    ├── reasoning/      queue.py — la coda dei turni del ponte
-    ├── usage/          l'archivio dei consumi e le sue parole
-    ├── proxy/          ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
-    ├── backends/       i runner OpenAI-compat e OpenRouter, pricing, la guardia sull'indirizzo
-    │                   di Ollama
-    └── static/         index.html · config.html · chat/*.js · config/*.js
+    │                   porta sul canale — verification.py, registry.py, journal.py, rhythm.py,
+    │                   write_outcome.py (la forma dell'esito, una per le due porte);
+    │                   construction/workshop.py, l'unica porta sul canale della CONFIGURAZIONE,
+    │                   con construction/composer.py, construction/advisor.py,
+    │                   construction/revisions.py, construction/stakes.py; installation.py, la
+    │                   porta dell'INSTALLAZIONE (voce di menu, disinstallazione della card)
+    ├── mind/           il cervello. L'osservatore (observer.py, observer_round.py, watcher.py,
+    │                   scope.py, cadence.py, realignment.py, facts.py, flatline.py, report.py,
+    │                   day_report.py, store.py, view.py); le condizioni di sistema
+    │                   (conditions_round.py); il sapere e le ricette (knowledge.py, seed.py,
+    │                   state_words.py, recipes.py, recipe_turn.py, recipe_round.py,
+    │                   operations.py, compute.py); l'analista (analyst.py, analyst_turn.py,
+    │                   analyst_round.py); il proponente, fermo (proposer_turn.py,
+    │                   proposer_round.py, proposer_outcomes.py, proposal_redo.py,
+    │                   automate_turn.py); i giudizi sui tipi (judgments.py); gli archivi che
+    │                   seguono la casa (reconciliation.py)
+    ├── memory/         cio' che le persone hanno detto: store.py, interpretation.py, resolver.py
+    ├── keeper/         le promesse dell'utente: promise.py, store.py, sweeper.py (il battito),
+    │                   exchange.py, outcome.py, recipient.py, delivery.py
+    ├── agent/          runner.py (il lavoratore del ponte: prende i turni dalla coda),
+    │                   prompts.py, bridge_governor.py (il governo del ponte)
+    ├── reasoning/      queue.py — la coda dei turni del ponte; consegna.py — cio' che segue
+    │                   la risposta del piano
+    ├── usage/          l'archivio dei consumi (store.py) e le sue parole (vocabulary.py); i
+    │                   token di un giro (giro.py); cio' che /api/mcp consegna alla CLI del
+    │                   ponte (bridge_loads.py)
+    ├── proxy/          ha_client.py (il VERO client HA: REST+WS), entity_cache.py,
+    │                   state_translations.py, _sanitize.py
+    ├── backends/       i runner OpenAI-compat e OpenRouter (openai_compat_runner.py,
+    │                   openrouter_runner.py), pricing.py, la guardia sull'indirizzo di Ollama
+    │                   (ollama.py)
+    └── static/         index.html · config.html · *.js · *.css · hiris-icon.svg · chat/*.js ·
+                        config/*.js · fonts/
 scripts/                  # gli ATTREZZI: non entrano nell'immagine, e il prodotto non li importa
-                          # (lo prova tests/test_import_boundary.py). release.py, cancelli.py,
-                          # censimento.py, doppioni.py, registro.py, sponde_js.py,
-                          # verifica_componenti.py; casa.py
-                          # (l'unica porta degli attrezzi verso la casa, di sola lettura),
-                          # sonda_parita.py, fotografia_porte.py, le batterie di misura;
-                          # censore_tipi.py e istantaneo_pubblicato.py (l'anagrafe dei tipi);
-                          # backup-nas.ps1, che nessun file del repo chiama: lo lancia la
-                          # pianificazione di Windows sul PC del proprietario (M-38)
+                          # (lo prova tests/test_import_boundary.py). I cancelli: cancelli.py,
+                          # censimento.py (con censimento_eccezioni.json), doppioni.py (con
+                          # doppioni_noti.json), registro.py, sponde_js.py, legami_js.mjs,
+                          # verifica_componenti.py; il rilascio: release.py; la casa: casa.py
+                          # (l'unica porta verso la casa vera, di sola lettura), casa_finta.py,
+                          # _comune.py; le misure: sonda_parita.py, fotografia_porte.py,
+                          # batteria_misure.py, batteria_attori.py, misure.py; l'anagrafe dei
+                          # tipi: censore_tipi.py, istantaneo_pubblicato.py; le rinomine:
+                          # rinomina.py, rinomina_js.py; vendora_caratteri.py (i caratteri
+                          # tipografici dentro l'add-on); backup-nas.ps1, che nessun file del
+                          # repo chiama: lo lancia la pianificazione di Windows sul PC del
+                          # proprietario (M-38)
 ```
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
@@ -323,6 +363,15 @@ Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la 
 riscritta da zero come ultimo passo, quando il prodotto sarà completo. Al suo posto `action/installation.py`
 tiene solo la **disinstallazione** (`disinstalla_card_lovelace`), perché quelle scritture
 stavano nella configurazione dell'utente, non dentro l'add-on.
+Durante lo sprint «Una fonte sola di verità» sono usciti anche `memory/lookup_cache.py`
+(3.75.0: l'indice della memoria si chiede alla casa del turno), `static/config/api.js` (3.76.0:
+le utilità del frontend vivono una volta in `static/common.js`), `api/handlers_reasoning.py`
+con le rotte `/api/reasoning/claim` e `/api/reasoning/submit` (3.78.0: il lavoratore del ponte
+consegna dentro il processo, `reasoning/consegna.py`), `mind/actuator.py` e
+`mind/actuator_turn.py` (3.78.0: l'attuatore è diventato il proponente), `model_activation.py`
+(3.78.0: `providers.py`); e, nella Chiusura dello sprint, `panel_visibility.py` (3.79.0: la voce
+di menu passa da `action/installation.py` e da `HAClient`) e il metodo vuoto `HomeSpace.close()`
+con la sua chiamata in `_on_cleanup` (M-51).
 La tabella «Cosa è condannato» qui sopra resta valida come **regola**, ma i percorsi che cita
 (`watcher/detectors.py`, `security/semaphore.py`) sono ormai riferimenti storici: quelle aree
 sono uscite con le fette E2 ed E3.
@@ -519,9 +568,13 @@ suite. Il 26 agosto 2026 il progetto non ne aveva nessuno, e questo paragrafo lo
 debito. `mypy` e un formattatore non ci sono: non si pretende ciò che nessuno strumento controlla.
 
 **Niente di nuovo dentro `server.py`** (il proprietario, 06/10/2026). Un giro nuovo nasce in
-`mind/`, una rotta nuova in un `api/handlers_*`, un pezzo d'avvio in una funzione con nome fuori da
-`_on_startup`. `server.py` registra e avvia: non ospita. Lo spezzettamento di ciò che c'è già ha
-la sua voce nel BACKLOG («`server.py` si spezza alla Chiusura dello sprint»).
+`mind/`, una rotta nuova in un `api/handlers_*`, un pezzo d'avvio in una funzione con nome in
+`startup.py`, fuori da `_on_startup`. `server.py` registra e avvia: non ospita. Lo
+spezzettamento è fatto (Chiusura dello sprint, F8, 14/10/2026): in `server.py` resta solo
+`create_app`, con i contenitori che devono nascere prima che l'app si congeli e la registrazione
+delle rotte; i giri sono in `mind/` e `home_space/rounds.py`, l'avvio in `startup.py`, il guscio
+in `api/shell.py`, il governo del ponte in `agent/bridge_governor.py`, la consegna in
+`keeper/sweeper.py` e `reasoning/consegna.py`.
 
 ### Il debito dichiarato: la rinomina in inglese
 
