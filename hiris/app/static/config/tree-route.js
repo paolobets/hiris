@@ -122,17 +122,6 @@ window.HirisTreeRoute = (function () {
       .map(function (k) { return (names[k] || k) + ' ' + unit[k]; });
   }
 
-  /* Il segno di un'entita' fuori dai visibili (`fuori.classe`, la regola di
-     `topology.visibility_classes`), con le parole che questa pagina usava
-     gia' (scelta del proprietario, 12/10/2026: «Parole di oggi», nessun
-     termine nuovo). Una classe che la mappa non conosce compare col suo
-     nome, non sparisce. */
-  var OUTSIDE_MARK = {
-    disabilitata: '[disabilitata]',
-    nascosta: '[nascosta in Home Assistant]',
-    servizio: '[di servizio]'
-  };
-
   /* Quante voci di un elenco si nominano prima di «e altre N». */
   var NAMED_AT_MOST = 10;
 
@@ -180,7 +169,12 @@ window.HirisTreeRoute = (function () {
     return e.unita ? e.stato + ' ' + e.unita : String(e.stato);
   }
 
-  function entityLine(ul, e) {
+  /* Il segno di un'entita' fuori dai visibili (`fuori.classe`, la regola di
+     `topology.visibility_classes`). Le parole le manda il server
+     (`segni_fuori` di `GET /api/home-space`, C-10): fino al 14/10/2026
+     stavano qui, in `OUTSIDE_MARK`. Una classe che la mappa non conosce
+     compare col suo nome, non sparisce. */
+  function entityLine(ul, e, outsideMarks) {
     var li = el('li');
     /* `overflow-wrap:anywhere` anche qui (non solo sull'id): alias ed
        etichette sono a loro volta slug senza spazi, stesso rischio di
@@ -215,7 +209,7 @@ window.HirisTreeRoute = (function () {
        (disabilitata > nascosta > di servizio), come la legge la chat. */
     var outside = e.fuori && e.fuori.classe;
     if (outside) {
-      var mark = el('span', null, ' ' + (OUTSIDE_MARK[outside] || '[' + outside + ']'));
+      var mark = el('span', null, ' ' + ((outsideMarks && outsideMarks[outside]) || '[' + outside + ']'));
       mark.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
       li.appendChild(mark);
     }
@@ -309,7 +303,7 @@ window.HirisTreeRoute = (function () {
     return base;
   }
 
-  function renderArea(container, area) {
+  function renderArea(container, area, outsideMarks) {
     var det = el('details');
     /* C2 (audit 2026-08-24): con `open` sempre vero, una casa di 1224
        entità rendeva 49.282px di pagina su desktop e 70.154px su mobile --
@@ -352,7 +346,7 @@ window.HirisTreeRoute = (function () {
     if (active.length) {
       var ul = el('ul');
       ul.style.cssText = 'margin:4px 0;padding-left:18px';
-      active.forEach(function (e) { entityLine(ul, e); });
+      active.forEach(function (e) { entityLine(ul, e, outsideMarks); });
       body.appendChild(ul);
     }
     if (disabled.length) {
@@ -365,7 +359,7 @@ window.HirisTreeRoute = (function () {
       body.appendChild(disabledTitle);
       var ulD = el('ul');
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
-      disabled.forEach(function (e) { entityLine(ulD, e); });
+      disabled.forEach(function (e) { entityLine(ulD, e, outsideMarks); });
       body.appendChild(ulD);
     }
     if (hidden.length) {
@@ -379,7 +373,7 @@ window.HirisTreeRoute = (function () {
       body.appendChild(hiddenTitle);
       var ulN = el('ul');
       ulN.style.cssText = 'margin:4px 0;padding-left:18px';
-      hidden.forEach(function (e) { entityLine(ulN, e); });
+      hidden.forEach(function (e) { entityLine(ulN, e, outsideMarks); });
       body.appendChild(ulN);
     }
 
@@ -395,7 +389,7 @@ window.HirisTreeRoute = (function () {
     return n + ' ' + word;
   }
 
-  function renderFloor(container, floor) {
+  function renderFloor(container, floor, outsideMarks) {
     var det = el('details');
     /* Primo livello: resta aperto (vedi il commento in rendiArea per il
        perche' le aree, sotto, non lo sono piu'). */
@@ -412,7 +406,7 @@ window.HirisTreeRoute = (function () {
     var explanation = FLOOR_EXPLANATION[floor.id];
     if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
-    (floor.aree || []).forEach(function (area) { renderArea(body, area); });
+    (floor.aree || []).forEach(function (area) { renderArea(body, area, outsideMarks); });
 
     det.appendChild(body);
     container.appendChild(det);
@@ -585,7 +579,7 @@ window.HirisTreeRoute = (function () {
       line(body, 'La lettura non ha prodotto nessun piano né area.', TONE_CALM);
       return;
     }
-    floor.forEach(function (floor) { renderFloor(body, floor); });
+    floor.forEach(function (floor) { renderFloor(body, floor, home_space.segni_fuori); });
   }
 
   function mount() {

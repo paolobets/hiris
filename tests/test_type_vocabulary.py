@@ -34,7 +34,7 @@ import pathlib
 import sys
 
 from hiris.app.home_space import briefing, topology
-from hiris.app.home_space.briefing import compose
+from tests.test_briefing import compose
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import censore_tipi

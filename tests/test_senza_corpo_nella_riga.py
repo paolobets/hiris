@@ -6,9 +6,8 @@ Rossa prima della correzione: la riga guardava il solo corpo `None`, e
 un'automazione col corpo archiviato ma in `unread_bodies` non era segnata,
 mentre l'avviso la contava.
 """
-from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.render import BODY_UNKNOWN
-from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
+from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO, compose
 
 
 def test_la_riga_e_l_avviso_contano_le_stesse_voci():

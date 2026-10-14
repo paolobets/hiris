@@ -37,6 +37,7 @@ cui il nucleo e' l'unica via di scoperta.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from ..proxy.entity_cache import CAPABILITIES
@@ -48,13 +49,12 @@ from .ha_vocabulary import (
     house_is_newer_than_vocabulary,
 )
 from .historian import home_space_zone, instant_epoch
+from .house import House
 from .queries import sanitized_memories
 from .render import BODY_UNKNOWN
 from .topology import (
     PROBLEM_SEVERITY,
     VISIBLE,
-    device_name,
-    hierarchy,
     id_marker,
     name_with_id,
     visibility,
@@ -243,7 +243,7 @@ def _carriers(area_entities: list[dict], domain: str) -> tuple[list[str], int]:
 
 
 def _device_annotation(area_entities: list[dict], domain: str, count: int,
-                             device_names: dict[str, str] | None) -> str:
+                             device_name_lookup: Callable[[str], str | None] | None) -> str:
     """Il pezzo fra parentesi da attaccare a «4 valve» -- o "" quando la riga
     non mente per omissione.
 
@@ -253,14 +253,14 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
     informazione che contava -- e il modello, per raggrupparle, dovrebbe
     INDOVINARE di cercare un dispositivo di cui non conosce il nome.
 
-    `device_names` a `None` significa «non ho potuto guardare», non
-    «nessun dispositivo»: col registro "dispositivi" caduto la tabella e'
-    VUOTA (`reader.build_home_space` costruisce da cio' che e' arrivato),
-    quindi un dizionario vuoto renderebbe ogni
+    `device_name_lookup` (id -> nome, `House.name`) a `None` significa «non
+    ho potuto guardare», non «nessun dispositivo»: col registro "dispositivi"
+    caduto la tabella e' VUOTA (`reader.build_home_space` costruisce da cio'
+    che e' arrivato), quindi una ricerca in quella tabella renderebbe ogni
     `dispositivo_id` un riferimento al nulla e l'annotazione stamperebbe
     "(id: ...)" su tutta la casa. La lacuna e' gia' dichiarata in "cio' che
     HIRIS ignora": qui non si aggiunge un secondo silenzio."""
-    if device_names is None:
+    if device_name_lookup is None:
         return ""
     devices, without = _carriers(area_entities, domain)
     if len(devices) + without >= count:
@@ -284,7 +284,7 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
         # annotazione invece di una casa senza assistente.
         return ""
     device_id = devices[0]
-    name = (device_names.get(device_id) or "").strip() or device_id
+    name = (device_name_lookup(device_id) or "").strip() or device_id
     if name != device_id:
         return f" ({name})"
     # Un dispositivo senza nome esiste davvero: `reader._device` scrive
@@ -514,7 +514,7 @@ def _reference_frame_lines(frame: dict | None) -> list[str]:
 
 
 def _home_space_lines(floors: list[dict],
-                device_names: dict[str, str] | None) -> list[str]:
+                device_name_lookup: Callable[[str], str | None] | None) -> list[str]:
     """Piano per piano, area per area: quante entita' per tipo. Non i nomi
     -- vedi il docstring del modulo sul perche'.
 
@@ -523,7 +523,7 @@ def _home_space_lines(floors: list[dict],
     albero solo per il nucleo, lo stesso che `search` percorre, cosi' due
     porte non possono raccontare due storie diverse sulla stessa area.
 
-    `device_names` (id -> nome, `None` quando il registro dei
+    `device_name_lookup` (id -> nome, `None` quando il registro dei
     dispositivi non ha risposto) serve alle ANNOTAZIONI: un conteggio che
     raggruppa entita' di un dispositivo solo non dice se sono quattro cose
     o una, e questo e' il posto in cui lo dice -- vedi
@@ -549,7 +549,7 @@ def _home_space_lines(floors: list[dict],
             if counts:
                 detail = ", ".join(
                     f"{n} {_domain_name(dom, n)}"
-                    + _device_annotation(area["entita"], dom, n, device_names)
+                    + _device_annotation(area["entita"], dom, n, device_name_lookup)
                     for dom, n in counts.items())
             else:
                 detail = "nessuna entità"
@@ -1467,7 +1467,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
-            floors: list[dict] | None = None) -> tuple[str, dict]:
+            *, house: House) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1492,11 +1492,6 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     CAPACITA' (mai i valori correnti -- vedi `_capability_lines`). `None`
     significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
     niente»: la sezione lo dichiara, come `problems` e `comparison` qui sotto.
-
-    `floors` e' l'albero di `hierarchy(home_space, unavailable)` gia'
-    calcolato dal chiamante (`house.House.hierarchy`, R18): il turno di chat
-    lo costruisce una volta e lo condivide con gli strumenti. Deve venire
-    dalla STESSA casa e dagli STESSI `unavailable`; `None` lo calcola qui.
 
     `unavailable` sono i registri dell'anagrafe che non hanno risposto
     all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
@@ -1539,6 +1534,16 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     `.unread_bodies()`): senza un parametro per riceverle, il PERCHE' di
     un'automazione di cui non si conosce il corpo non arriverebbe
     mai al modello.
+
+    `house` e' la casa del turno (`house.House`), da cui `home_space` e
+    `unavailable` vengono gia'. Le si chiedono l'albero (`House.hierarchy`,
+    R18: il turno di chat lo costruisce una volta e lo condivide con gli
+    strumenti) e i nomi dei dispositivi delle annotazioni (`House.name`),
+    invece di rifarne qui l'indice dall'anagrafe (A-16, Chiusura,
+    14/10/2026; fino ad allora l'albero arrivava a parte, come `floors`,
+    e `None` lo ricalcolava qui). Obbligatoria: una
+    casa costruita qui dentro sarebbe una seconda composizione accanto a
+    `House.read` (`test_casa_per_turno`).
 
     `behavior_kept` e' il segno della replica conservata
     (`HomeSpace.behavior_kept()`, G-16): quando l'ultima rilettura non ha
@@ -1701,33 +1706,32 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(kept)
 
     # `compose()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
-    # sono gia' in `home_space["dispositivi"]`, la stessa struttura che il
-    # chiamante ha letto con `HomeSpace.read()`
-    # (handlers_home_space.compose_briefing). Nessun archivio aperto, nessuna rete.
+    # li sa la casa del turno (`House.name`), costruita dalla stessa anagrafe
+    # che il chiamante ha letto con `HomeSpace.read()`
+    # (handlers_home_space.compose_briefing). Nessun archivio aperto, nessuna
+    # rete. Fino al 14/10/2026 qui si rifaceva l'indice id -> nome
+    # dall'anagrafe, accanto a quello che `House` tiene gia' (A-16).
     #
-    # `None` e non `{}` col registro caduto: la tabella "dispositivi" caduta e'
-    # VUOTA, non piccola, quindi `{}` renderebbe ogni `dispositivo_id` un
+    # `None` col registro caduto: la tabella "dispositivi" caduta e'
+    # VUOTA, non piccola, quindi cercarci renderebbe ogni `dispositivo_id` un
     # riferimento al nulla e l'annotazione stamperebbe "(id: ...)" su tutta la
     # casa. La lacuna e' gia' dichiarata negli avvisi e in "cio' che HIRIS
     # ignora": qui si tace, non si inventa. Vedi `_device_annotation`.
-    if "dispositivi" in unavailable:
-        device_names: dict[str, str] | None = None
-    else:
-        device_names = {d["id"]: device_name(d)
-                        for d in home_space.get("dispositivi") or [] if d.get("id")}
+    device_name_lookup: Callable[[str], str | None] | None = (
+        None if "dispositivi" in unavailable
+        else lambda device_id: house.name("dispositivo", device_id))
 
     # Un solo albero (`hierarchy()`, con `non_disponibili` applicato): prima
     # del fix CRITICAL ① la sezione dello stato («Notevole adesso», uscita il
     # 29/09/2026) se ne ricalcolava uno proprio a mano, che poteva dire
     # "Senza area" dove "La casa" -- correttamente -- diceva "Aree non lette".
-    if floors is None:
-        floors = hierarchy(home_space, unavailable)
+    floors = house.hierarchy()
     # Il riferimento sta in testa a "La casa" e non in una sezione sua: e' una
     # proprieta' della casa, e una sezione in piu' avrebbe voluto dire un'altra
     # intestazione da spendere per due righe. In testa perche' il taglio parte
     # dal fondo -- e perche' e' la chiave di lettura di tutto cio' che segue.
     reference_frame_lines = _reference_frame_lines(reference_frame)
-    home_space_lines = reference_frame_lines + _home_space_lines(floors, device_names)
+    home_space_lines = reference_frame_lines + _home_space_lines(floors, device_name_lookup)
 
     # Lo stato NON entra nel nucleo (dal 29/09/2026), ma resta vero che uno
     # stato non letto non e' uno stato tranquillo (CRITICAL ②): lo dicono la

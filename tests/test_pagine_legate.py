@@ -18,10 +18,15 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api import servizi
-from hiris.app.api.handlers_home_space import handle_get_home_space, register_names
+from hiris.app.api.handlers_home_space import (
+    handle_get_home_space,
+    outside_marks,
+    register_names,
+)
 from hiris.app.home_space.briefing import _MEASUREMENT_NAMES
 from hiris.app.home_space.house import _EXCLUDED_KEY
 from hiris.app.home_space.reader import TABLES, HomeSpace
+from hiris.app.home_space.topology import OUTSIDE_CLASSES, visibility_classes
 from hiris.app.mind.facts import NOT_ENTITY_PREFIXES
 from hiris.app.mind.report import BACKFILL_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE
 from hiris.app.mind.store import READING_RETENTION_S
@@ -34,13 +39,6 @@ STATIC = ROOT / "hiris" / "app" / "static"
 
 def _js(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
-
-
-def _js_object(source: str, name: str) -> dict[str, str]:
-    """`var NAME = { chiave: 'valore', ... }` letto dal sorgente, nell'ordine."""
-    match = re.search(r"var " + name + r" = \{([^}]*)\}", source)
-    assert match, f"{name} non trovata: il file e' cambiato sotto questa prova?"
-    return dict(re.findall(r"(\w+): '([^']*)'", match.group(1)))
 
 
 def _js_array(source: str, name: str) -> list[str]:
@@ -292,6 +290,54 @@ def test_no_page_keeps_the_register_names():
     assert not copies, f"pagine che ricopiano i nomi dei registri: {copies}"
 
 
+# -- C-10: i segni del `fuori` -------------------------------------------------
+# Il segno con cui l'albero marca un'entita' disabilitata, nascosta o di
+# servizio lo manda il server (`segni_fuori` di `GET /api/home-space`), con le
+# chiavi chieste a `topology.OUTSIDE_CLASSES`; la pagina non ne tiene una copia
+# (fino al 14/10/2026 era `OUTSIDE_MARK` in tree-route.js). F11 della Chiusura.
+# Mutazioni ESEGUITE (14/10/2026): rimessa in tree-route.js la mappa con le tre
+# parole -> rossa la terza; tolto `segni_fuori` dal ramo senza archivio ->
+# rossa la prima; la classe `servizio` scritta in linea in `visibility_classes`
+# come «di_servizio» -> rossa la seconda.
+
+@pytest.mark.asyncio
+async def test_home_space_route_sends_outside_marks(aiohttp_client, tmp_path):
+    store = HomeSpace(str(tmp_path))
+    app = web.Application()
+    app["home_space_store"] = store
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    try:
+        body = await (await client.get("/api/home-space")).json()
+    finally:
+        store.close()
+    assert body["segni_fuori"] == outside_marks()
+
+    app = web.Application()
+    app["home_space_store"] = None
+    app.router.add_get("/api/home-space", handle_get_home_space)
+    client = await aiohttp_client(app)
+    body = await (await client.get("/api/home-space")).json()
+    assert body["segni_fuori"] == outside_marks()
+
+
+def test_outside_marks_cover_every_class_the_rule_produces():
+    """Le chiavi sono le classi che `visibility_classes` produce davvero, e
+    ognuna ha la sua parola (nessuna esce col solo nome di ripiego)."""
+    tutte = {"disabilitata": 1, "nascosta": 1, "categoria": "diagnostic"}
+    produced = [name for name, _cause in visibility_classes(tutte)]
+    assert produced == list(OUTSIDE_CLASSES)
+    assert list(outside_marks()) == produced
+
+
+def test_no_page_keeps_the_outside_marks():
+    words = set(outside_marks().values())
+    assert len(words) == len(OUTSIDE_CLASSES), "la derivazione non porta piu' i segni"
+    copies = [path.name for path in STATIC.rglob("*.js")
+              if any(f"'{w}'" in path.read_text(encoding="utf-8") for w in words)]
+    assert not copies, f"pagine che ricopiano i segni del fuori: {copies}"
+
+
 # -- C-10: i prefissi dei soggetti di sistema ---------------------------------
 # `NOT_ENTITY_PREFIXES` (`mind/facts.py`) e' la grammatica con cui la cronaca
 # scrive un soggetto che non e' un'entita'; `parseSubjectPrefix`
@@ -312,12 +358,13 @@ def test_subject_prefixes_are_read_by_the_page():
 
 
 def test_i_segni_del_fuori_dell_albero_sono_le_classi_del_server():
-    """L'albero scrive un segno per ogni classe del `fuori` (`OUTSIDE_MARK`,
-    Tappa 9, F5: «Parole di oggi», scelta del proprietario il 12/10/2026). Le
-    classi sono quelle di `topology.visibility_classes`, che `House` conta in
+    """L'albero scrive un segno per ogni classe del `fuori` (Tappa 9, F5:
+    «Parole di oggi», scelta del proprietario il 12/10/2026). Le classi sono
+    quelle di `topology.visibility_classes`, che `House` conta in
     `_EXCLUDED_KEY`: una classe nuova senza segno uscirebbe col nome grezzo,
-    e un segno senza classe sarebbe una parola morta.
+    e un segno senza classe sarebbe una parola morta. Dal 14/10/2026 (C-10,
+    F11) i segni li manda il server (`segni_fuori`): la prova guarda li'.
 
-    Mutazione ESEGUITA: `servizio` tolto da `OUTSIDE_MARK` -- rossa."""
-    marks = _js_object(_js("config/tree-route.js"), "OUTSIDE_MARK")
-    assert set(marks) == set(_EXCLUDED_KEY), (sorted(marks), sorted(_EXCLUDED_KEY))
+    Mutazione ESEGUITA (Tappa 9): `servizio` tolto dai segni -- rossa."""
+    assert set(outside_marks()) == set(_EXCLUDED_KEY), (sorted(outside_marks()),
+                                                        sorted(_EXCLUDED_KEY))

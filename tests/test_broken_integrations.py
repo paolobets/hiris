@@ -6,8 +6,8 @@ legge a ogni ricostruzione. HIRIS salvava lo stato, buttava il motivo, e non
 leggeva ne' l'uno ne' l'altro: poteva solo contare le entita' non disponibili
 e non sapere perche'.
 """
-from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.reader import HomeSpace
+from tests.test_briefing import compose
 
 
 def _nucleo(integrazioni):

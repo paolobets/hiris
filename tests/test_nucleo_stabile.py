@@ -4,8 +4,7 @@ Misurato il 29/09/2026: la #18 («come sta la casa») e' stata risposta SENZA
 strumenti e SBAGLIATA su tutte e due le strade, prendendo per buona la
 fotografia di «Notevole adesso».
 """
-from hiris.app.home_space.briefing import compose
-from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
+from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO, compose
 
 
 def test_il_nucleo_non_ha_piu_notevole_adesso():

@@ -551,9 +551,10 @@ def test_purge_drops_a_question_left_without_answer():
     """D-15 (Chiusura, 13/10/2026): la domanda si scrive prima del turno su
     ogni strada, e la risposta solo se c'e'. Una domanda rimasta senza
     risposta (il turno e' fallito) si toglie in lettura quando ne arriva
-    un'altra: l'API di Claude non accetta due turni utente di fila. L'ultima
-    resta: e' quella a cui il turno sta rispondendo (il ponte la rilegge
-    dopo averla scritta).
+    un'altra: due turni utente di fila l'API di Claude li fonde in uno, e il
+    modello risponderebbe anche alla domanda vecchia. L'ultima resta: e'
+    quella a cui il turno sta rispondendo (il ponte la rilegge dopo averla
+    scritta).
 
     Rossa sul codice di prima: le due domande restavano di fila."""
     msgs = [

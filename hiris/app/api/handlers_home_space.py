@@ -23,6 +23,7 @@ from ..home_space.historian import home_space_zone, house_timezone
 from ..home_space.house import House
 from ..home_space.reader import TABLES
 from ..home_space.render import render_entity
+from ..home_space.topology import DISABLED, HIDDEN, OUTSIDE_CLASSES, SERVICE
 from ..proxy.state_translations import read_for_house
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,25 @@ def register_names() -> dict[str, str]:
     """Il nome leggibile di ogni registro dell'anagrafe, nell'ordine di
     `reader.TABLES`."""
     return {table: _REGISTER_WORDS.get(table, table) for table in TABLES}
+
+
+#: Il segno con cui l'albero marca un'entita' fuori dai visibili, con le
+#: parole che la pagina usava gia' (scelta del proprietario, 12/10/2026:
+#: «Parole di oggi»). Stavano nel JavaScript (`OUTSIDE_MARK`, tree-route.js):
+#: dalla Chiusura (C-10, D2) un vocabolario chiuso ha una casa sola, e la
+#: pagina lo riceve in `segni_fuori`. Le chiavi sono `topology.OUTSIDE_CLASSES`.
+_OUTSIDE_WORDS = {
+    DISABLED: "[disabilitata]",
+    HIDDEN: "[nascosta in Home Assistant]",
+    SERVICE: "[di servizio]",
+}
+
+
+def outside_marks() -> dict[str, str]:
+    """Il segno di ogni classe del fuori, nell'ordine di precedenza
+    (`topology.OUTSIDE_CLASSES`). Una classe senza parola esce col suo nome
+    fra parentesi quadre, mai vuota."""
+    return {name: _OUTSIDE_WORDS.get(name, f"[{name}]") for name in OUTSIDE_CLASSES}
 
 
 #: Cio' che l'albero toglie dalla resa media di un'entita' (Tappa 9, F5, D1),
@@ -130,6 +150,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # risposta ha la stessa forma nei due rami.
             "nomi_misure": _MEASUREMENT_NAMES,
             "nomi_registri": register_names(),
+            "segni_fuori": outside_marks(),
             # Stesso principio di "non_disponibili" qui sopra, applicato al
             # comportamento: `senza_corpo: 0` affermerebbe "conosco tutto",
             # e senza archivio non lo sappiamo -- resta `None`. `conteggi`,
@@ -186,6 +207,9 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # I nomi dei registri, per leggere `conteggi` e `non_disponibili`
         # (C-10): stessa ragione di `nomi_misure`.
         "nomi_registri": register_names(),
+        # Il segno di ogni classe del fuori, per leggere `fuori.classe` delle
+        # entita' dell'albero (C-10): stessa ragione.
+        "segni_fuori": outside_marks(),
         # Ogni entita' e' la resa media, meno `_TREE_DROPS` (Tappa 9, F5).
         "piani": _tree(house, translations, zone),
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
@@ -413,7 +437,6 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
     return compose(
         house.home_space, behavior, memories, mirror.state,
         unavailable=house.unavailable,
-        floors=house.hierarchy(),
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,
@@ -422,6 +445,7 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         attributes=mirror.attributes,
+        house=house,
     )
 
 
