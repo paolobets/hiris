@@ -723,10 +723,18 @@ def _open_entries() -> frozenset[str]:
     """Le voci APERTE del registro dei doppioni, chieste a `registro.py`."""
     import registro
     entries = registro.read_entries(REGISTER)
-    # La derivazione non si e' rotta: un registro letto vuoto darebbe «nessuna
-    # voce citata» con la stessa faccia di un registro chiuso. Si guardano
-    # tutte le voci, non le aperte: alla fine dello sprint le aperte sono zero.
-    assert entries, "il registro letto e' vuoto: il lettore si e' rotto"
+    # La derivazione non si e' rotta: un lettore che vede poche voci darebbe
+    # «nessuna voce citata» con la stessa faccia di un registro chiuso. Le voci
+    # lette si confrontano con una seconda lettura dello stesso file, fatta
+    # qui e indipendente dal lettore: le righe di tabella che cominciano con
+    # un id `X-NN`. Tutte le voci, non le aperte: alla fine dello sprint le
+    # aperte sono zero (N157-1, giro 157).
+    rows = sorted(found.group(1) for line in REGISTER.read_text(encoding="utf-8").splitlines()
+                  if (found := re.match(r"\| ([A-Z]-\d{2,}) \|", line)))
+    assert rows, "nessuna riga di voce nel registro: la seconda lettura si e' rotta"
+    assert sorted(entry.id for entry in entries) == rows, (
+        f"il lettore del registro vede {len(entries)} voci, le righe sono "
+        f"{len(rows)}: il lettore si e' rotto")
     return frozenset(entry.id for entry in entries if not entry.closed)
 
 
@@ -759,7 +767,12 @@ def test_un_ammissione_non_rimanda_a_una_voce_aperta():
     `SHARED_READS`; aggiunto «Voce A-41 del registro.» alla ragione di
     `version.py` in `fonte_unica_eccezioni.json`; aggiunta a quell'eccezione la
     chiave `"voci": ["A-41"]`; la voce del debito di `system_log` scritta
-    `A-02` (chiusa). Ripristini verificati con `git status`."""
+    `A-02` (chiusa). Ripristini verificati con `git status`.
+
+    Mutazione ESEGUITA (14/10/2026, N157-1): `registro.read_entries` che
+    torna una voce sola -- rossa (`il lettore del registro vede 1 voci, le
+    righe sono 512`), anche con i tre debiti di A-41 scritti come
+    ammissioni, cioe' come saranno dopo F8."""
     loose = []
     for rule, per_file in _exceptions().items():
         for path, entry in per_file.items():
