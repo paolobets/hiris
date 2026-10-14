@@ -97,6 +97,16 @@ AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
 # frammento (`_async_matching_config_entries_json_fragments`). Nessun
 # `require_admin` sul comando. L'evento porta una LISTA in `event`, non un
 # evento del bus: si smista per id dell'iscrizione, non per `event_type`.
+#
+# **Esiste su ogni Home Assistant che HIRIS ammette** (S-35, letto il
+# 14/10/2026 nel sorgente): il comando compare al tag `2022.10.0` (assente al
+# `2022.9.0`), prima del minimo dichiarato in `config.yaml`
+# (`homeassistant: "2024.7.0"`). Al tag `2024.7.0` lo registra
+# `components/config/config_entries.py::async_setup` senza condizioni e senza
+# `require_admin`, e il componente `config` e' una dipendenza dichiarata di
+# `frontend` (`components/frontend/manifest.json`): una casa che mostra la
+# pagina dell'add-on lo ha. Un rifiuto resta possibile solo come guasto, e
+# `_subscription_confirmed` lo scrive nel registro come errore.
 CONFIG_ENTRIES_SUBSCRIPTION = "config_entries/subscribe"
 
 #: L'evento con cui Home Assistant dichiara di aver FINITO di avviarsi, e lo
