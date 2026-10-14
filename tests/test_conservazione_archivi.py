@@ -21,7 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from hiris.app import conservazione, server, storage
+from hiris.app import conservazione, storage
+from hiris.app.api.handlers_health import handle_health
 from hiris.app.live_value import LiveValue
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from hiris.app.startup import SCHEDULER_KEY
@@ -172,7 +173,7 @@ async def test_la_salute_dice_per_quanto_HIRIS_ricorda(started_app):
 
     Mutazione ESEGUITA (08/10/2026): tolta la chiave `conservazione` da
     `handle_health` -- rossa (`KeyError`)."""
-    response = await server.handle_health(SimpleNamespace(app=started_app, get={}.get))
+    response = await handle_health(SimpleNamespace(app=started_app, get={}.get))
     rows = json.loads(response.body)["conservazione"]
     assert rows == conservazione.declarations(started_app)
     by_place = {(row["archivio"], row["tabella"]): row for row in rows}
@@ -192,7 +193,7 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     e il ponte non c'entra.
 
     Mutazione ESEGUITA (08/10/2026): in `conservazione.nightly` l'archivio
-    della coda saltato quando `app["bridge_active"]` e' falso -- rossa."""
+    della coda saltato quando `app[BRIDGE_ACTIVE_KEY]` e' falso -- rossa."""
     from unittest import mock
 
     queue = started_app[REASONING_QUEUE_KEY]

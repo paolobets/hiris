@@ -43,6 +43,11 @@ from tests.test_construction_workshop import WorkshopHouse
 # stesso riuso cross-file gia' praticato da `test_agenda_api.py`.
 from tests.test_settings_api import csrf_stretto  # noqa: F401
 
+#: Solo per le prove: la casa finta dietro l'officina, per leggere cio' che
+#: e' stato scritto DAVVERO su Home Assistant. `web.AppKey` come le chiavi
+#: del prodotto (X-32).
+FAKE_HA_KEY = web.AppKey("_fake_ha")
+
 
 class FintoArchivio:
     def __init__(self, righe=None):
@@ -367,7 +372,7 @@ async def test_confermare_senza_officina_da_503():
     solo dal lato GET (`handle_get_constructions`/`handle_get_construction`).
     Un archivio presente ma un'officina assente non e' un caso remoto: e'
     esattamente la finestra fra la creazione dell'app e il momento in cui
-    `_on_startup` monta `app["workshop"]`."""
+    `_on_startup` monta `app[WORKSHOP_KEY]`."""
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]))
     risposta = await handle_confirm_construction(
         FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
@@ -451,7 +456,7 @@ async def client(aiohttp_client, tmp_path):
     app[WORKSHOP_KEY] = Workshop(ha.client, app[CONSTRUCTIONS_KEY], app[JOURNAL_KEY])
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
-    app["_fake_ha"] = ha
+    app[FAKE_HA_KEY] = ha
     # Dal 21/09/2026 la porta della configurazione chiede CHI (invariante I-1):
     # queste prove parlano del CSRF e dei codici di stato, non del soffitto,
     # quindi dichiarano la premessa -- un amministratore, dall'ingress -- invece
@@ -481,7 +486,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
     # Home Assistant.
     assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "in_attesa"
-    assert client.app["_fake_ha"].salvate == []
+    assert client.app[FAKE_HA_KEY].salvate == []
 
 
 @pytest.mark.asyncio
@@ -500,7 +505,7 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
         headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident, now=ADESSO_HTTP)["stato"] == "applicata"
-    assert client.app["_fake_ha"].salvate
+    assert client.app[FAKE_HA_KEY].salvate
 
 
 @pytest.mark.asyncio
@@ -516,7 +521,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
     risposta = await client.post(f"/api/constructions/{ident}/restore", headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
-    assert client.app["_fake_ha"].salvate == []
+    assert client.app[FAKE_HA_KEY].salvate == []
     # Nessuna nuova proposta di ripristino deve essere nata: quella originale
     # resta l'unica riga dell'archivio.
     assert len(archivio.list(now=ADESSO_HTTP, limit=200)) == 1
@@ -535,13 +540,13 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
     # La casa e' com'era stata lasciata da quella costruzione: dal 03/10/2026
     # (S-17) il ripristino lo rilegge, e su un oggetto cambiato rifiuta.
-    client.app["_fake_ha"].corpi["tapparelle_rip_ok"] = {"alias": "Dopo"}
+    client.app[FAKE_HA_KEY].corpi["tapparelle_rip_ok"] = {"alias": "Dopo"}
 
     risposta = await client.post(
         f"/api/constructions/{ident}/restore",
         headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert client.app["_fake_ha"].salvate
+    assert client.app[FAKE_HA_KEY].salvate
 
 
 @pytest.mark.asyncio
@@ -595,7 +600,7 @@ async def test_il_motivo_esce_letto_cronaca(client):
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         stakes=None, now=ADESSO_HTTP)["id"]
-    client.app["_fake_ha"]._override["salva"] = Refused(400, "Message malformed: bad actions")
+    client.app[FAKE_HA_KEY]._override["salva"] = Refused(400, "Message malformed: bad actions")
 
     risposta = await client.post(f"/api/constructions/{ident}/confirm",
                                  headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
@@ -625,7 +630,7 @@ async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_s
 
     Mutazione ESEGUITA: tolta la chiamata a `_changed_since` da `apply` --
     rossa (200 e una scrittura)."""
-    ha = client.app["_fake_ha"]
+    ha = client.app[FAKE_HA_KEY]
     ident = _edit_proposal(client.app[CONSTRUCTIONS_KEY], "tapparelle_s17")
     ha.corpi["tapparelle_s17"] = {"id": "tapparelle_s17", "alias": "cambiata a mano"}
 
@@ -642,7 +647,7 @@ async def test_conferma_su_un_oggetto_cambiato_e_409_e_non_scrive(client, csrf_s
 async def test_conferma_con_la_rilettura_in_guasto_e_503_e_non_scrive(client, csrf_stretto):
     """Un guasto di rete durante la rilettura e' indisponibilita' (503), non
     un conflitto, e la sua causa e' il silenzio del client."""
-    ha = client.app["_fake_ha"]
+    ha = client.app[FAKE_HA_KEY]
     ident = _edit_proposal(client.app[CONSTRUCTIONS_KEY], "tapparelle_s17_rete")
     ha._solleva.add("read_configuration")
 

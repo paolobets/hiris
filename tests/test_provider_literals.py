@@ -20,6 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from aiohttp import web
 
 from hiris.app import providers
 from hiris.app.agent.bridge_governor import RECOMPUTE_CHAIN_KEY
@@ -119,13 +120,17 @@ def test_nessun_id_di_provider_e_scritto_nel_javascript():
 # Un sesto provider
 # ---------------------------------------------------------------------------
 
+#: La credenziale del sesto, in una chiave dell'app come quelle dei cinque
+#: (`providers.CLAUDE_CREDENTIAL_KEY`...).
+SESTO_CREDENTIAL_KEY = web.AppKey("sesto_api_key")
+
 SESTO = providers.Provider(
     id="sesto",
     name="Il sesto",
     nature="a consumo",
     privacy="I tuoi messaggi passano dal sesto.",
     missing_reason="manca la chiave",
-    credential=lambda sources: bool(sources.get("sesto_api_key")),
+    credential=lambda sources: bool(sources.get(SESTO_CREDENTIAL_KEY)),
     model_path=("provider_models", "sesto"),
     auto_model="sesto-1",
 )
@@ -150,7 +155,7 @@ async def test_un_sesto_provider_compare_nella_pagina_e_nella_catena(client, mon
 
     monkeypatch.setattr(providers, "PROVIDERS", providers.PROVIDERS + (SESTO,))
     app = client.app
-    app["sesto_api_key"] = "una-chiave"
+    app[SESTO_CREDENTIAL_KEY] = "una-chiave"
     app[CLAUDE_CREDENTIAL_KEY] = "sk-test"
     router = LLMRouter(claude=RunnerFinto("da claude"), sesto=RunnerFinto("dal sesto"),
                        model_chain=["claude"])

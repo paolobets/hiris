@@ -53,6 +53,11 @@ _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/"}
 #: Gli utenti di Home Assistant, righe grezze di `config/auth/list` (la forma
 #: che `HAClient._user_row` legge): il proprietario amministra, `u-marta` e'
 #: un utente, `u-lettore` sta nel solo gruppo di sola lettura.
+#: La lista che Home Assistant risponde a `config/auth/list`, tenuta
+#: nell'app perche' una prova la possa cambiare: una chiave delle prove,
+#: `web.AppKey` come quelle del prodotto (X-32).
+USERS_KEY = web.AppKey("_utenti_ha", list)
+
 _UTENTI = [
     {"id": "u-admin", "name": "Paolo", "is_owner": True, "is_active": True,
      "system_generated": False, "group_ids": ["system-admin"]},
@@ -89,13 +94,13 @@ def confine_vero(monkeypatch):
 
 def _compose(tmp_path, *, access=None, **casa):
     """L'app vera. Gli utenti che Home Assistant risponde sono la lista in
-    `app["_utenti_ha"]`: una prova che la cambia prima di avviare il client
+    `app[USERS_KEY]`: una prova che la cambia prima di avviare il client
     cambia cio' che `config/auth/list` dice. `casa` va a `_house`."""
     app = create_app()
     if access is not None:
         app[ACCESS_FLAG_KEY] = access
     utenti = [dict(riga) for riga in _UTENTI]
-    app["_utenti_ha"] = utenti
+    app[USERS_KEY] = utenti
     app[HA_CLIENT_KEY] = _house(utenti, **casa)
     app[CHAT_SETTINGS_KEY].set(ChatSettings())
     app[CLAUDE_RUNNER_KEY] = None
@@ -1239,7 +1244,7 @@ async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog)
     Mutazione ESEGUITA: `_role_of` senza il ramo `senza_gruppi` -- rossa."""
     caplog.set_level("INFO", logger="hiris.app.api.admission")
     app = _compose(tmp_path, access=True)
-    app["_utenti_ha"].append({"id": "u-vuoto", "name": "Vuoto", "is_owner": False,
+    app[USERS_KEY].append({"id": "u-vuoto", "name": "Vuoto", "is_owner": False,
                               "is_active": True, "system_generated": False,
                               "group_ids": []})
     client = await aiohttp_client(app)

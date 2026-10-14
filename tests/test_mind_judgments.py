@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server, startup
+from hiris.app import startup
+from hiris.app.api.handlers_health import handle_health
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES
 from hiris.app.live_value import LiveValue
@@ -220,7 +221,7 @@ def test_sapere_che_si_apre_arriva_in_app_seminato(tmp_path):
 
 
 def test_chiusura_regge_il_sapere_assente():
-    """`_on_cleanup` con `app["knowledge"] = None` (l'avvio qui sopra). Mutazione
+    """`_on_cleanup` con `app[KNOWLEDGE_KEY] = None` (l'avvio qui sopra). Mutazione
     ESEGUITA: tornare a `if "knowledge" in app` -- rossa (`None.close()`).
 
     Il client e' quello vero sulla casa sintetica (`scripts/casa_finta.py`),
@@ -250,8 +251,8 @@ def _app_seminata(tmp_path):
 
 def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
     """Spec §9.3: si rilegge dal lettore della cronaca, non dall'archivio.
-    Mutazioni: togliere la sostituzione di `app["type_judgments"]` -- rossa;
-    togliere quella di `app["type_judgments_status"]` (le due si sostituiscono
+    Mutazioni: togliere la sostituzione di `app[TYPE_JUDGMENTS_KEY]` -- rossa;
+    togliere quella di `app[TYPE_JUDGMENTS_STATUS_KEY]` (le due si sostituiscono
     INSIEME) -- rossa."""
     s, app = _app_seminata(tmp_path)
     try:
@@ -550,7 +551,7 @@ async def test_salute_espone_stato_ISTANTANEA():
     # strada arriva (spec 2026-09-27, R-2.23). Nessuna strada: come lo sviluppo.
     request = SimpleNamespace(app={**live_values(),
                                    TYPE_JUDGMENTS_STATUS_KEY: LiveValue(stato)}, get={}.get)
-    response = await server.handle_health(request)
+    response = await handle_health(request)
     assert json.loads(response.body)["istantanea"] == stato
 
 
@@ -584,7 +585,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
         stato = app[TYPE_JUDGMENTS_STATUS_KEY].value
         assert set(stato) == {"stato", "perche", "impronta"}
 
-        response = await server.handle_health(SimpleNamespace(app=app, get={}.get))
+        response = await handle_health(SimpleNamespace(app=app, get={}.get))
         salute = json.loads(response.body)
         assert salute["istantanea"] == stato
         assert "giudizi" not in salute, "`giudizi` e' l'elenco delle righe, non uno stato"
