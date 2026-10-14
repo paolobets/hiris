@@ -105,8 +105,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # gli strumenti e i parametri di ogni richiesta, e i transcript del ponte
 # stanno in `/data/claude` (`CLAUDE_CONFIG_DIR`, `run.sh`), uno per turno:
 # misurato con la stessa prova, un turno da una
-# richiesta passa da 72.620 a 113.933 byte con un prompt di 9.168 caratteri
-# (quello vero ne ha circa 150.000). La decide il proprietario.
+# richiesta passa da 72.620 a 113.933 byte con un prompt di 9.168 caratteri.
+# La decide il proprietario.
 #
 # **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
 # (28/09/2026), finche' il passo 4 non legge la 2.1.299 da `GET /api/health`.
