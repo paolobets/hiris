@@ -15,8 +15,11 @@ passa da `action/construction/workshop.py`, che e' un modulo diverso perche' e'
 un canale diverso: altra rotta di Home Assistant, altra verifica
 (`validate_config` invece del registro dei servizi), altro «dopo» (un `reload`
 e un'entita' che compare, non un `state_changed`). Le due porte condividono la
-cronaca, l'`origine` e la forma del rifiuto. Non ci sono altre porte, e
-aggiungerne una terza va discusso prima di scriverla.
+cronaca, l'`origine` e la forma del rifiuto. Dalla Tappa 7 c'e' una terza
+porta, discussa prima di scriverla: l'INSTALLAZIONE (`action/installation.py`,
+la voce di menu dell'add-on e la disinstallazione della card), che non tocca
+ne' i servizi ne' la configurazione. Le porte e i loro canali li dichiara
+`CLAUDE.md` («Un canale, una porta»); una quarta e' un difetto.
 
 Non solleva mai: ogni guasto diventa un dizionario con `errore`, perche' il
 suo chiamante e' uno strumento che parla a un modello.
