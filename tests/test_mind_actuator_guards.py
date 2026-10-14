@@ -31,16 +31,23 @@ import re
 import pytest
 
 from hiris.app.action.construction.workshop import WORKSHOP_KEY
-from hiris.app.home_space import historian
 from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
 from hiris.app.mind.proposer_round import proposer_round
 from hiris.app.mind.store import OBSERVATIONS_KEY, ObservationsStore
 from hiris.app.startup import live_values
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
+from tests._oggi_fermo import ferma_oggi
 from tests._runner_finto import RunnerFinto
 
-OGGI = historian.today(historian.house_timezone(None)).isoformat()
+#: Il giorno dell'analisi: lo scrive `_today_frozen` a ogni prova, dallo
+#: stesso istante che legge il giro (`tests/_oggi_fermo.py`).
+OGGI = ""
+
+
+@pytest.fixture(autouse=True)
+def _today_frozen(monkeypatch):
+    ferma_oggi(monkeypatch, __name__)
 
 RADICE = pathlib.Path(__file__).resolve().parents[1]
 _CLIENT = RADICE / "hiris" / "app" / "proxy" / "ha_client.py"
