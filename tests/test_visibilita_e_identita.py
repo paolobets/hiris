@@ -216,7 +216,17 @@ _COLLISIONI = {
 def _handwritten_classes() -> set[tuple[str, str, str, int]]:
     """Dove il prodotto scrive a mano il valore di una classe: confronti
     (anche dentro una tupla o un insieme), chiavi di dizionario, elementi di
-    tupla e di insieme. Si guarda l'albero, non il testo (N159-1)."""
+    tupla e di insieme. Si guarda l'albero, non il testo (N159-1).
+
+    **Cosa non vede** (giro 159): gli argomenti di una chiamata. Oggi
+    `render.py` chiede la causa di servizio con
+    `dict(visibility_classes(entry)).get(SERVICE)`; se tornasse
+    `.get("servizio")` questa scansione tacerebbe, perche' «servizio» come
+    argomento di `.get` e' anche la chiave di una chiamata
+    (`call.get("servizio")`, in `keeper/promise.py` e
+    `action/verification.py`), e le due cose non si distinguono senza sapere
+    cosa c'e' nel dizionario. Lo stesso vale per ogni parola passata come
+    argomento."""
     import ast
     from pathlib import Path
 
