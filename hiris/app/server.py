@@ -1084,6 +1084,15 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
     return scritti
 
 
+#: Il vocabolario chiuso di `stato` in `app["ultima_riparazione"]` (C-30): la
+#: forma comune degli oggetti diagnostici di `/api/health`, che aprono tutti
+#: con `stato` e `perche` (come `agent/runner.INIT_STATES` e
+#: `mind/judgments.SNAPSHOT_STATES`). Fino alla Chiusura la chiave era
+#: `oggetti`.
+REPAIR_DONE, REPAIR_RAISED = "fatta", "sollevata"
+REPAIR_STATES = (REPAIR_DONE, REPAIR_RAISED)
+
+
 async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None:
     """La riparazione d'avvio, **che dice sempre com'e' andata**.
 
@@ -1102,7 +1111,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         await _reaggregate_days(app, ha_client, now=now)
     except Exception as error:
         app["ultima_riparazione"] = {
-            "oggetti": "sollevata",
+            "stato": REPAIR_RAISED,
             "perche": f"{type(error).__name__}: {error}",
             "giorni": [], "resoconti_scritti": []}
         raise
@@ -1132,7 +1141,7 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     today = local_date(now(UTC).timestamp(), timezone)
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
     written = await _write_missing_reports(app, ha_client, days, timezone)
-    app["ultima_riparazione"] = {"oggetti": "fatta", "perche": None,
+    app["ultima_riparazione"] = {"stato": REPAIR_DONE, "perche": None,
                                  "giorni": days, "resoconti_scritti": written}
     if written:
         logger.info("cervello: resoconti scritti all'avvio per %s",
