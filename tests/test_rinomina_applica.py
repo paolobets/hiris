@@ -748,9 +748,11 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # `porta`, `versione` in `observer_round.py`; `campo` ed `esito` in
     # `recipe_round.py`. E `porta -> actuator` sarebbe una traduzione SBAGLIATA
     # (li' `porta` e' la strada del turno, ponte o catena): non e' un giro da
-    # fare di sfuggita.
-    ("mind", "mind", frozenset({Path("analyst_round.py"), Path("observer_round.py"),
-                                Path("recipe_round.py")})),
+    # fare di sfuggita. Lo stesso per i resoconti del giorno (F8 passo 3) in
+    # `day_report.py`: `adesso`, `archivio`, `casa`, `entita`, `finestra`,
+    # `giorno`, `gruppi`, `punti`, `serie`.
+    ("mind", "mind", frozenset({Path("analyst_round.py"), Path("day_report.py"),
+                                Path("observer_round.py"), Path("recipe_round.py")})),
     ("action", "action", frozenset({Path("construction/composer.py")})),
     ("home_space/behavior.py", "home_space", frozenset()),
     ("home_space/historian.py", "home_space", frozenset()),

@@ -5,7 +5,7 @@ Il caso: il 30/09/2026 l'inverter ha smesso di mandare dati, e il resoconto ha
 scritto **produzione 0 con copertura 1.0** (BACKLOG, «Un contatore CONGELATO
 non si distingue da un giorno a zero»).
 
-Qui la strada e' quella vera: `server._report_ingredients` sul client vero di
+Qui la strada e' quella vera: `day_report._report_ingredients` sul client vero di
 Home Assistant (`scripts/casa_finta.py`) con un'anagrafe vera
 (`build_home_space`), poi `report.build_report` -- cio' che fanno
 l'aggregazione notturna, il recupero dei resoconti e la riparazione d'avvio.
@@ -41,9 +41,9 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.reader import build_home_space
+from hiris.app.mind import day_report, recipe_turn
 from hiris.app.mind.flatline import HISTORY_DAYS
 from hiris.app.mind.operations import FROZEN
 from hiris.app.mind.report import build_report
@@ -132,9 +132,9 @@ async def _report(day, *, frozen_from, statistic_ids=STATISTIC_IDS):
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period": _statistics})
     recipes = {DEVICE: RECIPE, "d_contatore": HOUSE_RECIPE}
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        ricette, serie, nomi, silent, mute = await server._report_ingredients(
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        ricette, serie, nomi, silent, mute = await day_report._report_ingredients(
             _app(), house, giorno=day, timezone=TIMEZONE)
     report = build_report(day=day, episodes=[], series=serie, recipes=ricette,
                           names=nomi, silent=silent, muted=mute)
@@ -304,9 +304,9 @@ async def _thermometer_ingredients(day, *, frozen_from, statistic_ids):
                    {"name": "temperatura", "operation": "media_min_max",
                     "inputs": [f"@{THERMOMETERS[0]}"], "params": {"unit": "°C"}}]},
                "d_contatore": HOUSE_RECIPE}
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        ricette, serie, nomi, silent, mute = await server._report_ingredients(
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        ricette, serie, nomi, silent, mute = await day_report._report_ingredients(
             _thermometer_app(), house, giorno=day, timezone=TIMEZONE)
     # Un termometro e' una misura istantanea: dall'08/10/2026 il dato fermo
     # gli toglie le ore ferme -- qui il giorno intero -- e la misura che

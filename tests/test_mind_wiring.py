@@ -29,6 +29,7 @@ from casa_finta import CasaFinta
 from hiris.app import server
 from hiris.app.home_space import historian
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+from hiris.app.mind import day_report, facts
 from hiris.app.mind.facts import chronicle_mark
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
@@ -492,7 +493,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.{soggetto}", da="off", a="on")
 
-        asyncio.run(server.reaggregate_last_two_days(
+        asyncio.run(day_report.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
             ha_client=_repair_house(),
@@ -516,7 +517,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # giorni. Un conteggio fisso avrebbe fatto passare per regressione un
         # difetto riparato.
         prima = _cronaca_intera(archivio)
-        asyncio.run(server.reaggregate_last_two_days(
+        asyncio.run(day_report.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
             ha_client=_repair_house(),
@@ -1398,7 +1399,7 @@ def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):
         archivio.record(quando_ts=base.timestamp() + 3600, source="entita",
                         subject="light.cucina", da="on", a="off")
 
-        server.aggregate_day(store=archivio, day=giorno, timezone="Europe/Rome",
+        facts.aggregate_day(store=archivio, day=giorno, timezone="Europe/Rome",
                              recipes={}, series={}, names={})
 
         resoconto = archivio.report(giorno)
@@ -1440,7 +1441,7 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.{soggetto}", da="off", a="on")
 
-        asyncio.run(server.reaggregate_last_two_days(
+        asyncio.run(day_report.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
              "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
             ha_client=_repair_house(),
@@ -1500,13 +1501,13 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
 
-        scritto = asyncio.run(server.backfill_one_report(
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-22", scritto
         assert archivio.report("2026-08-22") is not None
 
         # Il giro dopo prende il successivo, e salta quello gia' scritto.
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
@@ -1542,7 +1543,7 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
 
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz))) is None
     finally:
         archivio.close()
@@ -1571,7 +1572,7 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
 
-        assert asyncio.run(server.backfill_one_report(
+        assert asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
@@ -1615,8 +1616,8 @@ def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
-        with caplog.at_level(logging.INFO, logger=server.logger.name):
-            scritto = asyncio.run(server.backfill_one_report(
+        with caplog.at_level(logging.INFO, logger=day_report.logger.name):
+            scritto = asyncio.run(day_report.backfill_one_report(
                 app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-23"
         rifatto = archivio.report("2026-08-23")
@@ -1692,7 +1693,7 @@ def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ere
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
-        scritto = asyncio.run(server.backfill_one_report(
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
 
         assert scritto == "2026-08-24"
@@ -1749,7 +1750,7 @@ def test_su_una_casa_GIOVANE_il_primo_giorno_rifa_la_cronaca(tmp_path):
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
-        giri = [asyncio.run(server.backfill_one_report(
+        giri = [asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
             for _ in range(3)]
 
@@ -1791,11 +1792,11 @@ def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypat
                                            judgments=judgments, house=house,
                                            when_ts=when_ts)
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _rotta)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _rotta)
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
-        scritto = asyncio.run(server.backfill_one_report(
+        scritto = asyncio.run(day_report.backfill_one_report(
             app, ha_client=_repair_house(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-24"
         assert archivio.report("2026-08-23")["giudizio"] == {"impronta": "vecchia"}
@@ -1875,7 +1876,7 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
         def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError(f"un difetto locale del {day}")
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _broken)
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
@@ -1883,8 +1884,8 @@ def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_gio
         def _round(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return sorted(re.search(r"cronaca di (\S+) non rifatta", r.getMessage()).group(1)
                           for r in caplog.records if "non rifatta" in r.getMessage())
@@ -1943,7 +1944,7 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
                                            judgments=judgments, house=house,
                                            when_ts=when_ts)
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _chronicle)
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
@@ -1951,8 +1952,8 @@ def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplo
         def _warnings(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return [r for r in caplog.records if "non rifatta" in r.getMessage()]
 
@@ -1994,8 +1995,8 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
         archivio.record(quando_ts=first.replace(hour=10).timestamp(), source="entita",
                         subject="light.g", da="off", a="on")
         broken = {"ingredients": True, "chronicle": False}
-        real_ingredients = server._report_ingredients
-        real_chronicle = server.rebuild_chronicle
+        real_ingredients = day_report._report_ingredients
+        real_chronicle = day_report.rebuild_chronicle
 
         async def _ingredients(app, ha_client, *, giorno, timezone):
             if broken["ingredients"]:
@@ -2007,8 +2008,8 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
                 raise ValueError("un difetto locale")
             return real_chronicle(store=store, day=day, timezone=timezone, judgments=judgments)
 
-        monkeypatch.setattr(server, "_report_ingredients", _ingredients)
-        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
+        monkeypatch.setattr(day_report, "_report_ingredients", _ingredients)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _chronicle)
         app = {"home_space_store": None, "observations": archivio,
                "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
                "backfill_quiet": {}}
@@ -2016,8 +2017,8 @@ def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
         def _round(after):
             caplog.clear()
             clock = start + after
-            with caplog.at_level(logging.WARNING, logger=server.logger.name):
-                done = asyncio.run(server.backfill_one_report(
+            with caplog.at_level(logging.WARNING, logger=day_report.logger.name):
+                done = asyncio.run(day_report.backfill_one_report(
                     app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
             return done, [r.getMessage() for r in caplog.records
                           if "non recuperato" in r.getMessage()
@@ -2069,7 +2070,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
         def _broken(*, store, day, timezone, judgments, house=None, when_ts=None):
             raise ValueError("un difetto locale")
 
-        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
+        monkeypatch.setattr(day_report, "rebuild_chronicle", _broken)
         app = web.Application()
         for key, value in (("home_space_store", None), ("observations", archivio),
                            ("knowledge", None), ("type_judgments", REPO_JUDGMENTS),
@@ -2080,7 +2081,7 @@ def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monke
         clock = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            asyncio.run(server.backfill_one_report(
+            asyncio.run(day_report.backfill_one_report(
                 app, ha_client=_repair_house(), now=lambda tz: clock.astimezone(tz)))
         assert not [w for w in caught if "Changing state" in str(w.message)], \
             [str(w.message) for w in caught]

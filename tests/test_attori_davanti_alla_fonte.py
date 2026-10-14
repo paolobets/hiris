@@ -53,10 +53,9 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.api.handlers_mind import handle_watching
 from hiris.app.home_space.house import SOURCE_STATES, House
-from hiris.app.mind import observer
+from hiris.app.mind import day_report, observer, recipe_turn
 from hiris.app.mind.recipes import MUTED_SOURCE_STATES, muted_recipes
 from hiris.app.mind.report import build_report
 from hiris.app.mind.store import ObservationsStore
@@ -341,9 +340,9 @@ async def _ingredients(recipes):
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period":
             lambda extra: asked.append(sorted(extra["statistic_ids"])) or {}})
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        result = await server._report_ingredients(app, house, giorno="2026-10-03",
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        result = await day_report._report_ingredients(app, house, giorno="2026-10-03",
                                                   timezone="Europe/Rome")
     return result, asked
 

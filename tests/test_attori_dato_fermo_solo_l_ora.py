@@ -11,7 +11,7 @@ conto che c'era gia', e il risultato porta dentro di se' quali ore sono
 uscite e perche' (`Measurement.excluded`, `Exclusion.out`).
 
 La strada e' quella vera, come in `test_attori_dato_fermo_nel_resoconto.py`:
-`server._report_ingredients` sul client finto di Home Assistant
+`day_report._report_ingredients` sul client finto di Home Assistant
 (`scripts/casa_finta.py`), poi `report.build_report`. **Le serie sono
 sintetiche**, senza nomi della casa.
 
@@ -41,9 +41,9 @@ from unittest import mock
 
 import pytest
 
-from hiris.app import server
 from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.reader import build_home_space
+from hiris.app.mind import day_report, recipe_turn
 from hiris.app.mind.analyst import index
 from hiris.app.mind.operations import COVERAGE_LOW, FROZEN, MINIMUM_COVERAGE
 from hiris.app.mind.report import build_report, series_of_measures
@@ -141,9 +141,9 @@ async def _report(day, *, frozen):
     house = CasaFinta(synthetic_inputs(), answers={
         "recorder/statistics_during_period": _statistics})
     recipes = {STATION: STATION_RECIPE, "d_contatore": HOUSE_RECIPE}
-    with mock.patch.object(server.recipe_turn, "recipes", lambda _k: recipes), \
-            mock.patch.object(server, "statistic_ids_for_round", _stat_ids):
-        ricette, serie, nomi, silent, mute = await server._report_ingredients(
+    with mock.patch.object(recipe_turn, "recipes", lambda _k: recipes), \
+            mock.patch.object(day_report, "statistic_ids_for_round", _stat_ids):
+        ricette, serie, nomi, silent, mute = await day_report._report_ingredients(
             _app(), house, giorno=day, timezone=TIMEZONE)
     report = build_report(day=day, episodes=[], series=serie, recipes=ricette,
                           names=nomi, silent=silent, muted=mute)

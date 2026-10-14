@@ -17,8 +17,8 @@ verificati con `git status`.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from hiris.app import server
 from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+from hiris.app.mind import day_report
 from hiris.app.mind.facts import aggregate_day
 from hiris.app.mind.store import ObservationsStore
 from tests.test_mind_wiring import _repair_house, _sapere
@@ -51,7 +51,7 @@ def test_il_recupero_di_un_giorno_mancante_scrive_col_suo_orologio(tmp_path):
     archive = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
         _record_days(archive)
-        written = asyncio.run(server.backfill_one_report(
+        written = asyncio.run(day_report.backfill_one_report(
             _app(archive, tmp_path), ha_client=_repair_house(),
             now=lambda tz: CLOCK.astimezone(tz)))
         assert written == "2026-08-22"
@@ -69,7 +69,7 @@ def test_il_recupero_di_una_cronaca_vecchia_scrive_col_suo_orologio(tmp_path):
                           judgments=REPO_JUDGMENTS, when_ts=1.0)
         stale = {**archive.report("2026-08-23"), "giudizio": {"impronta": "vecchia"}}
         archive.replace_report("2026-08-23", stale, when_ts=1.0)
-        written = asyncio.run(server.backfill_one_report(
+        written = asyncio.run(day_report.backfill_one_report(
             _app(archive, tmp_path), ha_client=_repair_house(),
             now=lambda tz: CLOCK.astimezone(tz)))
         assert written == "2026-08-23"
@@ -82,7 +82,7 @@ def test_la_riparazione_d_avvio_scrive_col_suo_orologio(tmp_path):
     archive = ObservationsStore(str(tmp_path / "osservazioni.db"))
     try:
         _record_days(archive)
-        asyncio.run(server.reaggregate_last_two_days(
+        asyncio.run(day_report.reaggregate_last_two_days(
             _app(archive, tmp_path), ha_client=_repair_house(),
             now=lambda tz: CLOCK.astimezone(tz)))
         for day in ("2026-08-23", "2026-08-24"):

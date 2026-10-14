@@ -12,11 +12,10 @@ dall'esito.
 Proposta di F5 (`chiusura/f5-patch/c30-forma-comune-health.md`); prova scritta
 da F11, entra con la parte di F8 (la riparazione, in `server.py`).
 Mutazione ESEGUITA (14/10/2026): rimessa la chiave `oggetti` in
-`server.reaggregate_last_two_days` -- rossa («'stato'» manca).
+`day_report.reaggregate_last_two_days` -- rossa («'stato'» manca).
 """
 import pytest
 
-from hiris.app import server
 from hiris.app.agent import runner
 from hiris.app.mind import day_report, judgments
 
@@ -55,11 +54,11 @@ async def test_la_riparazione_fatta_e_sollevata(monkeypatch):
 
     app: dict = {}
     with monkeypatch.context() as patch:
-        patch.setattr(server, "_reaggregate_days", _sollevata)
+        patch.setattr(day_report, "_reaggregate_days", _sollevata)
         with pytest.raises(RuntimeError):
-            await server.reaggregate_last_two_days(app, None)
+            await day_report.reaggregate_last_two_days(app, None)
     _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)
 
-    monkeypatch.setattr(server, "_write_missing_reports", _nessun_resoconto)
-    await server.reaggregate_last_two_days(app, None)
+    monkeypatch.setattr(day_report, "_write_missing_reports", _nessun_resoconto)
+    await day_report.reaggregate_last_two_days(app, None)
     _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)

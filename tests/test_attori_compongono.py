@@ -7,7 +7,7 @@ del registro, collocava con l'`area_id` proprio e una mappa delle aree sua
 (`observer.house_lines`); le ricette prendevano ogni entita' del dispositivo,
 comprese disabilitate, nascoste e di servizio (`recipe_turn._device_entities`),
 e scorrevano i dispositivi per sapere a chi chiedere. Il resoconto
-(`server._report_ingredients`) nominava i dispositivi scorrendo l'anagrafe.
+(`day_report._report_ingredients`) nominava i dispositivi scorrendo l'anagrafe.
 Ogni volta che la casa imparava una regola -- il nome vivo (D1), l'area
 ereditata (D3), la regola del fuori (D2) -- gli attori restavano indietro.
 
@@ -40,7 +40,7 @@ Rosso letto il 04/10/2026 sul codice di prima (`06fcd59`), con le funzioni
 dei giri chieste allo schedulatore: `observer._area_names`,
 `observer.house_lines`, `recipe_turn._device_entities`, `_device_name`,
 `devices_to_ask`, `_named_recipes`, `observer_round.reconsideration_round` (l'anagrafe
-intera per `measure_memory_window`) e `server._report_ingredients`.
+intera per `measure_memory_window`) e `day_report._report_ingredients`.
 
 Mutazioni ESEGUITE il 13/10/2026 (F7, criterio 6), ripristino verificato con
 `git status`:

@@ -35,7 +35,7 @@ from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.home_space import historian, registry_follower
-from hiris.app.mind import realignment
+from hiris.app.mind import day_report, realignment
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache
@@ -100,7 +100,7 @@ async def startup_steps(tmp_path_factory):
                                     server.watch_system_conditions)),
         mock.patch.object(server, "reaggregate_last_two_days",
                           _recorded(steps, "reaggregate",
-                                    server.reaggregate_last_two_days, app_keys=True)),
+                                    day_report.reaggregate_last_two_days, app_keys=True)),
         mock.patch.object(ConstructionStore, "risana",
                           _recorded(steps, "constructions_risana",
                                     ConstructionStore.risana)),

@@ -118,6 +118,8 @@ _RESIDUI_NOTI: frozenset[str] = frozenset({
     # come `logger` e `runner`.
     "annota", "dashboard", "fondamento", "letto", "lotto", "porta", "scritta",
     "versione", "watcher",
+    # Lo stesso per i resoconti del giorno, arrivati col passo 3.
+    "adesso", "archivio", "ferme", "finestra", "ricette",
 })
 
 

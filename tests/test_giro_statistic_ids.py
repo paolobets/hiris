@@ -27,11 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from casa_finta import CasaFinta
 
-from hiris.app import server
 from hiris.app.home_space import house_history
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import Mirror
-from hiris.app.mind import recipe_round, recipe_turn
+from hiris.app.mind import day_report, recipe_round, recipe_turn
 from hiris.app.mind.knowledge import KnowledgeStore
 from hiris.app.mind.store import ObservationsStore
 from tests._anagrafe_finta import AnagrafeFinta
@@ -140,7 +139,7 @@ async def test_due_giri_vicini_una_lettura_sola(stores):
     app = _app(stores, house)
 
     await recipe_round.recipe_round(app)
-    _ricette, _serie, _nomi, silent, _mute = await server._report_ingredients(
+    _ricette, _serie, _nomi, silent, _mute = await day_report._report_ingredients(
         app, house, giorno="2026-10-03", timezone="Europe/Rome")
 
     assert _asked(house) == 1
@@ -156,9 +155,9 @@ async def test_un_guasto_non_si_ricorda(stores):
     house = CasaFinta(synthetic_inputs(), silence={_LIST})
     app = {}
 
-    first = await server.statistic_ids_for_round(app, house)
+    first = await day_report.statistic_ids_for_round(app, house)
     house.unmute(_LIST)
-    second = await server.statistic_ids_for_round(app, house)
+    second = await day_report.statistic_ids_for_round(app, house)
 
     assert "errore" in first
     assert isinstance(second, set)
@@ -175,10 +174,10 @@ async def test_la_memoria_scade(stores):
     app = {}
     memory = house_history.STATISTIC_IDS_MEMORY_S
 
-    await server.statistic_ids_for_round(app, house, now=1000.0)
-    await server.statistic_ids_for_round(app, house, now=1000.0 + memory - 1)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0 + memory - 1)
     assert _asked(house) == 1
-    await server.statistic_ids_for_round(app, house, now=1000.0 + memory)
+    await day_report.statistic_ids_for_round(app, house, now=1000.0 + memory)
     assert _asked(house) == 2
 
 
