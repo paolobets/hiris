@@ -169,7 +169,7 @@ def _boundary_modules() -> dict[str, str]:
         module = getattr(handler, "__module__", "") or ""
         if module.startswith("hiris.app") and not module.startswith(package + "."):
             # `dedent`: un gestore nato da una fabbrica (i due gusci HTML,
-            # `server._serve_shell`, C-29) e' una funzione annidata, e il
+            # `shell._serve_shell`, C-29) e' una funzione annidata, e il
             # suo sorgente arriva indentato.
             sources[f"{module}.{handler.__name__}"] = textwrap.dedent(
                 inspect.getsource(handler))
@@ -194,11 +194,13 @@ def test_boundary_modules_are_asked_not_copied():
     # La derivazione non si e' svuotata: senza le rotte o il pacchetto la prova
     # sotto passerebbe guardando niente. Tre dei moduli che il 05/10/2026
     # scrivevano `errore` su HTTP (S-25), `/api/health` (uscito da `server.py`
-    # al Task 11 della Tappa 7) e un gestore di `server.py`, il guscio HTML.
+    # al Task 11 della Tappa 7) e il guscio HTML, che fino al 14/10/2026 era un
+    # gestore di `server.py` e da allora e' un modulo del pacchetto
+    # (`api/shell.py`, F8 passo 5).
     for name in ("hiris.app.api.handlers_mind", "hiris.app.api.admission",
                  "hiris.app.api.middleware_internal_auth",
                  "hiris.app.api.handlers_health",
-                 "hiris.app.server.serve"):
+                 "hiris.app.api.shell"):
         assert name in modules, sorted(modules)
 
 

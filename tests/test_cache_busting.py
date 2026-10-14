@@ -1,4 +1,4 @@
-"""Cache-busting for static assets (server._inject_version / _asset_fingerprint).
+"""Cache-busting for static assets (shell._inject_version / _asset_fingerprint).
 
 Regression coverage for the bug where a config-page menu item dead-clicked
 because a stale main.js was served: the old scheme
@@ -18,6 +18,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import server
+from hiris.app.api import shell
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
 from tests._casa_sintetica import synthetic_inputs
@@ -44,10 +45,10 @@ async def client(aiohttp_client, tmp_path):
     app.on_cleanup.clear()
 
     # Stessa lettura di `_on_startup` (sincrona di proposito, vedi
-    # `server._read_static_pages`): riusarla qui evita un secondo posto che
+    # `shell._read_static_pages`): riusarla qui evita un secondo posto che
     # legge gli stessi due file e potrebbe divergere da come li legge l'app
     # vera.
-    server._read_static_pages(app)
+    shell._read_static_pages(app)
 
     return await aiohttp_client(app)
 
@@ -58,7 +59,7 @@ def test_inject_version_appends_per_file_content_hash():
         '<script src="static/config/main.js"></script>'
         '<script src="static/config/memory-route.js"></script>'
     )
-    out = server._inject_version(html, "0.21.0")
+    out = shell._inject_version(html, "0.21.0")
     # Every local asset gets a ?v= fingerprint.
     assert 'static/hiris.css?v=' in out
     assert 'static/config/main.js?v=' in out
@@ -70,7 +71,7 @@ def test_different_files_get_different_hashes():
         '<script src="static/config/main.js"></script>'
         '<script src="static/config/memory-route.js"></script>'
     )
-    out = server._inject_version(html, "0.21.0")
+    out = shell._inject_version(html, "0.21.0")
     main_v = out.split("main.js?v=")[1].split('"')[0]
     mem_v = out.split("memory-route.js?v=")[1].split('"')[0]
     assert main_v != mem_v
@@ -82,7 +83,7 @@ def test_external_and_non_target_urls_untouched():
         '<link rel="icon" href="static/hiris-icon.svg">'
         '<script src="static/config/main.js"></script>'
     )
-    out = server._inject_version(html, "0.21.0")
+    out = shell._inject_version(html, "0.21.0")
     # External font URL is left alone (not a local static .js/.css ref).
     assert 'display=swap"' in out
     assert "swap?v=" not in out
@@ -91,21 +92,21 @@ def test_external_and_non_target_urls_untouched():
 
 
 def test_fingerprint_falls_back_when_file_missing():
-    assert server._asset_fingerprint("static/does-not-exist.js", "FALLBACK") == "FALLBACK"
+    assert shell._asset_fingerprint("static/does-not-exist.js", "FALLBACK") == "FALLBACK"
 
 
 def test_fingerprint_changes_when_content_changes(tmp_path, monkeypatch):
     scratch = tmp_path / "asset.js"
     scratch.write_text("first")
-    monkeypatch.setattr(server, "_STATIC_DIR", str(tmp_path))
-    server._ASSET_FP_CACHE.clear()
+    monkeypatch.setattr(shell, "_STATIC_DIR", str(tmp_path))
+    shell._ASSET_FP_CACHE.clear()
 
-    h1 = server._asset_fingerprint("static/asset.js", "fb")
+    h1 = shell._asset_fingerprint("static/asset.js", "fb")
     # Rewrite with different content and a strictly newer mtime.
     scratch.write_text("second-different")
     st = scratch.stat()
     os.utime(scratch, (st.st_mtime + 5, st.st_mtime + 5))
-    h2 = server._asset_fingerprint("static/asset.js", "fb")
+    h2 = shell._asset_fingerprint("static/asset.js", "fb")
 
     assert h1 != "fb" and h2 != "fb"
     assert h1 != h2
@@ -118,19 +119,19 @@ def test_build_stamp_deterministic_and_changes_with_content(tmp_path):
     (tmp_path / "a.js").write_text("console.log(1)")
     sub = tmp_path / "sub"; sub.mkdir()
     (sub / "b.css").write_text("body{}")
-    s1 = server._compute_build_stamp(str(tmp_path))
-    s2 = server._compute_build_stamp(str(tmp_path))
+    s1 = shell._compute_build_stamp(str(tmp_path))
+    s2 = shell._compute_build_stamp(str(tmp_path))
     assert s1 == s2 and len(s1) == 12
     (tmp_path / "a.js").write_text("console.log(2)")   # contenuto cambia -> stamp cambia
-    assert server._compute_build_stamp(str(tmp_path)) != s1
+    assert shell._compute_build_stamp(str(tmp_path)) != s1
 
 
 def test_build_stamp_reflects_rename(tmp_path):
     """Anche un rename (path nell'hash) cambia lo stamp."""
     (tmp_path / "a.js").write_text("x")
-    s1 = server._compute_build_stamp(str(tmp_path))
+    s1 = shell._compute_build_stamp(str(tmp_path))
     (tmp_path / "a.js").rename(tmp_path / "b.js")
-    assert server._compute_build_stamp(str(tmp_path)) != s1
+    assert shell._compute_build_stamp(str(tmp_path)) != s1
 
 
 # --- Task B8: il guscio dichiara da quale build e' nato -------------------
@@ -138,7 +139,7 @@ def test_build_stamp_reflects_rename(tmp_path):
 
 def test_inject_version_adds_hiris_build_meta_with_the_given_stamp():
     html = "<head><title>x</title></head><body></body>"
-    out = server._inject_version(html, "0.21.0", "abc123def456")
+    out = shell._inject_version(html, "0.21.0", "abc123def456")
     assert '<meta name="hiris-build" content="abc123def456">' in out
 
 
@@ -146,7 +147,7 @@ def test_inject_version_without_build_stamp_adds_no_meta():
     """Retrocompatibilita' dei test esistenti (che non passano build_stamp) e
     del comportamento quando il chiamante non ce l'ha: nessuna <meta> finta."""
     html = "<head><title>x</title></head><body></body>"
-    out = server._inject_version(html, "0.21.0")
+    out = shell._inject_version(html, "0.21.0")
     assert "hiris-build" not in out
 
 
@@ -212,26 +213,26 @@ def static_snapshot(tmp_path, monkeypatch):
     sorgente = os.path.join(os.path.dirname(server.__file__), "static")
     copia = tmp_path / "static_snapshot"
     shutil.copytree(sorgente, copia)
-    monkeypatch.setattr(server, "_STATIC_DIR", str(copia))
-    server._ASSET_FP_CACHE.clear()
+    monkeypatch.setattr(shell, "_STATIC_DIR", str(copia))
+    shell._ASSET_FP_CACHE.clear()
     yield str(copia)
-    server._ASSET_FP_CACHE.clear()
+    shell._ASSET_FP_CACHE.clear()
 
 
 def test_static_snapshot_ripunta_STATIC_DIR_alla_copia_non_al_vivo(static_snapshot):
     """m8 (ri-review): la fixture `static_snapshot` prova solo di saper
     copiare (`shutil.copytree`), mai che qualcuno la usi -- resa inerte
-    (nessun `monkeypatch` di `server._STATIC_DIR`) lasciava 14/14 verdi.
-    Qui si pinza il cablaggio dal lato che conta: `server._STATIC_DIR`
+    (nessun `monkeypatch` di `shell._STATIC_DIR`) lasciava 14/14 verdi.
+    Qui si pinza il cablaggio dal lato che conta: `shell._STATIC_DIR`
     (letto da `_asset_fingerprint` e dal middleware che serve /static/*)
     deve puntare ESATTAMENTE alla copia che la fixture restituisce, mai
     all'albero static/ vivo."""
     vivo = os.path.join(os.path.dirname(server.__file__), "static")
-    assert server._STATIC_DIR == static_snapshot
-    assert server._STATIC_DIR != vivo
+    assert shell._STATIC_DIR == static_snapshot
+    assert shell._STATIC_DIR != vivo
 
 
-def _solo_i_nostri(records, logger_name="hiris.app.server"):
+def _solo_i_nostri(records, logger_name="hiris.app.api.shell"):
     """I record WARNING di `logger_name`, non di qualunque cosa propaghi
     alla radice (m4, review finale). `caplog.records` raccoglie i record di
     OGNI logger che arrivi li' -- `caplog.at_level(level, logger=...)`
@@ -247,7 +248,7 @@ async def test_stale_asset_fingerprint_is_logged_as_warning(client, static_snaps
     """Punto 5 del brief: un asset richiesto con ?v=<impronta sbagliata> deve
     produrre UNA riga di log warning col nome file, l'impronta chiesta e
     quella attuale -- e continuare a servire il file (non cambia risposta)."""
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.api.shell"):
         resp = await client.get("/static/chat/main.js?v=impronta-inventata-e-sbagliata")
     assert resp.status == 200  # si continua a servire il file
     warnings = _solo_i_nostri(caplog.records)
@@ -261,10 +262,10 @@ async def test_stale_asset_fingerprint_is_logged_as_warning(client, static_snaps
 async def test_asset_fingerprint_matching_current_is_not_logged(client, static_snapshot, caplog):
     """Mutazione da uccidere: loggare SEMPRE, anche quando l'impronta chiesta
     e' quella giusta -- rumore che nasconderebbe il segnale."""
-    correct = server._asset_fingerprint("static/chat/main.js", "fallback")
+    correct = shell._asset_fingerprint("static/chat/main.js", "fallback")
     assert correct != "fallback"
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.api.shell"):
         resp = await client.get(f"/static/chat/main.js?v={correct}")
     assert resp.status == 200
     warnings = _solo_i_nostri(caplog.records)
@@ -287,10 +288,10 @@ def test_asset_fingerprint_letture_ripetute_restano_coerenti_con_una_scrittura_c
 
     istantanea = tmp_path / "istantanea"
     shutil.copytree(vivo, istantanea)
-    monkeypatch.setattr(server, "_STATIC_DIR", str(istantanea))
-    server._ASSET_FP_CACHE.clear()
+    monkeypatch.setattr(shell, "_STATIC_DIR", str(istantanea))
+    shell._ASSET_FP_CACHE.clear()
 
-    prima = server._asset_fingerprint("static/main.js", "fallback")
+    prima = shell._asset_fingerprint("static/main.js", "fallback")
     assert prima != "fallback"
 
     # La scrittura concorrente: qualcosa cambia l'albero VIVO -- ma
@@ -305,7 +306,7 @@ def test_asset_fingerprint_letture_ripetute_restano_coerenti_con_una_scrittura_c
     st = vivo_file.stat()
     os.utime(vivo_file, (st.st_mtime + 5, st.st_mtime + 5))
 
-    dopo = server._asset_fingerprint("static/main.js", "fallback")
+    dopo = shell._asset_fingerprint("static/main.js", "fallback")
     assert prima == dopo, (
         "con _STATIC_DIR su un'istantanea congelata, una scrittura sull'albero vivo "
         "non deve mai far divergere due letture della stessa impronta")
@@ -314,17 +315,17 @@ def test_asset_fingerprint_letture_ripetute_restano_coerenti_con_una_scrittura_c
 @pytest.mark.asyncio
 async def test_asset_fingerprint_matching_current_ignora_warning_di_altri_logger(client, caplog):
     """m4 (review finale): `caplog.records` raccoglie i record di QUALUNQUE
-    logger propagato alla radice -- non solo `hiris.app.server` -- perche'
-    `at_level(..., logger="hiris.app.server")` regola il LIVELLO di quel
+    logger propagato alla radice -- non solo `hiris.app.api.shell` -- perche'
+    `at_level(..., logger="hiris.app.api.shell")` regola il LIVELLO di quel
     logger, non filtra la RACCOLTA. Un warning emesso da tutt'altro (qui una
     libreria finta, ma vale per qualunque dipendenza) durante la chiamata
     farebbe cadere un conteggio non filtrato per nome, anche se il NOSTRO
     logger non ha detto niente."""
-    correct = server._asset_fingerprint("static/chat/main.js", "fallback")
+    correct = shell._asset_fingerprint("static/chat/main.js", "fallback")
     assert correct != "fallback"
     estraneo = logging.getLogger("una.libreria.estranea.a.hiris")
 
-    with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.api.shell"):
         estraneo.warning("rumore che non riguarda l'impronta di nessun asset")
         resp = await client.get(f"/static/chat/main.js?v={correct}")
     assert resp.status == 200
@@ -336,4 +337,4 @@ async def test_asset_fingerprint_matching_current_ignora_warning_di_altri_logger
     warnings = _solo_i_nostri(caplog.records)
     assert warnings == [], (
         f"il warning di 'una.libreria.estranea.a.hiris' non deve contare per il "
-        f"logger hiris.app.server, trovato: {warnings}")
+        f"logger hiris.app.api.shell, trovato: {warnings}")
