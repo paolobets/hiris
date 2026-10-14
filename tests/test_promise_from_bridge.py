@@ -50,7 +50,6 @@ from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.consegna import consegna as consegna_turno
 from hiris.app.reasoning.queue import ReasoningQueue
 
-TOKEN = "token-di-prova-della-consegna"
 ADESSO = 1787324400.0
 # Il filo di chi ha chiesto: ogni promessa ne ha uno (spec 2026-09-26 §2).
 PAOLO = ChatThread("persona:paolo", "pannello")
@@ -67,7 +66,6 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
-    app["internal_token"] = TOKEN
 
     coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))

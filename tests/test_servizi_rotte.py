@@ -87,7 +87,6 @@ async def cliente(aiohttp_client, tmp_path):
     app[CLAUDE_RUNNER_KEY] = None
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
-    app["internal_token"] = ""
     app[INGRESS_CIDRS_KEY] = ["0.0.0.0/0"]
     from hiris.app.api.servizi import ServiziStore
     app[SERVICES_KEY] = ServiziStore(str(tmp_path / "servizi.db"))

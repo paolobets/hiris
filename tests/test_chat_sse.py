@@ -48,7 +48,6 @@ async def client(aiohttp_client, tmp_path):
     app[LLM_ROUTER_KEY] = mock_runner
     app[THEME_KEY] = "auto"
     app[DATA_DIR_KEY] = str(tmp_path)
-    app["internal_token"] = ""
     app.on_startup.clear()
     app.on_cleanup.clear()
     return await aiohttp_client(app)

@@ -707,7 +707,6 @@ async def test_la_valvola_di_sviluppo_non_apre_questa_rotta(aiohttp_client, monk
     monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "1")
     app = server.create_app()
     app[INGRESS_CIDRS_KEY] = ["172.30.32.0/23"]
-    app["internal_token"] = ""
     app.on_startup.clear()
     app.on_cleanup.clear()
     client = await aiohttp_client(app)
