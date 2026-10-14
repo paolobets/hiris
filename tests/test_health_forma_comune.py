@@ -10,9 +10,15 @@ Ogni produttore si prova acceso e spento: la forma non deve dipendere
 dall'esito.
 
 Proposta di F5 (`chiusura/f5-patch/c30-forma-comune-health.md`); prova scritta
-da F11, entra con la parte di F8 (la riparazione, in `server.py`).
+da F11, entra con la parte di F8 (la riparazione, oggi in `mind/day_report.py`).
 Mutazione ESEGUITA (14/10/2026): rimessa la chiave `oggetti` in
-`day_report.reaggregate_last_two_days` -- rossa («'stato'» manca).
+`reaggregate_last_two_days` -- rossa («'stato'» manca).
+
+Dal 14/10/2026 la riparazione controlla anche la parola esatta di ogni caso
+(N162-2, revisore giro 162). Mutazione ESEGUITA: scambiati `REPAIR_DONE` e
+`REPAIR_RAISED` in `reaggregate_last_two_days` -- prima di questa prova verde
+(3 passate), con questa rossa sulla parola del caso sollevato. Ripristino
+verificato con `git status`.
 """
 import pytest
 
@@ -58,7 +64,13 @@ async def test_la_riparazione_fatta_e_sollevata(monkeypatch):
         with pytest.raises(RuntimeError):
             await day_report.reaggregate_last_two_days(app, None)
     _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)
+    # La parola esatta di ogni caso, non solo una del vocabolario (N162-2):
+    # due casi scambiati restano nel vocabolario e la forma non li vede.
+    assert app["ultima_riparazione"]["stato"] == day_report.REPAIR_RAISED
+    assert app["ultima_riparazione"]["perche"] == "RuntimeError: ricetta rotta"
 
     monkeypatch.setattr(day_report, "_write_missing_reports", _nessun_resoconto)
     await day_report.reaggregate_last_two_days(app, None)
     _forma(app["ultima_riparazione"], day_report.REPAIR_STATES)
+    assert app["ultima_riparazione"]["stato"] == day_report.REPAIR_DONE
+    assert app["ultima_riparazione"]["perche"] is None
