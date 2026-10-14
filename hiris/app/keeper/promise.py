@@ -22,7 +22,7 @@ from ..answer_reasons import NO_ANSWER_REASON
 from ..chat_thread import thread_from_columns
 from ..home_space.historian import home_space_zone, instant_out
 from ..proxy._sanitize import truncate_with_marker
-from ..states import CANCELLED, FAILED, KEPT, SKIPPED, SUSPENDED, readable
+from ..states import CANCELLED, FAILED, KEPT, PENDING, SKIPPED, SUSPENDED, readable
 
 VERB = ("fai", "chiedi")
 #: Gli stati che chiudono una promessa. Le parole vivono nel vocabolario
@@ -54,6 +54,13 @@ STATES_CONCLUSI = (KEPT, SKIPPED, CANCELLED, FAILED)
 # c'e' un elenco esplicito: e' l'unico modo perche' la domanda «questo e'
 # una notizia?» abbia una risposta scritta invece che dedotta.
 STATES_ESITO = (KEPT, SKIPPED, FAILED)
+
+# Lo stato da cui una promessa si disdice: `store.cancel` lo scrive nella sua
+# `UPDATE ... WHERE`, e `serializza` lo manda alla pagina come `disdicibile`.
+# Una regola, una casa (C-10, Chiusura, 14/10/2026): fino ad allora la pagina
+# Impegni la ricopiava come `stato === 'in_attesa'`. `in_corso` e' in sospeso
+# ma non si disdice: l'orologio l'ha gia' presa.
+CANCELLABLE = PENDING
 
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
 # si dichiara `saltata`. Una sola, non configurabile per promessa (spec §7).
@@ -94,6 +101,11 @@ _CHIAVI = (
     # in sospeso (`states.SUSPENDED`) e un esito da leggere (`STATES_ESITO`).
     # La pagina Impegni ne teneva le due liste sue.
     "sospesa", "esito",
+    # Cosa la pagina Impegni fa di una promessa, chiesto qui (C-10, Chiusura,
+    # 14/10/2026): il bottone «Disdici», il blocco della risposta e il
+    # dettaglio dell'esecuzione, il motivo taciuto e il suo colore. La pagina
+    # confrontava `stato` con le parole del vocabolario, scritte in JS.
+    "disdicibile", "mantenuta", "fallita", "disdetta",
 )
 
 
@@ -336,6 +348,10 @@ def serializza(row) -> dict:
         # (vedi `STATES_ESITO`). Le due domande hanno due risposte.
         "sospesa": row["stato"] in SUSPENDED,
         "esito": row["stato"] in STATES_ESITO,
+        "disdicibile": row["stato"] == CANCELLABLE,
+        "mantenuta": row["stato"] == KEPT,
+        "fallita": row["stato"] == FAILED,
+        "disdetta": row["stato"] == CANCELLED,
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

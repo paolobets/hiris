@@ -253,6 +253,22 @@ test('una promessa fallita dice «Non riuscita», mai «Non eseguita»', async (
   assert.ok(!testo.includes(etichetta('saltata')));
 });
 
+test('il motivo e\' rosso solo per una fallita: il colore lo decide `fallita` della promessa', async () => {
+  /* C-10 (Chiusura, 14/10/2026): `reasonColor` confrontava lo stato con
+     'fallita' scritto in JS; ora legge `fallita`, che manda `serializza`.
+     Mutazione ESEGUITA: `p.mantenuta` al posto di `p.fallita` -- rossa. */
+  const { document } = await monta({
+    get: { agenda: [
+      { ...PROMESSE[1], id: 'p4', stato: 'fallita', motivo: 'il servizio ha rifiutato la chiamata' },
+      { ...PROMESSE[1], id: 'p5', stato: 'mantenuta', motivo: 'nessun canale per avvisarti' },
+    ] },
+  });
+  const colore = (frase) => Array.from(document.querySelectorAll('p'))
+    .find((n) => n.textContent === frase).style.color;
+  assert.equal(colore('il servizio ha rifiutato la chiamata'), 'var(--err-ink)');
+  assert.equal(colore('nessun canale per avvisarti'), 'var(--warn-ink)');
+});
+
 test('il badge di "Non eseguita" non e\' rosso: e\' una scelta del prodotto, non un guasto', async () => {
   const { document } = await monta();
   const badge = Array.from(document.querySelectorAll('.agent-badge'))
