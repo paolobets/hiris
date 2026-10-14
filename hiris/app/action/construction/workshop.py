@@ -62,6 +62,18 @@ LABEL_NAME = "HIRIS"
 # modello da trattenere.
 HUMAN_ACTORS = ("pagina",)
 
+#: Lo stato in cui una costruzione si decide ancora: si conferma (`apply`) o
+#: si rifiuta (`ConstructionStore.mark_cancelled`). Uno stato che non lo e'
+#: si rifiuta con la sua frase. La pagina Proposte lo riceve come
+#: `decidibile` e non lo ricalcola (C-10, Chiusura, 14/10/2026): fino a quel
+#: giorno confrontava `stato` con `'in_attesa'` scritto in JS.
+DECIDABLE = PENDING
+
+#: Gli stati di una costruzione che `restore` sa rimettere com'era: una
+#: scrittura arrivata, o una di cui non si sa (G83-2). La pagina lo riceve
+#: come `ripristinabile` (C-10, Chiusura, 14/10/2026).
+RESTORABLE = (APPLIED, UNCERTAIN)
+
 #: Il rifiuto di una proposta nata nel turno che la vorrebbe confermare.
 #: Scritto una volta sola perche' lo danno DUE porte -- il cancello, e il
 #: lettore che sceglie la proposta quando l'utente non l'ha nominata -- e
@@ -479,7 +491,7 @@ class Workshop:
             # (decisione 4, spec §5): un rifiuto non deve far capire che una
             # proposta con quell'id esiste, solo altrove -- vedi `_UNKNOWN_ID`.
             return refused(_UNKNOWN_ID)
-        if proposal["stato"] != PENDING:
+        if proposal["stato"] != DECIDABLE:
             # La frase dello stato, dal vocabolario (Tappa 8, D4): fino
             # all'08/10/2026 una tabella di questo modulo traduceva quattro
             # parole, e le altre uscivano grezze.
@@ -684,7 +696,7 @@ class Workshop:
         rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
         all_pending = [r for r in self._store.list(now=now, pending_only=True)
-                      if r["stato"] == PENDING]
+                      if r["stato"] == DECIDABLE]
         pending = [r for r in all_pending
                   if thread is None or _same_thread(r, thread)]
         confirmable = [r for r in pending if r["turno"] != exchange]
@@ -1154,7 +1166,7 @@ class Workshop:
         row = self._store.read(construction_id, now=now)
         if row is None:
             return refused(unknown_id_text("nessuna costruzione"))
-        if row["stato"] not in (APPLIED, UNCERTAIN):
+        if row["stato"] not in RESTORABLE:
             return refused("quella costruzione non è mai stata applicata: "
                            "non c’è niente da rimettere.")
         prima = row["prima"]
