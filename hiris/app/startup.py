@@ -10,7 +10,6 @@ import contextlib
 import logging
 import os
 import time
-from datetime import timedelta
 from functools import partial
 from pathlib import Path
 
@@ -278,7 +277,7 @@ async def nightly_aggregation_job(app, ha_client) -> None:
         # l'eccezione finirebbe nel registro di apscheduler senza il
         # prefisso «cervello:», e la notte salterebbe in silenzio.
         timezone = house_timezone(app.get(HOME_SPACE_KEY))
-        ieri = (historian.today(timezone) - timedelta(days=1)).isoformat()
+        ieri = historian.resolve_day("ieri", timezone)
         # **IL RESOCONTO** (spec §9), per la strada unica: la notte
         # rifa' ieri anche se c'e' gia'.
         count = await write_day_report(app, ha_client, day=ieri, timezone=timezone,
