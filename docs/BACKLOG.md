@@ -3811,7 +3811,7 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 
 ## Usciti
 
-### ~~La credenziale del ponte vive quanto il turno~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint)
+### ~~La credenziale del ponte vive quanto il turno~~ — **USCITA con la v3.79.1**
 
 `fatta dalla fetta F8 della Chiusura, commit 35aa99e7 (S-24 del registro, chiudibile al rilascio): la credenziale del ponte vive il doppio del turno piu' lungo`
 
@@ -3829,7 +3829,7 @@ si vede: diventa vero solo alzando la scadenza.
 
 Correzione: la credenziale coniata al claim vive almeno fino alla scadenza del turno che la usa.
 
-### ~~`server.py` si spezza alla Chiusura dello sprint~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint)
+### ~~`server.py` si spezza alla Chiusura dello sprint~~ — **USCITA con la v3.79.1**
 
 `fatta dalla fetta F8 della Chiusura, 14/10/2026, unita sul ramo d'integrazione @ 1a60d9b8: un commit di solo spostamento per passo, con la fotografia delle porte identica dopo ognuno; in server.py resta create_app. Dove e' andato ogni pezzo: CLAUDE.md, «Niente di nuovo dentro server.py», e il rapporto /mnt/project-files/chiusura/f8-rapporto.md`
 
@@ -3879,7 +3879,7 @@ porta»), `type_vocabulary.py` (in gran parte dati); `tools.py`, `briefing.py`, 
 rivedono dopo; `agent/runner.py` si decide nel refactor degli agenti. Nessuna soglia di righe per
 file: il criterio è un file, un mestiere.
 
-### ~~Una fonte sola di verita' per tutta l'app~~ — **USCITA col prossimo rilascio** (il rilascio 2 della Chiusura dello sprint) — aperta il 01/10/2026
+### ~~Una fonte sola di verita' per tutta l'app~~ — **USCITA con la v3.79.1** — aperta il 01/10/2026
 
 `origine: il proprietario, 01/10/2026 («e' la quinta volta che lo chiedo di fare, deve essere l'ultima»; «alla fine delle analisi creiamo un doc con il risultato e il piano di intervento come requisiti del prossimo sprint»)` · analisi in `docs/superpowers/audit-2026-10-01/` (cartella fuori da git) · documento dei requisiti: `docs/design/2026-10-01-una-fonte-sola-di-verita.md` · lista di lavoro: `docs/design/2026-10-01-registro-dei-doppioni.md` · misure: `docs/misure/2026-10-tappa-0.md`
 

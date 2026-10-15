@@ -1,5 +1,63 @@
 # HIRIS — Changelog
 
+## [3.79.1] — `server.py` spezzato, una fonte sola fino in fondo: la Chiusura di «Una fonte sola di verità», rilascio 2 (2026-10-15)
+
+### Perché
+
+Il rilascio 1 ha portato i cambi di comportamento della Chiusura. Questo porta il resto:
+- `server.py` registrava le rotte, ma ospitava anche i giri del cervello, l'avvio, la consegna e
+  il governo del ponte, in più di quattromila righe. Ora registra e avvia, e basta;
+- le ultime voci del registro dei doppioni sono chiuse;
+- i documenti descrivono il codice che c'è.
+
+Con questa versione lo sprint «Una fonte sola di verità» è chiuso: nel registro non resta nessuna
+voce aperta.
+
+### Cosa cambia per chi usa HIRIS
+
+- **Aprire la chat, l'elenco delle conversazioni o gli impegni non scrive più niente.**
+  L'assegnazione al proprietario delle chat di prima della divisione la fa la chat una volta,
+  all'apertura, con una richiesta propria.
+- **La pagina Costruzioni chiede al server cosa fare di ogni costruzione**, come già Impegni: le
+  parole degli stati non sono più scritte nella pagina. Non cambia niente di ciò che mostra.
+- **La credenziale del ponte vive il doppio del turno più lungo ammesso**, così un turno lungo non
+  resta senza credenziale a metà.
+- **I resoconti del giorno portano l'ora in cui sono stati chiesti**, non quella del disco: il
+  recupero e la riparazione d'avvio scrivono l'istante giusto.
+- **La riparazione d'avvio in `/api/health`** apre con `stato` e `perche`, come il ponte e
+  l'istantanea.
+- **L'indirizzo di OpenAI** si legge dalla tabella dei provider, come per gli altri.
+
+### Componenti
+
+- CLI del ponte **2.1.300** (dalla 2.1.296), per scelta di Paolo del 15/10/2026.
+  - Letto il CHANGELOG ufficiale fino alla 2.1.299: nessuna voce cambia `-p`, `stream-json`,
+    `system/init`, `--tools` o `--mcp-config`. Misurato nella nuvola con l'argv di produzione.
+  - La 2.1.300 scrive nei transcript il prompt di sistema di ogni richiesta: i transcript del
+    ponte crescono (misurato un turno da 72.620 a 113.933 byte). Si prende sapendolo.
+
+### Da sapere
+
+- **Il proponente resta fermo.**
+- **`server.py` registra e avvia, e basta.** I giri del cervello, i resoconti, i giri della casa e
+  delle condizioni sono usciti:
+  - in `mind/`;
+  - in `home_space/rounds.py`;
+  - in `startup.py`.
+
+  Il governo del ponte sta in `agent/bridge_governor.py`, la consegna in `reasoning/consegna.py`.
+  Le chiavi dell'app sono `web.AppKey`, dichiarate da chi possiede il valore, e i valori che
+  cambiano dopo l'avvio stanno in un `LiveValue`. La fotografia delle porte è rimasta identica a
+  ogni passo dello spostamento.
+- **Il fuso della casa si legge in un posto solo**, e «oggi/ieri» li risolve sempre
+  `historian.resolve_day`.
+- **Le prove passano anche sul PC di sviluppo (Windows) e con qualunque fuso della macchina.**
+  Erano rosse sul PC ma non nella nuvola: tre per le barre dei percorsi e il fuso, sei per
+  «oggi» letto in due istanti diversi. Ora prova e codice leggono lo stesso istante
+  (`tests/_oggi_fermo.py`). Il prodotto non cambia.
+- **I documenti** (`CLAUDE.md`, `README.md`, BACKLOG, la spec) descrivono il codice che c'è. Le
+  rotte del README si confrontano con il router avviato.
+
 ## [3.79.0] — L'ora della casa, una chat sola su catena e ponte, la terza porta finita: la Chiusura di «Una fonte sola di verità», rilascio 1 (2026-10-14)
 
 ### Perché
