@@ -509,7 +509,7 @@ regola vive una volta e i canali smettono di poter divergere.
 giorno dirà se il ponte e la catena stanno davvero mandando la stessa cosa, e se sono già scivolati
 la fusione diventa urgente invece che desiderabile.
 
-### ~~La chat è una sola per costruzione~~ — **USCITA col prossimo rilascio**
+### ~~La chat è una sola per costruzione~~ — **USCITA con la v3.68.0**
 
 `origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
 
@@ -959,6 +959,25 @@ va corretto, in un posto solo.
 ---
 
 ## In attesa
+
+### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
+
+`origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
+
+Una voce che esce prima del suo rilascio si scrive `— **USCITA col prossimo rilascio**`, perche' la
+versione ancora non c'e'. Poi nessuno la riscrive: `release.py` timbra il registro dei doppioni
+(`close_register`) ma non tocca il BACKLOG. Misurato il 15/10/2026: dieci voci erano rimaste cosi'.
+Sette erano uscite settimane prima, sei con la v3.68.0 e una con la v3.69.0 (verificate commit per
+commit: il commit che scrive il titolo e il primo tag che lo contiene). Le altre tre erano della
+3.79.1, e si sono scritte a mano nel commit di versione (N171-1). Tutte e dieci ora portano la loro
+versione, ma il buco resta.
+
+Cosa si chiede: al passo 5b, accanto al registro, `release.py` riscrive nei **titoli** del BACKLOG
+(le intestazioni `###` e `####`, come le legge `registro.backlog_titles`) ogni «USCITA col
+prossimo rilascio» in «USCITA con la vX.Y.Z», e lo dice nell'output. Solo i titoli: questa voce
+la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `_BACKLOG_DONE` la
+leggerebbe come chiusa. Una prova con un BACKLOG
+finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
 
 ### Tappa 7: le note basse del revisore — aperta il 07/10/2026
 
@@ -1769,7 +1788,7 @@ mostra.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
-### ~~Chi ha chiesto una promessa~~ — **USCITA col prossimo rilascio**
+### ~~Chi ha chiesto una promessa~~ — **USCITA con la v3.68.0**
 
 `origine: dichiarato fuori perimetro dalla fetta «le chat divise», spec §6, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §6
 
@@ -1790,7 +1809,7 @@ chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa l
 modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
 solo il proprio.
 
-### ~~L'autore del giudizio fisso a `"proprietario"`~~ — **USCITA col prossimo rilascio**
+### ~~L'autore del giudizio fisso a `"proprietario"`~~ — **USCITA con la v3.68.0**
 
 `origine: misurato durante la fetta «le chat divise», 25/09/2026` · `mind/judgments.py:50`
 
@@ -1808,7 +1827,7 @@ Non e' un buco di sicurezza (la porta di scrittura, `write_judgment`, non ha ogg
 ruolo), ma e' un fatto scritto male: la cronaca del sapere mentirebbe su chi ha deciso, il giorno
 in cui a scrivere sara' qualcun altro.
 
-### ~~Più conversazioni per filo, con elenco nella pagina~~ — **USCITA col prossimo rilascio**
+### ~~Più conversazioni per filo, con elenco nella pagina~~ — **USCITA con la v3.68.0**
 
 `origine: decisione 2 della spec «le chat divise», rimandata il 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §0 (decisione 2), §6
 
@@ -1825,7 +1844,7 @@ Il proprietario ha scelto **un filo solo** per soggetto (col meccanismo di oggi:
 da due ore di silenzio, riassunto) per questa fetta. Più conversazioni nello stesso filo, con un
 elenco nella pagina per riaprirle o iniziarne una nuova, resta un passo dichiarato e non preso.
 
-### ~~`GET /api/constructions` non ha il cancello del soffitto~~ — **USCITA col prossimo rilascio**
+### ~~`GET /api/constructions` non ha il cancello del soffitto~~ — **USCITA con la v3.68.0**
 
 `origine: misurato durante la fetta «le chat divise», Task 7, 25/09/2026` · `hiris/app/api/handlers_constructions.py`
 
@@ -1844,7 +1863,7 @@ cosa; ma **ogni utente dell'ingress vede le proposte di tutti i fili**, non solo
 il contrario della decisione 4 della spec («ognuno legge solo il suo, amministratore compreso»),
 applicata finora solo alla chat.
 
-### ~~Testi del prompt che assumono un proprietario unico~~ — **USCITA col prossimo rilascio**
+### ~~Testi del prompt che assumono un proprietario unico~~ — **USCITA con la v3.68.0**
 
 `origine: misurato durante la fetta «le chat divise», Task 5, 25/09/2026` · `hiris/app/claude_runner.py`, `hiris/app/agent/prompts.py`
 
@@ -2621,7 +2640,7 @@ membri sono nella cesta `members` dello specchio, e `queries.group_membership` e
 (`light.lampadario_sala_da_pranzo`) ha tre membri con capacita' identiche, misurato il 09/09/2026.
 Morde il giorno in cui il proprietario mette una luce a colore accanto a due prese.
 
-### ~~HIRIS per gli utenti non-admin di Home Assistant~~ — **USCITA col prossimo rilascio**
+### ~~HIRIS per gli utenti non-admin di Home Assistant~~ — **USCITA con la v3.69.0**
 
 `origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento` (alla chiusura: `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`)
 
