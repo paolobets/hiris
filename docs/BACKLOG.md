@@ -960,6 +960,49 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
+
+`origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`
+
+**Misurato (3.79.1).** Il primo giro a conversazione vuota costa 21.583 token in ingresso. In
+caratteri:
+- le definizioni dei 12 strumenti, 29.121: history 5.617, search 4.929, execute 3.510, propose
+  3.420, remember 2.774, related 2.467, promise 2.169, calendar 1.425, agenda 911, confirm 895,
+  mind 594, cancel 410;
+- la guida, 9.560 (`compose_base` 6.476, persona 594, il resto);
+- il nucleo, circa 6.200-8.000;
+- il prefisso della CLI, circa 660 token, costante, letto dalla cache.
+
+Sulla batteria: 61 giri × circa 21k di base ≈ 1,28 M su 1,73 M; l'85% è letto dalla cache.
+
+**Cosa non va (letto nel codice).**
+1. Le descrizioni di history e search sono per lo più istruzioni su come LEGGERE la risposta
+   (grana, finestra, escluse, oltre, profondità), e partono a ogni giro anche quando lo strumento
+   non si chiama. Per la fondamenta 1 quelle istruzioni viaggiano nella risposta stessa, quando
+   servono.
+2. Le regole di execute stanno due volte, nella guida (`compose_base`, una decina di righe) e
+   nella descrizione di execute: è un doppione (fondamenta 2).
+3. Il paragrafo «un numero senza le escluse non è un totale… prima restringi… disponibili» è
+   identico in search e in history; «agenda non è calendar» sta in tutti e due.
+4. Nel nucleo restano l'avviso sul vocabolario verificato fino a una versione di HA (nota per
+   noi, non per la risposta), i conteggi per tipo della voce «Senza area» e «Cosa si può chiedere
+   alle cose», che search dà già nel dettaglio.
+
+**Cosa NON si tocca.** I 12 strumenti restano tutti offerti a ogni giro (remember ed execute
+devono poter partire alla prima frase). I ricordi restano sempre nel nucleo (contratto). Gli id
+delle aree e delle automazioni restano nel nucleo (evitano ricerche).
+
+**Chi ne beneficia.** La chat; l'analista (search, related, history, mind, circa 13.600 caratteri
+dei suoi strumenti) e il proponente (gli stessi più propose). Osservatore e ricette no: girano
+senza strumenti, con prompt propri.
+
+**Stima da verificare.** Circa 10-12.000 caratteri in meno a giro, un quarto della base. Va
+misurato prima e dopo con una batteria a conversazione nuova per domanda: la batteria di oggi
+tiene le 28 domande nello stesso filo, e la storia accumulata pesa circa il 20% (≈ 342k token).
+
+**Prima di toccare.** Misurare la qualità oltre ai token: i giudizi della batteria sono ancora
+tutti «da giudicare».
+
 ### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
 
 `origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
