@@ -268,6 +268,13 @@ async def test_chat_con_chatbot_id_si_comporta_come_senza(aiohttp_client, tmp_pa
     # indipendenti ne creano due identita' diverse per costruzione. Il tipo
     # e' comunque lo stesso, a riprova che non e' un ramo di codice diverso.
     assert type(kwargs_con.pop("dispatcher")) is type(kwargs_senza.pop("dispatcher"))
+    # `orologio.adesso` e' l'istante di ciascuna risposta: due richieste a
+    # cavallo di un secondo lo hanno diverso senza che `chatbot_id` c'entri
+    # (rossa cosi' il 15/10/2026: 06:47:11 contro 06:47:12). Si confronta il
+    # fuso, e la forma dell'orologio.
+    clocks = [body.pop("orologio") for body in (body_con, body_senza)]
+    assert [set(clock) for clock in clocks] == [{"fuso", "adesso"}] * 2
+    assert clocks[0]["fuso"] == clocks[1]["fuso"]
     assert body_con == body_senza
     assert kwargs_con == kwargs_senza
 
