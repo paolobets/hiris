@@ -389,8 +389,10 @@ npm test                     # il frontend: node --test + jsdom
 python scripts/cancelli.py   # registro, doppioni, censimento, fonte unica: i quattro cancelli
 ```
 **La suite intera supera i dieci minuti**: lanciata in un colpo solo, in background, viene
-uccisa senza esito. Si lancia in due metà, in foreground (l'elenco dei file di `tests/` diviso a
-metà). E si lancia **prima di ogni commit**, non solo le prove dei file toccati: il 2 ottobre 2026
+uccisa senza esito. Si lancia in **quattro parti**, in foreground: l'elenco dei file di `tests/`
+diviso in quattro (`ls tests/test_*.py | split -n l/4 -d`). Misurato sul PC del proprietario il
+14/10/2026: la suite intera 22 minuti, una metà 13-14, una parte 5-8: una metà supera già i dieci
+minuti, una parte no. E si lancia **prima di ogni commit**, non solo le prove dei file toccati: il 2 ottobre 2026
 due commit sono partiti con prove rosse in file che nessuno aveva pensato di rilanciare.
 
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
