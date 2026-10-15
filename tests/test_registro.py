@@ -46,35 +46,43 @@ def test_la_lettura_non_si_e_svuotata():
     assert not thin, thin
 
 
-def _an_open_entry(path) -> str:
-    """Una voce ancora aperta, CHIESTA al registro. Scritta a mano («M-13»)
-    era giusta finche' quella voce non e' stata chiusa davvero, il 02/10/2026:
-    quel giorno due prove sono diventate rosse per aver fatto il loro lavoro."""
-    still_open = [entry.id for entry in registro.read_entries(path)
-                  if not entry.closed and entry.chapter == "M"]
-    assert still_open, "nessuna voce aperta nel capitolo M: la prova non guarda niente"
-    return still_open[0]
+def _own_register(tmp_path) -> Path:
+    """Un registro scritto dalla prova, con una voce aperta nel capitolo M.
+
+    Le due prove qui sotto provano `close`, non il registro vero: chiederne a
+    lui una voce aperta le legava al suo stato. Scritta a mano («M-13») era
+    giusta finche' quella voce non e' stata chiusa davvero, il 02/10/2026;
+    chiesta al registro vero, al rilascio 3.79.1 la timbratura ha lasciato
+    nel capitolo M solo `M-37`, trasferita, e le prove sono diventate rosse
+    per una voce che non potevano chiudere.
+
+    Mutazione ESEGUITA: `close` che non sposta la riga -- rosse tutte e due
+    (`assert found[0].closed`). Mutazione ESEGUITA: tolto il rifiuto della
+    voce gia' chiusa -- rossa la seconda (`DID NOT RAISE SystemExit`)."""
+    document = tmp_path / "registro.md"
+    document.write_text(
+        "## M. Morto\n\n| Id | Reperto | Righe |\n|---|---|---|\n"
+        "| M-01 | un file | `a.py` |\n\n"
+        "## Chiuse\n\n| Id | Voce | Chiusa con | Commit | Cosa |\n|---|---|---|---|---|\n"
+        "| M-02 | un altro file | 3.72.0 | def5678 | file tolto |\n", encoding="utf-8")
+    return document
 
 
 def test_una_voce_chiusa_non_e_anche_aperta(tmp_path):
-    copy = tmp_path / "registro.md"
-    copy.write_text(REGISTER.read_text(encoding="utf-8"), encoding="utf-8")
-    chosen = _an_open_entry(copy)
-    registro.close(copy, chosen, version="3.73.0", commit="abc1234",
+    copy = _own_register(tmp_path)
+    registro.close(copy, "M-01", version="3.73.0", commit="abc1234",
                    note="costante cancellata")
-    found = [entry for entry in registro.read_entries(copy) if entry.id == chosen]
+    found = [entry for entry in registro.read_entries(copy) if entry.id == "M-01"]
     assert len(found) == 1
     assert found[0].closed
     assert found[0].chapter == "M"
 
 
 def test_chiudere_due_volte_o_una_voce_che_non_c_e_si_rifiuta(tmp_path):
-    copy = tmp_path / "registro.md"
-    copy.write_text(REGISTER.read_text(encoding="utf-8"), encoding="utf-8")
-    chosen = _an_open_entry(copy)
-    registro.close(copy, chosen, version="3.73.0", commit="abc1234", note="x")
-    with pytest.raises(SystemExit, match=chosen):
-        registro.close(copy, chosen, version="3.73.0", commit="abc1234", note="x")
+    copy = _own_register(tmp_path)
+    registro.close(copy, "M-01", version="3.73.0", commit="abc1234", note="x")
+    with pytest.raises(SystemExit, match="M-01"):
+        registro.close(copy, "M-01", version="3.73.0", commit="abc1234", note="x")
     with pytest.raises(SystemExit, match="Z-99"):
         registro.close(copy, "Z-99", version="3.73.0", commit="abc1234", note="x")
 
