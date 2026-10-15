@@ -347,8 +347,11 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
 
     class _Frame:
         """L'anagrafe, per la sola domanda che la chat le fa qui: il fuso. La
-        chat lo chiede a `historian.house_timezone` (Tappa 3, Task 10), che
-        lo legge da `reference_frame()`."""
+        chat lo chiede a `reader.house_timezone_of` (N170-1), che la cerca
+        sotto `reader.HOME_SPACE_KEY` e ne legge `reference_frame()`. La
+        chiave si chiede a `reader`: scritta qui come stringa, la chat non
+        trovava l'anagrafe e cadeva su UTC (3.450 disaccordi falsi su 52.560
+        campioni, misurati il 15/10/2026)."""
 
         def reference_frame(self):
             return {"fuso": timezone}
@@ -367,7 +370,8 @@ def today(inputs: dict, *, step_minutes: int = 10) -> dict:
             # L'archivio restituisce `started_at` in epoca (G-14, Tappa 8).
             session["row"] = {"started_at": instant.timestamp(), "summary": "x"}
             context = handlers_chat.compose_chat_context(
-                {"home_space_store": _Frame()}, "/nonexistent", thread=None, soggetto=None)
+                {reader.HOME_SPACE_KEY: _Frame()}, "/nonexistent", thread=None,
+                soggetto=None)
             label = context.split("[", 1)[1].split("]", 1)[0]
             samples += 1
             if label != instant.astimezone(zone).date().isoformat():

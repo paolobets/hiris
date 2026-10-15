@@ -242,3 +242,15 @@ def test_riferimenti_vede_una_ricerca_che_distingue_le_maiuscole(monkeypatch):
     variants = {case["variante"] for case in verdict["casi"]
                 if case["genere"] == "integrazione"}
     assert variants == {"capitalizzato", "maiuscolo", "con spazi"}, verdict["casi"]
+
+
+def test_oggi_legge_il_fuso_con_la_chiave_del_prodotto(result):
+    """La sonda passa a `compose_chat_context` l'anagrafe con la chiave che il
+    prodotto legge (`reader.HOME_SPACE_KEY`, N170-1). Con una chiave diversa la
+    chat non trova il fuso, cade su UTC, e la casa sintetica (Europe/Rome)
+    discorda a ogni ora fra le 22 e le 24 UTC: disaccordi falsi, della sonda e
+    non del prodotto (misurati il 15/10/2026: 3.450 su 52.560 campioni con la
+    chiave stringa «home_space_store»)."""
+    verdict = result["oggi"]
+    assert verdict["campioni"] > 0
+    assert verdict["disaccordi"] == 0, verdict["casi"]
