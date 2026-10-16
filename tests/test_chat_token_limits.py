@@ -1,4 +1,4 @@
-from hiris.app.claude_runner import _TRUNCATION_NOTICE, _max_tokens_message
+from hiris.app.claude_runner import TRUNCATION_NOTICE, _max_tokens_message
 
 # --- Part 1: max_tokens cap (persistence-time, at create/update) ---
 # Retired (fetta E4 Task 3, "un bot solo"): test_cap_allows_up_to_16000,
@@ -21,9 +21,9 @@ from hiris.app.claude_runner import _TRUNCATION_NOTICE, _max_tokens_message
 def test_max_tokens_message_with_prefix_appends_notice():
     msg = _max_tokens_message(["Ora creo la dashboard!"])
     assert msg.startswith("Ora creo la dashboard!")
-    assert _TRUNCATION_NOTICE in msg
+    assert TRUNCATION_NOTICE in msg
 
 
 def test_max_tokens_message_without_prefix_is_the_notice():
-    assert _max_tokens_message([]) == _TRUNCATION_NOTICE
-    assert _max_tokens_message(["   "]) == _TRUNCATION_NOTICE
+    assert _max_tokens_message([]) == TRUNCATION_NOTICE
+    assert _max_tokens_message(["   "]) == TRUNCATION_NOTICE

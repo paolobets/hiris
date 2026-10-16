@@ -16,7 +16,7 @@ from ..home_space.reader import HOME_SPACE_KEY
 from ..provider_occurrences import OCCURRENCES_KEY
 from ..providers import SUBSCRIPTION
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
-from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
 from ..steering import OBSERVER_SPECIES, enqueue_turn, start, turn_in_flight
 from ..usage.store import USAGE_KEY
 from ..version import read_version
@@ -374,7 +374,8 @@ def _collect_scope_turn(app, store, house: House) -> tuple[dict | None, bool]:
         window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"),
         asked=set(lotto) if lotto else None,
         record=bool(wake.get("annota", True)),
-        campaign_ts=wake.get("campagna_ts"))
+        campaign_ts=wake.get("campagna_ts"),
+        truncated=turn_truncated(turn))
     _record_attempt(store, outcome)
     # **Il registro degli esiti e' il solo posto in cui HIRIS osserva come si
     # comporta un fornitore davvero**, e la terza strada del piano non ci

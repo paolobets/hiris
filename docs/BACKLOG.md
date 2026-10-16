@@ -67,7 +67,8 @@ restano nelle loro voci («`history`: cosa va provato dal vivo prima di dirla ch
    4.0, passo 1); poi un rilascio suo, perche' accenderlo cambia cio' che la casa riceve (D6 della
    Chiusura: il proponente resta fermo per tutta la Chiusura) -- voce «⚠️ Prima di accendere il
    proponente».
-2. **Tappa 8, T11: il ponte riconosce la ripresa al tetto.** Aspetta **P7**, la misura sulla CLI
+2. **Tappa 8, T11: il ponte riconosce la ripresa al tetto.** *Fatto nel ramo il 15/10/2026, dopo
+   P7; esce col rilascio.* Aspettava **P7**, la misura sulla CLI
    vera dal PC (una domanda oltre il tetto, due turni di controllo), che chiede l'ok del
    proprietario prima di partire -- voce «Il ponte riconosce la ripresa al tetto e dichiara il
    turno «troncato»».
@@ -1146,6 +1147,15 @@ dell'agente `ux-ui-specialist`.
 ### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
 
 `origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
+
+*Fatto nel codice il 15/10/2026 (ramo, non rilasciata):* P7 ha misurato la CLI vera (2.1.300,
+`claude-opus-5-5`, dal PC): la ripresa arriva come evento `user` con `isSynthetic: true` in cima
+all'evento; finite le tre riprese il turno esce con `rc` 1 e `result` dice `subtype: "success"` con
+`is_error: true`. `agent/runner.read_stream` conta le riprese dal flag (`resumes`); un turno con
+almeno una ripresa esce `troncato` con il solo avviso di troncatura (D8); i sei raccoglitori del
+ponte passano `truncated=` al loro lettore (`reasoning.queue.turn_truncated`), e una prova li chiede
+al sorgente. La misura si rifa' a ogni versione della CLI (passo 5 del bump nel `Dockerfile`).
+Prove in `tests/test_ripresa_al_tetto.py`, sugli stream veri di P7. Esce dal BACKLOG col rilascio.
 
 Quando una risposta arriva al tetto di token, la CLI del ponte (2.1.286) la riprende da sola fino a
 tre volte e poi dichiara `end_turn`; il campo `result` porta solo l'ULTIMO pezzo. In chat si

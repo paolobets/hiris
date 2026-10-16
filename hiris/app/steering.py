@@ -602,7 +602,7 @@ TRUNCATION_BRAKE: int | None = None
 
 #: Chi il freno puo' fermare. **La chat no**, ed e' una scelta, non una
 #: dimenticanza: ha una persona davanti che vede la troncatura
-#: (`claude_runner._TRUNCATION_NOTICE`) e decide da se'. Il freno esiste per i
+#: (`claude_runner.TRUNCATION_NOTICE`) e decide da se'. Il freno esiste per i
 #: mestieri che girano da soli, di notte, e che senza di lui si troncherebbero
 #: a ogni giro senza che nessuno guardi.
 BRAKED_SPECIES = SPECIE - {"chat"}

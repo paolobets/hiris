@@ -571,7 +571,7 @@ def test_openrouter_runner_is_cloud(tmp_path):
 async def test_chat_length_finish_returns_truncation_notice(tmp_path):
     """finish_reason='length' (OpenAI's max_tokens) must surface a truncation
     notice, not a misleading partial preamble with nothing executed."""
-    from hiris.app.claude_runner import _TRUNCATION_NOTICE
+    from hiris.app.claude_runner import TRUNCATION_NOTICE
     runner = OpenAICompatRunner(
         base_url="https://api.openai.com/v1",
         api_key="sk-test",
@@ -585,7 +585,7 @@ async def test_chat_length_finish_returns_truncation_notice(tmp_path):
     runner._client.chat.completions.create = AsyncMock(return_value=response)
 
     result = await runner.chat(user_message="crea dashboard", model="gpt-4o", max_tokens=4096)
-    assert _TRUNCATION_NOTICE in result
+    assert TRUNCATION_NOTICE in result
     assert result.startswith("Ora creo la dashboard!")
 
 
@@ -651,7 +651,7 @@ async def test_chat_esaurimento_iterazioni_messaggio_italiano_e_log(tmp_path, ca
 # ---------------------------------------------------------------------------
 # review M3/#1: chat_stream() never checked finish_reason=='length', so a
 # truncated streaming response reached the client with NO warning, while the
-# non-streaming chat() above DOES surface _TRUNCATION_NOTICE.
+# non-streaming chat() above DOES surface TRUNCATION_NOTICE.
 # ---------------------------------------------------------------------------
 
 class _FakeStream:

@@ -27,7 +27,7 @@ import pytest
 
 from hiris.app import steering
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.claude_runner import _TRUNCATION_NOTICE, ClaudeRunner
+from hiris.app.claude_runner import TRUNCATION_NOTICE, ClaudeRunner
 from hiris.app.home_space import historian
 from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY, LLMRouter
@@ -117,7 +117,7 @@ async def test_ClaudeRunner_dice_la_troncatura(stop_reason, troncato):
     assert runner.last_truncated is troncato
     if stop_reason == "max_tokens":
         # Il testo di oggi non cambia: nessun chiamante si rompe.
-        assert _TRUNCATION_NOTICE in testo
+        assert TRUNCATION_NOTICE in testo
 
 
 @pytest.mark.asyncio

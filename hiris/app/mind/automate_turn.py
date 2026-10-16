@@ -41,7 +41,7 @@ from ..background import spawn
 from ..home_space.reader import HOME_SPACE_KEY
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
-from ..reasoning.queue import REASONING_QUEUE_KEY
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
 from ..steering import (
     AUTOMATE_SPECIES,
     PROPOSER_SPECIES,
@@ -303,9 +303,12 @@ def deliver(app, job: dict | None, decision: dict) -> None:
     home_space = app.get(HOME_SPACE_KEY)
     presence = (PresenceMask(House.read(home_space, app.get(ENTITY_CACHE_KEY)))
                 if home_space is not None else None)
+    # La risposta si legge come ogni turno del ponte (`turn_answer`: un
+    # turno fallito non ha risposto), e un turno troncato non si legge (D2).
+    turn = {**(job or {}), "decision": decision}
     settle(app, ((job or {}).get("wake") or {}).get("proposta") or "",
-           decision.get("exchange_id"), decision.get("reply"),
-           presence=presence)
+           decision.get("exchange_id"), turn_answer(turn),
+           truncated=turn_truncated(turn), presence=presence)
 
 
 def _built_in(app, exchange: str | None) -> str | None:

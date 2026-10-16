@@ -19,7 +19,7 @@ from ..home_space.reader import HOME_SPACE_KEY
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..proxy.ha_client import HA_CLIENT_KEY
-from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
 from ..steering import RECIPES_SPECIES, enqueue_turn, start, too_soon_to_ask_again, turn_in_flight
 from ..usage.store import USAGE_KEY
 from . import recipe_turn
@@ -235,6 +235,7 @@ def _collect_recipe_turn(app, sapere, house: House) -> dict | None:
                  else frozenset(wake["riparare"]))
     esito = recipe_turn.apply_recipe(sapere, house, device_id, reply,
                                      who="modello (ponte)", when_ts=time.time(),
+                                     truncated=turn_truncated(turn),
                                      repairing=repairing,
                                      written_against=wake.get("scritta_contro"))
     if not esito.get("risposta"):

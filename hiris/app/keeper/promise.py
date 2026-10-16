@@ -402,7 +402,7 @@ def unfinished_reason(answer) -> str:
     costante: «il turno non ha concluso: non so cosa dirti». Vera, e
     inutilizzabile -- perche' le TRE uscite del ciclo di `claude_runner.chat`
     che portano qui restituiscono tre stringhe DIVERSE (il testo del modello,
-    `_MAX_ITERATIONS_NOTICE`, `_TRUNCATION_NOTICE`) e quella stringa era
+    `_MAX_ITERATIONS_NOTICE`, `TRUNCATION_NOTICE`) e quella stringa era
     l'unica cosa che le distingueva. `interpreta_promise` la scartava: per
     sapere quale delle tre fosse capitata sulla casa vera e' servita
     un'indagine con tre riproduzioni sull'add-on vivo.

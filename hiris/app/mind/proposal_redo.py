@@ -244,16 +244,17 @@ def deliver(app, job: dict, decision: dict) -> None:
     """La risposta del piano a un «Rifalla», dalla consegna del ponte
     (`reasoning/consegna.py`). Non torna niente: l'esito sta nella riga che
     `settle` scrive, e la consegna non lo legge."""
-    from ..reasoning.queue import turn_answer
+    from ..reasoning.queue import turn_answer, turn_truncated
 
     wake = job.get("wake") or {}
     ident = wake.get(WAKE_KEY)
     store = app.get(OBSERVATIONS_KEY)
     if not ident or store is None:
         return
+    turn = {**job, "decision": decision}
     occurrence = proposer_turn.apply_outcomes(
-        [{}], turn_answer({**job, "decision": decision}),
-        built=_built_in(app, decision.get("exchange_id")), presence=_presence(app))
+        [{}], turn_answer(turn), built=_built_in(app, decision.get("exchange_id")),
+        truncated=turn_truncated(turn), presence=_presence(app))
     settle(app, store, ident, wake.get("richiesta") or "", occurrence,
            turn=job["job_id"])
 

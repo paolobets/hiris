@@ -28,7 +28,7 @@ from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..keeper.delivery import notify_admins
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
-from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
 from ..states import SUPERSEDED
 from ..steering import (
     PROPOSER_SPECIES,
@@ -213,6 +213,7 @@ async def _collect(app, store, today: str) -> dict | None:
                 if home_space is not None else None)
     occurrence = proposer_turn.apply_outcomes(
         pending, reply, built=_built_in(app, decision.get("exchange_id")),
+        truncated=turn_truncated(turn),
         presence=presence)
     if occurrence["problemi"]:
         declare_refused(app.get(USAGE_KEY), decision.get("turn_id"), occurrence["problemi"])

@@ -83,9 +83,10 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
+from ..claude_runner import TRUNCATION_NOTICE
 from ..providers import SUBSCRIPTION
 from ..proxy._sanitize import MASK, truncate_with_marker
-from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES
+from ..steering import JOB_SPECIES, PROMISE_SPECIES, SPECIES, TRUNCATED
 from ..usage.giro import anthropic_turn_tokens, pesa_carico
 from . import prompts
 
@@ -895,6 +896,10 @@ class StreamOccurrence:
     #: `result.modelUsage[*].costUSD`. Non e' un costo pagato (richiesta del
     #: proprietario, 28/09/2026). None se la CLI non lo dichiara.
     list_cost_usd: float | None = None
+    #: Quante volte la CLI ha ripreso la risposta fermata al tetto di token
+    #: in uscita: gli eventi `user` con `isSynthetic: true` (B25, misurato
+    #: sulla CLI 2.1.300 il 15/10/2026). Zero in un turno normale.
+    resumes: int = 0
 
     @property
     def has_result(self) -> bool:
@@ -963,21 +968,10 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 occurrence.init = event
         elif kind == "result":
             occurrence.result = event  # l'ULTIMO result e' quello finale
-            # **Il tetto di token: perche' qui non si legge `stop_reason`**
-            # (B25, misurato il 05/10/2026 sulla CLI 2.1.286 del `Dockerfile`,
-            # contro un finto server locale -- nessun modello vero). L'evento
-            # porta `stop_reason`, ma a fine turno non vale MAI `max_tokens`:
-            # la CLI, quando il modello si ferma al tetto, gli chiede da se'
-            # di riprendere (un evento `user` con `isSynthetic: true`, «Output
-            # token limit hit. Resume directly...»), fino a tre volte.
-            # - Se una ripresa finisce: `stop_reason: "end_turn"`, `is_error:
-            #   false`, e `result` porta SOLO l'ultimo pezzo, non il testo
-            #   intero -- un difetto aperto, scritto nel rapporto
-            #   d'integrazione delle Tappe 4-6, non corretto qui.
-            # - Se le riprese finiscono: `rc` 1, `is_error: true`,
-            #   `stop_reason: "stop_sequence"`, `api_error:
-            #   "max_output_tokens"` -- l'esito (1) qui sotto, gia' «fallito».
-            # Leggere `stop_reason` darebbe un `truncated` che non scatta mai.
+            # **Il tetto di token non si legge da `stop_reason`** (B25): a
+            # fine turno non vale MAI `max_tokens`, perche' la CLI, quando il
+            # modello si ferma al tetto, gli chiede da se' di riprendere. Si
+            # legge dalle riprese (`resumes`, ramo `user` qui sotto).
         elif kind == "assistant":
             # I blocchi `tool_use` dentro il messaggio dell'assistente:
             # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
@@ -1017,6 +1011,23 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 if isinstance(call_id, str):
                     calls_by_id[call_id] = entry
         elif kind == "user":
+            # **La ripresa al tetto** (B25; Tappa 8, Task 11). Quando il
+            # modello si ferma al tetto di token in uscita, la CLI gli chiede
+            # da se' di riprendere, con un evento `user` che porta
+            # `isSynthetic: true` («Output token limit hit. Resume
+            # directly...»), fino a tre volte. Misurato:
+            # - il 05/10/2026 su un server finto (CLI 2.1.286): finita una
+            #   ripresa, `stop_reason: "end_turn"`, `is_error: false`, e
+            #   `result` porta SOLO l'ultimo pezzo;
+            # - il 15/10/2026 sulla CLI vera (2.1.300, P7): finite le tre
+            #   riprese, `rc` 1, `subtype: "success"` con `is_error: true`,
+            #   `terminal_reason: "api_error"`.
+            # Si conta dal FLAG, non dal testo: il testo e' della CLI e cambia
+            # fra una versione e l'altra. Chi legge l'occorrenza dichiara il
+            # turno troncato (`_reason_chat`). La misura si rifa' a ogni
+            # versione nuova della CLI (passi del bump nel `Dockerfile`).
+            if event.get("isSynthetic") is True:
+                occurrence.resumes += 1
             # L'esito che torna al modello, riecheggiato nel flusso come
             # messaggio "user": `{"type":"tool_result","tool_use_id":...,
             # "is_error":...}`. E' l'UNICO punto in cui una chiamata fallita
@@ -2041,6 +2052,22 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # guasto del turno invece dell'ultimo di due.
     log_tail = (" [secondo e ULTIMO tentativo: il primo e' stato buttato perche' "
                 "l'init smentiva la sonda]" if ritentato else "")
+
+    if occurrence.has_result and occurrence.resumes:
+        # **La ripresa al tetto** (B25; Tappa 8, Task 11): la CLI ha dovuto
+        # riprendere la risposta fermata al tetto di token. Il turno e'
+        # troncato, che le riprese siano andate a buon fine (`rc` 0, e
+        # `result` porta solo l'ultimo pezzo) o no (`rc` 1, finite le tre
+        # riprese): la causa e' il tetto in tutti e due i casi, come sulla
+        # catena, e il freno conta il troncato (`steering.BRAKE_OUTCOMES`).
+        # In chat il solo avviso (D8 della Tappa 8): la coda e' il pezzo
+        # sbagliato della risposta. Chi raccoglie il turno lo sa da
+        # `reasoning.queue.turn_truncated`, e non legge (D2).
+        log.warning("ponte: la risposta si e' fermata al tetto di token e la "
+                    "CLI l'ha ripresa %d volte (rc=%s, num_turns=%s) -- turno "
+                    "troncato%s", occurrence.resumes, invocation.rc,
+                    occurrence.num_exchanges, log_tail)
+        return _reply(TRUNCATION_NOTICE, outcome=TRUNCATED)
 
     if invocation.rc != 0:
         # Esito (1). `claude -p` mette gli errori (auth 401, quota, ecc.) su

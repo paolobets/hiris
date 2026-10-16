@@ -151,6 +151,20 @@ def turn_answer(turn: dict | None) -> str:
     return decision.get("reply") or ""
 
 
+def turn_truncated(turn: dict | None) -> bool:
+    """Se il ponte ha dichiarato questo turno troncato al tetto di token
+    (B25, Tappa 8 Task 11: la CLI ha dovuto riprendere la risposta).
+
+    E' il `TurnOutcome.truncated` della catena, dalla parte del ponte: chi
+    raccoglie un turno lo passa al suo lettore, che una risposta troncata
+    non la legge (D2). Il testo resta per la chat, che mostra l'avviso.
+    """
+    from ..steering import TRUNCATED  # steering importa questo modulo
+
+    decision = (turn or {}).get("decision") or {}
+    return decision.get("outcome") == TRUNCATED
+
+
 #: Le colonne che `_row` legge: ogni lettura della coda le nomina (D-62,
 #: Tappa 8), invece di `SELECT *` -- sette letture che prendevano anche cio'
 #: che nessuno legge (`claimed_ts`, `delivered_ts`) e che si sarebbero prese

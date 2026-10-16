@@ -509,7 +509,7 @@ def _build_thinking_param(
 # all'UTENTE cio' che i prompt di sistema promettevano al MODELLO, stesso
 # difetto in un'altra superficie. Riscritto su cio' che la chat sa fare oggi:
 # conoscere e rispondere.
-_TRUNCATION_NOTICE = (
+TRUNCATION_NOTICE = (
     "⚠️ La risposta è stata troncata perché ha raggiunto il limite di token "
     "(max_tokens). Prova a restringere la domanda — una stanza per volta, un "
     "argomento per volta — invece di chiedere tutto in una risposta sola."
@@ -521,10 +521,10 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
     truncation explicitly instead of returning a misleading partial preamble
     (which reads as 'done' to the user while nothing was actually executed)."""
     prefix = "\n".join(text_blocks).strip()
-    return f"{prefix}\n\n{_TRUNCATION_NOTICE}" if prefix else _TRUNCATION_NOTICE
+    return f"{prefix}\n\n{TRUNCATION_NOTICE}" if prefix else TRUNCATION_NOTICE
 
 
-# fetta "i riferimenti" (R4, Task 6): il gemello di _TRUNCATION_NOTICE qui
+# fetta "i riferimenti" (R4, Task 6): il gemello di TRUNCATION_NOTICE qui
 # sopra. Prima dell'esaurimento delle iterazioni-strumenti rispondeva la
 # stringa inglese hardcoded "Max tool iterations reached." -- identica byte
 # per byte nel ramo tool_use di chat() qui sotto e in
@@ -668,7 +668,7 @@ _current_unanswered: "contextvars.ContextVar[bool]" = contextvars.ContextVar(
 )
 
 #: Gli `stop_reason` di Anthropic che fermano la risposta a meta' (fonte
-#: sopra). Il primo dei due e' anche quello che produce `_TRUNCATION_NOTICE`.
+#: sopra). Il primo dei due e' anche quello che produce `TRUNCATION_NOTICE`.
 ANTHROPIC_TRUNCATING = frozenset({"max_tokens", "model_context_window_exceeded"})
 
 

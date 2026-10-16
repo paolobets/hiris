@@ -77,6 +77,13 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+#   5. rifare la misura B25 sulla CLI nuova, dal PC: una domanda oltre il
+#      tetto (`CLAUDE_CODE_MAX_OUTPUT_TOKENS` basso) e un turno di
+#      controllo. La ripresa al tetto deve ancora arrivare come evento `user`
+#      con `isSynthetic: true`: e' da li' che `agent/runner.read_stream` conta
+#      le riprese e dichiara il turno troncato (Tappa 8, Task 11). Se la CLI
+#      cambia forma, il ponte torna a chiamare «riuscito» la coda di una
+#      risposta. Ultima misura: 2.1.300, 15/10/2026 (P7).
 # 15 ottobre 2026 — alzata da 2.1.299 a **2.1.300**, per scelta del
 # proprietario per il secondo rilascio della Chiusura dello sprint (3.79.1).
 # `npm view` dava la 2.1.300 (14/10/2026 alle 14:27 UTC) come ultima

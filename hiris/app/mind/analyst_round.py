@@ -18,7 +18,7 @@ from ..home_space.house import House
 from ..home_space.privacy import PresenceMask
 from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
-from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer
+from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
 from ..steering import (
     ANALYST_SPECIES,
     SPECIES,
@@ -295,6 +295,7 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
     esito = analyst_turn.apply_analysis(series, reply, previous=previous,
                                         tool_calls=calls,
+                                        truncated=turn_truncated(turn),
                                         presence=_analyst_presence(app))
     if _was_refused(esito):
         # L'esito sulla riga del turno del ponte (D10): il runner l'ha messa
