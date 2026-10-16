@@ -924,7 +924,7 @@ async def _on_startup(app: web.Application) -> None:
     # riesce il lavoro torna a essere il controllo di una bandiera, senza
     # toccare piu' Home Assistant.
     scheduler.add_job(
-        partial(reload_inventory_job, app, ha_client),
+        reload_inventory_job, args=(app, ha_client),
         trigger="interval", minutes=2,
         id="hiris_entity_cache_reload", replace_existing=True,
         misfire_grace_time=120,
@@ -938,7 +938,7 @@ async def _on_startup(app: web.Application) -> None:
     # deve sparire dal nucleo da solo, o HIRIS continuerebbe ad annunciare un
     # guasto che non c'e' piu' fino al riavvio dell'add-on.
     scheduler.add_job(
-        partial(reread_problems_job, app, ha_client),
+        reread_problems_job, args=(app, ha_client),
         trigger="interval", minutes=5,
         id="hiris_ha_problems", replace_existing=True,
         misfire_grace_time=300,
@@ -953,7 +953,7 @@ async def _on_startup(app: web.Application) -> None:
     # riprova, e nessun altro lo farebbe. Cinque minuti e' quanto si accetta
     # che duri.
     scheduler.add_job(
-        partial(reread_state_translations_job, app),
+        reread_state_translations_job, args=(app,),
         trigger="interval", minutes=5,
         id="hiris_state_translations", replace_existing=True,
         misfire_grace_time=300,
@@ -1000,7 +1000,7 @@ async def _on_startup(app: web.Application) -> None:
     # problemi li prende da `app[HA_PROBLEMS_KEY]`, che `hiris_ha_problems` qui
     # sopra rilegge ogni cinque minuti (A-02).
     scheduler.add_job(
-        partial(conditions_job, app, ha_client),
+        conditions_job, args=(app, ha_client),
         trigger="interval", minutes=10,
         id="hiris_mind_conditions", replace_existing=True,
         misfire_grace_time=600,
@@ -1025,7 +1025,7 @@ async def _on_startup(app: web.Application) -> None:
     # corta che non aggiunge un carico apprezzabile (un comando WebSocket per
     # automazione segnata, non per la casa intera).
     scheduler.add_job(
-        partial(automation_traces_job, app, ha_client),
+        automation_traces_job, args=(app, ha_client),
         trigger="interval", minutes=2,
         id="hiris_mind_automation_traces", replace_existing=True,
         misfire_grace_time=120,
@@ -1050,7 +1050,7 @@ async def _on_startup(app: web.Application) -> None:
     # stamattina passa da dieci minuti d'attesa a uno, e cio' che non e'
     # osservato non esiste piu'.
     scheduler.add_job(
-        partial(reconsideration_job, app, ha_client),
+        reconsideration_job, args=(app, ha_client),
         trigger="interval", minutes=1,
         id="hiris_mind_reconsideration", replace_existing=True,
         misfire_grace_time=600,
@@ -1068,7 +1068,7 @@ async def _on_startup(app: web.Application) -> None:
     # copre trenta dispositivi in cinque ore, e poi **smette**: una ricetta
     # scritta -- o un rifiuto registrato -- non si richiede mai piu'.
     scheduler.add_job(
-        partial(recipes_job, app),
+        recipes_job, args=(app,),
         trigger="interval", minutes=10,
         id="hiris_mind_recipes", replace_existing=True,
         misfire_grace_time=600,
@@ -1080,7 +1080,7 @@ async def _on_startup(app: web.Application) -> None:
     # giorni e 146 serie -- e un giorno ha UNA analisi sola. Quando ce l'ha,
     # il giro non fa niente e non lo dice.
     scheduler.add_job(
-        partial(analyst_job, app),
+        analyst_job, args=(app,),
         trigger="interval", minutes=report.ANALYST_EVERY_MINUTES,
         id="hiris_mind_analyst", replace_existing=True,
         misfire_grace_time=1800,
@@ -1112,7 +1112,7 @@ async def _on_startup(app: web.Application) -> None:
     # lo dice -- un lavoro che stampa «niente da fare» per sempre e' rumore
     # sano che seppellisce cio' che e' rotto.
     scheduler.add_job(
-        partial(report_backfill_job, app, ha_client),
+        report_backfill_job, args=(app, ha_client),
         trigger="interval", minutes=report.BACKFILL_EVERY_MINUTES,
         id="hiris_mind_backfill", replace_existing=True,
         misfire_grace_time=300,
@@ -1125,7 +1125,7 @@ async def _on_startup(app: web.Application) -> None:
     # siano arrivati. Senza questo lavoro il grezzo si accumula e nessun
     # oggetto nasce mai.
     scheduler.add_job(
-        partial(nightly_aggregation_job, app, ha_client),
+        nightly_aggregation_job, args=(app, ha_client),
         trigger="cron", hour=report.NIGHTLY_HOUR, minute=report.NIGHTLY_MINUTE,
         id="hiris_mind_aggregation", replace_existing=True,
         misfire_grace_time=3600,
@@ -1134,7 +1134,7 @@ async def _on_startup(app: web.Application) -> None:
     # La conservazione: un lavoro solo, alle 03:00, per tutti gli archivi
     # (`conservazione.nightly`).
     scheduler.add_job(
-        partial(nightly, app),
+        nightly, args=(app,),
         trigger="cron", hour=3, minute=0,
         id="hiris_retention", replace_existing=True,
         misfire_grace_time=3600,
@@ -1186,7 +1186,7 @@ async def _on_startup(app: web.Application) -> None:
     # lo rimpiazza quello dopo: e' la tolleranza dello SCHEDULATORE (120 s,
     # spec §7, `TOLLERANZA_S`) a decidere cosa e' troppo tardi, non APScheduler.
     scheduler.add_job(
-        partial(keeper_heartbeat_job, app),
+        keeper_heartbeat_job, args=(app,),
         trigger="interval", seconds=15,
         id="hiris_keeper_heartbeat", replace_existing=True,
         misfire_grace_time=30,
@@ -1207,7 +1207,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # La spazzata della coda del ponte: `conservazione.reasoning_sweep`.
     scheduler.add_job(
-        partial(reasoning_sweep, app), trigger="interval", minutes=2,
+        reasoning_sweep, args=(app,), trigger="interval", minutes=2,
         id="hiris_reasoning_sweep", replace_existing=True, misfire_grace_time=120)
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno

@@ -32,11 +32,12 @@ from pathlib import Path
 import pytest
 
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
-from hiris.app.startup import SCHEDULER_KEY
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
+
+from tests._avvio import scheduled_job
 
 
 @pytest.mark.asyncio
@@ -72,7 +73,7 @@ async def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fiss
     store._conn.commit()
 
     async with fotografia_porte.mounted(synthetic_inputs(), data_dir) as app:
-        run_retention = app[SCHEDULER_KEY].get_job("hiris_retention").func
+        run_retention = scheduled_job(app, "hiris_retention")
         app[CHAT_SETTINGS_KEY].set(ChatSettings(retention_days=5))
         await run_retention()
         assert load_history(data_dir, thread=T) == [], (

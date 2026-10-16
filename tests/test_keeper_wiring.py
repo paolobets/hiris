@@ -40,6 +40,7 @@ from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.startup import SCHEDULER_KEY
 from hiris.app.storage import DATA_DIR_KEY
+from tests._avvio import scheduled_job
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from casa_finta import CasaFinta
@@ -166,7 +167,7 @@ async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante(reco
     `startup.keeper_heartbeat_job`) chiama
     `app[SWEEPER_KEY].batti()` senza l'istante -- rossa."""
     app, _jobs = recorded_startup
-    battito = app[SCHEDULER_KEY].get_job("hiris_keeper_heartbeat").func
+    battito = scheduled_job(app, "hiris_keeper_heartbeat")
     with mock.patch.object(app[SWEEPER_KEY], "batti", AsyncMock()) as batti:
         await battito()
 

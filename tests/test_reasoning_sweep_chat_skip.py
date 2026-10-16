@@ -37,8 +37,8 @@ from hiris.app.mind import observer
 from hiris.app.mind.store import OBSERVATIONS_KEY
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
-from hiris.app.startup import SCHEDULER_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY, JOB_SPECIES
+from tests._avvio import scheduled_job
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -58,7 +58,7 @@ async def _started_sweep(tmp_path, *, bridge_active=True, deadline_min=None):
             config = dict(app[MODELS_CONFIG_KEY].value or {})
             config["ponte"] = {**(config.get("ponte") or {}), "scadenza_min": deadline_min}
             app[MODELS_CONFIG_KEY].set(config)
-        sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
+        sweep = scheduled_job(app, "hiris_reasoning_sweep")
         yield sweep, app[REASONING_QUEUE_KEY], app
 
 

@@ -32,7 +32,6 @@ from hiris.app.mind.watcher import WATCHER_KEY
 from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.proxy.state_translations import STATE_TRANSLATIONS_KEY
-from hiris.app.startup import SCHEDULER_KEY
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -51,7 +50,7 @@ from hiris.app.mind.watcher import Watcher
 from hiris.app.startup import live_values
 from hiris.app.storage import archive_name
 from tests._anagrafe_finta import AnagrafeFinta
-from tests._avvio import STARTUP_LOGGER, started_app  # noqa: F401
+from tests._avvio import STARTUP_LOGGER, scheduled_job, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 from tests._contracts import assert_stessa_firma
 from tests._specchio_finto import SpecchioFinto, raw_state
@@ -64,15 +63,6 @@ from tests._specchio_finto import SpecchioFinto, raw_state
 # `tests/test_cablaggio_dell_avvio.py`. I lavori periodici si chiedono allo
 # schedulatore dell'app avviata (`tests/test_lavori_periodici.py`).
 # --------------------------------------------------------------------------
-
-def _job(app, job_id: str):
-    """Il lavoro VERO che l'avvio ha registrato sullo schedulatore. Fino al
-    03/10/2026 la funzione si ritagliava dal testo di `_on_startup` e si
-    eseguiva con le sue variabili libere ricopiate a mano in un dizionario."""
-    job = app[SCHEDULER_KEY].get_job(job_id)
-    assert job is not None, f"il lavoro {job_id} non e' registrato"
-    return job.func
-
 
 def _server_lines(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == STARTUP_LOGGER]
@@ -119,7 +109,7 @@ async def _nightly_with(app, finti: dict, caplog, level):
     dell'app, appena aperti, non hanno niente da potare)."""
     with mock.patch.dict(app, finti), \
             caplog.at_level(level, logger=CONSERVATION_LOGGER):
-        await _job(app, "hiris_retention")()
+        await scheduled_job(app, "hiris_retention")()
 
 
 def _lines_about(caplog, name: str) -> list[str]:
@@ -419,7 +409,7 @@ async def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_f
     try -- rossa (`RuntimeError` esce dal lavoro)."""
     with mock.patch.dict(started_app, {HOME_SPACE_KEY: _ArchivioCasaCheSolleva()}), \
             caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
-        await _job(started_app, "hiris_mind_aggregation")()  # non deve sollevare
+        await scheduled_job(started_app, "hiris_mind_aggregation")()  # non deve sollevare
 
     assert any(
         "cervello: aggregazione notturna fallita (RuntimeError: sqlite del "
@@ -459,7 +449,7 @@ async def test_l_aggregazione_notturna_ARRIVA_al_resoconto_di_ieri(tmp_path, cap
             assert app[OBSERVATIONS_KEY].reports(limit=5) == []
             with mock.patch.dict(app, {HOME_SPACE_KEY: None}), \
                 caplog.at_level(logging.INFO, logger=STARTUP_LOGGER):
-                await _job(app, "hiris_mind_aggregation")()
+                await scheduled_job(app, "hiris_mind_aggregation")()
             ieri = (historian.today(None) - timedelta(days=1)).isoformat()
             avvisi = [r.getMessage() for r in caplog.records
                       if r.name == STARTUP_LOGGER and r.levelno >= logging.WARNING]
@@ -1854,7 +1844,7 @@ async def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(started_app, cap
 
     with mock.patch.object(startup, "backfill_one_report", _finta), \
             caplog.at_level(logging.WARNING, logger=STARTUP_LOGGER):
-        await _job(started_app, "hiris_mind_backfill")()
+        await scheduled_job(started_app, "hiris_mind_backfill")()
 
     assert chiamate == [(started_app, started_app[HA_CLIENT_KEY])], (
         "il giro deve chiamare `backfill_one_report` con l'app e il cliente di HA")

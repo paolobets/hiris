@@ -59,10 +59,9 @@ from hiris.app.memory.store import MEMORY_STORE_KEY
 from hiris.app.models_store import MODELS_CONFIG_KEY
 from hiris.app.provider_occurrences import OCCURRENCES_KEY
 from hiris.app.reasoning.queue import PRIORITY_CHAT, REASONING_QUEUE_KEY, ReasoningQueue
-from hiris.app.startup import SCHEDULER_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY, MODEL_CHAIN_KEY
 from hiris.app.storage import DATA_DIR_KEY
-from tests._avvio import started_app  # noqa: F401
+from tests._avvio import scheduled_job, started_app  # noqa: F401
 from tests._runner_finto import RunnerFinto
 
 # Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
@@ -823,7 +822,7 @@ async def test_la_spazzata_non_obbedisce_al_ponte(started_app):
     from unittest import mock
 
     app = started_app
-    sweep = app[SCHEDULER_KEY].get_job("hiris_reasoning_sweep").func
+    sweep = scheduled_job(app, "hiris_reasoning_sweep")
     queue = app[REASONING_QUEUE_KEY]
     for slot, archivio in ((True, True), (True, False), (False, True), (False, False)):
         with mock.patch.dict(app, {**live_values(),

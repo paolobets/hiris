@@ -18,7 +18,7 @@ from hiris.app import startup
 from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.startup import SCHEDULER_KEY
-from tests._avvio import started_app  # noqa: F401
+from tests._avvio import scheduled_job, started_app  # noqa: F401
 from tests._casa_sintetica import synthetic_inputs
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -72,7 +72,7 @@ async def test_le_condizioni_di_sistema_si_rileggono_ogni_dieci_minuti(started_a
     assert str(job.trigger) == "interval[0:10:00]"
     with mock.patch.object(startup, "watch_system_conditions",
                            mock.AsyncMock()) as watched:
-        await job.func()
+        await scheduled_job(started_app, job.id)()
     watched.assert_awaited_once()
     assert watched.await_args.args[0] is started_app
 
@@ -89,7 +89,7 @@ async def test_il_giro_delle_condizioni_tiene_anche_gli_id_delle_statistiche(sta
     with mock.patch.object(startup, "watch_system_conditions", mock.AsyncMock()), \
             mock.patch.object(startup, "hold_watcher_statistic_ids",
                               mock.AsyncMock()) as held:
-        await job.func()
+        await scheduled_job(started_app, job.id)()
     held.assert_awaited_once_with(started_app, started_app[HA_CLIENT_KEY])
 
 
@@ -100,7 +100,7 @@ async def test_le_tracce_delle_automazioni_si_rileggono_ogni_due_minuti(started_
     assert str(job.trigger) == "interval[0:02:00]"
     with mock.patch.object(startup, "watch_automation_outcomes",
                            mock.AsyncMock()) as watched:
-        await job.func()
+        await scheduled_job(started_app, job.id)()
     watched.assert_awaited_once()
 
 
@@ -111,7 +111,7 @@ async def test_l_inventario_si_ricarica_ogni_due_minuti(started_app):
     assert str(job.trigger) == "interval[0:02:00]"
     with mock.patch.object(startup, "reload_entity_inventory",
                            mock.AsyncMock()) as reloaded:
-        await job.func()
+        await scheduled_job(started_app, job.id)()
     reloaded.assert_awaited_once()
     assert reloaded.await_args.args[0] is started_app[ENTITY_CACHE_KEY]
 
@@ -172,7 +172,7 @@ async def test_il_proponente_e_spento_nella_3_78_0(started_app, monkeypatch):
     monkeypatch.setattr(modulo, "proposer_round", giro)
     monkeypatch.setattr(modulo, "_alert_high_safely", avviso)
     job = _job(started_app, "hiris_mind_proposer")
-    assert await job.func(*job.args) is None
+    assert await scheduled_job(started_app, job.id)() is None
     assert chiamate == []
     assert avvisi == [started_app]
 
@@ -188,3 +188,29 @@ async def test_le_condizioni_si_leggono_anche_una_volta_all_avvio(tmp_path):
         async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)):
             pass
     assert watched.await_count >= 1
+
+
+async def test_ogni_lavoro_porta_il_nome_della_funzione_che_fa_girare(started_app):
+    """Il nome di un lavoro e' cio' che il log stampa a ogni giro («Running
+    job ...»): misurato sulla 3.79.1 il 15/10/2026, dopo lo spostamento di F8
+    i lavori erano `partial(...)` senza `name=`, e il log diceva 2.289 volte
+    «partial» per 16 lavori diversi -- non si capiva piu' quale girasse.
+
+    I lavori si chiedono allo schedulatore, non a un elenco: un lavoro nuovo
+    entra nella prova da se'. Il nome atteso e' quello della funzione che il
+    lavoro chiama davvero, come APScheduler la scrive (`__qualname__`: per
+    una funzione chiusa dentro un'altra porta anche il nome di quella).
+
+    Mutazione ESEGUITA (15/10/2026): un lavoro registrato di nuovo come
+    `partial(recipes_job, app)` invece che con `args=` -- rossa, con
+    «partial» al posto del nome."""
+    jobs = started_app[SCHEDULER_KEY].get_jobs()
+    assert len(jobs) >= 10, f"lo schedulatore ha {len(jobs)} lavori: la prova non guarda niente"
+    wrong = {}
+    for job in jobs:
+        func = job.func
+        while hasattr(func, "func"):
+            func = func.func
+        if job.name != func.__qualname__:
+            wrong[job.id] = job.name
+    assert not wrong, f"lavori col nome sbagliato: {wrong}"

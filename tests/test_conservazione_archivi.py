@@ -25,9 +25,8 @@ from hiris.app import conservazione, storage
 from hiris.app.api.handlers_health import handle_health
 from hiris.app.live_value import LiveValue
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
-from hiris.app.startup import SCHEDULER_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
-from tests._avvio import started_app  # noqa: F401
+from tests._avvio import scheduled_job, started_app  # noqa: F401
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
@@ -204,7 +203,7 @@ async def test_la_coda_del_ponte_si_pota_a_ponte_spento(started_app):
     assert queue.get("vecchio")["status"] == "expired"
 
     with mock.patch.dict(started_app, {BRIDGE_ACTIVE_KEY: LiveValue(False)}):
-        await started_app[SCHEDULER_KEY].get_job("hiris_retention").func()
+        await scheduled_job(started_app, "hiris_retention")()
 
     # Riletta da una seconda connessione: una cancellazione non committata si
     # vedrebbe dalla connessione dell'archivio e da nessun'altra (rilievo

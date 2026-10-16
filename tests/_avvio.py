@@ -16,6 +16,7 @@ dell'avvio usa `fotografia_porte.mounted` direttamente, dentro la prova.
 Si importa nel file di prova: `from tests._avvio import started_app`.
 """
 import contextlib
+import functools
 import os
 import sys
 from pathlib import Path
@@ -132,3 +133,16 @@ def router_routes(app=None) -> dict[str, str]:
             getattr(route.handler, "__name__", repr(route.handler))
             for route in app.router.routes()
             if route.resource is not None and route.method != "HEAD"}
+
+
+def scheduled_job(app, job_id: str):
+    """Il lavoro periodico `job_id` dell'app avviata, pronto da chiamare con i
+    suoi argomenti. Dal 15/10/2026 i lavori si iscrivono con la funzione e gli
+    argomenti a parte (`add_job(funzione, args=...)`), non piu' come
+    `functools.partial`: cosi' il log li chiama col loro nome. Le prove che
+    eseguono un lavoro lo prendono da qui, in un modo solo."""
+    from hiris.app.startup import SCHEDULER_KEY
+
+    job = app[SCHEDULER_KEY].get_job(job_id)
+    assert job is not None, f"il lavoro {job_id} non e' registrato"
+    return functools.partial(job.func, *job.args, **job.kwargs)

@@ -219,11 +219,11 @@ def _job_sources(app) -> tuple[set[str], set[pathlib.Path]]:
     due si chiedono allo schedulatore (`job.func`), non si scrivono qui. Se
     domani i giri escono dal modulo di oggi, il cancello li segue.
 
-    Un lavoro iscritto come `functools.partial(funzione, app)` si guarda
-    nella funzione che avvolge (`.func`): e' cosi' che `server.py` iscrive i
-    lavori usciti in `conservazione.py` (Tappa 8)."""
+    Dal 15/10/2026 ogni lavoro si iscrive con la sua funzione e gli argomenti
+    a parte (`args=`), non piu' come `functools.partial`: `job.func` e' la
+    funzione stessa."""
     jobs = app[SCHEDULER_KEY].get_jobs()
-    funcs = [getattr(job.func, "func", job.func) for job in jobs]
+    funcs = [job.func for job in jobs]
     names = {func.__name__ for func in funcs}
     files = {pathlib.Path(sys.modules[func.__module__].__file__) for func in funcs}
     return names, files

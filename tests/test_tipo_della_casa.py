@@ -199,8 +199,7 @@ async def test_il_giro_delle_condizioni_consegna_l_elenco_al_watcher(started_app
     scritto qui)."""
     graph = _call_graph()
     jobs = [job.id for job in started_app[SCHEDULER_KEY].get_jobs()
-            # `partial(funzione, app)`: si guarda la funzione (Tappa 8).
-            if _reaches(graph, getattr(job.func, "func", job.func).__name__,
+            if _reaches(graph, job.func.__name__,
                         "hold_watcher_statistic_ids")]
     assert jobs == ["hiris_mind_conditions"]
     await observer_round.hold_watcher_statistic_ids(started_app, started_app[HA_CLIENT_KEY])
