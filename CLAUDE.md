@@ -306,7 +306,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── mind/           il cervello. L'osservatore (observer.py, observer_round.py, watcher.py,
     │                   scope.py, cadence.py, realignment.py, facts.py, flatline.py, report.py,
     │                   day_report.py, store.py, view.py); le condizioni di sistema
-    │                   (conditions_round.py); il sapere e le ricette (knowledge.py, seed.py,
+    │                   (conditions_round.py) e l'avviso delle integrazioni ferme
+    │                   (stopped_integrations.py); il sapere e le ricette (knowledge.py, seed.py,
     │                   state_words.py, recipes.py, recipe_turn.py, recipe_round.py,
     │                   operations.py, compute.py); l'analista (analyst.py, analyst_turn.py,
     │                   analyst_round.py); il proponente, fermo (proposer_turn.py,

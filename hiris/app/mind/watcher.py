@@ -18,8 +18,7 @@ import time
 from aiohttp import web
 
 from ..home_space.ha_vocabulary import (
-    config_entry_is_healthy,
-    config_entry_is_ignored,
+    config_entry_stop,
     domain_of,
     has_statistics,
     is_entity_id,
@@ -39,19 +38,20 @@ logger = logging.getLogger(__name__)
 #: accanto a quelle righe come ne ha una accanto alle entita'.
 _SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 
-# Quali condizioni di una voce di configurazione NON siano un guasto lo dice
-# `ha_vocabulary.config_entry_is_healthy`: e' vocabolario di Home Assistant
-# (`ConfigEntryState`), e finche' l'elenco stava scritto qui ne esisteva un
-# gemello in `home_space/briefing.py` che nessuno confrontava con questo. I due
-# elencavano le due meta' della stessa enumerazione -- il guasto la' , il non
-# guasto qui -- e si tenevano in piedi a vicenda senza che niente lo verificasse.
+# Quali voci di configurazione siano ferme lo dice `ha_vocabulary.
+# config_entry_stop`, la lettura sola per l'osservatore, il nucleo e l'avviso
+# delle integrazioni ferme (16/10/2026). Fino all'08/09 l'elenco stava scritto
+# qui con un gemello nel nucleo che nessuno confrontava; fino al 16/10 erano
+# due funzioni, e nessuna vedeva un'istanza SPENTA dal proprietario: qui si
+# annotava solo il guasto, e i 61 dispositivi di un'integrazione spenta
+# sparivano senza una riga.
 #
-# **La differenza fra i due lettori resta, ed e' voluta**: qui una condizione
-# che il vocabolario non conosce APRE un guasto, nel nucleo tace. Sbagliare
-# costa cose diverse -- l'osservatore scrive nell'archivio, e un guasto non
-# registrato e' perso per sempre; il nucleo parla al proprietario, e un falso
-# allarme lo legge ogni giorno. La ragione per esteso sta accanto alle due
-# funzioni in `ha_vocabulary.py`.
+# **La differenza fra i lettori resta, ed e' voluta**: qui uno stato che il
+# vocabolario non conosce APRE una condizione (`ENTRY_UNKNOWN_STATE`), nel
+# nucleo e nell'avviso tace. Sbagliare costa cose diverse -- l'osservatore
+# scrive nell'archivio, e un guasto non registrato e' perso per sempre; il
+# nucleo e l'avviso parlano al proprietario. La ragione per esteso sta
+# accanto alla funzione.
 #
 # **Effetto collaterale dichiarato** della correzione del 02/09 su `not_loaded`
 # (che non e' un guasto ma lo stato INIZIALE): al primo giro dopo quella
@@ -59,10 +59,11 @@ _SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 # riceve, quindi le ha CHIUSE -- una riga «finito» ciascuna. Era il prezzo
 # giusto (un guasto che non c'era smette di essere aperto), ma resta un evento
 # scritto nell'archivio, e chi legge la storia di quel giorno deve saperlo.
-
-# `source: "ignore"` e' una DECISIONE del proprietario, non un guasto: si
-# scarta in qualunque stato, come nel nucleo. La domanda vive in
-# `ha_vocabulary.config_entry_is_ignored` (B-14; Tappa 3, Task 8, 04/10/2026).
+# Lo stesso, al contrario, il 16/10: al primo giro le istanze spente dal
+# proprietario si APRONO, una riga ciascuna.
+#
+# `source: "ignore"` e' una DECISIONE del proprietario, non un fermo: si
+# scarta in qualunque stato, dentro la stessa lettura (B-14).
 
 # Quanti giri consecutivi una condizione deve mancare prima di dirla finita.
 #
@@ -74,7 +75,7 @@ _SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 # tutti. Sbagliare per eccesso costa dieci minuti di ritardo nel dichiarare
 # finito un guasto; sbagliare per difetto costa i cinquanta episodi che
 # l'archivio porta oggi.
-_ROUNDS_BEFORE_CLOSING = 2
+ROUNDS_BEFORE_CLOSING = 2
 
 # La forma canonica `dominio.oggetto` di un `entity_id`: una GUARDIA, la piu'
 # STRETTA possibile, e la stessa del client (`ha_vocabulary.is_entity_id`,
@@ -205,7 +206,7 @@ class Watcher:
         # costruito solo da problemi/integrazioni/voci di log) -- un
         # soggetto `automazione:` mescolato li' dentro sparirebbe da
         # `open_now` ad OGNI giro di `watch_system` (che non lo guarda mai)
-        # e verrebbe chiuso da quel meccanismo dopo `_ROUNDS_BEFORE_CLOSING`
+        # e verrebbe chiuso da quel meccanismo dopo `ROUNDS_BEFORE_CLOSING`
         # giri, indipendentemente da cosa dice davvero l'ultima traccia --
         # esattamente l'isteresi per assenza che questo verticale ha deciso
         # di NON usare (vedi il docstring di `watch_automation_outcome`).
@@ -729,7 +730,7 @@ class Watcher:
         di `problems` e `integrations` qui sopra: nessuno dei tre e' `= None`.
         `None` qui e' trattato esattamente come `[]` (`for e in log_entries or
         []`) -- non «non l'ho letto», ma «nessuna condizione aperta», e dopo
-        `_ROUNDS_BEFORE_CLOSING` giri questo METODO chiude tutto cio' che
+        `ROUNDS_BEFORE_CLOSING` giri questo METODO chiude tutto cio' che
         aveva aperto. Un default silenzioso trasformerebbe una dimenticanza
         del chiamante (un parametro non passato) nello stesso segnale di
         «ho guardato ed era tutto a posto» -- l'esatta bugia che questo
@@ -807,10 +808,10 @@ class Watcher:
         formato di `last_changed` che `watch_reading` legge sopra, e va usato
         cosi' com'e', non attraverso `instant_epoch`.
 
-        Le condizioni che non sono un guasto (`config_entry_is_healthy`) e le
-        voci che il proprietario ha scelto di ignorare
-        (`config_entry_is_ignored`) non contano: vedi i commenti accanto
-        alla funzione e alla costante.
+        Un'integrazione conta quando e' ferma -- spenta dal proprietario, guasta
+        o in uno stato che il vocabolario non conosce -- e mai quando il
+        proprietario ha scelto di ignorarla (`config_entry_stop`): vedi il
+        commento accanto alla funzione.
 
         **`open_now` porta la condizione vera, non solo il soggetto.** Prima
         qui si buttavano `domain`, `title` e `state` -- letti da questo stesso
@@ -841,7 +842,7 @@ class Watcher:
         sulla casa vera il 03/09: quattro episodi per un solo guasto
         (`lifx / Abat-jour`), coi tre buchi di esattamente un giro -- era il
         nostro campionamento, non la casa. Una condizione non chiude piu' al
-        primo giro in cui manca: serve `_ROUNDS_BEFORE_CLOSING` giri
+        primo giro in cui manca: serve `ROUNDS_BEFORE_CLOSING` giri
         CONSECUTIVI di assenza (vedi il commento accanto alla costante per
         il perche' della soglia). Il contatore dei mancati
         (`self._missing_rounds`) si azzera appena la condizione ricompare --
@@ -896,9 +897,7 @@ class Watcher:
             state = _text_or_none(i.get("state"))
             if state is None:
                 continue
-            if config_entry_is_healthy(state):
-                continue
-            if config_entry_is_ignored(i.get("source")):
+            if config_entry_stop(state, i.get("disabled_by"), i.get("source")) is None:
                 continue
             ident = str(i.get("entry_id") or "").strip()
             if ident:
@@ -990,7 +989,7 @@ class Watcher:
 
         for missing in sorted(already_open - open_set):
             rounds = self._missing_rounds.get(missing, 0) + 1
-            if rounds < _ROUNDS_BEFORE_CLOSING:
+            if rounds < ROUNDS_BEFORE_CLOSING:
                 # Ancora dentro l'isteresi: resta aperta, si conta il giro.
                 self._missing_rounds[missing] = rounds
                 continue
@@ -1140,7 +1139,7 @@ class Watcher:
         # ne' e' compito di questo metodo conoscerlo. `"chiuso"` invece e' UNA
         # parola sola, e la scriviamo noi (vedi il commento sulla chiusura in
         # `watch_system`): e' lo stesso ragionamento di
-        # `config_entry_is_healthy`, un elenco enumerabile di condizioni SANE
+        # `config_entry_stop`, un elenco enumerabile di condizioni SANE
         # invece di uno (non enumerabile) di condizioni rotte. Un `state` vuoto o `None` -- una
         # riga che non dice niente -- non conta come aperta: non e' un fatto,
         # e' l'assenza di uno.

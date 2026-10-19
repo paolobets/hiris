@@ -146,7 +146,7 @@ def test_ogni_tabella_dell_anagrafe_ha_le_chiavi_che_i_lettori_si_aspettano():
     assert set(anagrafe["categorie"][0]) == {"id", "nome", "ambito"}
     assert set(anagrafe["integrazioni"][0]) == {
         "entry_id", "dominio", "titolo", "stato", "motivo", "origine",
-        "disabilitata_da"}
+        "disabilitata_da", "fermo"}
 
 
 def test_cio_che_home_assistant_dichiara_non_si_butta():

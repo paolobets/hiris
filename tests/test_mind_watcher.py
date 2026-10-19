@@ -307,7 +307,7 @@ def test_un_problema_di_HA_diventa_un_cambio(coppia):
 
 
 def test_un_problema_che_sparisce_diventa_un_cambio(coppia):
-    """Con l'isteresi (`_ROUNDS_BEFORE_CLOSING=2`) la chiusura arriva al
+    """Con l'isteresi (`ROUNDS_BEFORE_CLOSING=2`) la chiusura arriva al
     SECONDO giro consecutivo senza il problema, non al primo -- vedi
     `test_one_missing_round_does_not_close_an_episode`.
 

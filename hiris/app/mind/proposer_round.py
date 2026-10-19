@@ -25,7 +25,7 @@ from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
 from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
-from ..keeper.delivery import notify_admins
+from ..keeper.delivery import arrived, notify_admins
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
@@ -363,5 +363,5 @@ async def _alert_high(app) -> None:
         report = await notify_admins(
             app, ALERT_TEXT.format(name=name or row.get("chiave")),
             actor=PROPOSER_SPECIES)
-        if report.get("push", 0) > len(report.get("mancate") or ()):
+        if arrived(report):
             constructions.mark_alerted(row["id"])

@@ -459,6 +459,25 @@ class House:
         questo `entry_id`; `None` se l'anagrafe non la conosce."""
         return self._instances().get(entry_id) if entry_id else None
 
+    def instance_devices(self, entry_id: str | None) -> list[dict]:
+        """I dispositivi dell'anagrafe che hanno almeno un'entita' di
+        quest'istanza, nell'ordine dell'anagrafe; `[]` se nessuno.
+
+        Il legame e' il `config_entry_id` del registro delle entita', come in
+        `possible_siblings`: l'anagrafe non tiene i `config_entries` del
+        registro dei dispositivi. Lo chiede l'avviso delle integrazioni ferme
+        (`mind/stopped_integrations.py`) per dire cosa resta senza."""
+        if not entry_id:
+            return []
+        devices = self._devices()
+        seen: dict[str, dict] = {}
+        for entry in self._entity_index().values():
+            device_id = entry.get("dispositivo_id")
+            if (entry.get("config_entry_id") == entry_id and device_id in devices
+                    and device_id not in seen):
+                seen[device_id] = devices[device_id]
+        return [d for d in devices.values() if d["id"] in seen]
+
     def _instances(self) -> dict[str, dict]:
         if self._entry_index is None:
             self._entry_index = {i["entry_id"]: i for i in self.home_space.get("integrazioni") or []

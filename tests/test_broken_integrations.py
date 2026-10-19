@@ -7,11 +7,16 @@ leggeva ne' l'uno ne' l'altro: poteva solo contare le entita' non disponibili
 e non sapere perche'.
 """
 from hiris.app.home_space.reader import HomeSpace
-from tests.test_briefing import compose
+from tests.test_briefing import compose, read_instances
 
 
 def _nucleo(integrazioni):
-    testo, riepilogo = compose({"entita": [], "integrazioni": integrazioni}, [], [], {})
+    """Il nucleo su queste istanze, passate dal lettore vero
+    (`reader._integration`): e' lui che dice perche' un'istanza e' ferma
+    (`fermo`, 16/10/2026), e una finta che lo scrivesse a mano proverebbe la
+    finta (`tests.test_briefing.read_instances`)."""
+    testo, riepilogo = compose({"entita": [], "integrazioni": read_instances(integrazioni)},
+                               [], [], {})
     return testo, riepilogo
 
 

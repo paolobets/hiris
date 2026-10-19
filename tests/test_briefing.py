@@ -2,8 +2,21 @@ import re
 
 from hiris.app.home_space import briefing
 from hiris.app.home_space.house import House
+from hiris.app.home_space.reader import _integration
 from hiris.app.home_space.render import BODY_UNKNOWN
 from hiris.app.home_space.topology import Mirror
+
+
+def read_instances(rows: list[dict]) -> list[dict]:
+    """Istanze scritte nella forma dell'anagrafe, passate dal lettore vero
+    (`reader._integration`) tornando alla forma di Home Assistant: e' lui che
+    dice perche' un'istanza e' ferma (`fermo`, 16/10/2026), e una finta che
+    lo scrivesse a mano proverebbe la finta."""
+    return [_integration({"domain": i.get("dominio"), "title": i.get("titolo"),
+                          "state": i.get("stato"), "reason": i.get("motivo"),
+                          "source": i.get("origine"),
+                          "disabled_by": i.get("disabilitata_da")})
+            for i in rows]
 
 
 def compose(home_space, behavior, memories, state, *, unavailable=(), attributes=None,
@@ -967,10 +980,10 @@ def test_config_entry_notice_names_the_domain_not_just_the_title():
 
     Mutazione: riportare `who` al solo titolo (perdere il prefisso
     `integrazione {domain}`) -- il test torna rosso su `assert "lifx" in testo`."""
-    text = briefing._integrations_notice([
+    text = briefing._integrations_notice(read_instances([
         {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
          "motivo": "get_version timed out", "origine": "user"},
-    ])
+    ]))
     assert "lifx" in text
     assert "«Abat-jour»" in text
     assert "setup_retry: get_version timed out" in text
@@ -990,12 +1003,12 @@ def test_two_different_titles_of_the_same_integration_stay_separate():
     le due voci collasserebbero in una con «x2» e senza nessun titolo
     nominato: rosso su `assert "«Abat-jour»" in text`, su
     `assert "«Piantana»" in text` e su `assert "x2" not in text`."""
-    text = briefing._integrations_notice([
+    text = briefing._integrations_notice(read_instances([
         {"dominio": "lifx", "titolo": "Abat-jour", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
         {"dominio": "lifx", "titolo": "Piantana", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
-    ])
+    ]))
     assert "«Abat-jour»" in text
     assert "«Piantana»" in text
     assert "2 voci di configurazione" in text
@@ -1013,12 +1026,12 @@ def test_same_title_different_domains_stay_separate_not_merged():
     una riga sola, «integrazione senza nome, voce «Studio» x2»: rosso su
     `assert text.count("«Studio»") == 2` (uscirebbe 1) e su
     `assert "x2" not in text` (uscirebbe con `x2`)."""
-    text = briefing._integrations_notice([
+    text = briefing._integrations_notice(read_instances([
         {"dominio": "fritz", "titolo": "Studio", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
         {"dominio": "shelly", "titolo": "Studio", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
-    ])
+    ]))
     assert text.count("«Studio»") == 2
     assert "integrazione fritz, voce «Studio»" in text
     assert "integrazione shelly, voce «Studio»" in text

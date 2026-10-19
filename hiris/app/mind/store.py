@@ -138,6 +138,13 @@ CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
         ("quando e perche' il perimetro e' stato ripensato: poche righe, e "
          "spiegano come si e' arrivati a quello di oggi"),
         None),
+    "integration_notice": (
+        None,
+        ("una riga per istanza ferma o detta ferma: e' cio' che fa dire "
+         "l'avviso una volta sola anche dopo un riavvio. Non scade col tempo: "
+         "esce quando l'istanza torna e il ritorno e' detto, o quando Home "
+         "Assistant non la elenca piu' (`mind/stopped_integrations.py`)"),
+        None),
 }
 
 
@@ -674,6 +681,21 @@ CREATE TABLE IF NOT EXISTS scope_attempt (
     version TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_scope_attempt_tried ON scope_attempt(tried_ts);
+
+-- **L'avviso delle integrazioni ferme** (16/10/2026,
+-- `mind/stopped_integrations.py`): per ogni istanza che e' ferma, o che e'
+-- stata detta ferma, perche' lo e' (`stop`, la parola di
+-- `ha_vocabulary.config_entry_stop`; NULL se ora va), da quanti giri di fila
+-- (`streak`) e cosa si e' detto al proprietario (`told`, NULL se niente).
+-- Nasce dalla frase qui sotto, che `init_schema` ripete a ogni apertura:
+-- nessuna migrazione per un archivio che non l'aveva.
+CREATE TABLE IF NOT EXISTS integration_notice (
+    entry_id TEXT PRIMARY KEY,
+    stop TEXT,
+    streak INTEGER NOT NULL,
+    told TEXT,
+    seen_ts REAL NOT NULL
+);
 """
 
 def _migration_6(conn) -> None:
@@ -1839,6 +1861,34 @@ class ObservationsStore:
                 "VALUES (?,?,?,?)",
                 (float(when_ts if when_ts is not None else _time.time()),
                  outcome, detail, version))
+            self._conn.commit()
+
+    # -- L'avviso delle integrazioni ferme -------------------------------
+
+    def integration_notices(self) -> dict[str, dict]:
+        """Le righe dell'avviso, per `entry_id`: `fermo` (perche' e' ferma
+        all'ultimo giro, `None` se va), `giri` (da quanti giri di fila e'
+        cosi'), `detta` (il fermo detto al proprietario, `None` se niente) e
+        `visto_ts`."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT entry_id, stop, streak, told, seen_ts FROM integration_notice"
+            ).fetchall()
+        return {r["entry_id"]: {"fermo": r["stop"], "giri": r["streak"],
+                                "detta": r["told"], "visto_ts": r["seen_ts"]}
+                for r in rows}
+
+    def keep_integration_notices(self, rows: dict[str, dict]) -> None:
+        """Sostituisce le righe dell'avviso con queste, nella forma di
+        `integration_notices`: una riga che non c'e' piu' esce (l'istanza e'
+        tornata e il ritorno e' detto, o Home Assistant non la elenca piu')."""
+        with self._lock:
+            self._conn.execute("DELETE FROM integration_notice")
+            self._conn.executemany(
+                "INSERT INTO integration_notice (entry_id, stop, streak, told, seen_ts) "
+                "VALUES (?,?,?,?,?)",
+                [(ident, row["fermo"], int(row["giri"]), row["detta"],
+                  float(row["visto_ts"])) for ident, row in rows.items()])
             self._conn.commit()
 
     # -- L'obiettivo -------------------------------------------------------

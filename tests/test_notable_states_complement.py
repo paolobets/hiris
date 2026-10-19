@@ -77,12 +77,13 @@ _TRASLOCATE = {
         "nessun posto, come `_EVENT_DOMAINS`: stessa domanda, stessa uscita"),
     "_BROKEN_INTEGRATION_STATES": (
         "home_space/briefing.py",
-        ("`ha_vocabulary.CONFIG_ENTRY_FAILURE_STATES`, con "
-         "`config_entry_is_broken` che la legge")),
+        ("`ha_vocabulary.CONFIG_ENTRY_FAILURE_STATES`, letta da "
+         "`config_entry_stop` (fino al 16/10/2026 `config_entry_is_broken`)")),
     "_HEALTHY_INTEGRATION_STATES": (
         "mind/watcher.py",
-        ("la stessa enumerazione, letta da `config_entry_is_healthy`: era il "
-         "gemello divergente del precedente")),
+        ("la stessa enumerazione, letta da `config_entry_stop` (fino al "
+         "16/10/2026 `config_entry_is_healthy`): era il gemello divergente "
+         "del precedente")),
     "STATE_CLASSES_WITH_STATISTICS": (
         "home_space/historian.py",
         "`ha_vocabulary`, che per `state_class` aveva gia' una casa"),

@@ -33,6 +33,7 @@ from aiohttp import web
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..storage import write_json_atomic
 from .behavior import automation_active
+from .ha_vocabulary import config_entry_stop
 from .historian import house_timezone
 from .topology import clean_text
 
@@ -194,7 +195,14 @@ def _integration(row: dict) -> dict:
             # solo, `user` (`config_entries.py`, tag 2026.9.4): un'istanza la
             # spegne solo il proprietario, e le sue entita' ricevono
             # `disabled_by: config_entry` -- la causa vera e' questa.
-            "disabilitata_da": row.get("disabled_by") or None}
+            "disabilitata_da": row.get("disabled_by") or None,
+            # PERCHE' e' ferma, o `None` se non lo e' (16/10/2026): la lettura
+            # sola di `ha_vocabulary.config_entry_stop`, fatta qui sulla riga
+            # di Home Assistant perche' l'istanza porti con se' la sua risposta
+            # (fondamenta 1) e il nucleo non rifaccia la regola del fuori sul
+            # campo omonimo dell'istanza.
+            "fermo": config_entry_stop(row.get("state"), row.get("disabled_by"),
+                                       row.get("source"))}
 
 
 def _manifest(row: dict) -> dict:

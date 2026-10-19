@@ -64,6 +64,13 @@ async def deliver(services, text, *, execute, actor: str,
     return len(unique), failures
 
 
+def arrived(report: dict) -> bool:
+    """Se l'avviso di `notify_admins` e' arrivato ad almeno un telefono: una
+    push partita e non mancata. `{"errore"}`, nessun telefono o tutte mancate
+    non lo sono, e chi avvisa ritenta al giro dopo."""
+    return report.get("push", 0) > len(report.get("mancate") or ())
+
+
 async def notify_admins(app, text: str, *, actor: str) -> dict:
     """L'avviso a chi amministra la casa (D14): una push a ogni amministratore
     di Home Assistant, sui suoi telefoni.

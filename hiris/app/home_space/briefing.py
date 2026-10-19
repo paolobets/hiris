@@ -43,8 +43,8 @@ from datetime import UTC, datetime
 from ..proxy.entity_cache import CAPABILITIES
 from .behavior import without_body
 from .ha_vocabulary import (
-    config_entry_is_broken,
-    config_entry_is_ignored,
+    ENTRY_BROKEN,
+    ENTRY_SWITCHED_OFF,
     domain_of,
     house_is_newer_than_vocabulary,
 )
@@ -891,10 +891,13 @@ def _behavior_lines(behavior: list[dict],
     return (lines, [1] * len(lines))
 
 
-# Quali condizioni di una voce di configurazione siano un guasto lo dice
-# `ha_vocabulary.config_entry_is_broken`: e' vocabolario di Home Assistant
+# Quali voci di configurazione siano ferme, e perche', lo dice
+# `ha_vocabulary.config_entry_stop`: e' vocabolario di Home Assistant
 # (`ConfigEntryState`), e finche' l'elenco stava scritto qui ne esisteva un
-# gemello in `mind/watcher.py` che nessuno confrontava con questo.
+# gemello in `mind/watcher.py` che nessuno confrontava con questo. Dal
+# 16/10/2026 il nucleo dice anche le istanze SPENTE dal proprietario: fino a
+# quel giorno ne taceva, e alla domanda «perche' non vedo le luci del
+# soggiorno?» mancava la risposta (61 dispositivi spenti con un'integrazione).
 #
 # **`not_loaded` NON e' un guasto**, ed e' la lezione che quell'elenco aveva
 # gia' pagato: era lo stato INIZIALE preso per un errore, e il nucleo
@@ -917,7 +920,8 @@ def _behavior_lines(behavior: list[dict],
 # `not_loaded`: una voce ignorata che finisse in `setup_error` resterebbe
 # comunque una cosa che il proprietario ha chiesto di non sentire piu'.
 # La costante e la domanda vivono in `ha_vocabulary.config_entry_is_ignored`
-# (B-14; Tappa 3, Task 8, 04/10/2026), la stessa che usa l'osservatore.
+# (B-14; Tappa 3, Task 8, 04/10/2026), dentro la lettura sola
+# `config_entry_stop` che usa anche l'osservatore.
 
 
 def _integrations_notice(integrations: list[dict]) -> str | None:
@@ -940,14 +944,22 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     `setup_retry`, non sempre per `migration_error` e `failed_unload`.
     Inventarlo sarebbe peggio.
 
-    **Due filtri, non uno, e sono domande diverse.** Lo STATO dice se
-    l'integrazione e' rotta; l'ORIGINE dice se il proprietario ha chiesto di
-    non sentirne piu' parlare. Una voce ignorata si scarta anche se lo stato
-    la direbbe rotta -- vedi `ha_vocabulary.config_entry_is_ignored`.
+    **Una lettura, tre domande** (`ha_vocabulary.config_entry_stop`, che
+    l'istanza porta gia' fatta in `fermo`: `reader._integration`): chi
+    l'ha spenta, se lo STATO dice un guasto, e se l'ORIGINE dice che il
+    proprietario ha chiesto di non sentirne piu' parlare. Una voce ignorata
+    si scarta anche se lo stato la direbbe rotta; una spenta si dice
+    «spenta dal proprietario» al posto dello stato (`not_loaded`, che da
+    solo direbbe il passaggio del riavvio). Uno stato che il vocabolario non
+    conosce tace.
     """
-    broken = [i for i in integrations or []
-             if config_entry_is_broken(i.get("stato"))
-             and not config_entry_is_ignored(i.get("origine"))]
+    broken = []
+    for i in integrations or []:
+        stop = i.get("fermo")
+        if stop == ENTRY_SWITCHED_OFF:
+            broken.append({**i, "stato": "spenta dal proprietario"})
+        elif stop == ENTRY_BROKEN:
+            broken.append(i)
     if not broken:
         return None
     # Una voce per NOME+STATO+MOTIVO, non una per config entry.

@@ -52,9 +52,9 @@ stessa tabella -- «cosa il repo rivendica» e «cosa significa» -- e per quest
 non sono un doppione. La differenza fra `unavailable` e `unknown` non e' piu'
 una tabella: e' il commento accanto alla sua fonte, piu' sotto. **Le tre voci
 arrivate l'08/09/2026 invece hanno
-un lettore vivo ciascuna, e non e' lo stesso**: `config_entry_is_broken` la
-usa il digesto, per la riga degli avvisi; `config_entry_is_healthy`
-l'osservatore, per decidere cosa scrive nell'archivio; `bands_are_arithmetic`
+un lettore vivo ciascuna**: `config_entry_stop` (dal 16/10/2026 la lettura
+sola che ha preso il posto di `config_entry_is_broken` e `config_entry_is_healthy`)
+la usano il digesto, l'osservatore e l'avviso delle integrazioni ferme; `bands_are_arithmetic`
 la storia (`house_history.value_surface`), per dire su quale superficie si leggono i
 valori, e `has_statistics` la casa del giro e il watcher. Sono
 qui perche' sono vocabolario del fornitore, non perche' nessuno le legga.
@@ -594,32 +594,49 @@ CONFIG_ENTRY_FAILURE_STATES = frozenset({
 })
 
 
-def config_entry_is_broken(state: str | None) -> bool:
-    """Se questa condizione dichiara un guasto.
+#: Perche' un'istanza e' ferma: le tre risposte di `config_entry_stop`. Sono
+#: parole nostre (non viaggiano verso Home Assistant): le leggono l'osservatore,
+#: il nucleo e l'avviso delle integrazioni ferme.
+ENTRY_SWITCHED_OFF = "spenta"
+ENTRY_BROKEN = "guasta"
+ENTRY_UNKNOWN_STATE = "sconosciuta"
 
-    **Chi non e' elencato NON e' un guasto**, ed e' la prudenza del lettore: il
-    nucleo entra nel prompt di ogni messaggio, e una condizione che Home
-    Assistant aggiungesse domani verrebbe annunciata al proprietario come una
-    cosa rotta senza che nessuno l'abbia mai guardata. Meglio tacere di una
-    condizione nuova che gridare al guasto su una che non lo e' -- e' la stessa
-    lezione degli otto `not_loaded`.
+
+def config_entry_stop(state: str | None, disabled_by: str | None,
+                      source: str | None) -> str | None:
+    """Perche' quest'istanza e' ferma, o `None` se non lo e'.
+
+    La lettura sola per l'osservatore, il nucleo e l'avviso (16/10/2026: fino
+    a quel giorno erano due funzioni, `config_entry_is_broken` per il nucleo e
+    `config_entry_is_healthy` per l'osservatore, e nessuna delle due vedeva
+    un'istanza spenta dal proprietario -- 61 dispositivi spariti in silenzio).
+
+    - una voce che il proprietario ha detto di ignorare non e' mai ferma: e'
+      una sua decisione (`CONFIG_ENTRY_SOURCE_IGNORE`);
+    - `disabled_by` valorizzato: spenta (`ENTRY_SWITCHED_OFF`). Home Assistant
+      la lascia `not_loaded`, e il solo stato non la distinguerebbe dal
+      passaggio del riavvio. `ConfigEntryDisabler` ha oggi un valore solo,
+      `user` (sorgente, tag 2026.9.4): qualunque valore conta;
+    - uno stato di guasto: guasta (`ENTRY_BROKEN`);
+    - uno stato che l'enumerazione conosce e non e' un guasto -- `loaded`,
+      `not_loaded` senza `disabled_by`, i due di passaggio -- non e' un fermo;
+    - uno stato che l'enumerazione NON conosce: `ENTRY_UNKNOWN_STATE`. I
+      lettori ne fanno cose opposte, e la differenza e' voluta: l'osservatore,
+      che scrive nell'archivio, lo annota (un guasto non registrato e' perso
+      per sempre, un falso positivo si legge e si chiude); il nucleo e
+      l'avviso, che parlano al proprietario, ne tacciono (la lezione degli
+      otto `not_loaded` qui sopra).
     """
-    return (state or "") in CONFIG_ENTRY_FAILURE_STATES
-
-
-def config_entry_is_healthy(state: str | None) -> bool:
-    """Se questa condizione dichiara che l'integrazione sta bene.
-
-    **Non e' il contrario esatto di `config_entry_is_broken`, e la differenza
-    e' voluta**: una condizione che questo modulo non conosce non e' ne' l'una
-    ne' l'altra, e i due lettori la trattano in modo opposto **perche' sbagliare
-    costa loro cose diverse**. Il nucleo tace (vedi sopra); l'osservatore, che
-    non parla a nessuno e SCRIVE NELL'ARCHIVIO, apre una condizione -- un
-    guasto non registrato e' perso per sempre, un falso positivo si legge e si
-    chiude. Fino all'08/09/2026 questa asimmetria esisteva gia', ma nasceva da
-    due elenchi scritti a mano in due moduli: era un caso, non una scelta.
-    """
-    return (state or "") in CONFIG_ENTRY_STATES - CONFIG_ENTRY_FAILURE_STATES
+    if config_entry_is_ignored(source):
+        return None
+    if disabled_by:
+        return ENTRY_SWITCHED_OFF
+    state = state or ""
+    if state in CONFIG_ENTRY_FAILURE_STATES:
+        return ENTRY_BROKEN
+    if state in CONFIG_ENTRY_STATES:
+        return None
+    return ENTRY_UNKNOWN_STATE
 
 
 #: La condizione di un'istanza caricata: l'unica in cui le sue entita' sono

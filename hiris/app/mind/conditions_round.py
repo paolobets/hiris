@@ -5,6 +5,7 @@ Spostati da `server.py` senza una riga di logica cambiata (Chiusura dello
 sprint, F8 passo 6, 14/10/2026): `server.py` registra e avvia, non ospita.
 """
 import logging
+import time
 
 from aiohttp import web
 
@@ -13,7 +14,11 @@ from ..home_space.house import House
 from ..home_space.house_history import read_log, read_traces
 from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.rounds import HA_INTEGRATIONS_KEY, HA_PROBLEMS_KEY, reread_ha_problems
+from ..keeper.delivery import notify_admins
 from ..proxy.entity_cache import ENTITY_CACHE_KEY, automation_config_id
+from ..steering import OBSERVER_SPECIES
+from . import stopped_integrations
+from .store import OBSERVATIONS_KEY
 from .watcher import WATCHER_KEY
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
@@ -29,8 +34,9 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
     caricate + voci del registro di errori) verso
     `app[WATCHER_KEY].watch_system` (fetta «l'osservatore», Task 5; il registro
-    di errori e' Task 2 di «le tracce e il log»). Torna quante ne ha scritte,
-    o `None` se il giro e' stato saltato.
+    di errori e' Task 2 di «le tracce e il log»), e poi l'avviso delle
+    integrazioni ferme (`mind/stopped_integrations.py`). Torna quante
+    condizioni ha scritto, o `None` se il giro e' stato saltato.
 
     **I problemi NON si rileggono qui** (A-02, 03/10/2026): li legge gia' il
     giro dei cinque minuti (`reread_ha_problems`, `hiris_ha_problems`) verso
@@ -102,10 +108,21 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             "cervello: condizioni di sistema non lette, il registro degli errori ha "
             "fallito (%s) -- giro saltato", log_report["errore"])
         return None
-    return watcher.watch_system(
+    written = watcher.watch_system(
         problems=problems_report.get("problemi") or [],
         integrations=list(integrations),
         log_entries=log_report.get("voci") or [])
+    # L'avviso delle integrazioni ferme (16/10/2026): sulle stesse righe che
+    # l'osservatore ha appena annotato, dopo di lui -- se `record` solleva a
+    # meta', non si avvisa di cio' che l'archivio non ha scritto.
+    store = app.get(OBSERVATIONS_KEY)
+    if store is not None:
+        await stopped_integrations.tell(
+            store, House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY)),
+            list(integrations),
+            notify=lambda text: notify_admins(app, text, actor=OBSERVER_SPECIES),
+            now=time.time())
+    return written
 
 
 async def watch_automation_outcomes(app, ha_client) -> int | None:
