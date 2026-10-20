@@ -110,7 +110,10 @@ def _who(raw: dict) -> str:
 
 
 def _stop_line(house: House, raw: dict, stop: str) -> str:
-    cause = ("è spenta da te" if stop == ENTRY_SWITCHED_OFF
+    # «è stata spenta», non «da te» (scelta del proprietario, 19/10/2026,
+    # N180-3): la push va a ogni amministratore, e Home Assistant non dice
+    # chi l'ha spenta -- `ConfigEntryDisabler` ha un valore solo, `user`.
+    cause = ("è stata spenta" if stop == ENTRY_SWITCHED_OFF
              else f"è in errore ({raw.get('state')})")
     devices = house.instance_devices(str(raw.get("entry_id")))
     if not devices:

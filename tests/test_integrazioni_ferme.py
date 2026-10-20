@@ -171,7 +171,7 @@ async def test_un_istanza_ferma_si_dice_al_secondo_giro_e_una_volta_sola(archivi
     await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_001_200.0)
     assert len(avvisi.testi) == 1
     testo = avvisi.testi[0]
-    assert "Casa" in testo and "spenta da te" in testo
+    assert "Casa" in testo and "è stata spenta" in testo
     assert "2 dispositivi" in testo
     assert "Cucina" in testo and "Soggiorno" in testo
 
@@ -226,6 +226,20 @@ async def test_se_non_si_sa_a_chi_dirlo_si_riprova_al_giro_dopo(archivio):
 
 
 @pytest.mark.asyncio
+async def test_uno_stato_sconosciuto_non_arriva_al_telefono(archivio):
+    """L'osservatore annota uno stato che il vocabolario non conosce, ma chi
+    parla al proprietario ne tace (la lezione degli otto `not_loaded`,
+    accanto a `config_entry_stop`). N180-2, giro 180.
+
+    Mutazione ESEGUITA: `ENTRY_UNKNOWN_STATE` fra i `TOLD_STOPS` -- rossa."""
+    avvisi = _Avvisi()
+    domani = {**LIFX_ROTTA, "state": "stato_di_domani"}
+    for now in (1_790_000_000.0, 1_790_000_600.0, 1_790_001_200.0):
+        await _giro(archivio, [domani], avvisi, now)
+    assert avvisi.testi == []
+
+
+@pytest.mark.asyncio
 async def test_un_istanza_sparita_si_dimentica_senza_avviso(archivio):
     avvisi = _Avvisi()
     for now in (1_790_000_000.0, 1_790_000_600.0):
@@ -233,6 +247,20 @@ async def test_un_istanza_sparita_si_dimentica_senza_avviso(archivio):
     await _giro(archivio, [], avvisi, 1_790_001_200.0)
     assert len(avvisi.testi) == 1
     assert _dette(archivio) == {}
+
+
+def test_la_scheda_di_un_integrazione_dice_perche_e_ferma():
+    """Fondamenta 3 e 4: la stessa istanza ha la stessa forma dal nucleo e
+    da `view`, e chi la apre puo' chiederne il perche' (N180-1, giro 180).
+
+    Mutazione ESEGUITA: tolto `fermo` dalle voci della scheda -- rossa."""
+    from hiris.app.home_space.render import render_integration
+    casa = House({"integrazioni": [reader._integration(
+        {"entry_id": "a", "domain": "ave_domina", "title": "Casa",
+         "state": "not_loaded", "disabled_by": "user", "source": "user"})]},
+        live_mirror([]))
+    voci = render_integration(casa, "ave_domina", "media")["voci"]
+    assert voci[0]["fermo"] == ENTRY_SWITCHED_OFF
 
 
 def test_i_dispositivi_di_un_istanza_si_chiedono_alla_casa():
@@ -273,5 +301,5 @@ def test_il_giro_delle_condizioni_avvisa_dopo_l_osservatore(archivio):
         asyncio.run(conditions_round.watch_system_conditions(app, house))
         asyncio.run(conditions_round.watch_system_conditions(app, house))
     assert len(mandati) == 1
-    assert "spenta da te" in mandati[0][0]
+    assert "è stata spenta" in mandati[0][0]
     assert mandati[0][1] == "osservatore"

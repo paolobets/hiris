@@ -569,12 +569,14 @@ def render_integration(house: House, domain: str, depth: str) -> dict:
       porta (`_integration_of`); con piu' istanze l'integrazione intera non e'
       nessuna di loro e si chiama col dominio, e ogni entita' nomina la
       propria (C-62);
-    - `media` e `completa` -- piu' le `voci`, le istanze con titolo, stato e
-      motivo. I conteggi delle entita' li aggiunge la scheda
+    - `media` e `completa` -- piu' le `voci`, le istanze con titolo, stato,
+      motivo e `fermo`, il perche' e' ferma (`reader._integration`: la stessa
+      parola che legge il nucleo, N180-1). I conteggi delle entita' li aggiunge la scheda
       (`queries._view_integration`)."""
     if depth not in DEPTHS:
         raise ValueError(f"profondita' sconosciuta: {depth!r}")
-    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
+    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo"),
+                "fermo": i.get("fermo")}
                for i in house.home_space.get("integrazioni") or []
                if normalize(i.get("dominio") or "") == domain]
     single = entries[0]["titolo"] if len(entries) == 1 else None
