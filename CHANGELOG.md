@@ -1,5 +1,43 @@
 # HIRIS — Changelog
 
+## [3.80.0] — Le integrazioni ferme si dicono, la ripresa al tetto si vede: la chiusura vera dello sprint (2026-10-20)
+
+### Perché
+
+Lo sprint «Una fonte sola di verità» si chiudeva con tre cose aperte:
+- un'integrazione con 61 dispositivi era stata spenta, e nessuno lo diceva;
+- sul ponte, un turno fermato dal tetto di token risultava «riuscito», con in mano solo l'ultimo pezzo della risposta;
+- un rifiuto 403 del provider si raccontava con una causa che il provider non aveva dato.
+
+Questa versione le chiude.
+
+### Added
+
+- **Le integrazioni ferme si dicono una volta.** Un'integrazione può fermarsi perché spenta o perché in errore. Se resta ferma per due giri di fila, parte una push agli amministratori. La push dice:
+  - quale integrazione è ferma e perché: «è stata spenta», oppure «è in errore» con lo stato;
+  - quanti dispositivi restano senza;
+  - in quali stanze stanno.
+
+  Quando l'integrazione torna, arriva una riga. La prima volta, le integrazioni già ferme arrivano in una push sola. Ciò che è già stato detto resta in memoria, quindi un riavvio non lo ripete. Se la push non arriva a nessun telefono, si riprova al giro dopo. Le integrazioni che hai scelto di ignorare restano fuori.
+- **La chat dice anche le integrazioni spente**, non solo quelle rotte. Anche aprendo un'integrazione si vede perché è ferma.
+
+### Fixed
+
+- **Sul ponte, un turno fermato dal tetto di token esce «troncato».** Prima risultava «riuscito», con in mano solo l'ultimo pezzo della risposta. Ora:
+  - in chat compare l'avviso di troncatura;
+  - gli attori (osservatore, ricette, analista, proponente) non leggono una risposta spezzata;
+  - il freno conta il turno.
+
+  Misurato sulla CLI 2.1.300.
+- **Un rifiuto 403 cita il provider** (per esempio «Key limit exceeded») invece di dire «la chiave non è accettata»: OpenRouter usa il 403 anche per la chiave oltre il suo tetto di spesa.
+- **I lavori periodici hanno di nuovo il loro nome** nel registro dell'add-on. Dalla 3.79.0 comparivano tutti come «partial».
+
+### Da sapere
+
+- Al primo giro dopo l'aggiornamento, l'osservatore apre una condizione per ogni integrazione spenta: oggi sono due.
+- La prima push riassuntiva, con i conti di oggi, avrà tre voci: due integrazioni spente e una in `setup_retry`.
+- Nasce la tabella `integration_notice` in `mind.db`. Non serve nessuna migrazione.
+
 ## [3.79.1] — `server.py` spezzato, una fonte sola fino in fondo: la Chiusura di «Una fonte sola di verità», rilascio 2 (2026-10-15)
 
 ### Perché
