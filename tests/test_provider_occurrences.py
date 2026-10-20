@@ -314,14 +314,18 @@ def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
     causa, che è esattamente ciò che questo prodotto non fa."""
     a = 10_000.0
 
-    def _f(codice):
+    def _f(codice, messaggio=""):
         return occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale",
-                            "codice": codice, "messaggio": "", "quando": a - 180,
+                            "codice": codice, "messaggio": messaggio, "quando": a - 180,
                             "da_quante": 1, "durata_s": 0.1}, position=1, now=a)
 
     assert _f(402) == "ha rifiutato l’ultima richiesta — credito esaurito (402), 3 min fa"
     assert _f(401) == "ha rifiutato l’ultima richiesta — la chiave non è accettata (401), 3 min fa"
-    assert _f(403) == "ha rifiutato l’ultima richiesta — la chiave non è accettata (403), 3 min fa"
+    # Il 403 ha piu' di un perche' (tetto di spesa della chiave, moderazione):
+    # si cita il provider (S-37, prova dal vivo del 16/10/2026).
+    assert _f(403, "Key limit exceeded (total limit)") == (
+        "ha rifiutato l’ultima richiesta (403): «Key limit exceeded (total limit)», 3 min fa")
+    assert "chiave non è accettata" not in _f(403)
 
 
 def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():

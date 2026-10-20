@@ -152,17 +152,20 @@ def _count(from_count: int) -> str:
         f"le ultime {int(from_count)} richieste")
 
 
-# La causa in parole, per la famiglia `credenziale`. Tre codici, due azioni
-# diverse per chi legge: 402 dice che i soldi sono finiti (OpenRouter), 401 e
-# 403 dicono che la chiave non va bene. Chiamarle tutte «credito esaurito»
-# sarebbe un'ipotesi sulla causa, che è la cosa che questo prodotto ha smesso
-# di fare. Fino al 06/10/2026 c'era anche il 400, «credito esaurito»: è uscito
-# dalla famiglia (`provider_occurrences._CREDENTIAL`, G36-1 e G39-2), e la sua
-# causa la dice il provider, citato.
+# La causa in parole, per la famiglia `credenziale`. Due codici, due azioni
+# diverse per chi legge: 402 dice che i soldi sono finiti (OpenRouter), 401
+# che la chiave non va bene. Chiamarle tutte «credito esaurito» sarebbe
+# un'ipotesi sulla causa, che è la cosa che questo prodotto ha smesso di fare.
+# Fino al 06/10/2026 c'era anche il 400, «credito esaurito»: è uscito dalla
+# famiglia (`provider_occurrences._CREDENTIAL`, G36-1 e G39-2), e la sua causa
+# la dice il provider, citato. Fino al 16/10/2026 c'era anche il 403, «la
+# chiave non è accettata»: OpenRouter lo usa per la chiave oltre il suo tetto
+# di spesa («Key limit exceeded», misurato dal vivo nella prova S-37) e per un
+# ingresso fermato dalla moderazione. Più di un perché: lo dice il provider,
+# citato.
 _CREDENTIAL_CAUSE: dict[int, str] = {
     402: "credito esaurito",
     401: "la chiave non è accettata",
-    403: "la chiave non è accettata",
 }
 
 

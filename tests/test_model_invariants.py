@@ -369,8 +369,23 @@ def test_ogni_codice_di_credenziale_ha_la_sua_causa():
     from hiris.app.model_resolution import _CREDENTIAL_CAUSE
     from hiris.app.provider_occurrences import _CREDENTIAL
 
-    senza_causa = sorted(c for c in _CREDENTIAL if c not in _CREDENTIAL_CAUSE)
+    senza_causa = sorted(c for c in _CREDENTIAL
+                         if c not in _CREDENTIAL_CAUSE and c not in CITED_NOT_CAUSED)
     assert senza_causa == [], f"codici senza una causa dichiarata: {senza_causa}"
+    assert not set(_CREDENTIAL_CAUSE) & set(CITED_NOT_CAUSED)
+
+
+#: I codici della famiglia `credenziale` per cui HIRIS NON dichiara una causa
+#: e cita cio' che il provider ha detto: chiudono per difetto, una voce nuova
+#: si ammette qui con la ragione.
+CITED_NOT_CAUSED = {
+    403: "piu' di un perche', misurati: OpenRouter risponde 403 «Key limit "
+         "exceeded (total limit)» quando la chiave ha superato il suo tetto di "
+         "spesa (registro dell'add-on, 05/10/2026; prova S-37 dal vivo, "
+         "16/10/2026), e la sua documentazione lo usa anche per un ingresso "
+         "fermato dalla moderazione. «La chiave non e' accettata» era falso "
+         "nel primo caso.",
+}
 
 
 def test_un_codice_senza_causa_non_ne_inventa_una():

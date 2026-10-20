@@ -1009,7 +1009,7 @@ async def test_la_quota_della_chiave_finita_non_e_un_errore_temporaneo(tmp_path)
 
     assert info.value.family == "credenziale" and info.value.code == 403
     assert info.value.friendly_message == (
-        "Il servizio AI ha rifiutato la richiesta: la chiave non è accettata (403). "
+        "Il servizio AI ha rifiutato la richiesta (403). "
         "Riprovare non basta: si sistema nella pagina Modelli.")
 
 

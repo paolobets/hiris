@@ -32,11 +32,13 @@ async def test_la_catena_che_rifiuta_per_credito_non_dice_temporaneo():
     con la quota della chiave finita. Risponde l'ultimo rifiuto, col suo
     fatto."""
     router = LLMRouter(claude=_refusing("altro", 400, CREDIT),
-                       openrouter=_refusing("credenziale", 403),
+                       openrouter=_refusing("credenziale", 403,
+                                            "Key limit exceeded (total limit)"),
                        model_chain=["claude", "openrouter"])
     answer = await router.chat(model="auto")
     assert "temporaneo" not in answer
-    assert "la chiave non è accettata (403)" in answer
+    assert "(403): «Key limit exceeded (total limit)»" in answer
+    assert "la chiave non è accettata" not in answer
     assert router.last_unanswered is True
 
 
@@ -64,13 +66,22 @@ def test_un_guasto_senza_codice_resta_la_frase_di_prima():
 def test_la_causa_e_la_stessa_della_pagina_modelli():
     """Fondamenta 3: lo stesso rifiuto ha la stessa causa dalla chat e dalla
     pagina Modelli (`occurrence_phrase`), da una tabella sola."""
-    from hiris.app.model_resolution import occurrence_phrase
-    for code in (401, 402, 403):
+    from hiris.app.model_resolution import _CREDENTIAL_CAUSE, occurrence_phrase
+    from hiris.app.provider_occurrences import _CREDENTIAL
+    assert _CREDENTIAL_CAUSE, "la tabella delle cause non c'e' piu'"
+    for code in _CREDENTIAL:
         page = occurrence_phrase({"tipo": "rifiutato", "famiglia": "credenziale",
-                                  "codice": code, "quando": 0.0, "da_quante": 1},
+                                  "codice": code, "quando": 0.0, "da_quante": 1,
+                                  "messaggio": "Key limit exceeded"},
                                  position=1, now=0.0)
-        cause = page.split(" — ")[1].split(" (")[0]
-        assert f": {cause} ({code})." in failure_reply("credenziale", code)
+        chat = failure_reply("credenziale", code, "Key limit exceeded")
+        if code in _CREDENTIAL_CAUSE:
+            cause = page.split(" — ")[1].split(" (")[0]
+            assert f": {cause} ({code})." in chat
+        else:
+            # Senza una causa dichiarata, tutte e due citano il provider.
+            assert f"({code}): «Key limit exceeded»" in page
+            assert f"({code}): «Key limit exceeded»" in chat
 
 
 # -- G36-1 e G39-2 (revisione, giri 36 e 39): il 400 non vuol dire credito -------
