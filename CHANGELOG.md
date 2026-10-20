@@ -32,6 +32,12 @@ Questa versione le chiude.
 - **Un rifiuto 403 cita il provider** (per esempio «Key limit exceeded») invece di dire «la chiave non è accettata»: OpenRouter usa il 403 anche per la chiave oltre il suo tetto di spesa.
 - **I lavori periodici hanno di nuovo il loro nome** nel registro dell'add-on. Dalla 3.79.0 comparivano tutti come «partial».
 
+### Componenti
+
+- CLI del ponte **2.1.304** (dalla 2.1.300), per scelta di Paolo del 20/10/2026.
+  - Letto il CHANGELOG ufficiale dalla 2.1.301 alla 2.1.304: nessuna voce cambia `stream-json`, `system/init`, `--mcp-config` o la ripresa al tetto. La ricerca degli strumenti accesa dietro un indirizzo dell'API diverso non tocca il ponte, che non lo imposta.
+  - Misurato nella nuvola con l'argv di produzione e un'API finta: stessi strumenti e stesso prompt, e la ripresa al tetto arriva nella stessa forma, quindi il turno esce «troncato» anche sulla 2.1.304.
+
 ### Da sapere
 
 - Al primo giro dopo l'aggiornamento, l'osservatore apre una condizione per ogni integrazione spenta: oggi sono due.
