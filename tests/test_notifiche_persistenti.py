@@ -74,3 +74,73 @@ async def test_le_due_chiamate_passano_la_verifica_vera():
     for chiamata in (notice_call("hiris_x", "HIRIS", "testo"), withdrawal_call("hiris_x")):
         verdetto = verification(chiamata, registro, STATI)
         assert verdetto.ok is True, verdetto.reason
+
+
+# -- `align_notices`, davanti alla lettura vera (revisore, giro 187) -----------
+
+class _Porta:
+    """La porta dei servizi: tiene le chiamate; `rifiuta` dice di no."""
+
+    def __init__(self, rifiuta=False):
+        self.chiamate = []
+        self.rifiuta = rifiuta
+
+    async def execute(self, call, *, actor, subject=None):
+        self.chiamate.append(call)
+        if self.rifiuta:
+            return {"eseguito": False, "errore": "servizio rifiutato"}
+        return {"eseguito": True}
+
+
+def _app(mostrate, porta):
+    from hiris.app.action.actuator import ACTUATOR_KEY
+    from hiris.app.proxy.ha_client import HA_CLIENT_KEY
+    return {ACTUATOR_KEY: porta, HA_CLIENT_KEY: _casa(mostrate)}
+
+
+@pytest.mark.asyncio
+async def test_stesso_id_e_stesso_titolo_ma_testo_diverso_si_riscrive():
+    """R187-1: il titolo delle integrazioni ferme e' fisso, e cambia solo il
+    testo. Un'impronta che guardasse il solo titolo non riscriverebbe mai
+    l'elenco.
+
+    Mutazione ESEGUITA (21/10/2026): `notification_fingerprint` del solo
+    titolo -- rossa."""
+    from hiris.app.keeper.delivery import align_notices
+    porta = _Porta()
+    app = _app([{"notification_id": "hiris_x", "title": "HIRIS", "message": "vecchio"}],
+               porta)
+
+    esito = await align_notices(app, "hiris_x", {"hiris_x": ("HIRIS", "nuovo")},
+                                actor="osservatore")
+
+    assert porta.chiamate == [notice_call("hiris_x", "HIRIS", "nuovo")]
+    assert esito == {"allineate": ["hiris_x"], "mancate": []}
+
+
+@pytest.mark.asyncio
+async def test_una_scrittura_rifiutata_non_e_allineata():
+    """R187-2: una notifica che la porta non ha scritto non e' fra le
+    allineate, cosi' la push non la promette.
+
+    Mutazione ESEGUITA (21/10/2026): l'id aggiunto alle allineate anche
+    con `eseguito: false` -- rossa."""
+    from hiris.app.keeper.delivery import align_notices
+    porta = _Porta(rifiuta=True)
+
+    esito = await align_notices(_app([], porta), "hiris_x", {"hiris_x": ("HIRIS", "t")},
+                                actor="osservatore")
+
+    assert esito["allineate"] == []
+    assert esito["mancate"] == ["hiris_x (servizio rifiutato)"]
+
+
+@pytest.mark.asyncio
+async def test_un_id_fuori_dalla_famiglia_e_un_errore_di_chi_chiama():
+    """R187-2: non si toglierebbe mai, quindi non si scrive."""
+    from hiris.app.keeper.delivery import align_notices
+    porta = _Porta()
+    with pytest.raises(ValueError):
+        await align_notices(_app([], porta), "hiris_x", {"altro": ("HIRIS", "t")},
+                            actor="osservatore")
+    assert porta.chiamate == []

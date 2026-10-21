@@ -410,3 +410,22 @@ async def test_la_riga_del_ritorno_non_promette_la_notifica(archivio):
     for now in (1_790_001_200.0, 1_790_001_800.0):
         await _giro(archivio, [LIFX_VIVA], avvisi, now)
     assert delivery.NOTICE_HINT not in avvisi.testi[1]
+
+
+@pytest.mark.asyncio
+async def test_un_ritorno_mentre_un_altra_resta_ferma_non_promette_la_notifica(archivio):
+    """R187-2 (revisore, giro 187): la push dice solo «è tornata», e la
+    notifica resta con l'istanza ancora ferma.
+
+    Mutazione ESEGUITA (21/10/2026): `NOTICE_HINT` aggiunta quando la
+    notifica c'e', senza guardare se la push dice un fermo -- rossa."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+    for now in (1_790_001_200.0, 1_790_001_800.0):
+        await _giro(archivio, [AVE, LIFX_VIVA], avvisi, now, notifiche)
+    assert len(avvisi.testi) == 2
+    assert "tornata" in avvisi.testi[1]
+    assert delivery.NOTICE_HINT not in avvisi.testi[1]
+    (_t, testo) = notifiche.ultima[si.NOTICE_ID]
+    assert "Casa" in testo and "Lampada" not in testo
