@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.81.0] — Gli avvisi restano anche in Home Assistant (2026-10-21)
+
+### Perché
+
+Le push agli amministratori, quelle sulle integrazioni ferme e sulle proposte importanti, hanno un limite. Quando la tocchi, apre Home Assistant e sparisce, e il testo non si ritrova più.
+
+### Added
+
+- **Gli avvisi agli amministratori restano anche fra le notifiche di Home Assistant.** Accanto alla push c'è una notifica persistente, che dice com'è la casa adesso:
+  - **Integrazioni ferme.** C'è una notifica sola, con una riga per ogni integrazione ferma da almeno due giri. Si riscrive quando l'elenco cambia, e si toglie quando l'ultima integrazione torna a funzionare. C'è anche se la push non è arrivata a nessun telefono.
+  - **Proposte importanti.** C'è una notifica per ogni proposta in attesa. Si toglie entro un'ora dalla decisione o dalla scadenza.
+  - La push finisce con «Lo trovi anche fra le notifiche di Home Assistant.», ma solo se la notifica c'è davvero.
+  - **Una notifica chiusa a mano resta chiusa** finché il suo testo non cambia: se l'elenco delle integrazioni ferme cambia, la notifica torna con il testo nuovo.
+
+  HIRIS chiede a Home Assistant, a ogni giro, quali notifiche sta mostrando. Dopo un riavvio di Home Assistant le notifiche tornano da sole. HIRIS tocca solo le notifiche sue: quelle di Home Assistant e delle integrazioni restano come sono.
+
+### Da sapere
+
+- Le notifiche persistenti di Home Assistant le vede ogni utente di Home Assistant, non solo gli amministratori.
+- HIRIS ricorda le notifiche chiuse a mano solo finché l'add-on è acceso: dopo un riavvio dell'add-on, una notifica chiusa a mano ricompare una volta.
+- Al primo giro dopo l'aggiornamento compare la notifica delle integrazioni ferme, se in quel momento ce n'è qualcuna.
+
 ## [3.80.0] — Le integrazioni ferme si dicono, la ripresa al tetto si vede: la chiusura vera dello sprint (2026-10-20)
 
 ### Perché
