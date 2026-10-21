@@ -458,6 +458,32 @@ async def test_a_closed_disconnection_window_reaches_the_app_watcher(started_app
     assert windows == [{"da": 1.0, "a": 2.0}]
 
 
+async def test_a_closed_disconnection_window_forgets_the_written_notices(started_app):
+    """Home Assistant tornato avviato puo' aver perso le notifiche persistenti
+    (vivono solo nella sua memoria): l'avvio iscrive l'ascoltatore che
+    dimentica quelle scritte, cosi' tornano al giro dopo (R187-3).
+
+    Mutazione ESEGUITA (21/10/2026): tolta
+    `ha_client.add_disconnection_listener(forget_written(app))` -- rossa."""
+    from hiris.app.keeper.delivery import NOTICES_WRITTEN_KEY
+    house = started_app[HA_CLIENT_KEY]
+    written = started_app[NOTICES_WRITTEN_KEY]
+    written["hiris_x"] = "impronta"
+    real = started_app[WATCHER_KEY]
+
+    class Osservatore:
+        def record_disconnection(self, window):
+            pass
+
+    started_app[WATCHER_KEY] = Osservatore()
+    try:
+        for listener in house.registered("disconnection"):
+            listener({"da": 1.0, "a": 2.0})
+    finally:
+        started_app[WATCHER_KEY] = real
+    assert written == {}
+
+
 async def test_a_reference_change_rereads_the_state_words(started_app):
     """A-14: il proprietario cambia la lingua della casa e Home Assistant
     manda `core_config_updated`. L'anagrafe si ricostruisce e legge la

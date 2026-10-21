@@ -546,7 +546,9 @@ async def test_una_proposta_DECISA_toglie_la_sua_notifica(casa):
 @pytest.mark.asyncio
 async def test_dopo_un_riavvio_di_HA_la_notifica_torna(casa):
     """Home Assistant tiene le notifiche persistenti solo in memoria (letto al
-    tag 2026.9.4): un riavvio le cancella, e il battito dopo le riscrive.
+    tag 2026.9.4): un riavvio le cancella, e il battito dopo le riscrive. Il
+    riavvio si riconosce dalla finestra di disconnessione che si chiude
+    (`delivery.forget_written`, iscritto all'avvio).
 
     Mutazione ESEGUITA (21/10/2026): `align_notices` che si ricorda cio' che
     ha scritto invece di chiederlo a Home Assistant -- rossa."""
@@ -557,6 +559,7 @@ async def test_dopo_un_riavvio_di_HA_la_notifica_torna(casa):
     porta = casa[ACTUATOR_KEY]
 
     porta.mostrate.clear()
+    delivery.forget_written(casa)({"da": 1.0, "a": 2.0})
     await pr._alert_high(casa)
 
     assert ident in porta.mostrate
@@ -595,3 +598,55 @@ async def test_le_notifiche_di_altri_non_si_toccano(casa):
 
     assert porta.chiamate == []
     assert "config_entry_discovery" in porta.mostrate
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_CHIUSA_A_MANO_resta_chiusa_finche_il_testo_non_cambia(casa):
+    """R187-3, scelta del proprietario del 21/10/2026: chi chiude la notifica
+    in Home Assistant non la vede tornare al battito dopo; la rivede solo se
+    cio' che dice cambia.
+
+    Mutazione ESEGUITA (21/10/2026): `closed` sempre vuoto -- rossa (la
+    notifica torna); `closed` senza il confronto d'impronta -- rossa (il
+    testo nuovo non si mostra)."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+    await pr.proposer_round(casa)
+    ident, _riga = _notifica(casa)
+    porta = casa[ACTUATOR_KEY]
+
+    porta.mostrate.clear()  # chiusa a mano, Home Assistant sempre acceso
+    await pr._alert_high(casa)
+    assert ident not in porta.mostrate
+    assert len(porta.notifiche) == 1
+
+    original = pr.ALERT_TEXT
+    pr.ALERT_TEXT = original + " (cambiata)"
+    try:
+        await pr._alert_high(casa)
+    finally:
+        pr.ALERT_TEXT = original
+    assert ident in porta.mostrate
+    assert porta.mostrate[ident]["message"].endswith("(cambiata)")
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_tolta_e_poi_voluta_di_nuovo_si_mostra(tmp_path):
+    """Una notifica che non serve piu' si dimentica: se torna a servire con
+    lo stesso testo, si mostra (non e' «chiusa a mano»).
+
+    Mutazione ESEGUITA (21/10/2026): senza il passo che dimentica le non
+    volute -- rossa."""
+    from hiris.app.keeper.delivery import NOTICES_WRITTEN_KEY, align_notices
+    porta = _Porta()
+    app = {ACTUATOR_KEY: porta, HA_CLIENT_KEY: _casa_ha(porta=porta),
+           NOTICES_WRITTEN_KEY: {}}
+    voluta = {"hiris_proposal_1": ("HIRIS", "testo")}
+
+    await align_notices(app, "hiris_proposal_", voluta, actor="proponente")
+    await align_notices(app, "hiris_proposal_", {}, actor="proponente")
+    assert porta.mostrate == {}
+    esito = await align_notices(app, "hiris_proposal_", voluta, actor="proponente")
+
+    assert esito["allineate"] == ["hiris_proposal_1"]
+    assert "hiris_proposal_1" in porta.mostrate

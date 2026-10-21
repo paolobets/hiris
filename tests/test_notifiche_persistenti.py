@@ -115,7 +115,7 @@ async def test_stesso_id_e_stesso_titolo_ma_testo_diverso_si_riscrive():
                                 actor="osservatore")
 
     assert porta.chiamate == [notice_call("hiris_x", "HIRIS", "nuovo")]
-    assert esito == {"allineate": ["hiris_x"], "mancate": []}
+    assert esito == {"allineate": ["hiris_x"], "chiuse": [], "mancate": []}
 
 
 @pytest.mark.asyncio
@@ -144,3 +144,64 @@ async def test_un_id_fuori_dalla_famiglia_e_un_errore_di_chi_chiama():
         await align_notices(_app([], porta), "hiris_x", {"altro": ("HIRIS", "t")},
                             actor="osservatore")
     assert porta.chiamate == []
+
+
+# -- il ricordo delle chiuse a mano (R187-3; revisore, giro 191) ----------------
+
+def _app_remembering(mostrate, porta, ricordo):
+    from hiris.app.keeper.delivery import NOTICES_WRITTEN_KEY
+    return {**_app(mostrate, porta), NOTICES_WRITTEN_KEY: ricordo}
+
+
+@pytest.mark.asyncio
+async def test_una_scrittura_rifiutata_non_entra_nel_ricordo():
+    """R191-1 C: una notifica mai scritta non e' «chiusa a mano», e al giro
+    dopo si riprova.
+
+    Mutazione ESEGUITA (21/10/2026): il ricordo prende l'impronta anche con
+    `eseguito: false` -- rossa."""
+    from hiris.app.keeper.delivery import align_notices
+    ricordo = {}
+    voluta = {"hiris_x": ("HIRIS", "t")}
+
+    await align_notices(_app_remembering([], _Porta(rifiuta=True), ricordo), "hiris_x",
+                        voluta, actor="osservatore")
+    porta = _Porta()
+    esito = await align_notices(_app_remembering([], porta, ricordo), "hiris_x", voluta,
+                                actor="osservatore")
+
+    assert porta.chiamate == [notice_call("hiris_x", "HIRIS", "t")]
+    assert esito["allineate"] == ["hiris_x"]
+
+
+@pytest.mark.asyncio
+async def test_si_dimentica_solo_dentro_la_propria_famiglia():
+    """R191-1 D: il giro del proponente non cancella il ricordo delle
+    integrazioni ferme.
+
+    Mutazione ESEGUITA (21/10/2026): dimenticare senza il filtro sulla
+    famiglia -- rossa."""
+    from hiris.app.keeper.delivery import align_notices
+    ricordo = {"hiris_stopped_integrations": notification_fingerprint("HIRIS", "t")}
+
+    await align_notices(_app_remembering([], _Porta(), ricordo), "hiris_proposal_", {},
+                        actor="proponente")
+
+    assert "hiris_stopped_integrations" in ricordo
+
+
+@pytest.mark.asyncio
+async def test_una_chiusa_a_mano_non_e_fra_le_allineate():
+    """R191-1 F: la push promette la notifica solo se c'e' davvero.
+
+    Mutazione ESEGUITA (21/10/2026): le chiuse aggiunte alle allineate --
+    rossa."""
+    from hiris.app.keeper.delivery import align_notices
+    ricordo = {"hiris_x": notification_fingerprint("HIRIS", "t")}
+    porta = _Porta()
+
+    esito = await align_notices(_app_remembering([], porta, ricordo), "hiris_x",
+                                {"hiris_x": ("HIRIS", "t")}, actor="osservatore")
+
+    assert porta.chiamate == []
+    assert esito == {"allineate": [], "chiuse": ["hiris_x"], "mancate": []}
