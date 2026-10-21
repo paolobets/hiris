@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 
+from aiohttp import web
+
 from ..action.actuator import ACTUATOR_KEY
 from ..action.registry import SERVICE_REGISTRY_KEY
 from ..proxy._sanitize import truncate_with_marker
@@ -129,6 +131,28 @@ async def notify_admins(app, text: str, *, actor: str) -> dict:
 NOTICE_HINT = "Lo trovi anche fra le notifiche di Home Assistant."
 
 
+#: Le notifiche persistenti scritte in QUESTO giro di vita di Home Assistant:
+#: `{notification_id: impronta}`. Serve a una cosa sola, la scelta del
+#: proprietario del 21/10/2026 sul rilievo R187-3: **una notifica chiusa a
+#: mano resta chiusa finche' il suo testo non cambia**. Home Assistant non
+#: dice chi l'ha tolta, quindi «manca e l'avevo scritta con questa impronta»
+#: e' l'unico modo di riconoscere la chiusura a mano. Si svuota quando Home
+#: Assistant torna avviato dopo una disconnessione (`forget_written`): un
+#: riavvio cancella le notifiche, e quelle vanno riscritte. Vive solo nel
+#: processo: dopo un riavvio dell'add-on una notifica chiusa a mano ricompare
+#: una volta.
+NOTICES_WRITTEN_KEY = web.AppKey("notices_written", dict)
+
+
+def forget_written(app):
+    """L'ascoltatore della disconnessione (`HAClient.add_disconnection_listener`)
+    che dimentica le notifiche scritte: Home Assistant e' tornato avviato, e
+    cio' che mostrava prima puo' non esserci piu'."""
+    def _forget(_window: dict) -> None:
+        app[NOTICES_WRITTEN_KEY].clear()
+    return _forget
+
+
 def notice_call(notice_id: str, title: str, text: str) -> dict:
     """La chiamata che scrive una notifica persistente, o la riscrive: con un
     `notification_id` gia' presente Home Assistant la SOSTITUISCE (evento
@@ -162,8 +186,15 @@ async def align_notices(app, family: str, wanted: dict[str, tuple[str, str]], *,
     cancella. Cosi' tornano al giro dopo il riavvio, senza un gancio che lo
     aspetti.
 
+    **Una notifica chiusa a mano resta chiusa** finche' il testo non cambia
+    (R187-3, scelta del proprietario del 21/10/2026): se manca e quella
+    impronta e' gia' stata scritta in questo giro di vita di Home Assistant
+    (`NOTICES_WRITTEN_KEY`), non si riscrive, ed e' fra le `chiuse`. Una
+    notifica che non serve piu' si dimentica, cosi' se torna si mostra.
+
     Ogni scrittura passa dalla porta dei servizi (`actuator.execute`), come la
-    push. Torna `{"allineate": [id], "mancate": ["id (motivo)"]}`, o
+    push. Torna `{"allineate": [id], "chiuse": [id], "mancate": ["id
+    (motivo)"]}`, o
     `{"errore"}` quando non si sa cosa Home Assistant mostra: allora non si
     tocca niente. Non solleva per cio' che risponde Home Assistant: chi
     avvisa e' un giro che deve continuare. Solleva per un id di `wanted` fuori
@@ -183,12 +214,21 @@ async def align_notices(app, family: str, wanted: dict[str, tuple[str, str]], *,
                        "(%s) -- non tocco niente", shown["errore"])
         return {"errore": shown["errore"]}
     shown = shown["notifiche"]
+    # Senza la chiave (un'app di prova che non la monta) non si ricorda niente:
+    # ogni notifica che manca si riscrive.
+    written = app.get(NOTICES_WRITTEN_KEY, {})
+    for notice_id in [i for i in written if i.startswith(family) and i not in wanted]:
+        del written[notice_id]
     calls = [withdrawal_call(notice_id) for notice_id in shown
              if notice_id.startswith(family) and notice_id not in wanted]
-    aligned = [notice_id for notice_id, (title, text) in wanted.items()
-               if shown.get(notice_id) == notification_fingerprint(title, text)]
+    prints = {notice_id: notification_fingerprint(title, text)
+              for notice_id, (title, text) in wanted.items()}
+    aligned = [notice_id for notice_id in wanted if shown.get(notice_id) == prints[notice_id]]
+    closed = [notice_id for notice_id in wanted
+              if notice_id not in shown and written.get(notice_id) == prints[notice_id]]
     calls += [notice_call(notice_id, title, text)
-              for notice_id, (title, text) in wanted.items() if notice_id not in aligned]
+              for notice_id, (title, text) in wanted.items()
+              if notice_id not in aligned and notice_id not in closed]
     failures = []
     for call in calls:
         notice_id = call["dati"]["notification_id"]
@@ -199,6 +239,8 @@ async def align_notices(app, family: str, wanted: dict[str, tuple[str, str]], *,
             continue
         if occurrence.get("eseguito"):
             aligned.append(notice_id)
+            if notice_id in prints:
+                written[notice_id] = prints[notice_id]
         else:
             error = truncate_with_marker(
                 str(occurrence.get("errore") or "non è arrivata."), REASON_CAP)
@@ -206,4 +248,4 @@ async def align_notices(app, family: str, wanted: dict[str, tuple[str, str]], *,
     if calls:
         logger.info("notifiche persistenti %s: %d chiamate, %d non riuscite",
                     family, len(calls), len(failures))
-    return {"allineate": aligned, "mancate": failures}
+    return {"allineate": aligned, "chiuse": closed, "mancate": failures}

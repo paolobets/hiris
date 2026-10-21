@@ -58,6 +58,7 @@ from .home_space.rounds import (
 )
 from .home_space.topology import rebuild
 from .home_space.type_vocabulary import REPO_JUDGMENTS
+from .keeper.delivery import NOTICES_WRITTEN_KEY, forget_written
 from .keeper.exchange import interpreta_promise
 from .keeper.store import AGENDA_KEY, AgendaStore
 from .keeper.sweeper import SWEEPER_KEY, Sweeper, _promise_delivery
@@ -348,6 +349,7 @@ def live_values() -> dict:
         (RECIPE_CURSOR_KEY, 0), (LAST_REPAIR_KEY, None), (STATISTIC_IDS_HELD_KEY, None))}
     values[STATISTIC_IDS_LOCK_KEY] = asyncio.Lock()
     values[TRACE_CURSORS_KEY] = {}
+    values[NOTICES_WRITTEN_KEY] = {}
     values[TRACE_UNRESOLVED_KEY] = set()
     values[CHAIN_IN_FLIGHT] = set()
     return values
@@ -465,6 +467,7 @@ async def _on_startup(app: web.Application) -> None:
     ha_client.add_topology_listener(
         mirror_reload_listener(ha_client, entity_cache, lambda: app.get(WATCHER_KEY)))
     ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get(WATCHER_KEY)))
+    ha_client.add_disconnection_listener(forget_written(app))
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
     # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
     ha_config_dir = home_assistant_folder()

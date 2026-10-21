@@ -115,7 +115,7 @@ async def test_stesso_id_e_stesso_titolo_ma_testo_diverso_si_riscrive():
                                 actor="osservatore")
 
     assert porta.chiamate == [notice_call("hiris_x", "HIRIS", "nuovo")]
-    assert esito == {"allineate": ["hiris_x"], "mancate": []}
+    assert esito == {"allineate": ["hiris_x"], "chiuse": [], "mancate": []}
 
 
 @pytest.mark.asyncio
