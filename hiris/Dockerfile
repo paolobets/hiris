@@ -84,7 +84,52 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      le riprese e dichiara il turno troncato (Tappa 8, Task 11). Se la CLI
 #      cambia forma, il ponte torna a chiamare «riuscito» la coda di una
 #      risposta. Ultima misura dal vivo: 2.1.300, 15/10/2026 (P7). Sui finti
-#      della nuvola: 2.1.304, 20/10/2026 (la voce qui sotto).
+#      della nuvola: 2.1.306, 21/10/2026 (la voce qui sotto).
+# 21 ottobre 2026 — alzata da 2.1.304 a **2.1.306**, per scelta del
+# proprietario prima del rilascio della 3.80.0 («Aggiorna la cli e poi
+# rilascia la 3.80»). `npm view` dava la 2.1.305 (20/10/2026 alle 19:29 UTC)
+# e la 2.1.306 (21/10/2026 alle 02:28 UTC), l'ultima pubblicata.
+#
+# Letto il CHANGELOG ufficiale della CLI (github.com/anthropics/claude-code,
+# CHANGELOG.md, il 21/10/2026), 2.1.305 e 2.1.306. Le righe che nominano
+# `-p` o cio' che il ponte usa:
+#   - 2.1.305: corretta una regressione della 2.1.304, ogni richiesta fallita
+#     quando l'endpoint o un gateway rifiuta la ricerca degli strumenti, o
+#     quando `ToolSearch` manca da `--tools`: ora la CLI riprova senza. Il
+#     ponte passa `--tools ""` ma non imposta `ANTHROPIC_BASE_URL`, e la
+#     ricerca degli strumenti si accende di serie solo dietro quello (voce
+#     del 20/10 qui sotto);
+#   - 2.1.305: un server MCP passato dall'SDK non viene piu' sostituito da
+#     uno con lo stesso nome nelle impostazioni. Il ponte passa
+#     `--strict-mcp-config`;
+#   - 2.1.306: `claude -p` dentro le sessioni nella nuvola non dice piu' «Not
+#     logged in»; un errore dell'API non diventa piu' «prompt is too long»
+#     nelle sessioni con molti strumenti MCP.
+# Nessuna riga cambia `--output-format stream-json`, l'evento `system/init`,
+# `--mcp-config` o la ripresa al tetto di token.
+# Misurato il 21/10/2026 nel contenitore della nuvola, come il 20/10 (argv di
+# produzione, `chiusura/fm-cattura` con il finto che risponde `max_tokens`
+# per i casi del tetto), sulla 2.1.304 e sulla 2.1.306:
+#   - stesso `init` (il server `hiris` `connected`, dodici strumenti, tutti
+#     `mcp__hiris__`), stesso prompt di sistema di 9.168 caratteri, gli stessi
+#     dodici strumenti di HIRIS con gli schemi interi, una chiamata a
+#     `mcp__hiris__search` arrivata al server; la richiesta all'API e' la
+#     stessa a parte l'intestazione di fatturazione e la cartella temporanea,
+#     `DeferredToolPlaceholder` compreso (sparisce con
+#     `ENABLE_TOOL_SEARCH=false` anche sulla 2.1.306);
+#   - la ripresa al tetto: un evento `user` con `isSynthetic: true` per ogni
+#     ripresa; una ripresa e rc 0, oppure tre e rc 1, `is_error` vero,
+#     `terminal_reason` `api_error`, `num_turns` 4. Passati a `agent/runner`,
+#     i due stream escono «troncati» sulle due versioni, e i due di controllo
+#     «riusciti»;
+#   - il transcript di un turno senza strumenti: 114.141 byte sulla 2.1.304,
+#     113.714 sulla 2.1.306; con una chiamata 118.629 e 118.283. Due giri
+#     della stessa 2.1.304, il 20 e il 21/10, differiscono di 427 byte.
+# Il passo 5 dal vivo, con il modello vero, resta da fare dal PC.
+#
+# **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
+# (28/09/2026), finche' il passo 4 non legge la 2.1.306 da `GET /api/health`.
+#
 # 20 ottobre 2026 — alzata da 2.1.300 a **2.1.304**, per scelta del
 # proprietario dentro la 3.80.0 («aggiorna il ponte e rilascia»). `npm view`
 # dava la 2.1.304 (19/10/2026 alle 19:47 UTC) come ultima pubblicata; in mezzo
@@ -468,7 +513,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.304 \
+    && npm install -g @anthropic-ai/claude-code@2.1.306 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \

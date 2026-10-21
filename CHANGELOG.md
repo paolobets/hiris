@@ -34,9 +34,9 @@ Questa versione le chiude.
 
 ### Componenti
 
-- CLI del ponte **2.1.304** (dalla 2.1.300), per scelta di Paolo del 20/10/2026.
-  - Letto il CHANGELOG ufficiale dalla 2.1.301 alla 2.1.304: nessuna voce cambia `stream-json`, `system/init`, `--mcp-config` o la ripresa al tetto. La ricerca degli strumenti accesa dietro un indirizzo dell'API diverso non tocca il ponte, che non lo imposta.
-  - Misurato nella nuvola con l'argv di produzione e un'API finta: stessi strumenti e stesso prompt, e la ripresa al tetto arriva nella stessa forma, quindi il turno esce «troncato» anche sulla 2.1.304.
+- CLI del ponte **2.1.306** (dalla 2.1.300), per scelta di Paolo del 20 e del 21/10/2026.
+  - Letto il CHANGELOG ufficiale dalla 2.1.301 alla 2.1.306: nessuna voce cambia `stream-json`, `system/init`, `--mcp-config` o la ripresa al tetto. La ricerca degli strumenti accesa dietro un indirizzo dell'API diverso non tocca il ponte, che non lo imposta.
+  - Misurato nella nuvola con l'argv di produzione e un'API finta, sulla 2.1.304 e sulla 2.1.306: stessi strumenti e stesso prompt, e la ripresa al tetto arriva nella stessa forma, quindi il turno esce «troncato» anche sulla 2.1.306.
 
 ### Da sapere
 
