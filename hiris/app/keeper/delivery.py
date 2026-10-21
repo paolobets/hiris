@@ -132,7 +132,7 @@ NOTICE_HINT = "Lo trovi anche fra le notifiche di Home Assistant."
 def notice_call(notice_id: str, title: str, text: str) -> dict:
     """La chiamata che scrive una notifica persistente, o la riscrive: con un
     `notification_id` gia' presente Home Assistant la SOSTITUISCE (evento
-    `UPDATED`, letto in `persistent_notification/helpers.py` al tag 2026.9.4),
+    `UPDATED`, letto in `persistent_notification/__init__.py::async_create` al tag 2026.9.4),
     quindi un id stabile non fa mai doppioni."""
     return {"servizio": "persistent_notification.create", "bersaglio": {},
             "dati": {"notification_id": notice_id, "title": title, "message": text}}
