@@ -238,25 +238,46 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
             "README.md", "scripts/release.py",
         ] if (ROOT / p).exists()
     ]
-    cmds = [
-        ["git", "add", "hiris/config.yaml", "CHANGELOG.md",
-         registro.REGISTER.relative_to(registro.ROOT).as_posix(), *extra],
-        ["git", "commit", "-m", f"chore: release v{version}"],
+    add = ["git", "add", "hiris/config.yaml", "CHANGELOG.md",
+           registro.REGISTER.relative_to(registro.ROOT).as_posix(), *extra]
+    commit = ["git", "commit", "-m", f"chore: release v{version}"]
+    # Il commit di versione (CHANGELOG e config.yaml) lo fa gia' chi prepara
+    # il rilascio: allo script resta solo cio' che cambia la timbratura del
+    # registro, e quando non chiude nessuna voce l'indice e' vuoto. Un
+    # `git commit` sull'indice vuoto fallisce prima di tag, push e Release:
+    # misurato nella 3.80.0, il 21/10/2026 (R186-1, R193-1). Allora non si
+    # committa, e il tag va su HEAD, che e' il commit di versione.
+    staged = ["git", "diff", "--cached", "--quiet"]
+    tail = [
         ["git", "tag", f"v{version}"],
         ["git", "push", "origin", "HEAD:master", "--tags"],
     ]
-    for cmd in cmds:
-        if dry_run:
+    if dry_run:
+        for cmd in (add, staged, commit, *tail):
             _info(f"[dry-run] {' '.join(cmd)}")
-            continue
-        # check=False esplicito: il returncode si legge subito dopo e si
-        # decide da soli come fallire (`_fail` con il comando per esteso) --
-        # un check=True solleverebbe un'eccezione generica al suo posto.
-        result = subprocess.run(cmd, cwd=ROOT, check=False)
-        if result.returncode != 0:
-            _fail(f"Command failed: {' '.join(cmd)}")
-    if not dry_run:
-        _ok(f"Committed, tagged v{version}, pushed to origin/master")
+        return
+    _run_or_fail(add)
+    # `git diff --cached --quiet`: 0 se l'indice non ha niente, 1 se ha
+    # qualcosa; ogni altro codice e' un errore di git.
+    found = subprocess.run(staged, cwd=ROOT, check=False).returncode
+    if found == 1:
+        _run_or_fail(commit)
+    elif found == 0:
+        _info("Nothing staged for the release commit: tagging HEAD")
+    else:
+        _fail(f"Command failed: {' '.join(staged)}")
+    for cmd in tail:
+        _run_or_fail(cmd)
+    _ok(f"Tagged v{version} and pushed to origin/master")
+
+
+def _run_or_fail(cmd: list[str]) -> None:
+    # check=False esplicito: il returncode si legge subito dopo e si
+    # decide da soli come fallire (`_fail` con il comando per esteso) --
+    # un check=True solleverebbe un'eccezione generica al suo posto.
+    result = subprocess.run(cmd, cwd=ROOT, check=False)
+    if result.returncode != 0:
+        _fail(f"Command failed: {' '.join(cmd)}")
 
 
 # ---------------------------------------------------------------------------

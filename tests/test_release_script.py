@@ -196,3 +196,50 @@ def test_il_registro_entra_nel_commit_del_rilascio():
     add = mock_run.call_args_list[0].args[0]
     assert add[:2] == ["git", "add"]
     assert "docs/design/2026-10-01-registro-dei-doppioni.md" in add
+
+
+def _git_answers(staged_rc):
+    """`subprocess.run` finto: `git diff --cached --quiet` risponde
+    `staged_rc`, ogni altro comando riesce."""
+    def run(cmd, **kwargs):
+        rc = staged_rc if cmd[:3] == ["git", "diff", "--cached"] else 0
+        return MagicMock(returncode=rc)
+    return run
+
+
+def _commands(mock_run):
+    return [call.args[0][:2] for call in mock_run.call_args_list]
+
+
+def test_indice_vuoto_niente_commit_e_tag_su_head():
+    """Il commit di versione lo fa gia' chi prepara il rilascio: quando la
+    timbratura non chiude nessuna voce l'indice e' vuoto, e un `git commit`
+    fallirebbe prima di tag, push e Release (la 3.80.0, 21/10/2026; R186-1,
+    R193-1). Lo script salta il commit e tagga HEAD.
+    Mutazione ESEGUITA: il commit sempre, senza guardare l'indice -- rossa."""
+    with patch("subprocess.run", side_effect=_git_answers(0)) as mock_run:
+        rel.git_commit_and_tag("3.81.0", dry_run=False)
+    assert _commands(mock_run) == [
+        ["git", "add"], ["git", "diff"], ["git", "tag"], ["git", "push"]]
+
+
+def test_indice_pieno_il_commit_viene_prima_del_tag():
+    """La timbratura ha chiuso delle voci: il registro e' nell'indice, e il
+    commit del rilascio lo porta prima del tag.
+    Mutazione ESEGUITA: il commit mai -- rossa."""
+    with patch("subprocess.run", side_effect=_git_answers(1)) as mock_run:
+        rel.git_commit_and_tag("3.81.0", dry_run=False)
+    assert _commands(mock_run) == [
+        ["git", "add"], ["git", "diff"], ["git", "commit"], ["git", "tag"],
+        ["git", "push"]]
+
+
+def test_un_errore_di_git_sull_indice_ferma_prima_del_tag():
+    """`git diff --cached --quiet` risponde 0 o 1; ogni altro codice e' un
+    errore di git, e non si tagga una cosa che non si e' guardata.
+    Mutazione ESEGUITA: ogni codice diverso da 1 letto come indice vuoto --
+    rossa."""
+    with (patch("subprocess.run", side_effect=_git_answers(128)) as mock_run,
+          pytest.raises(SystemExit)):
+        rel.git_commit_and_tag("3.81.0", dry_run=False)
+    assert ["git", "tag"] not in _commands(mock_run)

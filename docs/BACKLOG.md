@@ -972,26 +972,6 @@ moderazione è falso: lì la pagina Modelli non sistema niente (lezione G39-2).
 Proposta: il 403 passa in `altro`, come il 400. Prima si misura cosa cambia nella pagina Modelli,
 perché spostarlo cambia anche come si classifica l'esito del provider.
 
-### `release.py` si ferma sul commit vuoto quando non c'è niente da timbrare — aperta il 21/10/2026
-
-`origine: il rilascio della 3.80.0, 21/10/2026: lo Sprint ha completato a mano tag, push e Release; causa trovata dal revisore (R186-1, giro 186, /mnt/project-files/revisioni/giro-186.md)` · `scripts/release.py::git_commit_and_tag`
-
-`git_commit_and_tag` fa `git add` di `config.yaml`, `CHANGELOG.md`, del registro dei doppioni e dei
-file extra, poi `git commit`, senza guardare se l'indice è vuoto. Nel flusso di oggi il commit di
-versione (`CHANGELOG.md` e `config.yaml`) lo fa già l'integrazione, quindi allo script resta da
-committare solo ciò che cambia la timbratura del registro:
-- nella 3.79.1 la timbratura chiudeva delle voci, e il commit di rilascio `b34028c5` è fatto solo
-  del registro;
-- nella 3.80.0 non c'erano voci da chiudere (da v3.79.1 nessun commit tocca il registro, e
-  `registro.release` torna `[]`). L'indice era vuoto e `git commit` è fallito prima di tag, push e
-  Release.
-
-Succede a ogni rilascio senza voci da chiudere. Due strade, da scegliere:
-- lo script salta il commit quando l'indice è vuoto (`git diff --cached --quiet`) e tagga `HEAD`,
-  cioè il commit di versione;
-- oppure il commit di versione lo fa lo script, come dice il passo 4 della procedura di
-  `CLAUDE.md`, e l'integrazione non lo fa più.
-
 ### Il pre-push scatta sul bump di una versione già rilasciata — aperta il 21/10/2026
 
 `origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
@@ -3971,6 +3951,28 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~`release.py` si ferma sul commit vuoto quando non c'è niente da timbrare~~ — **USCITA con la v3.81.0** — aperta il 21/10/2026
+
+`fatta il 21/10/2026 sul ramo d'integrazione, prima strada scelta da Paolo (R193-1, giro 193): quando l'indice è vuoto lo script salta il commit e tagga HEAD, cioè il commit di versione; tre prove in tests/test_release_script.py, con le mutazioni eseguite, e una prova con git vero in un clone usa e getta`
+
+`origine: il rilascio della 3.80.0, 21/10/2026: lo Sprint ha completato a mano tag, push e Release; causa trovata dal revisore (R186-1, giro 186, /mnt/project-files/revisioni/giro-186.md)` · `scripts/release.py::git_commit_and_tag`
+
+`git_commit_and_tag` fa `git add` di `config.yaml`, `CHANGELOG.md`, del registro dei doppioni e dei
+file extra, poi `git commit`, senza guardare se l'indice è vuoto. Nel flusso di oggi il commit di
+versione (`CHANGELOG.md` e `config.yaml`) lo fa già l'integrazione, quindi allo script resta da
+committare solo ciò che cambia la timbratura del registro:
+- nella 3.79.1 la timbratura chiudeva delle voci, e il commit di rilascio `b34028c5` è fatto solo
+  del registro;
+- nella 3.80.0 non c'erano voci da chiudere (da v3.79.1 nessun commit tocca il registro, e
+  `registro.release` torna `[]`). L'indice era vuoto e `git commit` è fallito prima di tag, push e
+  Release.
+
+Succede a ogni rilascio senza voci da chiudere. Due strade, da scegliere:
+- lo script salta il commit quando l'indice è vuoto (`git diff --cached --quiet`) e tagga `HEAD`,
+  cioè il commit di versione;
+- oppure il commit di versione lo fa lo script, come dice il passo 4 della procedura di
+  `CLAUDE.md`, e l'integrazione non lo fa più.
 
 ### ~~La credenziale del ponte vive quanto il turno~~ — **USCITA con la v3.79.1**
 
