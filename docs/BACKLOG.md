@@ -961,6 +961,95 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Un 403 non dice «si sistema nella pagina Modelli» (R181-1) — aperta il 21/10/2026
+
+`origine: il revisore (R181-1, giro 181), dopo la correzione del 403 della 3.80.0; rinviata al prossimo sprint il 21/10/2026` · `hiris/app/model_resolution.py`
+
+Dalla 3.80.0 un 403 cita la causa del provider («Key limit exceeded»), ma resta nella famiglia
+«credenziale», e la chat chiude dicendo «si sistema nella pagina Modelli». Per un blocco di
+moderazione è falso: lì la pagina Modelli non sistema niente (lezione G39-2).
+
+Proposta: il 403 passa in `altro`, come il 400. Prima si misura cosa cambia nella pagina Modelli,
+perché spostarlo cambia anche come si classifica l'esito del provider.
+
+### `release.py` si ferma sul commit vuoto quando non c'è niente da timbrare — aperta il 21/10/2026
+
+`origine: il rilascio della 3.80.0, 21/10/2026: lo Sprint ha completato a mano tag, push e Release; causa trovata dal revisore (R186-1, giro 186, /mnt/project-files/revisioni/giro-186.md)` · `scripts/release.py::git_commit_and_tag`
+
+`git_commit_and_tag` fa `git add` di `config.yaml`, `CHANGELOG.md`, del registro dei doppioni e dei
+file extra, poi `git commit`, senza guardare se l'indice è vuoto. Nel flusso di oggi il commit di
+versione (`CHANGELOG.md` e `config.yaml`) lo fa già l'integrazione, quindi allo script resta da
+committare solo ciò che cambia la timbratura del registro:
+- nella 3.79.1 la timbratura chiudeva delle voci, e il commit di rilascio `b34028c5` è fatto solo
+  del registro;
+- nella 3.80.0 non c'erano voci da chiudere (da v3.79.1 nessun commit tocca il registro, e
+  `registro.release` torna `[]`). L'indice era vuoto e `git commit` è fallito prima di tag, push e
+  Release.
+
+Succede a ogni rilascio senza voci da chiudere. Due strade, da scegliere:
+- lo script salta il commit quando l'indice è vuoto (`git diff --cached --quiet`) e tagga `HEAD`,
+  cioè il commit di versione;
+- oppure il commit di versione lo fa lo script, come dice il passo 4 della procedura di
+  `CLAUDE.md`, e l'integrazione non lo fa più.
+
+### Il pre-push scatta sul bump di una versione già rilasciata — aperta il 21/10/2026
+
+`origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
+
+Il pre-push guarda i commit fra la punta remota del ramo e quella locale. Un ramo cloud che si
+riallinea a master dopo un rilascio porta nell'intervallo il commit di versione, già rilasciato e
+già su master. Il cancello dei componenti scatta, e per pushare serve `HIRIS_COMPONENTI_OK=1`, che
+così diventa un'abitudine invece di voler dire «rilascio comunque».
+
+Proposta: l'intervallo esclude i commit già su `origin/master` (`git rev-list` con
+`^origin/master`).
+
+### Le due rifiniture rimaste di S-37 — aperta il 21/10/2026
+
+`origine: la chiusura dello sprint «Una fonte sola di verità», 21/10/2026: S-37 è provata dal vivo nella 3.80.0, queste due parti sono rimaste fuori` · `hiris/app/model_resolution.py`
+
+- La frase con la causa di **ogni anello** della catena, non solo dell'ultimo.
+- Il registro sigillato.
+
+### Il tetto R18 si rimisura sulla catena — aperta il 21/10/2026
+
+`origine: la chiusura dello sprint «Una fonte sola di verità», 21/10/2026: il criterio 4 è chiuso sul ponte, sulla catena l'ha smarcato il proprietario il 15/10 senza misura` · `scripts/batteria_misure.py` · `docs/design/2026-10-01-una-fonte-sola-di-verita.md` (R18)
+
+Quando la catena avrà credito, `scripts/batteria_misure.py` sulla catena, contro i numeri di R18.
+
+### L'avviso delle integrazioni ferme ha una riga di log sua (R185-1) — aperta il 21/10/2026
+
+`origine: il revisore (R185-1, giro 185, /mnt/project-files/revisioni/giro-185.md), 21/10/2026; nota bassa` · `hiris/app/mind/stopped_integrations.py` · `hiris/app/keeper/delivery.py`
+
+Nel registro dell'add-on l'avviso delle integrazioni ferme si vede solo dalla riga generica di
+`notify_admins` («avviso agli amministratori: …»), che è la stessa dell'avviso del proponente: il
+testo non dice chi avvisa.
+
+Due strade:
+- un `logger.info` in `tell` con il numero di fermi e di ritorni detti, senza testo e senza nomi
+  (vincolo 3.6);
+- oppure l'attore nella riga di `notify_admins`.
+
+### I lavori periodici si chiamano ancora «partial» nel log — aperta il 21/10/2026
+
+`origine: lo Sprint, verifica dal vivo della 3.80.0 del 21/10/2026, raccolta dal coordinatore` · `hiris/app/startup.py` · `639897d3`
+
+La 3.80.0 dice nel CHANGELOG che i lavori periodici hanno di nuovo il loro nome nel registro
+dell'add-on. Dal vivo, il 21/10, molti compaiono ancora come «partial». Sono quelli con intervalli
+di 15 secondi e di 1, 2, 5, 10 e 60 minuti: `639897d3` ne ha nominati solo una parte.
+
+Letto su master `d4e8c769`: in `startup.py` ogni `scheduler.add_job` passa la funzione e gli
+argomenti a parte. La causa quindi non sta in quelle righe, e va trovata prima di correggere. La
+prova di `639897d3` chiede i nomi allo schedulatore dell'app avviata, eppure resta verde: va
+capito anche perché non la vede.
+
+### Le ricette nella batteria degli attori — aperta il 21/10/2026
+
+`origine: la chiusura dello sprint «Una fonte sola di verità», 21/10/2026: le ricette non avevano turni nella finestra di un giorno` · `scripts/batteria_attori.py`
+
+La batteria degli attori ha misurato l'analista ma non le ricette. Si rilancia con una finestra
+più larga (`--giorni`), così che comprenda turni delle ricette.
+
 ### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
 
 `origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`

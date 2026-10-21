@@ -727,6 +727,24 @@ In `docs/superpowers/audit-2026-10-01/` — cartella fuori da git, archivio dell
   (`CLAUDE.md`, `README.md`, `docs/BACKLOG.md`, questo §12) e fa la revisione dell'intero ramo dopo
   F12; rapporto in `/mnt/project-files/chiusura/f9-rapporto.md`.
 
+- **15/10/2026** — Rilasciata la **3.79.1**, il **rilascio 2** della Chiusura (`server.py` spezzato
+  e i documenti; CLI del ponte 2.1.300). Il proprietario smarca il criterio 4 sulla catena e chiede
+  l'avviso delle integrazioni ferme.
+- **15-20/10/2026** — Le voci della chiusura vera: S-37 provata dal vivo, con la correzione del 403
+  che ne è nata; S-38 non si riproduce; il passo 2 del Task 4.0 chiuso dalla migrazione del 13/10;
+  P7 e T11 (il turno del ponte fermato dal tetto esce «troncato»); l'avviso delle integrazioni
+  ferme; i lavori periodici col loro nome nel registro dell'add-on.
+- **21/10/2026** — Rilasciata la **3.80.0** (tag `v3.80.0`, CLI del ponte 2.1.306). Rapporto
+  finale: `/mnt/project-files/chiusura/rapporto-finale-sprint.md`. Le voci rimaste vanno nel
+  BACKLOG, sotto «In attesa»: R181-1, `release.py` che si ferma sul commit vuoto, il pre-push che
+  scatta su un bump già rilasciato, le due rifiniture di S-37, R18 sulla catena, le ricette nella batteria degli attori, R185-1 (l'avviso delle
+  integrazioni ferme senza una riga di log sua) e i lavori periodici che dal vivo si chiamano ancora
+  «partial». La prima push delle integrazioni ferme è partita dal vivo al secondo giro delle
+  condizioni di sistema, come previsto. Sulla CLI 2.1.306 un turno fermato dal tetto esce
+  con `subtype: success` e `is_error: false`: la 3.80.0 lo dichiara troncato lo stesso, perché lo
+  riconosce da `isSynthetic` (giro 185 del revisore, con una sonda su quella forma). Non c'è niente
+  da correggere.
+
 **Lo stato finale, e come si verifica.** Lo sprint si chiude col **rilascio 2** (`server.py`
 spezzato e i documenti), e si dice chiuso quando il PC ha misurato tutti e otto i criteri del §8.
 Questo documento non scrive le misure: scrive come si prendono, e chi le prende.
@@ -741,3 +759,16 @@ Questo documento non scrive le misure: scrive come si prendono, e chi le prende.
 | 6. Attori senza entità | `tests/test_attori_compongono.py` (fetta F7 della Chiusura): le funzioni da sorvegliare le chiede ai giri dello schedulatore, non a un elenco | il ramo |
 | 7. Ogni rilascio dal vivo | le verifiche dal vivo di ogni rilascio, dopo che il proprietario aggiorna l'add-on; per il rilascio 2 la fotografia delle porte (`scripts/fotografia_porte.py confronta`) identica a quella del rilascio 1 | il PC |
 | 8. Documenti veri | `tests/test_struttura_reale.py` (la struttura di `CLAUDE.md` contro il disco), `tests/js/readme-rotte.test.mjs` (le rotte del README contro il router) e la tabella delle affermazioni di `CLAUDE.md` rilette contro il codice, nel rapporto di F9 | il ramo e F9 |
+
+**L'esito, al 21/10/2026.**
+
+| § 8 | Esito | Misura |
+|---|---|---|
+| 1. Registro | **chiuso** | 0 voci aperte su 515, giro 180 del revisore |
+| 2. Sonda di parità | **chiuso** | 0 disaccordi sulla cattura nuova della casa vera, dopo `2d8ec1d3` |
+| 3. Cancello | **chiuso** | i quattro cancelli nel pre-push e nella CI; `doppioni_noti.json` vuoto; una sola ammissione, `GET /api/misure`, con la sua ragione |
+| 4. Batteria della chat | **chiuso sul ponte**; catena smarcata dal proprietario (15/10) | sul ponte, contro la 3.77.0: −10% di token, −21% di giri, −28% sul tempo tipico di risposta. R18 sulla catena non rimisurato (BACKLOG) |
+| 5. Batteria degli attori | **chiuso per l'analista**; ricette non misurate | analista contro la 3.78.0: 61.010 token di ingresso per giro contro 66.956, tempo mediano 21,5 s contro 28,5, 0 troncati, 0 falliti. Le ricette non avevano turni nella finestra di un giorno (BACKLOG) |
+| 6. Attori senza entità | **chiuso** | `tests/test_attori_compongono.py` verde |
+| 7. Ogni rilascio dal vivo | 3.79.0 e 3.79.1 **fatte**; 3.80.0 **in corso** | dopo l'aggiornamento dell'add-on: `/api/health` con `ponte.cli` 2.1.306, la prova del ponte dal vivo, la prima push delle integrazioni ferme |
+| 8. Documenti veri | **chiuso** | `tests/test_struttura_reale.py`, con il modulo nuovo, e le rotte del README contro il router |
