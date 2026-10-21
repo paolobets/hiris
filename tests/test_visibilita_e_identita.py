@@ -202,6 +202,7 @@ _COLLISIONI = {
     ("home_space/house_history.py", "chiave", "servizio"): "il servizio di un atto",
     ("home_space/tools.py", "chiave", "servizio"): "il parametro dello strumento",
     ("keeper/promise.py", "chiave", "servizio"): "il servizio di una chiamata",
+    ("keeper/delivery.py", "chiave", "servizio"): "il servizio di una chiamata",
     ("home_space/reader.py", "chiave", "disabilitata"): "la colonna dell'anagrafe",
     ("home_space/reader.py", "chiave", "nascosta"): "la colonna dell'anagrafe",
     ("home_space/field_vocabulary.py", "elemento", "disabilitata"): "il campo dell'anagrafe",

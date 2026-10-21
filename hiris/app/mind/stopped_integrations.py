@@ -26,6 +26,13 @@ nell'archivio dell'osservatore (`integration_notice`), e si segna come detto
 solo cio' che e' arrivato a un telefono (`keeper/delivery.arrived`): un avviso
 che non e' partito si ritenta al giro dopo.
 
+**E una notifica persistente in Home Assistant** (richiesta del proprietario
+del 21/10/2026: la push toccata apre Home Assistant e sparisce). La push dice
+cosa e' cambiato; la notifica (`NOTICE_ID`, una sola) dice com'e' adesso: una
+riga per ogni istanza ferma da almeno `ROUNDS_BEFORE_CLOSING` giri, che si
+riscrive quando l'elenco cambia e si toglie quando l'ultima torna. Segue lo
+stato, non la push: c'e' anche quando nessun telefono l'ha ricevuta.
+
 Il testo lo compone il codice, non un modello: non e' un agente (Legge III).
 """
 from __future__ import annotations
@@ -39,7 +46,8 @@ from ..home_space.ha_vocabulary import (
 )
 from ..home_space.house import House
 from ..home_space.reader import clean_name
-from ..keeper.delivery import arrived
+from ..keeper.delivery import NOTICE_HINT, arrived
+from ..keeper.promise import DELIVERY_TITLE
 from .store import ObservationsStore
 from .watcher import ROUNDS_BEFORE_CLOSING
 
@@ -48,12 +56,24 @@ from .watcher import ROUNDS_BEFORE_CLOSING
 #: al proprietario ne tace -- la ragione sta accanto a `config_entry_stop`.
 TOLD_STOPS = frozenset({ENTRY_SWITCHED_OFF, ENTRY_BROKEN})
 
+#: L'id della notifica persistente, uno solo per tutte le istanze ferme
+#: (scelta del proprietario, 21/10/2026): viaggia verso Home Assistant, e
+#: porta il suo nome in inglese.
+NOTICE_ID = "hiris_stopped_integrations"
+NOTICE_TITLE = f"{DELIVERY_TITLE} · integrazioni ferme"
+
 
 async def tell(store: ObservationsStore, house: House, integrations: list[dict] | None,
-               *, notify: Callable[[str], Awaitable[dict]], now: float) -> dict | None:
+               *, notify: Callable[[str], Awaitable[dict]],
+               show: Callable[[dict], Awaitable[dict]], now: float) -> dict | None:
     """Un giro dell'avviso, sulle righe grezze di `config_entries`
     (`app[HA_INTEGRATIONS_KEY]`). Torna il resoconto di `notify`, o `None` se
     non c'era niente da dire.
+
+    `show` riceve a ogni giro la notifica persistente che deve esserci,
+    `{NOTICE_ID: (titolo, testo)}`, o `{}` quando non c'e' niente di fermo
+    (`keeper/delivery.align_notices`). Viene prima della push, cosi' la push
+    dice `NOTICE_HINT` solo se la notifica c'e' davvero.
 
     `integrations` a `None` -- l'elenco non e' ancora arrivato -- non e' una
     casa senza integrazioni: il giro non tocca niente. Un'istanza che Home
@@ -63,6 +83,7 @@ async def tell(store: ObservationsStore, house: House, integrations: list[dict] 
         return None
     before = store.integration_notices()
     rows: dict[str, dict] = {}
+    standing: list[tuple[dict, str]] = []
     stops: list[tuple[str, dict, str]] = []
     returns: list[tuple[str, dict]] = []
     for raw in integrations:
@@ -78,16 +99,23 @@ async def tell(store: ObservationsStore, house: House, integrations: list[dict] 
         if stop is None and told is None:
             continue  # va, e nessuno ha detto il contrario: niente da ricordare
         rows[ident] = {"fermo": stop, "giri": streak, "detta": told, "visto_ts": now}
+        if stop is not None and (told is not None or streak >= ROUNDS_BEFORE_CLOSING):
+            standing.append((raw, stop))
         if streak < ROUNDS_BEFORE_CLOSING:
             continue
         if stop is not None and told is None:
             stops.append((ident, raw, stop))
         elif stop is None and told is not None:
             returns.append((ident, raw))
+    wanted = ({NOTICE_ID: (NOTICE_TITLE, "\n".join(
+        _stop_line(house, raw, stop) for raw, stop in standing))} if standing else {})
+    shown = await show(wanted)
     report = None
     if stops or returns:
         lines = [_stop_line(house, raw, stop) for _ident, raw, stop in stops]
         lines += [f"{_who(raw)} è tornata a funzionare." for _ident, raw in returns]
+        if stops and NOTICE_ID in (shown.get("allineate") or ()):
+            lines.append(NOTICE_HINT)
         report = await notify("\n".join(lines))
         if arrived(report):
             for ident, _raw, stop in stops:

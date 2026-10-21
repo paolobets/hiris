@@ -121,10 +121,11 @@ _TRACKER = {"u-paolo": "iphone_bet", "u-marta": "iphone_di_marta",
             "u-ospite": "ipad_ospite"}
 
 
-def _casa_ha(utenti=_UTENTI, **guasti) -> CasaFinta:
+def _casa_ha(utenti=_UTENTI, porta=None, **guasti) -> CasaFinta:
     """Il client vero sugli ingressi sintetici: una persona col suo telefono
     per ogni utente non di sistema, e i servizi notify dei telefoni di Paolo e
-    di Marta (l'ospite non ha le notifiche attive)."""
+    di Marta (l'ospite non ha le notifiche attive). Le notifiche persistenti
+    che mostra sono quelle che la `porta` ha scritto."""
     inputs = synthetic_inputs()
     inputs["states"] = [
         {"entity_id": f"person.{tracker}", "state": "home",
@@ -137,22 +138,41 @@ def _casa_ha(utenti=_UTENTI, **guasti) -> CasaFinta:
     inputs["registries"]["dispositivi"] = []
     inputs["services"] = [{"domain": "notify", "services": {
         "mobile_app_iphone_bet": {}, "mobile_app_iphone_di_marta": {}}}]
-    return CasaFinta(inputs, answers={"config/auth/list": lambda extra: utenti},
-                     **guasti)
+    mostrate = porta.mostrate if porta is not None else {}
+    return CasaFinta(inputs, answers={
+        "config/auth/list": lambda extra: utenti,
+        "persistent_notification/get": lambda extra: list(mostrate.values())},
+        **guasti)
 
 
 class _Porta:
-    """La porta dei servizi: tiene ogni chiamata, e la esegue."""
+    """La porta dei servizi: tiene ogni chiamata, e la esegue. Le notifiche
+    persistenti scritte restano in `mostrate`, come in Home Assistant."""
 
     def __init__(self):
         self.chiamate = []
+        self.mostrate = {}
         self.arriva = True
+
+    @property
+    def push(self):
+        return [c for c in self.chiamate if c["call"]["servizio"].startswith("notify.")]
+
+    @property
+    def notifiche(self):
+        return [c for c in self.chiamate
+                if c["call"]["servizio"].startswith("persistent_notification.")]
 
     async def execute(self, call, *, actor, subject=None):
         self.chiamate.append({"call": call, "actor": actor, "subject": subject})
-        if self.arriva:
-            return {"eseguito": True}
-        return {"eseguito": False, "errore": "Home Assistant non ha risposto"}
+        if not self.arriva:
+            return {"eseguito": False, "errore": "Home Assistant non ha risposto"}
+        dati = call["dati"]
+        if call["servizio"] == "persistent_notification.create":
+            self.mostrate[dati["notification_id"]] = dict(dati)
+        elif call["servizio"] == "persistent_notification.dismiss":
+            self.mostrate.pop(dati["notification_id"], None)
+        return {"eseguito": True}
 
 
 def _osservazioni(quante):
@@ -167,11 +187,12 @@ def casa(tmp_path):
     store = ObservationsStore(str(tmp_path / "oss.db"))
     usage = UsageStore(str(tmp_path / "consumi.db"))
     costruzioni = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    porta = _Porta()
     app = {**live_values(),
            OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
            WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: LiveValue(False),
-           HA_CLIENT_KEY: _casa_ha(), SERVICE_REGISTRY_KEY: ServiceRegistry(),
-           ACTUATOR_KEY: _Porta()}
+           HA_CLIENT_KEY: _casa_ha(porta=porta), SERVICE_REGISTRY_KEY: ServiceRegistry(),
+           ACTUATOR_KEY: porta}
     soffitto.prepara_ruoli(app)
     try:
         yield app
@@ -217,7 +238,7 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
 
     await pr.proposer_round(casa)
 
-    (chiamata,) = casa[ACTUATOR_KEY].chiamate
+    (chiamata,) = casa[ACTUATOR_KEY].push
     assert chiamata["call"]["servizio"] == "notify.mobile_app_iphone_bet"
     assert chiamata["call"]["bersaglio"] == {}
     assert chiamata["call"]["dati"]["title"] == DELIVERY_TITLE
@@ -250,7 +271,7 @@ async def test_un_turno_con_una_ALTO_e_una_MEDIO_avvisa_una_volta(casa):
 
     await pr.proposer_round(casa)
 
-    assert len(casa[ACTUATOR_KEY].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].push) == 1
 
 
 @pytest.mark.asyncio
@@ -267,7 +288,7 @@ async def test_un_avviso_ARRIVATO_non_si_ripete_al_battito_dopo(casa):
     await pr.proposer_round(casa)
     await pr.proposer_round(casa)
 
-    assert len(casa[ACTUATOR_KEY].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].push) == 1
 
 
 @pytest.mark.asyncio
@@ -285,12 +306,12 @@ async def test_un_avviso_che_NON_PARTE_si_ritenta_finche_arriva(casa):
 
     await pr.proposer_round(casa)
     await pr.proposer_round(casa)
-    assert len(porta.chiamate) == 2
+    assert len(porta.push) == 2
 
     porta.arriva = True
     await pr.proposer_round(casa)
     await pr.proposer_round(casa)
-    assert len(porta.chiamate) == 3
+    assert len(porta.push) == 3
 
 
 @pytest.mark.asyncio
@@ -311,7 +332,7 @@ async def test_una_proposta_DECISA_non_si_avvisa_piu(casa):
                                         execution_id=None)
     await pr.proposer_round(casa)
 
-    assert len(porta.chiamate) == 1
+    assert len(porta.push) == 1
 
 
 def test_una_proposta_SCADUTA_non_si_avvisa_piu(tmp_path):
@@ -367,7 +388,7 @@ async def test_una_ALTO_che_il_modello_non_cita_si_avvisa_lo_stesso(casa):
 
     await pr.proposer_round(casa)
 
-    assert len(casa[ACTUATOR_KEY].chiamate) == 1
+    assert len(casa[ACTUATOR_KEY].push) == 1
 
 
 # -- Chi amministra, e i suoi telefoni ----------------------------------------
@@ -408,7 +429,7 @@ async def test_un_amministratore_SENZA_telefono_si_conta_non_blocca_gli_altri(ca
     assert esito["push"] == 2
     assert len(esito["senza_telefono"]) == 1
     assert esito["senza_telefono"][0].startswith("u-ospite")
-    assert {c["call"]["servizio"] for c in casa[ACTUATOR_KEY].chiamate} == {
+    assert {c["call"]["servizio"] for c in casa[ACTUATOR_KEY].push} == {
         "notify.mobile_app_iphone_bet", "notify.mobile_app_iphone_di_marta"}
 
 
@@ -452,3 +473,125 @@ def test_to_alert_porta_SCADUTA_ORA_che_ROW_legge(tmp_path):
     finally:
         archivio.close()
     assert riga["stato"] == "in_attesa"
+
+
+# -- La notifica persistente (scelta del proprietario, 21/10/2026) -------------
+#
+# La push toccata apre Home Assistant e sparisce: accanto alla push, una
+# notifica persistente per proposta, finche' la proposta aspetta.
+
+def _notifica(casa):
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
+    return f"{pr.NOTICE_FAMILY}{riga['id']}", riga
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_ALTO_lascia_una_notifica_PERSISTENTE(casa):
+    """La notifica ha l'id della proposta, il titolo di HIRIS e il testo della
+    push; la push dice dove ritrovarla.
+
+    Mutazione ESEGUITA (21/10/2026): `_alert_high` senza `align_notices` --
+    rossa (nessuna notifica); la riga `NOTICE_HINT` aggiunta anche quando la
+    notifica non c'e' -- rossa in
+    `test_se_HA_non_dice_cosa_mostra_la_push_non_promette_la_notifica`."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+
+    await pr.proposer_round(casa)
+
+    ident, _riga = _notifica(casa)
+    porta = casa[ACTUATOR_KEY]
+    (scritta,) = porta.notifiche
+    assert scritta["call"]["servizio"] == "persistent_notification.create"
+    assert scritta["call"]["dati"]["notification_id"] == ident
+    assert scritta["call"]["dati"]["title"] == pr.NOTICE_TITLE
+    assert "Chiudi la porta di notte" in scritta["call"]["dati"]["message"]
+    assert scritta["actor"] == "proponente"
+    (push,) = porta.push
+    assert push["call"]["dati"]["message"].endswith(delivery.NOTICE_HINT)
+
+
+@pytest.mark.asyncio
+async def test_una_notifica_gia_giusta_non_si_riscrive(casa):
+    """Mutazione ESEGUITA (21/10/2026): `align_notices` che non confronta
+    l'impronta e riscrive sempre -- rossa (due scritture)."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+
+    await pr.proposer_round(casa)
+    await pr._alert_high(casa)
+
+    assert len(casa[ACTUATOR_KEY].notifiche) == 1
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_DECISA_toglie_la_sua_notifica(casa):
+    """Mutazione ESEGUITA (21/10/2026): `align_notices` senza le rimozioni --
+    rossa (la notifica resta)."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+    await pr.proposer_round(casa)
+    ident, riga = _notifica(casa)
+    porta = casa[ACTUATOR_KEY]
+    assert ident in porta.mostrate
+
+    casa[CONSTRUCTIONS_KEY].mark_failed(riga["id"], now=riga["creata_ts"] + 1,
+                                        execution_id=None)
+    await pr._alert_high(casa)
+
+    assert porta.mostrate == {}
+    assert porta.notifiche[-1]["call"] == delivery.withdrawal_call(ident)
+
+
+@pytest.mark.asyncio
+async def test_dopo_un_riavvio_di_HA_la_notifica_torna(casa):
+    """Home Assistant tiene le notifiche persistenti solo in memoria (letto al
+    tag 2026.9.4): un riavvio le cancella, e il battito dopo le riscrive.
+
+    Mutazione ESEGUITA (21/10/2026): `align_notices` che si ricorda cio' che
+    ha scritto invece di chiederlo a Home Assistant -- rossa."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+    await pr.proposer_round(casa)
+    ident, _riga = _notifica(casa)
+    porta = casa[ACTUATOR_KEY]
+
+    porta.mostrate.clear()
+    await pr._alert_high(casa)
+
+    assert ident in porta.mostrate
+    assert len(porta.push) == 1
+
+
+@pytest.mark.asyncio
+async def test_se_HA_non_dice_cosa_mostra_la_push_non_promette_la_notifica(casa):
+    """`persistent_notification/get` senza risposta: non si scrive niente a
+    vuoto, e la push parte lo stesso, senza la riga che promette la notifica."""
+    porta = casa[ACTUATOR_KEY]
+    casa[HA_CLIENT_KEY] = _casa_ha(porta=porta, silence={"persistent_notification/get"})
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_SERRATURA)
+
+    await pr.proposer_round(casa)
+
+    assert porta.notifiche == []
+    (push,) = porta.push
+    assert delivery.NOTICE_HINT not in push["call"]["dati"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_le_notifiche_di_altri_non_si_toccano(casa):
+    """Si tolgono solo le notifiche della famiglia di chi chiama: quelle di
+    Home Assistant e delle integrazioni restano.
+
+    Mutazione ESEGUITA (21/10/2026): rimozione senza il filtro sulla famiglia
+    -- rossa."""
+    porta = casa[ACTUATOR_KEY]
+    porta.mostrate["config_entry_discovery"] = {
+        "notification_id": "config_entry_discovery", "title": "Nuovo dispositivo",
+        "message": "trovato"}
+
+    await pr._alert_high(casa)
+
+    assert porta.chiamate == []
+    assert "config_entry_discovery" in porta.mostrate

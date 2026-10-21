@@ -38,6 +38,7 @@ from hiris.app.home_space.ha_vocabulary import (
 )
 from hiris.app.home_space.house import House
 from hiris.app.home_space.topology import live_mirror
+from hiris.app.keeper import delivery
 from hiris.app.mind import stopped_integrations as si
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -146,6 +147,25 @@ class _Avvisi:
         return self.esito
 
 
+class _Notifiche:
+    """Home Assistant dal lato delle notifiche persistenti, finto: tiene cio'
+    che il giro vuole mostrato, e dice allineato cio' che ha ricevuto."""
+
+    def __init__(self, riesce=True):
+        self.volute = []
+        self.riesce = riesce
+
+    async def __call__(self, wanted):
+        self.volute.append(dict(wanted))
+        if not self.riesce:
+            return {"errore": "Home Assistant non ha risposto"}
+        return {"allineate": list(wanted), "mancate": []}
+
+    @property
+    def ultima(self):
+        return self.volute[-1]
+
+
 @pytest.fixture()
 def archivio(tmp_path):
     return ObservationsStore(str(tmp_path / "mind.db"))
@@ -156,8 +176,9 @@ def _dette(archivio) -> dict:
             if r["detta"]}
 
 
-async def _giro(archivio, integrations, avvisi, now):
-    return await si.tell(archivio, _casa(), integrations, notify=avvisi, now=now)
+async def _giro(archivio, integrations, avvisi, now, notifiche=None):
+    return await si.tell(archivio, _casa(), integrations, notify=avvisi,
+                         show=notifiche or _Notifiche(), now=now)
 
 
 @pytest.mark.asyncio
@@ -297,9 +318,95 @@ def test_il_giro_delle_condizioni_avvisa_dopo_l_osservatore(archivio):
     app = _announced({**live_values(), WATCHER_KEY: _OsservatoreFinto(),
                       OBSERVATIONS_KEY: archivio}, [AVE])
     house = _system_house([], [AVE])
-    with mock.patch.object(conditions_round, "notify_admins", finto_avviso):
+    mostrate = []
+
+    async def finta_notifica(app, family, wanted, *, actor):
+        mostrate.append((family, wanted, actor))
+        return {"allineate": list(wanted), "mancate": []}
+
+    with mock.patch.object(conditions_round, "notify_admins", finto_avviso), \
+            mock.patch.object(conditions_round, "align_notices", finta_notifica):
         asyncio.run(conditions_round.watch_system_conditions(app, house))
         asyncio.run(conditions_round.watch_system_conditions(app, house))
     assert len(mandati) == 1
     assert "è stata spenta" in mandati[0][0]
     assert mandati[0][1] == "osservatore"
+    # La notifica persistente, a ogni giro: vuota al primo, l'istanza al secondo.
+    # Mutazione ESEGUITA (21/10/2026): tolto `show=` dal giro -- rossa.
+    assert [(f, list(w), a) for f, w, a in mostrate] == [
+        (si.NOTICE_ID, [], "osservatore"), (si.NOTICE_ID, [si.NOTICE_ID], "osservatore")]
+
+
+# -- la notifica persistente (scelta del proprietario, 21/10/2026) -------------
+#
+# La push toccata apre Home Assistant e sparisce: la notifica persistente dice
+# com'e' la casa adesso, una sola per tutte le istanze ferme.
+
+@pytest.mark.asyncio
+async def test_la_notifica_dice_le_istanze_ferme_e_la_push_dove_trovarla(archivio):
+    """Mutazione ESEGUITA (21/10/2026): la notifica composta con le istanze
+    appena dette invece di quelle ferme adesso -- rossa al terzo giro."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_000_000.0, notifiche)
+    assert notifiche.ultima == {}
+    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_000_600.0, notifiche)
+    (titolo, testo) = notifiche.ultima[si.NOTICE_ID]
+    assert titolo == si.NOTICE_TITLE
+    assert "Casa" in testo and "è stata spenta" in testo and "2 dispositivi" in testo
+    assert avvisi.testi[0].endswith(delivery.NOTICE_HINT)
+    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_001_200.0, notifiche)
+    assert notifiche.ultima[si.NOTICE_ID] == (titolo, testo)
+
+
+@pytest.mark.asyncio
+async def test_la_notifica_si_riscrive_quando_l_elenco_cambia_e_si_toglie_alla_fine(archivio):
+    """Mutazione ESEGUITA (21/10/2026): `standing` che tiene anche le
+    istanze tornate -- rossa (la notifica non si toglie mai)."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+    (_t, testo) = notifiche.ultima[si.NOTICE_ID]
+    assert "Casa" in testo and "Lampada" in testo
+    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_001_200.0, notifiche)
+    (_t, testo) = notifiche.ultima[si.NOTICE_ID]
+    assert "Casa" in testo and "Lampada" not in testo
+    ave_viva = {**AVE, "state": "loaded", "disabled_by": None}
+    await _giro(archivio, [ave_viva, LIFX_VIVA], avvisi, 1_790_001_800.0, notifiche)
+    assert notifiche.ultima == {}
+
+
+@pytest.mark.asyncio
+async def test_la_notifica_c_e_anche_se_la_push_non_e_arrivata(archivio):
+    """La notifica segue lo stato, non la push: un amministratore senza
+    telefono la trova lo stesso.
+
+    Mutazione ESEGUITA (21/10/2026): `standing` solo per le istanze dette --
+    rossa."""
+    avvisi = _Avvisi({"errore": "utenti di Home Assistant non letti"})
+    notifiche = _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [AVE], avvisi, now, notifiche)
+    assert si.NOTICE_ID in notifiche.ultima
+    assert _dette(archivio) == {}
+
+
+@pytest.mark.asyncio
+async def test_senza_notifica_la_push_non_la_promette(archivio):
+    """Mutazione ESEGUITA (21/10/2026): `NOTICE_HINT` aggiunta senza guardare
+    l'esito di `show` -- rossa."""
+    avvisi = _Avvisi()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [AVE], avvisi, now, _Notifiche(riesce=False))
+    assert delivery.NOTICE_HINT not in avvisi.testi[0]
+
+
+@pytest.mark.asyncio
+async def test_la_riga_del_ritorno_non_promette_la_notifica(archivio):
+    """Quando torna, la notifica si toglie: la riga del ritorno non manda a
+    cercarla."""
+    avvisi = _Avvisi()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [LIFX_ROTTA], avvisi, now)
+    for now in (1_790_001_200.0, 1_790_001_800.0):
+        await _giro(archivio, [LIFX_VIVA], avvisi, now)
+    assert delivery.NOTICE_HINT not in avvisi.testi[1]

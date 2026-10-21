@@ -615,22 +615,33 @@ class ConstructionStore:
                                  "creata_ts": r[2], "id": r[4], "a_mano": False}
         return decided
 
-    def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
-        """Le proposte di `actor` a livello `stakes` ancora in attesa e mai
-        avvisate (D14). Non scaduta con `_EXPIRED_SQL`: una proposta scaduta
+    def waiting(self, *, actor: str, stakes: str, now: float) -> list[dict]:
+        """Le proposte di `actor` a livello `stakes` ancora in attesa,
+        avvisate o no. Non scaduta con `_EXPIRED_SQL`: una proposta scaduta
         che nessuno ha ancora segnato non chiede piu' niente a nessuno. La
         colonna `scaduta_ora` e' la forma con cui `_row` legge le righe. Non
-        scrive."""
+        scrive.
+
+        Le chiede la notifica persistente di una proposta `alto`
+        (`mind/proposer_round._alert_high`, 21/10/2026): c'e' finche' la
+        proposta aspetta, che la push sia arrivata o no."""
         cutoff = now - self.DEADLINE_S
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni "
                 f"WHERE origine=? AND stakes=? AND stato=? "
-                f"AND NOT {_EXPIRED_SQL} "
-                "AND id NOT IN (SELECT proposta_id FROM avvisi) "
-                "ORDER BY creata_ts",
+                f"AND NOT {_EXPIRED_SQL} ORDER BY creata_ts",
                 (cutoff, actor, stakes, PENDING, cutoff)).fetchall()
         return _rows(righe)
+
+    def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
+        """Le proposte di `waiting` mai avvisate (D14): la push non e' ancora
+        arrivata a nessuno. Non scrive."""
+        with self._lock:
+            alerted = {r[0] for r in self._conn.execute(
+                "SELECT proposta_id FROM avvisi").fetchall()}
+        return [row for row in self.waiting(actor=actor, stakes=stakes, now=now)
+                if row["id"] not in alerted]
 
     def mark_alerted(self, ident: str) -> None:
         """L'avviso per `ident` e' arrivato: non si ritenta piu'."""

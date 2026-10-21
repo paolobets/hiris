@@ -14,7 +14,7 @@ from ..home_space.house import House
 from ..home_space.house_history import read_log, read_traces
 from ..home_space.reader import HOME_SPACE_KEY
 from ..home_space.rounds import HA_INTEGRATIONS_KEY, HA_PROBLEMS_KEY, reread_ha_problems
-from ..keeper.delivery import notify_admins
+from ..keeper.delivery import align_notices, notify_admins
 from ..proxy.entity_cache import ENTITY_CACHE_KEY, automation_config_id
 from ..steering import OBSERVER_SPECIES
 from . import stopped_integrations
@@ -121,6 +121,8 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             store, House.read(app.get(HOME_SPACE_KEY), app.get(ENTITY_CACHE_KEY)),
             list(integrations),
             notify=lambda text: notify_admins(app, text, actor=OBSERVER_SPECIES),
+            show=lambda wanted: align_notices(app, stopped_integrations.NOTICE_ID,
+                                              wanted, actor=OBSERVER_SPECIES),
             now=time.time())
     return written
 
