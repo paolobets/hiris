@@ -192,6 +192,11 @@ READ_OWNERS: dict[str, tuple[str, str]] = {
         "home_space/house_history.py",
         ("le statistiche orarie della storia (`read_bands`, dal Task 13 della "
          "Tappa 3); il resoconto del giorno le chiede a `read_bands` (A-41)")),
+    "persistent_notifications": (
+        "keeper/delivery.py",
+        ("`align_notices`, l'unico che scrive notifiche persistenti: chiede a "
+         "Home Assistant quali mostra prima di scriverle o toglierle (avvisi "
+         "persistenti, 21/10/2026)")),
     "problems": (
         "home_space/rounds.py",
         ("`reread_ha_problems`, il giro dei 5 minuti: il giro delle condizioni "

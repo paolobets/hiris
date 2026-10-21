@@ -75,10 +75,19 @@ RADICE_GIRO = "proposer_round"
 #: servizio scelto dal modello. Ammettere `execute` al posto suo avrebbe dato
 #: al proponente l'intera porta dei servizi.
 #:
+#: `align_notices` (`keeper/delivery.py`) e' una FUNZIONE come lei: le notifiche
+#: persistenti delle proposte `alto` (scelta del proprietario, 21/10/2026: la
+#: push toccata apre Home Assistant e sparisce). Il suo corpo legge da Home
+#: Assistant quali notifiche mostra e scrive dalla porta dei servizi, ma solo
+#: le due chiamate di forma fissa `persistent_notification.create`/`dismiss`
+#: (`delivery.notice_call`, `delivery.withdrawal_call`) sugli id della famiglia
+#: che chi chiama possiede -- mai un servizio scelto dal modello. Il testo lo
+#: compone il codice (`proposer_round.ALERT_TEXT`).
+#:
 #: Questa lista non ricopia niente: **dice cosa il cancello ammette**. Un metodo
 #: nuovo dell'officina non entra qui da solo -- va ammesso a mano, con la ragione,
 #: che e' esattamente il momento in cui qualcuno deve pensarci.
-AMMESSI = frozenset({"propose", "notify_admins"})
+AMMESSI = frozenset({"propose", "notify_admins", "align_notices"})
 
 
 def _albero(percorso: pathlib.Path):

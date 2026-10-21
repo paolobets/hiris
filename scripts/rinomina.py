@@ -454,6 +454,7 @@ _METODI_HA_CLIENT = frozenset({
     "history", "_history_piece", "recorded_changes", "_ws_send", "_rest_get",
     "hourly_statistics",
     "statistic_ids", "_request_statistics", "related", "problems", "_trace_list",
+    "persistent_notifications",
     "system_log", "traces", "trace", "behavior_configs",
     "calendar_events", "get_translations",
     "get_config", "energy_prefs", "_registry_rows", "read_registry", "read_registries",

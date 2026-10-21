@@ -25,7 +25,8 @@ from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..action.construction.stakes import HIGH
 from ..home_space import historian
 from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
-from ..keeper.delivery import arrived, notify_admins
+from ..keeper.delivery import NOTICE_HINT, align_notices, arrived, notify_admins
+from ..keeper.promise import DELIVERY_TITLE
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..reasoning.queue import REASONING_QUEUE_KEY, turn_answer, turn_truncated
@@ -328,6 +329,11 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
 ALERT_TEXT = ("HIRIS ha una proposta di livello alto: «{name}». "
               "Decidi tu, nella pagina Proposte.")
 
+#: Le notifiche persistenti delle proposte `alto`, una per proposta: l'id
+#: viaggia verso Home Assistant, e porta il suo nome in inglese.
+NOTICE_FAMILY = "hiris_proposal_"
+NOTICE_TITLE = f"{DELIVERY_TITLE} · proposta di livello alto"
+
 
 async def _alert_high_safely(app) -> None:
     """`_alert_high` che non solleva: un guasto dell'avviso non toglie il
@@ -352,16 +358,31 @@ async def _alert_high(app) -> None:
     ogni battito. Smette quando almeno una push e' arrivata, o quando la
     proposta non e' piu' in attesa: nessun numero di tentativi scelto da noi.
     Il livello l'ha scritto l'officina; qui non si ricalcola.
+
+    **E una notifica persistente per proposta** (scelta del proprietario,
+    21/10/2026): `NOTICE_FAMILY` + id della proposta, finche' la proposta
+    aspetta, avvisata o no; decisa o scaduta, il battito dopo la toglie
+    (`keeper/delivery.align_notices`). Viene prima della push, cosi' la push
+    dice `NOTICE_HINT` solo se la notifica c'e' davvero.
     """
     constructions = app.get(CONSTRUCTIONS_KEY)
     if constructions is None:
         return
-    for row in constructions.to_alert(actor=PROPOSER_SPECIES, stakes=HIGH,
-                                      now=time.time()):
-        body = row.get("dopo") or row.get("prima") or {}
-        name = body.get("alias") if isinstance(body, dict) else None
-        report = await notify_admins(
-            app, ALERT_TEXT.format(name=name or row.get("chiave")),
-            actor=PROPOSER_SPECIES)
+    now = time.time()
+    shown = await align_notices(app, NOTICE_FAMILY, {
+        f"{NOTICE_FAMILY}{row['id']}": (NOTICE_TITLE, _alert_text(row))
+        for row in constructions.waiting(actor=PROPOSER_SPECIES, stakes=HIGH, now=now)},
+        actor=PROPOSER_SPECIES)
+    for row in constructions.to_alert(actor=PROPOSER_SPECIES, stakes=HIGH, now=now):
+        text = _alert_text(row)
+        if f"{NOTICE_FAMILY}{row['id']}" in (shown.get("allineate") or ()):
+            text = f"{text}\n{NOTICE_HINT}"
+        report = await notify_admins(app, text, actor=PROPOSER_SPECIES)
         if arrived(report):
             constructions.mark_alerted(row["id"])
+
+
+def _alert_text(row: dict) -> str:
+    body = row.get("dopo") or row.get("prima") or {}
+    name = body.get("alias") if isinstance(body, dict) else None
+    return ALERT_TEXT.format(name=name or row.get("chiave"))

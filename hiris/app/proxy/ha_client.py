@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 import re
 import time
@@ -221,6 +223,18 @@ def _failure(cause: str, text: str, code=None) -> dict:
     silenzio e' un dubbio, non un no: la domanda puo' essere arrivata.
     """
     return {"errore": text, "causa": cause, "codice": code}
+
+
+def notification_fingerprint(title, message) -> str:
+    """L'impronta di una notifica persistente: titolo e testo, insieme.
+
+    **La sua UNICA casa**: la calcolano il client, su cio' che Home Assistant
+    mostra (`HAClient.persistent_notifications`), e chi scrive una notifica,
+    su cio' che vuole mostrare (`keeper/delivery.align_notices`). Due calcoli
+    diversi direbbero «diversa» di una notifica uguale, e la riscriverebbero a
+    ogni giro."""
+    payload = json.dumps([title, message], ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _silence(exc: BaseException) -> dict:
@@ -1927,6 +1941,45 @@ class HAClient:
         # lettura, come ogni testo libero della casa (D-46, 13/10/2026).
         return {"problemi": [sanitize_structure(p) for p in result["issues"]
                              if isinstance(p, dict) and not p.get("ignored")]}
+
+    @cost(ws=1)
+    async def persistent_notifications(self) -> dict:
+        """Le notifiche persistenti che Home Assistant mostra adesso.
+
+        `persistent_notification/get`, WS. Letto nel sorgente al tag 2026.9.4
+        (`components/persistent_notification/__init__.py`, il 21/10/2026): la
+        risposta e' l'elenco delle notifiche, ognuna con `notification_id`,
+        `title`, `message` e `created_at`; le notifiche **vivono solo in
+        memoria** (un `singleton`, nessuno `Store`), quindi un riavvio di Home
+        Assistant le cancella tutte. E' per questo che chi ne scrive una la
+        chiede qui a ogni giro invece di ricordarsela: un ricordo dentro HIRIS
+        direbbe «c'e'» di una notifica che il riavvio ha tolto.
+
+        Torna `{"notifiche": {notification_id: impronta}}`: l'impronta di
+        titolo e testo (`notification_fingerprint`), **non il testo**. Le
+        notifiche le scrivono anche le integrazioni, e il testo libero della
+        casa non esce dal client senza il sanificatore (D-46) -- che pero' lo
+        taglia a `MAX_FREE_TEXT`, e un confronto sul testo tagliato non
+        vedrebbe un cambio dopo il taglio. A chi chiede serve sapere se la SUA
+        notifica c'e' e se dice cio' che deve dire, e l'impronta risponde a
+        tutte e due. L'id esce com'e': e' un identificatore, chi lo riceve lo
+        confronta con i suoi e non lo mostra a nessuno.
+
+        `{"errore": ...}` su guasto: un elenco vuoto direbbe «non c'e' nessuna
+        notifica», e chi scrive le riscriverebbe tutte a vuoto.
+        """
+        (msg,) = await self._ws_send([("persistent_notification/get", None)])
+        occurrence = self._ws_occurrence(msg, "notifiche")
+        if "errore" in occurrence:
+            return occurrence
+        result = occurrence["notifiche"]
+        if not isinstance(result, list):
+            return _failure(SHAPE, "risposta in forma inattesa")
+        return {"notifiche": {
+            str(n["notification_id"]): notification_fingerprint(n.get("title"),
+                                                                n.get("message"))
+            for n in result
+            if isinstance(n, dict) and n.get("notification_id") is not None}}
 
     @cost(ws=1)
     async def system_log(self) -> dict:

@@ -81,6 +81,7 @@ SUCCESS = {
     "frontend/get_translations": {"resources": {}},
     "get_config": {},
     "energy/get_prefs": {"energy_sources": [], "device_consumption": []},
+    "persistent_notification/get": [],
 }
 
 HA_ERROR = {"code": "unknown_error", "message": "rifiutato per prova"}
