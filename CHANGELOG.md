@@ -1,6 +1,6 @@
 # HIRIS — Changelog
 
-## [3.81.0] — Gli avvisi restano anche in Home Assistant (2026-10-21)
+## [3.81.0] — Gli avvisi restano anche in Home Assistant (2026-10-22)
 
 ### Perché
 
