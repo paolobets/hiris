@@ -18,8 +18,8 @@ cancello che qualcuno prima o poi spegne. Insieme costano quanto il piu'
 lento. Ognuno dice il suo esito, e basta un no per fermare il push:
 
 1. il registro dei doppioni e' leggibile e nessuna voce e' chiusa a meta';
-2. nessun doppione nuovo fra quelli che `doppioni.py` sa vedere, e nessuno
-   guarito rimasto nell'elenco dei noti;
+2. nessun doppione fra quelli che `doppioni.py` sa vedere, senza elenco di
+   eccezioni (decisione di Paolo del 15/10/2026);
 3. il censimento: nessun codice morto nuovo (funzioni, rotte, opzioni,
    tabelle), nessuna regola strutturale rotta, e nessuna eccezione rimasta a
    coprire qualcosa che non c'e' piu' (`scripts/censimento_eccezioni.json`);
@@ -47,8 +47,7 @@ if hasattr(sys.stdout, "reconfigure"):
 #: (nome, comando). L'ordine e' quello del docstring, ed e' quello del rapporto.
 GATES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("registro", ("scripts/registro.py", "verifica")),
-    ("doppioni", ("scripts/doppioni.py", "--cancello", "--noti",
-                  "scripts/doppioni_noti.json")),
+    ("doppioni", ("scripts/doppioni.py", "--cancello")),
     ("censimento", ("scripts/censimento.py", "--cancello")),
     ("fonte unica", ("-m", "pytest", "-q", "-p", "no:cacheprovider",
                      "tests/test_fonte_unica.py", "tests/test_registro.py",

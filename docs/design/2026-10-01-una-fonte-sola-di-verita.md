@@ -588,7 +588,8 @@ una per una, coi loro casi, quando la tappa le tocca.
    lavori dentro la Chiusura. L'elenco delle trasferite lo approva Paolo, voce per voce.)*
 2. La sonda di parità sulla casa vera dà zero disaccordi su tutte le domande.
 3. Il cancello è attivo nel pre-push e nella CI, senza eccezioni: nessuna eccezione rimanda a una
-   voce aperta del registro, e `scripts/doppioni_noti.json` è vuoto. Restano solo le
+   voce aperta del registro, e il cancello dei doppioni non ha un elenco di noti (era vuoto dalla
+   F2 della Chiusura; `--noti` e il suo file sono usciti il 22/10/2026). Restano solo le
    **ammissioni**, le liste che enunciano il cancello (`CLAUDE.md`, «Un cancello CHIEDE il suo
    elenco»): ognuna resta per scelta, con la sua ragione scritta, e la ragione non cita una voce
    aperta. Un'eccezione che porta la voce aperta che la chiuderà è un **debito**, e lo sprint si
@@ -753,7 +754,7 @@ Questo documento non scrive le misure: scrive come si prendono, e chi le prende.
 |---|---|---|
 | 1. Registro | `python scripts/registro.py conta` dopo `rilascia`: zero aperte; `python scripts/registro.py verifica` passa, quindi ogni trasferita nomina una voce aperta del BACKLOG | il ramo e il rilascio |
 | 2. Sonda di parità | `python scripts/sonda_parita.py --ingressi <cattura> --cancello` sulla cattura nuova della casa vera (`scripts/casa.py`): zero disaccordi su tutte le domande | il PC |
-| 3. Cancello | `python scripts/cancelli.py` nel pre-push e nella CI; `scripts/doppioni_noti.json` vuoto; `tests/test_censimento.py` e `tests/test_fonte_unica.py` verdi, nessuna eccezione che citi una voce aperta | il ramo e la CI |
+| 3. Cancello | `python scripts/cancelli.py` nel pre-push e nella CI; il cancello dei doppioni senza elenco di noti; `tests/test_censimento.py` e `tests/test_fonte_unica.py` verdi, nessuna eccezione che citi una voce aperta | il ramo e la CI |
 | 4. Batteria della chat | `scripts/batteria_misure.py` sulle due strade (catena e ponte), confrontata con le misure di partenza di `docs/misure/2026-10-tappa-0.md`: risposte giuste, token e tempi non peggiorati; i costi fissi del §1.4 scesi | il PC |
 | 5. Batteria degli attori | `scripts/batteria_attori.py`: almeno i risultati di partenza, nessun turno troncato | il PC |
 | 6. Attori senza entità | `tests/test_attori_compongono.py` (fetta F7 della Chiusura): le funzioni da sorvegliare le chiede ai giri dello schedulatore, non a un elenco | il ramo |
@@ -766,7 +767,7 @@ Questo documento non scrive le misure: scrive come si prendono, e chi le prende.
 |---|---|---|
 | 1. Registro | **chiuso** | 0 voci aperte su 515, giro 180 del revisore |
 | 2. Sonda di parità | **chiuso** | 0 disaccordi sulla cattura nuova della casa vera, dopo `2d8ec1d3` |
-| 3. Cancello | **chiuso** | i quattro cancelli nel pre-push e nella CI; `doppioni_noti.json` vuoto; una sola ammissione, `GET /api/misure`, con la sua ragione |
+| 3. Cancello | **chiuso** | i quattro cancelli nel pre-push e nella CI; `doppioni_noti.json` vuoto (uscito il 22/10/2026 con `--noti`, Fase 0 dello sprint «Il giro snello e il Brain leggibile»); una sola ammissione, `GET /api/misure`, con la sua ragione |
 | 4. Batteria della chat | **chiuso sul ponte**; catena smarcata dal proprietario (15/10) | sul ponte, contro la 3.77.0: −10% di token, −21% di giri, −28% sul tempo tipico di risposta. R18 sulla catena non rimisurato (BACKLOG) |
 | 5. Batteria degli attori | **chiuso per l'analista**; ricette non misurate | analista contro la 3.78.0: 61.010 token di ingresso per giro contro 66.956, tempo mediano 21,5 s contro 28,5, 0 troncati, 0 falliti. Le ricette non avevano turni nella finestra di un giorno (BACKLOG) |
 | 6. Attori senza entità | **chiuso** | `tests/test_attori_compongono.py` verde |

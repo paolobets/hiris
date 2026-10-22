@@ -48,7 +48,7 @@ se trova un doppione non dichiarato).
 
 Uso:
   python scripts/doppioni.py
-  python scripts/doppioni.py --cancello --noti scripts/doppioni_noti.json
+  python scripts/doppioni.py --cancello
       # e' cosi' che lo lancia `scripts/cancelli.py`, dal pre-push e dalla CI
 """
 from __future__ import annotations
@@ -57,7 +57,6 @@ import argparse
 import ast
 import collections
 import hashlib
-import json
 import re
 import sys
 from pathlib import Path
@@ -529,32 +528,7 @@ def _elenco_dichiarati(files: list[Path]) -> list[str]:
     return trovati
 
 
-def fingerprint(reperto: Reperto) -> str:
-    """Cio' che identifica un doppione fra un giro e l'altro: la categoria, il
-    nome, i FILE in cui sta e QUANTE volte -- non le righe, che si spostano a
-    ogni modifica senza che il doppione cambi. Il conto c'e' perche' una terza
-    copia negli stessi due file avrebbe altrimenti la stessa impronta."""
-    files = sorted({dove.split(":")[0] for dove in reperto.dove})
-    return (f"{reperto.categoria} · {reperto.nome} · {' + '.join(files)} "
-            f"· {len(reperto.dove)} posti")
-
-
-def against_known(reperti: list[Reperto],
-                  known: dict[str, str]) -> tuple[list[Reperto], list[str]]:
-    """I reperti NUOVI (non in elenco) e le impronte GUARITE (in elenco, ma il
-    codice non le conferma piu').
-
-    Fermano il cancello tutti e due. Un doppione nuovo e' il difetto; una voce
-    guarita rimasta in elenco e' un permesso in bianco per rifarlo, e l'elenco
-    dei noti puo' solo accorciarsi.
-    """
-    found = {fingerprint(reperto) for reperto in reperti}
-    unknown = [reperto for reperto in reperti if fingerprint(reperto) not in known]
-    healed = sorted(print_ for print_ in known if print_ not in found)
-    return unknown, healed
-
-
-def run(cancello: bool = False, known_path: Path | None = None) -> int:
+def run(cancello: bool = False) -> int:
     py = file_py(APP)
     js = file_js()
     reperti = cerca_regex(py)
@@ -564,17 +538,9 @@ def run(cancello: bool = False, known_path: Path | None = None) -> int:
     stampa(reperti, _elenco_dichiarati(py))
     if not cancello:
         return 0
-    if known_path is None:
-        return 1 if reperti else 0
-    known = json.loads(known_path.read_text(encoding="utf-8"))
-    unknown, healed = against_known(reperti, known)
-    for reperto in unknown:
-        print(f"CANCELLO: doppione NUOVO, non nell'elenco dei noti: "
-              f"{fingerprint(reperto)}", file=sys.stderr)
-    for print_ in healed:
-        print(f"CANCELLO: doppione GUARITO, da togliere dall'elenco dei noti: "
-              f"{print_}", file=sys.stderr)
-    return 1 if (unknown or healed) else 0
+    # Nessun elenco di eccezioni (Paolo, 15/10/2026): un doppione che questo
+    # strumento vede si toglie, o si dichiara accanto al codice col marcatore.
+    return 1 if reperti else 0
 
 
 def main() -> None:
@@ -585,15 +551,8 @@ def main() -> None:
     parser.add_argument(
         "--cancello", action="store_true",
         help="esce 1 se trova un doppione non dichiarato (per il pre-push)")
-    parser.add_argument(
-        "--noti", type=Path,
-        help="l'elenco dei doppioni noti, {impronta: voce del registro}. Con "
-             "--cancello fermano solo un doppione nuovo e uno guarito rimasto "
-             "in elenco: l'elenco puo' solo accorciarsi.")
     args = parser.parse_args()
-    if args.noti and not args.cancello:
-        parser.error("--noti vale solo con --cancello: da solo non cambierebbe niente")
-    sys.exit(run(args.cancello, args.noti))
+    sys.exit(run(args.cancello))
 
 
 if __name__ == "__main__":
