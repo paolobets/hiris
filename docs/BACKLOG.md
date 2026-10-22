@@ -131,25 +131,6 @@ ricordi: ciò che le persone hanno detto a HIRIS si ridice. Il contratto dice ch
 persona ha detto non evapora (`docs/design/2026-08-05-la-conoscenza-di-hiris.md`): qui la persona
 è Paolo, che sceglie di ricominciare, e il backup lo conserva.
 
-### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
-
-`origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
-
-Una voce che esce prima del suo rilascio si scrive `— **USCITA col prossimo rilascio**`, perche' la
-versione ancora non c'e'. Poi nessuno la riscrive: `release.py` timbra il registro dei doppioni
-(`close_register`) ma non tocca il BACKLOG. Misurato il 15/10/2026: dieci voci erano rimaste cosi'.
-Sette erano uscite settimane prima, sei con la v3.68.0 e una con la v3.69.0 (verificate commit per
-commit: il commit che scrive il titolo e il primo tag che lo contiene). Le altre tre erano della
-3.79.1, e si sono scritte a mano nel commit di versione (N171-1). Tutte e dieci ora portano la loro
-versione, ma il buco resta.
-
-Cosa si chiede: al passo 5b, accanto al registro, `release.py` riscrive nei **titoli** del BACKLOG
-(le intestazioni `###` e `####`, come le legge `registro.backlog_titles`) ogni «USCITA col
-prossimo rilascio» in «USCITA con la vX.Y.Z», e lo dice nell'output. Solo i titoli: questa voce
-la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `_BACKLOG_DONE` la
-leggerebbe come chiusa. Una prova con un BACKLOG
-finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
-
 ### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
 
 `origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`
@@ -3724,6 +3705,27 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~`release.py` scrive la versione sulle voci uscite prima del loro rilascio~~ — **USCITA col prossimo rilascio** — aperta il 15/10/2026
+
+`fatta il 22/10/2026 (Fase 0.4 dello sprint «Il giro snello e il Brain leggibile»): al passo 5b, dopo il registro, `release.py` chiede a `registro.release_backlog` di riscrivere nei soli titoli (`###` e `####`) «USCITA col prossimo rilascio» in «USCITA con la vX.Y.Z», lo dice nell'output (in prova nomina le voci senza scrivere) e mette `docs/BACKLOG.md` nel commit del rilascio. Tre prove in `tests/test_release_script.py` con un BACKLOG finto, quattro mutazioni eseguite; un BACKLOG finto per tutte le prove del file, perche' una prova che patchava solo il registro ha scritto il BACKLOG vero`
+
+`origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
+
+Una voce che esce prima del suo rilascio si scrive `— **USCITA col prossimo rilascio**`, perche' la
+versione ancora non c'e'. Poi nessuno la riscrive: `release.py` timbra il registro dei doppioni
+(`close_register`) ma non tocca il BACKLOG. Misurato il 15/10/2026: dieci voci erano rimaste cosi'.
+Sette erano uscite settimane prima, sei con la v3.68.0 e una con la v3.69.0 (verificate commit per
+commit: il commit che scrive il titolo e il primo tag che lo contiene). Le altre tre erano della
+3.79.1, e si sono scritte a mano nel commit di versione (N171-1). Tutte e dieci ora portano la loro
+versione, ma il buco resta.
+
+Cosa si chiede: al passo 5b, accanto al registro, `release.py` riscrive nei **titoli** del BACKLOG
+(le intestazioni `###` e `####`, come le legge `registro.backlog_titles`) ogni «USCITA col
+prossimo rilascio» in «USCITA con la vX.Y.Z», e lo dice nell'output. Solo i titoli: questa voce
+la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `_BACKLOG_DONE` la
+leggerebbe come chiusa. Una prova con un BACKLOG
+finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
 
 ### ~~Il pre-push scatta sul bump di una versione già rilasciata~~ — **USCITA col prossimo rilascio** — aperta il 21/10/2026
 

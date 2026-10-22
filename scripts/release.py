@@ -13,8 +13,9 @@ Steps (abort on first failure):
   4   Check git tree clean (only config.yaml / CHANGELOG.md allowed dirty)
   5   Run pytest (skipped with --skip-tests)
   5b  Close the duplicates register entries marked «chiudibile al rilascio»
-      and version the ones closed early (scripts/registro.py)
-  6   git add + commit chore: release vX.Y.Z (register included)
+      and version the ones closed early; in the BACKLOG titles, «USCITA col
+      prossimo rilascio» becomes «USCITA con la vX.Y.Z» (scripts/registro.py)
+  6   git add + commit chore: release vX.Y.Z (register and BACKLOG included)
   7  git tag vX.Y.Z
   8  git push HEAD:master --tags  (always targets master, worktree-safe)
   9  Extract changelog section for X.Y.Z
@@ -39,6 +40,8 @@ CONFIG = ROOT / "hiris" / "config.yaml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 #: Il registro dei doppioni: lo chiede a `registro`, che e' la sua casa.
 REGISTER = registro.REGISTER
+#: Il BACKLOG, per i titoli delle voci uscite prima del rilascio: idem.
+BACKLOG = registro.BACKLOG
 
 # `_VERSIONED_DOCS` e i passi 3b (intestazioni di versione) e 3c (doc_check.py)
 # sono usciti insieme ai quattordici documenti del prodotto 1.x, cancellati
@@ -213,13 +216,25 @@ def close_register(version: str, dry_run: bool) -> None:
     """Le voci fatte nel ramo si chiudono con la versione che le rilascia
     (N74-3, scelta di Paolo del 07/10/2026): lo fa lo script, perche' un passo
     a mano si dimentica e il registro tornerebbe a dire «non rilasciato» su
-    codice uscito. Dopo i test: se falliscono, il registro resta com'era."""
+    codice uscito. Dopo i test: se falliscono, il registro resta com'era.
+
+    Lo stesso vale per il BACKLOG (N174-1, 15/10/2026): una voce uscita nel
+    ramo porta nel titolo «USCITA col prossimo rilascio», e qui prende la
+    versione vera. Misurato il 15/10/2026: dieci voci erano rimaste cosi'."""
     if dry_run:
         ids = registro.pending(registro.read_entries(REGISTER))
         _info(f"[dry-run] registro: {len(ids)} voci prenderebbero la {version}: {ids}")
+        titles = registro.backlog_pending(BACKLOG)
+        _info(f"[dry-run] BACKLOG: {len(titles)} voci prenderebbero la v{version}")
+        for title in titles:
+            _info(f"[dry-run]   {title}")
         return
     ids = registro.release(REGISTER, version=version)
     _ok(f"Registro dei doppioni: {len(ids)} voci con la {version}")
+    titles = registro.release_backlog(BACKLOG, version=version)
+    _ok(f"BACKLOG: {len(titles)} voci uscite con la v{version}")
+    for title in titles:
+        _info(f"  {title}")
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +254,8 @@ def git_commit_and_tag(version: str, dry_run: bool) -> None:
         ] if (ROOT / p).exists()
     ]
     add = ["git", "add", "hiris/config.yaml", "CHANGELOG.md",
-           registro.REGISTER.relative_to(registro.ROOT).as_posix(), *extra]
+           registro.REGISTER.relative_to(registro.ROOT).as_posix(),
+           registro.BACKLOG.relative_to(registro.ROOT).as_posix(), *extra]
     commit = ["git", "commit", "-m", f"chore: release v{version}"]
     # Il commit di versione (CHANGELOG e config.yaml) lo fa gia' chi prepara
     # il rilascio: allo script resta solo cio' che cambia la timbratura del

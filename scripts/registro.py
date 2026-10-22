@@ -227,6 +227,37 @@ def backlog_titles(path: Path = BACKLOG) -> set[str]:
     return titles
 
 
+#: Il segno, nel titolo, di una voce del BACKLOG uscita nel ramo prima del
+#: suo rilascio: la versione ancora non c'e'. Lo riscrive `release_backlog`.
+BACKLOG_NEXT_RELEASE = "USCITA col prossimo rilascio"
+
+
+def backlog_pending(path: Path = BACKLOG) -> list[str]:
+    """Le intestazioni del BACKLOG (`###` e `####`, come le legge
+    `backlog_titles`) che portano «USCITA col prossimo rilascio», nell'ordine
+    del documento. E' cio' che un rilascio in prova stampa."""
+    return [row for row in path.read_text(encoding="utf-8").splitlines()
+            if _BACKLOG_HEADING.match(row) and BACKLOG_NEXT_RELEASE in row]
+
+
+def release_backlog(path: Path = BACKLOG, *, version: str) -> list[str]:
+    """Al rilascio: nei TITOLI del BACKLOG «USCITA col prossimo rilascio»
+    diventa «USCITA con la vX.Y.Z». Il testo delle voci non si tocca: una voce
+    che parla del segno lo cita, e non e' uscita. Restituisce le intestazioni
+    riscritte, nell'ordine del documento."""
+    if not _VERSION.match(version):
+        raise SystemExit(f"registro: «{version}» non e' una versione (X.Y.Z)")
+    rows = path.read_text(encoding="utf-8").splitlines()
+    touched = []
+    for index, row in enumerate(rows):
+        if _BACKLOG_HEADING.match(row) and BACKLOG_NEXT_RELEASE in row:
+            rows[index] = row.replace(BACKLOG_NEXT_RELEASE, f"USCITA con la v{version}")
+            touched.append(rows[index])
+    if touched:
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return touched
+
+
 def transfer(path: Path, entry_id: str, *, backlog: str, note: str,
              backlog_path: Path = BACKLOG) -> None:
     """Sposta la voce sotto `## Trasferite`, col titolo della voce del
