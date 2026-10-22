@@ -149,6 +149,17 @@ def test_git_clean_aborts_on_unexpected_dirty_file():
             rel.check_git_clean()
 
 
+@pytest.fixture(autouse=True)
+def _backlog_finto(tmp_path, monkeypatch):
+    """Nessuna prova di questo file scrive il BACKLOG vero: `close_register`
+    ne riscrive i titoli, e una prova che patchasse solo il registro lo
+    toccherebbe (e' successo il 22/10/2026, scrivendo la v3.78.0 su una voce
+    del ramo)."""
+    backlog = tmp_path / "BACKLOG-finto.md"
+    backlog.write_text("# BACKLOG\n", encoding="utf-8")
+    monkeypatch.setattr(rel, "BACKLOG", backlog)
+
+
 # ---------------------------------------------------------------------------
 # il registro dei doppioni segue il rilascio (N74-3, scelta di Paolo 07/10/2026)
 # ---------------------------------------------------------------------------
@@ -196,6 +207,64 @@ def test_il_registro_entra_nel_commit_del_rilascio():
     add = mock_run.call_args_list[0].args[0]
     assert add[:2] == ["git", "add"]
     assert "docs/design/2026-10-01-registro-dei-doppioni.md" in add
+
+
+# ---------------------------------------------------------------------------
+# il BACKLOG prende la versione vera (N174-1, 15/10/2026)
+# ---------------------------------------------------------------------------
+
+_BACKLOG = (
+    "# BACKLOG\n\n## Usciti\n\n"
+    "### ~~Una voce uscita nel ramo~~ — **USCITA col prossimo rilascio** — aperta il 21/10/2026\n\n"
+    "Il testo la cita: si scrive `— **USCITA col prossimo rilascio**`, e resta.\n\n"
+    "#### ~~Una sotto-voce~~ — **USCITA col prossimo rilascio**\n\n"
+    "### ~~Una voce gia' rilasciata~~ — **USCITA con la v3.80.0**\n")
+
+
+def _backlog_and_register(tmp_path):
+    backlog, register = tmp_path / "BACKLOG.md", tmp_path / "registro.md"
+    backlog.write_text(_BACKLOG, encoding="utf-8")
+    register.write_text(_REGISTER, encoding="utf-8")
+    return backlog, register
+
+
+def test_il_rilascio_scrive_la_versione_nei_titoli_del_backlog(tmp_path, capsys):
+    """Solo i titoli (`###` e `####`): il testo di una voce che cita il segno
+    resta com'e'.
+    Mutazione ESEGUITA (22/10/2026): tolta da `close_register` la chiamata a
+    `registro.release_backlog` -- rossa (i titoli restano «col prossimo
+    rilascio»). Seconda mutazione ESEGUITA: in `release_backlog` il
+    controllo dell'intestazione tolto -- rossa (il testo e' riscritto)."""
+    backlog, register = _backlog_and_register(tmp_path)
+    with patch.object(rel, "REGISTER", register), patch.object(rel, "BACKLOG", backlog):
+        rel.close_register("3.82.0", dry_run=False)
+    after = backlog.read_text(encoding="utf-8")
+    assert after == _BACKLOG.replace(
+        "~~ — **USCITA col prossimo rilascio**", "~~ — **USCITA con la v3.82.0**")
+    assert "si scrive `— **USCITA col prossimo rilascio**`, e resta" in after
+    assert "BACKLOG: 2 voci uscite con la v3.82.0" in capsys.readouterr().out
+
+
+def test_in_prova_il_backlog_non_si_scrive_e_le_voci_si_nominano(tmp_path, capsys):
+    """Mutazione ESEGUITA (22/10/2026): in `close_register` il ramo della
+    prova senza `return` -- rossa (il BACKLOG e' stato scritto)."""
+    backlog, register = _backlog_and_register(tmp_path)
+    with patch.object(rel, "REGISTER", register), patch.object(rel, "BACKLOG", backlog):
+        rel.close_register("3.82.0", dry_run=True)
+    assert backlog.read_text(encoding="utf-8") == _BACKLOG
+    out = capsys.readouterr().out
+    assert "BACKLOG: 2 voci prenderebbero la v3.82.0" in out
+    assert "Una voce uscita nel ramo" in out and "Una sotto-voce" in out
+
+
+def test_il_backlog_entra_nel_commit_del_rilascio():
+    """Come il registro: i titoli riscritti e lasciati fuori dal `git add`
+    sarebbero un file sporco dopo il tag.
+    Mutazione ESEGUITA (22/10/2026): tolto il BACKLOG dalla lista -- rossa."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        rel.git_commit_and_tag("3.82.0", dry_run=False)
+    assert "docs/BACKLOG.md" in mock_run.call_args_list[0].args[0]
 
 
 def _git_answers(staged_rc):

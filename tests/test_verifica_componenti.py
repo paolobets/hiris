@@ -405,6 +405,144 @@ def test_gitattributes_inchioda_la_fine_riga_degli_hook():
     assert ".githooks/** text eol=lf" in attributi
 
 
+# ── Il pre-push non scatta su una versione gia' rilasciata ────────────────
+#
+# La parte dell'hook che decide se svegliare la verifica, eseguita in un repo
+# finto con un remote vero e una verifica finta che lascia un segno. La parte
+# si chiede a un'ancora di testo (`VUOTO=`), non a un numero di riga.
+
+_HOOK_GATE_ANCHOR = "VUOTO=0000000000000000000000000000000000000000"
+
+
+def _git(repo: Path, *argomenti: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-c", "user.name=prova", "-c", "user.email=prova@example.invalid",
+         "-c", "init.defaultBranch=master", "-c", "core.hooksPath=/dev/null",
+         *argomenti],
+        cwd=repo, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
+
+
+def _versione(repo: Path, versione: str, messaggio: str) -> str:
+    (repo / "hiris" / "config.yaml").write_text(
+        f'name: HIRIS\nversion: "{versione}"\n', encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", messaggio)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _lavoro(repo: Path, nome: str) -> str:
+    (repo / nome).write_text(nome, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", nome)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def released_repo(tmp_path):
+    """Un remote con `master` alla 1.1.0 e un ramo di lavoro gia' pushato
+    alla 1.0.0, poi riallineato a master con un'unione: l'intervallo del
+    push porta il commit di versione gia' rilasciato."""
+    remoto, repo = tmp_path / "remoto.git", tmp_path / "clone"
+    remoto.mkdir()
+    repo.mkdir()
+    _git(remoto, "init", "-q", "--bare")
+    _git(repo, "init", "-q")
+    (repo / "hiris").mkdir()
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "verifica_componenti.py").write_text(
+        "import pathlib, sys\npathlib.Path('SCATTATO').write_text('si')\nsys.exit(1)\n",
+        encoding="utf-8")
+    base = _versione(repo, "1.0.0", "base")
+    _git(repo, "remote", "add", "origin", str(remoto))
+    _git(repo, "push", "-q", "origin", "master")
+    _git(repo, "checkout", "-q", "-b", "lavoro")
+    _git(repo, "push", "-q", "origin", "lavoro")
+    _git(repo, "checkout", "-q", "master")
+    rilascio = _versione(repo, "1.1.0", "rilascio 1.1.0")
+    _git(repo, "push", "-q", "origin", "master")
+    _git(repo, "checkout", "-q", "lavoro")
+    _git(repo, "merge", "-q", "--no-edit", "master")
+    return repo, base, rilascio
+
+
+def _pre_push(repo: Path, sha_remoto: str, *, remote: str = "origin") -> bool:
+    """Esegue la parte del cancello dell'hook per un push di `lavoro`;
+    True se ha svegliato la verifica dei componenti."""
+    import subprocess
+
+    hook = (Path(__file__).parent.parent / ".githooks" / "pre-push").read_text(
+        encoding="utf-8")
+    assert hook.count(_HOOK_GATE_ANCHOR) == 1, "l'ancora del cancello non c'e' piu'"
+    parte = hook[hook.index(_HOOK_GATE_ANCHOR):]
+    locale = _git(repo, "rev-parse", "HEAD")
+    esito = subprocess.run(
+        ["sh", "-c", parte, "pre-push", remote, "indirizzo"],
+        input=f"refs/heads/lavoro {locale} refs/heads/lavoro {sha_remoto}\n",
+        cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
+    scattato = (repo / "SCATTATO").exists()
+    assert esito.returncode == (1 if scattato else 0), esito.stderr
+    return scattato
+
+
+def test_il_pre_push_non_scatta_su_una_versione_gia_rilasciata(released_repo):
+    """Voce del BACKLOG «Il pre-push scatta sul bump di una versione gia'
+    rilasciata» (giro 186): il commit di versione e' gia' su `origin/master`.
+    Rossa sull'hook di master @ 46039704 (il cancello scattava).
+
+    Mutazione ESEGUITA (22/10/2026): tolta dall'hook l'esclusione
+    `$gia_rilasciati` -- rossa, il cancello scatta. Ripristino verificato con
+    `git status`."""
+    repo, base, _rilascio = released_repo
+    _lavoro(repo, "una-fetta")
+
+    assert not _pre_push(repo, base)
+
+
+def test_il_pre_push_scatta_su_un_bump_che_master_non_ha(released_repo):
+    """Il verso che deve restare: un commit di versione che il remote non ha
+    ancora sveglia la verifica, anche dentro un ramo riallineato.
+
+    Mutazione ESEGUITA (22/10/2026): nell'hook `grep -q` cercato su
+    `^XXversion:` -- rossa, il cancello non scatta."""
+    repo, base, _rilascio = released_repo
+    _versione(repo, "1.2.0", "rilascio 1.2.0")
+
+    assert _pre_push(repo, base)
+
+
+def test_il_pre_push_tace_su_config_toccato_senza_cambiare_versione(released_repo):
+    """Il ramo riallineato tocca `hiris/config.yaml` senza cambiare la
+    versione (qui la descrizione): il commit entra nel giro del cancello, e
+    la versione gia' rilasciata non deve farlo scattare. E' la prova che
+    distingue il «commit per commit» dalla differenza fra i due estremi
+    (R200-2, giro 200).
+
+    Mutazione ESEGUITA (22/10/2026), la H3 del revisore: dentro il ciclo
+    `git show --format= "$commit"` sostituito con `git diff "$intervallo"`
+    -- rossa solo questa, il cancello scatta; le altre tre restano verdi.
+    Ripristino verificato con `git status`."""
+    repo, base, _rilascio = released_repo
+    config = repo / "hiris" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8")
+                      + "description: la casa\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "solo la descrizione")
+
+    assert not _pre_push(repo, base)
+
+
+def test_senza_il_ref_di_master_non_si_esclude_niente(released_repo):
+    """Un push verso un indirizzo invece che verso un remote con nome non ha
+    `refs/remotes/<nome>/master`: il cancello guarda tutto, come prima,
+    invece di tacere."""
+    repo, base, _rilascio = released_repo
+    _lavoro(repo, "una-fetta")
+
+    assert _pre_push(repo, base, remote="https://example.invalid/hiris.git")
+
+
 # ── Il cancello: lo scarto si FABBRICA, senza rete ────────────────────────
 #
 # `componi_scarti` e' pura (nessuna rete, nessun orologio): le prove possono

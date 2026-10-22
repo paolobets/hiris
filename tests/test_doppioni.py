@@ -246,82 +246,46 @@ def test_una_costante_solo_NOMINATA_in_una_docstring_non_e_un_legame(tmp_path):
     assert len(cerca_vocabolari_paralleli([py], [js], [prova])) == 1
 
 
-# --- l'elenco dei doppioni noti (cancello della fonte unica) ---------------
+# --- il cancello, senza eccezioni ----------------------------------------
 
-def test_un_doppione_noto_non_ferma_e_uno_nuovo_si():
-    """Mutazione ESEGUITA: in `against_known` restituito sempre `([], [])` --
-    rossa (il reperto nuovo non e' piu' fra i fermanti)."""
+def _finti_cercatori(monkeypatch, trovati):
+    """I quattro cercatori del progetto vero sostituiti: il primo trova
+    `trovati`, gli altri niente. Si guarda solo cosa fa il cancello."""
+    import doppioni
+
+    monkeypatch.setattr(doppioni, "cerca_regex", lambda _py: list(trovati))
+    monkeypatch.setattr(doppioni, "cerca_funzioni_gemelle", lambda _py: [])
+    monkeypatch.setattr(doppioni, "cerca_vocabolari_paralleli", lambda *_a: [])
+    monkeypatch.setattr(doppioni, "cerca_predefiniti", lambda _py: [])
+    return doppioni
+
+
+def test_il_cancello_si_ferma_su_ogni_doppione_che_vede(monkeypatch, capsys):
+    """Nessun elenco di doppioni noti (Paolo, 15/10/2026; uscito il
+    22/10/2026): un doppione visto ferma il cancello, sempre.
+
+    Mutazione ESEGUITA (22/10/2026): in `run` il ramo del cancello riscritto
+    `return 0` -- rossa sul primo `assert`. Ripristino verificato con
+    `git status`."""
     from _comune import Reperto
-    from doppioni import against_known, fingerprint
 
-    old = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/b.py:20"])
-    new = Reperto("regex-ripetuta", "^b+$", ["hiris/app/a.py:11", "hiris/app/c.py:5"])
-    known = {fingerprint(old): "B-24"}
-    assert against_known([old], known) == ([], [])
-    unknown, healed = against_known([old, new], known)
-    assert unknown == [new] and healed == []
-
-
-def test_l_impronta_non_cambia_se_il_codice_si_sposta_di_riga():
-    from _comune import Reperto
-    from doppioni import fingerprint
-
-    before = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/b.py:20"])
-    after = Reperto("regex-ripetuta", "^a+$", ["hiris/app/b.py:99", "hiris/app/a.py:3"])
-    elsewhere = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/z.py:20"])
-    assert fingerprint(before) == fingerprint(after)
-    assert fingerprint(before) != fingerprint(elsewhere)
-    third = Reperto("regex-ripetuta", "^a+$",
-                    ["hiris/app/a.py:10", "hiris/app/a.py:40", "hiris/app/b.py:20"])
-    assert fingerprint(before) != fingerprint(third), (
-        "una terza copia negli stessi file deve avere un'altra impronta")
+    doppione = Reperto("regex-ripetuta", "^a+$", ["hiris/app/a.py:10", "hiris/app/b.py:20"])
+    doppioni = _finti_cercatori(monkeypatch, [doppione])
+    assert doppioni.run(cancello=True) == 1
+    assert doppioni.run(cancello=False) == 0, "senza --cancello e' un rapporto"
+    doppioni = _finti_cercatori(monkeypatch, [])
+    assert doppioni.run(cancello=True) == 0
+    capsys.readouterr()
 
 
-def test_un_doppione_guarito_rimasto_in_elenco_ferma_il_cancello():
-    """L'elenco puo' solo accorciarsi: una voce che il codice non conferma
-    piu' va tolta, o l'elenco diventa un permesso in bianco per rifarla.
+def test_il_cancello_non_accetta_piu_un_elenco_di_noti():
+    """`--noti` e' uscito: chi lo passa riceve un errore, non un cancello
+    che tace in silenzio su un elenco che nessuno legge piu'."""
+    import subprocess
 
-    Mutazione ESEGUITA: tolto il calcolo dei guariti -- rossa."""
-    from doppioni import against_known
-
-    healed = "regex-ripetuta · ^a+$ · hiris/app/a.py + hiris/app/b.py · 2 posti"
-    assert against_known([], {healed: "B-24"}) == ([], [healed])
-
-
-def test_l_elenco_dei_noti_puo_solo_accorciarsi():
-    """Il tetto e' il numero di voci di oggi (25 il 01/10/2026). Scende quando
-    un doppione esce; alzarlo e' una riga di diff che una revisione vede."""
-    import json
-
-    known = json.loads((Path(__file__).resolve().parents[1] / "scripts"
-                        / "doppioni_noti.json").read_text(encoding="utf-8"))
-    assert len(known) == KNOWN_CAP, (
-        f"i doppioni noti sono {len(known)}, il tetto e' {KNOWN_CAP}")
-
-
-# 11 dalla Tappa 7 T9 (07/10/2026): i quattro vocabolari dei provider fra
-# `model_resolution`, `llm_router`, `handlers_models`, i consumi e le due pagine sono
-# usciti con la tabella dei provider, e le chiavi dell'archivio che la pagina
-# ricopiava coi predefiniti accanto (ora arrivano in `scrivibili`).
-# 10 dalla Tappa 7 T10 (07/10/2026): `data_dir = '/data'` ripetuto in
-# `handlers_chat` e `chat_thread` (D-09) e' uscito -- ogni lettore chiede
-# `app[DATA_DIR_KEY]`, che l'avvio scrive una volta.
-# 8 dalla Tappa 8 T4 (08/10/2026): le parole degli stati delle costruzioni e
-# delle promesse non hanno piu' una copia in JavaScript (`states.READABLE`,
-# C-10) -- la pagina riceve la frase dalla rotta.
-# 7 dalla Chiusura, F2 (13/10/2026): i nomi dei registri non hanno piu' una
-# copia in common.js -- la pagina li riceve in `nomi_registri` (C-10).
-# 6 dalla Chiusura, F2 (13/10/2026): i ruoli e le specie dei servizi arrivano
-# dalla rotta con le loro frasi, e i servizi gia' divisi per stato (C-10).
-# 4 dalla Chiusura, F2 (13/10/2026): il nome dei domini costruibili e dei gesti
-# delle costruzioni arriva dalla rotta (`construction_words`, C-10).
-# 2 dalla Chiusura, F2 (13/10/2026): la lettura del costo arriva dalla rotta dei
-# consumi; i nomi dei campi del sapere sono dichiarati (C-10).
-# 1 dalla Chiusura, F2 (13/10/2026): le parti di una misura arrivano gia' in
-# ordine (`report.value_parts`, C-10).
-# 0 dalla Chiusura, F2 (13/10/2026): `{entita, integrazione, tipo}` era un falso
-# reperto -- l'elisione «un'entita'» in un commento di watcher-lavoro.js, una
-# chiave `tipo:` di raggruppamento e il prefisso `integrazione:` citato in un
-# commento. Il commento e' riscritto; nessuna copia del vocabolario c'era.
-KNOWN_CAP = 0
+    script = Path(__file__).resolve().parents[1] / "scripts" / "doppioni.py"
+    esito = subprocess.run([sys.executable, str(script), "--cancello", "--noti", "x.json"],
+                           capture_output=True, text=True, encoding="utf-8", check=False)
+    assert esito.returncode == 2
+    assert "--noti" in esito.stderr
 

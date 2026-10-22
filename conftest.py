@@ -1,6 +1,10 @@
+import hashlib
+import importlib.util
 import os
 import time
+from pathlib import Path
 
+import pytest
 import pytest_asyncio
 
 from hiris.app.api.credenziali import CREDENTIALS_KEY
@@ -29,6 +33,44 @@ os.environ.setdefault("HIRIS_ALLOW_NO_CSRF", "1")
 #: Non una data fissa nel 2100: un `subprocess.run` con settant'anni di
 #: `timeout` solleva `OverflowError` (misurato il 06/10/2026).
 SCADENZA_LONTANA = time.time() + 24 * 3600
+
+# --- I documenti che il rilascio scrive restano com'erano ------------------
+#
+# `release.close_register` riscrive il registro dei doppioni e i titoli del
+# BACKLOG. Una prova che lo chiama senza dargli dei documenti finti scrive
+# quelli veri, e la suite resta verde: e' successo il 22/10/2026 (la v3.78.0
+# su due voci del ramo), e il revisore l'ha rifatto togliendo la protezione
+# di `tests/test_release_script.py` (R200-1, giro 200). Qui la difesa diventa
+# un cancello che si vede: alla fine della corsa le impronte devono essere
+# quelle dell'inizio. I percorsi si chiedono a `scripts/registro.py`, la loro
+# casa.
+
+def _registro():
+    sorgente = Path(__file__).resolve().parent / "scripts" / "registro.py"
+    spec = importlib.util.spec_from_file_location("_registro_della_suite", sorgente)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def _impronte(percorsi) -> dict:
+    return {percorso: hashlib.sha256(percorso.read_bytes()).hexdigest()
+            for percorso in percorsi}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def release_documents_untouched():
+    registro = _registro()
+    percorsi = (registro.BACKLOG, registro.REGISTER)
+    prima = _impronte(percorsi)
+    yield
+    cambiati = [str(p.relative_to(registro.ROOT)) for p, impronta in _impronte(percorsi).items()
+                if impronta != prima[p]]
+    if cambiati:
+        pytest.fail(f"una prova ha scritto i documenti veri del rilascio: {cambiati} -- "
+                    "dalle un BACKLOG e un registro finti, e ripristinali con git",
+                    pytrace=False)
+
 
 # --- Fingere l'ingress del Supervisor --------------------------------------
 #

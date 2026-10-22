@@ -333,8 +333,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
                         config/*.js · fonts/
 scripts/                  # gli ATTREZZI: non entrano nell'immagine, e il prodotto non li importa
                           # (lo prova tests/test_import_boundary.py). I cancelli: cancelli.py,
-                          # censimento.py (con censimento_eccezioni.json), doppioni.py (con
-                          # doppioni_noti.json), registro.py, sponde_js.py, legami_js.mjs,
+                          # censimento.py (con censimento_eccezioni.json), doppioni.py,
+                          # registro.py, sponde_js.py, legami_js.mjs,
                           # verifica_componenti.py; il rilascio: release.py; la casa: casa.py
                           # (l'unica porta verso la casa vera, di sola lettura), casa_finta.py,
                           # _comune.py; le misure: sonda_parita.py, fotografia_porte.py,
@@ -614,10 +614,11 @@ Due condizioni, perché una rinomina di massa è l'operazione che rompe le cose 
 le sponde del frontend (`python scripts/sponde_js.py`), `oxlint` se il clone ha `node_modules`, e i
 quattro cancelli della fonte unica (`python scripts/cancelli.py`: il registro dei doppioni è
 leggibile, nessun doppione nuovo, nessun codice morto nuovo, nessuna lettura o regola ricopiata
-fuori dalla sua casa). Le eccezioni note di ognuno stanno in un file con la ragione scritta, e possono solo
-diminuire. Gli stessi cancelli girano nella CI.
+fuori dalla sua casa). Le eccezioni note del censimento e della fonte unica stanno in un file con la
+ragione scritta, e possono solo diminuire; il cancello dei doppioni non ne ammette (Paolo, 15/10/2026).
+Gli stessi cancelli girano nella CI.
 
-E ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
+E ferma ogni push che contiene un bump di `hiris/config.yaml`, non ancora su `master` del remote, finché non hai
 guardato i componenti: la **CLI del ponte** (pin esatto, quindi le patch non arrivano da sole), le
 **azioni CI**, l'**immagine di base** fissata per impronta nel `Dockerfile`, un **major nuovo sopra
 un tetto** di `requirements.txt` (che congelerebbe una

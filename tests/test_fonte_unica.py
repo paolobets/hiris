@@ -96,7 +96,6 @@ from hiris.app.home_space import topology, type_vocabulary
 
 EXCEPTIONS_FILE = ROOT / "tests" / "fonte_unica_eccezioni.json"
 REGISTER = ROOT / "docs" / "design" / "2026-10-01-registro-dei-doppioni.md"
-KNOWN_DUPLICATES = ROOT / "scripts" / "doppioni_noti.json"
 
 #: I metodi del client che non sono domande alla casa: lo accendono e lo
 #: spengono. Lista di AMMISSIONE, con la ragione: chi avvia l'add-on deve
@@ -775,19 +774,6 @@ def test_un_ammissione_non_rimanda_a_una_voce_aperta():
                 loose.append(f"{where}: il debito cita {voice}, che non e' una "
                              "voce aperta -- chiusa, la riga esce")
     assert not loose, "\n".join(loose)
-
-
-def test_nessun_doppione_e_noto():
-    """`scripts/doppioni_noti.json` e' vuoto dalla F2 della Chiusura, e resta
-    vuoto (D2): un doppione nuovo si toglie, non entra nell'elenco dei noti.
-    Il cancello `doppioni.py --noti` ferma gia' un doppione che NON e' in
-    elenco; questa prova ferma quello che ci viene scritto.
-
-    Mutazione ESEGUITA (14/10/2026): scritta nel file l'impronta
-    `{"regex:prova": "A-41"}` -- rossa, con l'impronta nel messaggio.
-    Ripristino verificato con `git status`."""
-    known = json.loads(KNOWN_DUPLICATES.read_text(encoding="utf-8"))
-    assert known == {}, f"doppioni scritti come noti: {sorted(known)}"
 
 
 #: D-36 (06/10/2026): **il resoconto di un giorno ha UNA strada che lo

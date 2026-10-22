@@ -90,6 +90,20 @@ fi
 
 VUOTO=0000000000000000000000000000000000000000
 
+# I commit gia' su `master` del remote non si guardano: un ramo che si
+# riallinea a master dopo un rilascio porta nell'intervallo il commit di
+# versione, gia' rilasciato, e senza questa esclusione il cancello scattava
+# su un rilascio fatto (falso positivo del giro 186 del revisore, 21/10/2026),
+# e `HIRIS_COMPONENTI_OK=1` diventava un'abitudine invece di voler dire
+# «rilascio comunque». Il push del rilascio resta guardato: durante il
+# pre-push il ref remoto non si e' ancora mosso, e il commit di versione non
+# c'e'. Senza il ref (un push verso un indirizzo invece che verso un remote
+# con nome, o un clone che non l'ha mai letto) non si esclude niente.
+gia_rilasciati=""
+if git rev-parse --verify -q "refs/remotes/$1/master" >/dev/null; then
+    gia_rilasciati="^refs/remotes/$1/master"
+fi
+
 while read -r _locale sha_locale _remoto sha_remoto; do
     # Cancellazione di un ramo: niente da verificare.
     [ "$sha_locale" = "$VUOTO" ] && continue
@@ -102,9 +116,16 @@ while read -r _locale sha_locale _remoto sha_remoto; do
         intervallo="$sha_remoto..$sha_locale"
     fi
 
-    if git diff "$intervallo" -- hiris/config.yaml 2>/dev/null | grep -q '^[+-]version:'; then
-        python scripts/verifica_componenti.py || exit 1
-    fi
+    # Commit per commit, perche' una differenza fra i due estremi non sa
+    # escludere i commit di mezzo. `git show` di un'unione da' il diff
+    # combinato, che tace dove l'unione prende il testo di un genitore: il
+    # bump portato da master non si rilegge li'.
+    for commit in $(git rev-list $intervallo $gia_rilasciati -- hiris/config.yaml 2>/dev/null); do
+        if git show --format= "$commit" -- hiris/config.yaml | grep -q '^[ +-]*[+-]version:'; then
+            python scripts/verifica_componenti.py || exit 1
+            break
+        fi
+    done
 done
 
 exit 0
