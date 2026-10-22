@@ -19,7 +19,7 @@
 # -- nessuna compilazione in fase di costruzione dell'immagine.
 cryptography>=46.0.0,<51.0.0
 
-aiohttp>=3.14.3,<4.0.0
+aiohttp>=3.14.5,<4.0.0
 # anthropic 2.x (22/10/2026, scelta di Paolo): manda `anthropic-version:
 # 2026-10-21` e la chiave in `Authorization: Bearer`. Lette le note di
 # migrazione ufficiali (platform.claude.com/docs/en/api/migration-2026-10-21,
