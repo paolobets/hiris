@@ -131,18 +131,6 @@ ricordi: ciò che le persone hanno detto a HIRIS si ridice. Il contratto dice ch
 persona ha detto non evapora (`docs/design/2026-08-05-la-conoscenza-di-hiris.md`): qui la persona
 è Paolo, che sceglie di ricominciare, e il backup lo conserva.
 
-### Il pre-push scatta sul bump di una versione già rilasciata — aperta il 21/10/2026
-
-`origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
-
-Il pre-push guarda i commit fra la punta remota del ramo e quella locale. Un ramo cloud che si
-riallinea a master dopo un rilascio porta nell'intervallo il commit di versione, già rilasciato e
-già su master. Il cancello dei componenti scatta, e per pushare serve `HIRIS_COMPONENTI_OK=1`, che
-così diventa un'abitudine invece di voler dire «rilascio comunque».
-
-Proposta: l'intervallo esclude i commit già su `origin/master` (`git rev-list` con
-`^origin/master`).
-
 ### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
 
 `origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
@@ -3736,6 +3724,20 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~Il pre-push scatta sul bump di una versione già rilasciata~~ — **USCITA col prossimo rilascio** — aperta il 21/10/2026
+
+`fatta il 22/10/2026 (Fase 0.3 dello sprint «Il giro snello e il Brain leggibile»): `.githooks/pre-push` guarda commit per commit, con `git rev-list` e l'esclusione `^refs/remotes/<remote>/master`; senza quel ref non esclude niente. Tre prove in `tests/test_verifica_componenti.py` con un repo e un remote finti: la prima e' rossa sull'hook di master @ 46039704, e due mutazioni eseguite`
+
+`origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
+
+Il pre-push guarda i commit fra la punta remota del ramo e quella locale. Un ramo cloud che si
+riallinea a master dopo un rilascio porta nell'intervallo il commit di versione, già rilasciato e
+già su master. Il cancello dei componenti scatta, e per pushare serve `HIRIS_COMPONENTI_OK=1`, che
+così diventa un'abitudine invece di voler dire «rilascio comunque».
+
+Proposta: l'intervallo esclude i commit già su `origin/master` (`git rev-list` con
+`^origin/master`).
 
 ### ~~Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato»~~ — **USCITA con la v3.80.0** — aperta il 05/10/2026
 

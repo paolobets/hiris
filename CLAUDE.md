@@ -618,7 +618,7 @@ fuori dalla sua casa). Le eccezioni note del censimento e della fonte unica stan
 ragione scritta, e possono solo diminuire; il cancello dei doppioni non ne ammette (Paolo, 15/10/2026).
 Gli stessi cancelli girano nella CI.
 
-E ferma ogni push che contiene un bump di `hiris/config.yaml` finché non hai
+E ferma ogni push che contiene un bump di `hiris/config.yaml`, non ancora su `master` del remote, finché non hai
 guardato i componenti: la **CLI del ponte** (pin esatto, quindi le patch non arrivano da sole), le
 **azioni CI**, l'**immagine di base** fissata per impronta nel `Dockerfile`, un **major nuovo sopra
 un tetto** di `requirements.txt` (che congelerebbe una
