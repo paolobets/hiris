@@ -512,6 +512,27 @@ def test_il_pre_push_scatta_su_un_bump_che_master_non_ha(released_repo):
     assert _pre_push(repo, base)
 
 
+def test_il_pre_push_tace_su_config_toccato_senza_cambiare_versione(released_repo):
+    """Il ramo riallineato tocca `hiris/config.yaml` senza cambiare la
+    versione (qui la descrizione): il commit entra nel giro del cancello, e
+    la versione gia' rilasciata non deve farlo scattare. E' la prova che
+    distingue il «commit per commit» dalla differenza fra i due estremi
+    (R200-2, giro 200).
+
+    Mutazione ESEGUITA (22/10/2026), la H3 del revisore: dentro il ciclo
+    `git show --format= "$commit"` sostituito con `git diff "$intervallo"`
+    -- rossa solo questa, il cancello scatta; le altre tre restano verdi.
+    Ripristino verificato con `git status`."""
+    repo, base, _rilascio = released_repo
+    config = repo / "hiris" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8")
+                      + "description: la casa\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "solo la descrizione")
+
+    assert not _pre_push(repo, base)
+
+
 def test_senza_il_ref_di_master_non_si_esclude_niente(released_repo):
     """Un push verso un indirizzo invece che verso un remote con nome non ha
     `refs/remotes/<nome>/master`: il cancello guarda tutto, come prima,
