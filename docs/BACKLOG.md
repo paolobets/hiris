@@ -42,6 +42,512 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### Il giro snello e il Brain leggibile — lo sprint in corso, aperto il 22/10/2026
+
+`origine: Paolo, 22/10/2026 — alle 13:20 approva l'obiettivo 1 della proposta del 22/10 («ogni giro porta solo ciò che serve») e le azioni sul backlog; alle 13:28, 13:31 e 13:32 aggiunge la pulizia totale, il Brain, le chat e i ricordi, la sicurezza; alle 13:34 «ok procedi come da piano»` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`
+
+**L'obiettivo, in una frase.** A ogni giro il modello riceve solo ciò che gli serve per decidere, e
+il Brain dice a Paolo cose che si capiscono: si riparte puliti e si misura, prima e dopo, se va
+meglio.
+
+Le fasi, in breve (il dettaglio, con le voci da cui nasce ogni punto, sta nel piano):
+
+- **0 — Si chiude ciò che è chiuso e si toglie ciò che è deciso.** Questo BACKLOG riordinato;
+  escono `--noti` e `scripts/doppioni_noti.json` (decisione di Paolo del 15/10); il pre-push non
+  scatta su una versione già rilasciata; `release.py` riscrive «USCITA col prossimo rilascio».
+- **L — La fotografia di prima** (dal PC, sola lettura): cosa producono oggi osservatore e
+  analista, nove punti, salvati prima della pulizia.
+- **P — Si riparte puliti** (dal PC, col sì di Paolo a ogni passo che cancella): backup
+  dell'add-on, poi `osservazioni.db`, `sapere.db`, `chat_history.db` e `memoria.db` messi da
+  parte; voce «Si riparte puliti: Brain, sapere, chat e ricordi».
+- **1 — La misura prima**: la batteria con una conversazione nuova per domanda, la misura sulla
+  3.81.0, la cache del ponte con due persone.
+- **2 — Il contesto fisso si snellisce**: le regole di `execute` una volta sola, i paragrafi
+  doppi una volta sola, le istruzioni di lettura nella risposta invece che nella descrizione, il
+  nucleo senza ciò che non serve a rispondere, «Chi ti sta parlando» dopo il nucleo se la misura
+  dice che pesa, R196-1.
+- **B — Il Brain si legge**: «L'osservatore» diventa «Brain»; contenuti, considerazioni
+  dell'analista, usabilità e feedback della pagina.
+- **S — Chat per utente e sicurezza**: prima l'analisi dei rischi della struttura di oggi (S.0,
+  da approvare), poi le difese che ne escono.
+- **3 — La misura dopo e il rilascio**: la stessa batteria sul ramo, la revisione totale, il
+  rilascio, la verifica dal vivo.
+
+Le voci che lo sprint porta stanno qui sotto. Restano fuori, «In attesa», il proponente acceso
+(«⚠️ Prima di accendere il proponente», «I prossimi passi, in ordine», «Gli attori si riparano dal
+basso»), la porta dei modelli, i lavori «partial» nel log e il giro del mattino. Della voce
+«Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px» la Fase B prende
+solo la pagina del Brain, quindi la voce resta «In attesa».
+
+### La pagina «L'osservatore» si chiama Brain — aperta il 22/10/2026
+
+`origine: Paolo, 22/10/2026 13:28 («la pagina L'osservatore si chiama Brain»)` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`, Fase B.1
+
+La voce di menu, il titolo e le schede della pagina dicono «Brain» invece di «L'osservatore».
+Nasce una rotta `#/brain`; `#/watcher` e `#/osservatore` restano come alias verso di lei, perché
+un segnalibro vecchio non deve portare a una pagina vuota. Gli identificatori nel codice non si
+toccano: la rinomina del codice si fa a sviluppo fermo (CLAUDE.md, «Il debito dichiarato: la
+rinomina in inglese»). Prima di disegnare si interpella `ux-ui-specialist`.
+
+### I dati e le considerazioni del Brain si leggono: contenuti, usabilità, feedback — aperta il 22/10/2026
+
+`origine: Paolo, 22/10/2026 13:28 — «capire cosa mi stanno dicendo osservatore e analista, perché per ora le info sono ancora poco chiare»; «così si legge male»` · piano: Fasi L e B (B.2-B.5)
+
+Ciò che la pagina mostra oggi si legge male, e non si sa ancora se la colpa sia dei dati o della
+forma. Si parte dalla fotografia della Fase L (nove punti letti dal PC prima della pulizia) e
+dalle frasi che a Paolo sono sembrate poco chiare. Per ogni scheda (Giorno, Lavoro, Cosa fare,
+Sapere) si decide cosa si mostra, con quali parole e in che ordine; le considerazioni
+dell'analista (osservazioni, `novita`, `cosa_cambierebbe`) si rivedono nella forma e nel modo in
+cui arrivano in pagina, e il testo che il modello riceve si cambia solo dopo la misura della Fase
+1, per non mescolare le misure. Usabilità e feedback: cosa succede quando si preme (togli,
+rimetti, correggi un giudizio, Rifalla), cosa dice la pagina mentre aspetta e quando qualcosa
+fallisce. Prove comportamentali JS per le schede toccate. Il parere di `ux-ui-specialist` lo
+chiede lo Sprint dal PC, in sola lettura.
+
+### Si riparte puliti: Brain, sapere, chat e ricordi — aperta il 22/10/2026
+
+`origine: Paolo, 22/10/2026 13:28 («partiamo puliti, se devo riemettere giudizi vediamo se ora vanno meglio che prima, perché i risultati erano insufficienti»; si cancellano anche tutte le chat) e 13:31 (si cancellano anche i ricordi)` · piano: Fase P
+
+Non è codice: è un gesto da fare una volta sulla casa, dal PC, col sì di Paolo a ogni passo che
+cancella.
+
+1. Backup intero dell'add-on in Home Assistant, con la data nel nome: è ciò che rende la pulizia
+   reversibile.
+2. Add-on fermo; si spostano da parte, non si cancellano finché il Brain nuovo non convince,
+   `osservazioni.db`, `sapere.db`, `chat_history.db` e `memoria.db`. Il modo esatto lo verifica
+   lo Sprint sulla documentazione del Supervisor prima di farlo.
+3. Add-on avviato: gli archivi rinascono vuoti, il seme del sapere si riscrive da sé,
+   l'osservatore parte come al primo avvio. Paolo ridichiara l'obiettivo e i giudizi che gli
+   servono.
+4. Restano: `promesse.db`, `costruzioni.db` (le automazioni costruite restano in HA),
+   `consumi.db`, `azioni.db`, `servizi.db`, la configurazione dei modelli.
+5. Dopo qualche giorno di giri si rileggono gli stessi nove punti della Fase L: il «dopo».
+
+**Cosa si perde, detto una volta:** l'obiettivo e la sua storia, le decisioni di Paolo su cosa
+guardare, le risposte alle proposte (il proponente è comunque spento), i giudizi corretti a mano,
+la memoria dell'analista contro le ripetizioni, i resoconti (oltre gli 8 giorni circa che il
+recorder di HA tiene, misurati il 03/10, non si possono rifare), tutte le conversazioni, tutti i
+ricordi: ciò che le persone hanno detto a HIRIS si ridice. Il contratto dice che ciò che una
+persona ha detto non evapora (`docs/design/2026-08-05-la-conoscenza-di-hiris.md`): qui la persona
+è Paolo, che sceglie di ricominciare, e il backup lo conserva.
+
+### Il pre-push scatta sul bump di una versione già rilasciata — aperta il 21/10/2026
+
+`origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
+
+Il pre-push guarda i commit fra la punta remota del ramo e quella locale. Un ramo cloud che si
+riallinea a master dopo un rilascio porta nell'intervallo il commit di versione, già rilasciato e
+già su master. Il cancello dei componenti scatta, e per pushare serve `HIRIS_COMPONENTI_OK=1`, che
+così diventa un'abitudine invece di voler dire «rilascio comunque».
+
+Proposta: l'intervallo esclude i commit già su `origin/master` (`git rev-list` con
+`^origin/master`).
+
+### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
+
+`origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
+
+Una voce che esce prima del suo rilascio si scrive `— **USCITA col prossimo rilascio**`, perche' la
+versione ancora non c'e'. Poi nessuno la riscrive: `release.py` timbra il registro dei doppioni
+(`close_register`) ma non tocca il BACKLOG. Misurato il 15/10/2026: dieci voci erano rimaste cosi'.
+Sette erano uscite settimane prima, sei con la v3.68.0 e una con la v3.69.0 (verificate commit per
+commit: il commit che scrive il titolo e il primo tag che lo contiene). Le altre tre erano della
+3.79.1, e si sono scritte a mano nel commit di versione (N171-1). Tutte e dieci ora portano la loro
+versione, ma il buco resta.
+
+Cosa si chiede: al passo 5b, accanto al registro, `release.py` riscrive nei **titoli** del BACKLOG
+(le intestazioni `###` e `####`, come le legge `registro.backlog_titles`) ogni «USCITA col
+prossimo rilascio» in «USCITA con la vX.Y.Z», e lo dice nell'output. Solo i titoli: questa voce
+la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `_BACKLOG_DONE` la
+leggerebbe come chiusa. Una prova con un BACKLOG
+finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
+
+### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
+
+`origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`
+
+**Misurato (3.79.1).** Il primo giro a conversazione vuota costa 21.583 token in ingresso. In
+caratteri:
+- le definizioni dei 12 strumenti, 29.121: history 5.617, search 4.929, execute 3.510, propose
+  3.420, remember 2.774, related 2.467, promise 2.169, calendar 1.425, agenda 911, confirm 895,
+  mind 594, cancel 410;
+- la guida, 9.560 (`compose_base` 6.476, persona 594, il resto);
+- il nucleo, circa 6.200-8.000;
+- il prefisso della CLI, circa 660 token, costante, letto dalla cache.
+
+Sulla batteria: 61 giri × circa 21k di base ≈ 1,28 M su 1,73 M; l'85% è letto dalla cache.
+
+**Cosa non va (letto nel codice).**
+1. Le descrizioni di history e search sono per lo più istruzioni su come LEGGERE la risposta
+   (grana, finestra, escluse, oltre, profondità), e partono a ogni giro anche quando lo strumento
+   non si chiama. Per la fondamenta 1 quelle istruzioni viaggiano nella risposta stessa, quando
+   servono.
+2. Le regole di execute stanno due volte, nella guida (`compose_base`, una decina di righe) e
+   nella descrizione di execute: è un doppione (fondamenta 2).
+3. Il paragrafo «un numero senza le escluse non è un totale… prima restringi… disponibili» è
+   identico in search e in history; «agenda non è calendar» sta in tutti e due.
+4. Nel nucleo restano l'avviso sul vocabolario verificato fino a una versione di HA (nota per
+   noi, non per la risposta), i conteggi per tipo della voce «Senza area» e «Cosa si può chiedere
+   alle cose», che search dà già nel dettaglio.
+
+**Cosa NON si tocca.** I 12 strumenti restano tutti offerti a ogni giro (remember ed execute
+devono poter partire alla prima frase). I ricordi restano sempre nel nucleo (contratto). Gli id
+delle aree e delle automazioni restano nel nucleo (evitano ricerche).
+
+**Chi ne beneficia.** La chat; l'analista (search, related, history, mind, circa 13.600 caratteri
+dei suoi strumenti) e il proponente (gli stessi più propose). Osservatore e ricette no: girano
+senza strumenti, con prompt propri.
+
+**Stima da verificare.** Circa 10-12.000 caratteri in meno a giro, un quarto della base. Va
+misurato prima e dopo con una batteria a conversazione nuova per domanda: la batteria di oggi
+tiene le 28 domande nello stesso filo, e la storia accumulata pesa circa il 20% (≈ 342k token).
+
+**Prima di toccare.** Misurare la qualità oltre ai token: i giudizi della batteria sono ancora
+tutti «da giudicare».
+
+### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
+
+`origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
+
+La sezione «Chi ti sta parlando» sta **prima** del nucleo (spec §5). Sul ponte la cache della CLI
+riusa il prefisso del messaggio: due persone che si alternano non condividono piu' il prefisso del
+nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda con le misure d'uso
+(la cache del ponte per turno). Se pesa, la sezione si sposta **dopo** il nucleo in
+`compose_chat_context` — un punto solo, nessun altro chiamante la compone.
+
+### Il nucleo è statico, e il proprietario chiede se non sia povero
+
+`origine: il proprietario, 07/09/2026, discutendo la completezza degli attributi` · `nessun documento`
+
+> *«Il nucleo va bene crearlo per passare qualcosa che non sia tutta la casa ai modelli, ci
+> permette di risparmiare token — ma se non è dinamico in base al quesito, non credi sia povero
+> di informazioni?»*
+
+**I numeri, misurati sul ponte il 07/09** (105 turni), che vanno letti prima di progettare:
+
+| | |
+|---|---|
+| token in **freschi** | **662** in totale, su 105 turni — sei per turno |
+| token letti **dalla cache** | **5.603.549** |
+| token **scritti** in cache | 1.914.948 |
+
+**Il 99,99% del contesto non si paga a ogni turno: si rilegge.** Ed è possibile *proprio perché* è
+identico. Un contesto che cambia a ogni domanda non si rilegge: si riscrive, e la riscrittura
+costa più di una lettura fresca.
+
+**Ma il proprietario ha ragione sul difetto, e sbaglia bersaglio chi risponde «lasciamolo
+statico».** Il nucleo non è povero di dettagli: **tronca**, e il codice lo dichiara misurandolo
+(`briefing.py:277`) — *«citando tutti i nomi sopravvivono 7 aree su 20 invece di 17»*.
+
+> Il difetto vero non è «non sa che il termostato arriva a 40 gradi»: è **«non sa che quel
+> termostato esiste»**, e allora non può nemmeno andarlo a cercare. HIRIS ha sedici strumenti: il
+> compito del nucleo non è contenere la casa, è darne una **mappa** abbastanza buona da far capire
+> cosa vale la pena chiedere. Un nucleo che tronca tredici aree su venti non fallisce come
+> riassunto: fallisce come mappa.
+
+**Due cose da sapere prima di scrivere una riga:**
+
+1. **La cache dipende da DOVE sta il pezzo che cambia.** I ~53.000 token riletti a ogni turno non
+   sono il nucleo (≈1.500): il grosso è il prompt di sistema più le descrizioni dei sedici
+   strumenti. Un'appendice variabile messa **in coda**, dopo tutto ciò che è stabile, invalida solo
+   se stessa. Dinamico *in coda* costa quasi niente; dinamico *in testa* costa dieci volte tanto.
+2. **Scegliere il contesto dalla domanda è recupero, e il nostro recupero è debole.** È la stessa
+   lacuna ancora aperta in «Scelti»: `search` non distingue un candidato **unico** da uno
+   **certo**. Un recupero che sbaglia consegna al modello un contesto **sbagliato e sicuro di sé**,
+   e il modello non sa cosa gli manca — peggio di un contesto generico, che almeno si dichiara
+   tale.
+
+**La forma proposta**, non decisa: due strati. Una **mappa stabile in testa**, completa su *cosa
+esiste e dove*, mai troncata sulle aree — è ciò che rende possibile chiedere, ed è ciò che la cache
+rilegge gratis. E un'**appendice variabile in coda**, scelta sulla domanda, che porta il dettaglio
+e **dichiara di essere una selezione**, così il modello sa che sotto c'è altro.
+
+**E la misura che va fatta prima**: quante volte il modello sbaglia o gira a vuoto perché il nucleo
+era povero? Le tracce e il log ci sono dalla v3.22.0 — **si può guardare invece di supporre**. Se
+il modello compensa già bene con gli strumenti, il lavoro vero è solo smettere di troncare la
+mappa; se si perde, l'appendice serve davvero.
+
+**Il collegamento con «Il vocabolario dei tipi», dichiarato per non lasciarlo al caso**: rendere
+completi gli attributi aumenta la pressione sul tetto dei 6.000 caratteri. La decisione presa è
+che **la completezza va nel dettaglio di una entità, non nel nucleo** — altrimenti la prima persona
+che ci lavora la prende per caso.
+
+**Si incrocia con «L'analista»**: è lui che dovrebbe decidere *cosa* mettere in quell'appendice.
+
+### Gli strumenti rifiutano invece di indovinare
+
+`origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+Non e' un difetto: e' **una linea di condotta ripetuta in tre posti indipendenti**, misurati
+sulla casa vera il 04/09. Davanti all'incertezza il prodotto risponde con sicurezza invece di
+rifiutare.
+
+1. **`search` dichiara `ambiguo: false` su un candidato solo e sbagliato.** `search "persone"`
+   torna il solo `sensor.persons` e lo marca come non ambiguo; `search "presenza"` torna zero;
+   `search "chi c'e' in casa"` estrae la parola «casa» e offre `weather.forecast_casa`. Le
+   persone si raggiungono **solo se sai gia' che si chiamano Paolo e Marta**. Un candidato solo
+   non e' la stessa cosa di un candidato certo, e oggi il campo non li distingue.
+2. **`logbook` dichiara `required: ["ore"]` e non lo verifica.** Chiamato senza `ore` non
+   solleva: sceglie una finestra. Con un nome di argomento inventato lo ignora in silenzio e
+   restituisce l'intera casa invece dell'entita' chiesta. Un modello che sbaglia un nome riceve
+   dati plausibili sulla cosa sbagliata al posto di un errore.
+3. **`view` consegna i segnali e non la regola.** `categoria: diagnostic`, `classe: null` e un
+   `da_quando` di due giorni prima erano tutti li'; niente, in cio' che il modello riceve, dice
+   che una diagnostica non e' una misura o che uno stato fermo da giorni non puo' essere un
+   valore istantaneo.
+
+Il quarto anello — il modello che inventa una persona che non esiste — e' il **sintomo** di
+questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
+
+Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
+caso che l'ha fatto emergere, questa e' la regola che ne esce.
+
+### L'elenco dei modelli Claude dichiara a mano `anthropic-version: 2023-06-01` (R196-1) — aperta il 22/10/2026
+
+`origine: il revisore (R196-1, giro 196), sul passaggio della libreria anthropic alla 2.1.0 (ffcf872b) del 22/10/2026` · `hiris/app/api/handlers_models.py`
+
+La catena parla con Claude attraverso l'SDK `anthropic`, che dalla 2.1.0 manda
+`anthropic-version: 2026-10-21` e la chiave in `Authorization: Bearer`. L'elenco dei modelli
+nella pagina Modelli non passa dall'SDK: chiama `GET /v1/models` da sé con aiohttp, e scrive a
+mano `x-api-key` e `anthropic-version: 2023-06-01`. Sono due versioni dell'API dichiarate in due
+posti, e la seconda non segue la libreria (fondamenta 2).
+
+Da decidere: o l'elenco passa dall'SDK (`client.models.list()`), o la versione si dichiara una
+volta sola. Prima si misura che `GET /v1/models` risponda con l'intestazione nuova.
+
+### La pagina dell'osservatore si riprogetta, dopo gli attori — aperta il 13/10/2026
+
+`scelta il 22/10/2026 per lo sprint «Il giro snello e il Brain leggibile» (Fase B), PRIMA degli attori: Paolo ha deciso di ripartire puliti (Fase P) e di rivedere la pagina insieme, e il titolo resta com'e' perche' C-25 e C-27 del registro lo nominano`
+
+`origine: il registro dei doppioni, voci C-25 e C-27, trasferite dalla fetta F0 della Chiusura dello sprint (decisione del proprietario del 13/10/2026)` · analisi di leggibilita' in `docs/superpowers/audit-2026-10-01/pagina.md` (fuori da git)
+
+La pagina dell'osservatore si ridisegna **dopo** che gli attori si sono riparati (voce «Gli attori
+si riparano dal basso, e l'attuatore e' in pausa»): ridisegnarla prima vorrebbe dire presentare
+meglio un contenuto che non regge. Porta con se' due voci del registro, spostate dalla Tappa 4 (D10,
+05/10/2026) e trasferite qui il 13/10/2026:
+
+- **C-25** — nomi che collidono e notizie con due nomi nella pagina;
+- **C-27** — cronaca e primo piano: lo stesso fatto in piu' voci.
+
+Prima di disegnare si interpella `ux-ui-specialist`.
+
+### Le parole nostre invece che le sue
+
+**FATTA IN PARTE** — commit `4e6b36ff`. Misurato: **tre delle otto parole non erano
+sullo schermo**. `ponte` è già «Abbonamento Claude», `view` e `casa ›` non esistono
+come testo, «Categorie» è vocabolario di Home Assistant e non nostro. Corrette `nucleo`
+→ «Cosa vede il modello a ogni turno», «Forza» → «Natura», «Grandezza» → «Cosa misura».
+**Resta**: «bersaglio» e i nomi degli strumenti vivono nei messaggi d'errore rivolti al
+MODELLO (`action/actuator.py`), che il modello può ripetere in chat. È un'altra cura,
+non un cambio di etichetta.
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Escono sullo schermo parole che sono **nomi interni**, non parole del proprietario:
+`nucleo`, `view`, `ponte`, «Forza», «Grandezza», «bersaglio», «Categorie», e la briciola
+`casa ›`.
+
+Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si traduce**, e
+il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
+i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
+
+### Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta
+
+`origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
+
+**Il fatto.** Il giudizio nuovo compare nella pagina del sapere (sezione 04) con la sua riga e il
+suo gruppo, e **il ritorno al seme si fa gia' dalla pagina**: il comando «Torna al seme» vale per
+qualunque riga corretta, di qualunque campo. Cio' che manca e' **scrivere un valore nuovo**, che
+oggi si fa **solo dalla rotta** (`POST /api/mind/judgment`, a mano o da script): l'editor in riga
+della sezione 04 tocca solo `genere`. Non e' un difetto di questa fetta: e' un limite dichiarato
+finche' la pagina dell'osservatore non lo dispone.
+
+**Cosa servirebbe.** Estendere l'editor in riga della sezione 04 a `da_sapere_subito` (il ritorno
+al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
+dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
+dipende.
+
+### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
+
+Con l'accesso ai non amministratori, la pagina Memoria mostra a ciascuno **solo i ricordi che ha
+detto lui**, ma in chat la memoria di HIRIS **resta condivisa** (decisione delle chat divise,
+25/09/2026): il modello legge i ricordi di tutti (lo strumento `fetch`, il nucleo). Quindi un non
+amministratore può farsi ripetere, chiedendo, ciò che un altro ha detto a HIRIS. E ciò che lui fa
+ricordare (`remember`) entra nei turni successivi di tutti, amministratori compresi: un canale di
+iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09).
+
+**Da decidere**: se certi ricordi diventano personali (visibili al modello solo nel filo di chi li
+ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
+pagina Memoria.
+
+### Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
+
+Ogni turno di chat di un non amministratore spende sui provider configurati dal proprietario (catena
+e piano). Esiste solo il tetto globale dei turni per conversazione (`max_chat_turns`), non un tetto
+per persona né per giorno; nascondere il widget dei consumi a chi non amministra non toglie la spesa.
+Il registro dei turni (`turn.subject_json`) sa già chi ha chiesto: la misura per persona c'è, manca
+il freno.
+
+**Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
+
+### Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
+
+La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
+firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
+distingue solo lettura e scrittura: un servizio approvato come `utente` può chiamare le rotte di
+configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/usage/reset`, …)
+che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
+il chiamante può in HA».
+
+**Anche in lettura** (aggiunto dal Task 5 della stessa fetta, 27/09/2026): i filtri che la fetta
+ha messo sulle letture valgono solo per le persone dall'ingress (`soffitto.restricted_person`,
+che guarda `auth_via == "ingress"`). Un servizio firmato con ruolo `utente` o `lettore` riceve da
+`GET /api/memories` **tutti** i ricordi (non solo i suoi) e da `GET /api/chat-settings` **tutte**
+le impostazioni della chat, prompt di sistema compreso — non solo `name` e `max_chat_turns`.
+
+**Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
+applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi filtri di lettura
+(`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
+`utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
+
+### I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant` — aperta il 27/09/2026
+
+`origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
+
+Home Assistant registra alcuni servizi con `async_register_admin_service`: a un non amministratore
+li rifiuta (`helpers/service.py`). HIRIS li chiama col proprio token di amministratore, quindi deve
+rifiutarli da sé. Oggi lo fa **solo per il dominio `homeassistant`** (verificato il 27/09/2026 su
+Core 2026.9.3): a chi non amministra `execute` concede solo `turn_on`, `turn_off`, `toggle`,
+`update_entity`. I servizi riservati di **altri domini che dichiarano un bersaglio** (entità,
+dispositivo, area) passano la porta come qualunque comando: quelli senza bersaglio sono gia'
+irraggiungibili (`action/verification.py`, un bersaglio vuoto e' sempre un rifiuto).
+
+**Perche' resta fuori**: l'elenco di quali servizi di quali domini siano riservati non e' esposto
+da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione), e scriverlo a mano
+per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
+servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
+nessuno raggiungibile con un bersaglio.
+
+### Le persone anonime dell'ingress condividono un filo
+
+`origine: dichiarato dalla fetta «le chat divise», spec §2, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §2
+
+Una persona anonima (ingress senza intestazioni Home Assistant) ha soggetto `persona:-`: un filo
+anonimo condiviso, dichiarato apposta e non un difetto — ma resta un filo dove chi entra da quella
+porta legge la cronologia di chiunque altro sia entrato anonimo prima di lui. Non e' successo
+niente di simile finora (l'ingress porta sempre le intestazioni su questa casa), ma il giorno in
+cui succede due persone anonime si vedrebbero le conversazioni a vicenda.
+
+**Dalla fetta «il seguito delle chat divise» (26/09/2026):** lo stesso filo condiviso ora può
+anche **creare promesse `fai`** — un anonimo comanda quanto un altro anonimo. Rischio accettato,
+non nuovo rispetto a sopra (è la stessa non-identità), ma con un freno vero: al risveglio
+`soffitto.ceiling_at_wake` rilegge il ruolo da capo, e un soggetto senza `id` (`persona:-` non ne
+porta uno) non risolve a nessun ruolo che comandi — la promessa fallisce chiusa, mai eseguita
+alla cieca.
+
+**Dalla fetta «HIRIS per chi non amministra» (27/09/2026):** dall'ingress una persona anonima non
+entra piu'. Il cancello al confine (`api/admission.py`) non trova chi e' fra gli utenti di Home
+Assistant e la rifiuta su ogni rotta — con l'opzione `non_admin_access` spenta col testo
+dell'opzione, accesa con «Home Assistant non mi ha detto chi sei…» — provato in
+`tests/test_admission.py` (la tabella {amministratore, utente, ignoto, anonimo} × opzione × rotta).
+Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era prima, finche' esiste.
+La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
+farne.
+
+### Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo — aperta il 27/09/2026
+
+`origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
+
+Il guscio ricorda `can_configure` in `localStorage["hiris.can_configure"]`, per profilo del
+browser. Su un dispositivo condiviso, se un amministratore ha aperto HIRIS e poi entra un non
+amministratore con lo stesso profilo, questo vede **per un attimo** il menu di configurazione e il
+guscio fa **una** lettura riservata, che il server rifiuta; alla prima risposta di `/api/pending`
+il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, nessun dato passa.
+**Cosa la chiude**: legare il ricordo alla persona (per esempio alla chiave del soggetto), o non
+usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
+per l'amministratore.
+
+### Una risposta tardiva di `can_configure` rimonta la pagina aperta — aperta il 27/09/2026
+
+`origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
+
+Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` fino a 3 secondi
+(`ROUTER_WAIT_MS`), poi parte chiuso. Una risposta che arriva dopo rimonta la pagina aperta
+(`HirisRouter.refresh()`), anche quando la pagina era gia' quella giusta: un ridisegno in piu', non
+un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
+mostra.
+
+> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
+> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
+> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
+> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
+> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
+> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
+
+### `GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata
+
+`origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
+
+Il cancello di chi costruisce (`soffitto.require_builder`) protegge `POST /api/mind/judgment` (la
+scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /api/mind/knowledge`
+(la lettura del sapere della casa): chi non costruisce vede ancora il modulo «Correzioni» nella
+pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
+questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
+
+### I nomi delle persone verso un modello, per tutte le porte degli attori — aperta il 05/10/2026
+
+`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
+
+La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
+porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
+Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
+come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
+
+Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
+
+- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
+  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
+- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
+- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
+  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
+  dispositivo.
+
+Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
+davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
+attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
+del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
+segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
+alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
+
+### La Memoria si raggiunge dalla chat solo passando dagli Impegni — aperta il 27/09/2026
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
+
+Per chi non amministra la barra laterale della chat mostra «Impegni» (`config#/agenda`) ma non il
+link «Configurazione»: la Memoria c'e', ma la si trova solo dal menu del guscio `/config`, dopo
+esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serve una voce nuova nella chat, fuori dal
+perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
+della chat per chi non configura.
+
+### Il testo della pagina non concessa — aperta il 27/09/2026
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
+
+Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX ha suggerito «…riservata
+a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
+la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
+posto solo (arriva anche al guscio come `configure_refusal`).
+
+---
+
+## In attesa
+
 ### ⚠️ Prima di accendere il proponente: `ENABLED = True` — aperta il 06/10/2026
 
 `origine: il coordinatore del progetto, 06/10/2026, all'unione del Task 4.2 nel ramo d'integrazione; riscritta il 12/10/2026` · `hiris/app/mind/proposer_round.py`
@@ -54,6 +560,8 @@ col proponente «Fermo»: lo schedulatore chiama `proposer_beat`, che passa al g
 misura dal vivo dello strato 3 e la diagnosi del passo 1 del 4.0 (le due proposte perse).
 
 ### I prossimi passi, in ordine — aperta il 01/10/2026, riscritta il 14/10/2026
+
+`riletta il 22/10/2026, quando e' tornata «In attesa» con la chiusura dello sprint «Una fonte sola di verita'»: il passo 2 (T11) e' uscito con la v3.80.0 (`deed7093`, voce «Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato»», ora fra le uscite). Restano i passi 1 e 3, candidati per lo sprint dopo «Il giro snello e il Brain leggibile»`
 
 `origine: il proprietario, 01/10/2026 («segna nel backlog il da farsi»); riscritta alla Chiusura dello sprint «Una fonte sola di verita'» (F9), dal piano della Chiusura approvato dal proprietario il 13/10/2026, sezione «Fuori dalla Chiusura, ma aperti»` · piano: `/mnt/project-files/piani/2026-10-chiusura.md`
 
@@ -453,29 +961,6 @@ generica e accetta la riga: il buco è solo nella pagina.
 piano — «non svegliarmi per questa» — che scrive lo stesso giudizio. Costa una scrittura nella
 scheda «Il giorno», che oggi legge e basta.
 
-### I soggetti tecnici raggruppati per integrazione — **USCITA con la v3.54.0**, resta `volte`
-
-È il **terzo punto della §3** di `docs/design/2026-09-18-la-pagina-dell-osservatore.md`, l'unico
-rimasto fuori dalla 3.52.0: «il raggruppamento dei soggetti tecnici per integrazione, con `volte` e
-**la finestra** a cui quel numero si riferisce — un numero di volte senza finestra non significa
-niente».
-
-**Non serve al primo piano** (che raggruppa la cronaca di UN giorno, e la finestra è quel giorno):
-serve alla scheda «L'osservatore», e vive sull'altra rotta, `GET /api/mind/watching`. Misurato il
-18/09 sulla casa: **39 soggetti tecnici su 153**, da **30 logger distinti** che sono **23
-integrazioni** una volta raggruppati. Oggi la pagina li elenca uno per uno, col percorso del
-sorgente in chiaro, e non dice mai quante volte una condizione è ricorsa.
-
-**Fatto il 20/09 con la 3.54.0**: la rotta arricchisce le voci tecniche con `integrazione` e
-`nome`, usando `mind/report.integration_of` — la stessa regola del primo piano, in un posto solo.
-La pagina raggruppa e mostra «Hassio — 6 voci», col percorso del sorgente solo nel dettaglio.
-
-**Resta `volte` e la sua finestra**, e non è un dettaglio: la riga dice quante VOCI DI REGISTRO
-distinte ha quell'integrazione, non **quante volte** una condizione è ricorsa — che è il numero che
-la §3 chiedeva («un numero di volte senza finestra non significa niente»). Quella rotta non porta
-nessun contatore: va deciso su quale finestra si conta (il grezzo dura 22 giorni) e chi la conta.
-Finché non c'è, la pagina non dice un numero che non ha.
-
 ### La fusione dei composer (erano quattro, sono tre) — aperta il 24/09/2026
 
 `origine: il proprietario, domanda del 23/09/2026` · `misurato durante la fetta delle misure`
@@ -509,188 +994,6 @@ regola vive una volta e i canali smettono di poter divergere.
 **Non prima delle misure.** La colonna `turn.channel` del registro esiste apposta: dopo qualche
 giorno dirà se il ponte e la catena stanno davvero mandando la stessa cosa, e se sono già scivolati
 la fusione diventa urgente invece che desiderabile.
-
-### ~~La chat è una sola per costruzione~~ — **USCITA con la v3.68.0**
-
-`origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
-
-Oggi HIRIS riceve input da **una chat sola**, e lo schema lo dà per scontato:
-
-    chat_sessions(session_id, started_at, last_msg_at, summary)
-    chat_messages(id, session_id, role, content, timestamp)
-
-Nessuna colonna per **chi** né per **quale sistema**. E la sessione attiva si sceglie così:
-
-    SELECT session_id FROM chat_sessions WHERE summary IS NULL
-    ORDER BY last_msg_at DESC LIMIT 1
-
-**L'ultima che ha parlato, chiunque fosse.** Il giorno in cui Retro Panel manda un messaggio
-mentre il proprietario sta chattando, i due finiscono nella stessa sessione e ognuno legge la
-cronologia dell'altro come propria.
-
-Non è un limite dichiarato: è un'assunzione implicita, e va resa esplicita o tolta. Perché HIRIS
-riceva input da chat diverse per utente e per sistema, la sessione va chiavata su **(soggetto,
-origine)** e `load_context` deve leggere quella del chiamante.
-
-**Il registro dei turni è già pronto per quel giorno**: `turn.subject_json` porta chi ha chiesto,
-con la stessa forma del soggetto della cronaca. Quando la seconda chat arriverà, le misure sapranno
-già distinguerle — invece di scoprire allora che non possono.
-
-**CHIUSA il 25/09/2026 con la fetta «le chat divise»** (`docs/design/2026-09-25-le-chat-divise.md`).
-La chiave e' esattamente quella qui sopra prevista, **(soggetto, ingresso)**, in un modulo suo
-(`hiris/app/chat_thread.py::ChatThread`): `chat_sessions` guadagna `subject_key` ed `entry_point`,
-`load_context`/`clear`/il 409/il poll leggono e scrivono il filo del chiamante, e la cronologia di
-prima della fetta resta orfana finché il proprietario non la adotta dal pannello. Quello che la
-voce non prevedeva: la memoria (i ricordi) **non si è divisa** — resta di HIRIS, condivisa, ma ogni
-ricordo sa ora chi l'ha detto, e il modello sa chi gli sta parlando. Ciò che questa fetta lascia
-fuori è dichiarato sotto, voce per voce.
-
-### ~~`chatbots.json` resta finché non lo guardi~~ — **CHIUSA** l'08/10/2026 (Tappa 8, D6)
-
-`origine: decisione del proprietario, 24/09/2026`
-
-La 3.66.0 cancella **dieci** archivi dismessi su undici. `chatbots.json` no: contiene il prompt
-personalizzato che il proprietario aveva salvato sul bot di default, e il registro d'avvio dice da
-mesi che non viene migrato. Si guarda cosa c'è dentro, poi si decide.
-
-Il criterio scritto con la fetta è: **un archivio si cancella quando è morto E quando qualcuno ha
-deciso** — non per la sola prima metà.
-
-**Chiusa l'08/10/2026**: lo Sprint ha mostrato il file al proprietario (D6 della Tappa 8, «prima si
-guarda, poi si cancella»), e `chatbots.json` è entrato in `conservazione.RESIDUI_DISMESSI` con
-`agents.json`; l'annuncio d'avvio è uscito.
-
-### ~~La CLI del ponte sale alla 2.1.278 nel prossimo rilascio~~ — **USCITA** con la v3.66.0
-
-Il cancello (`scripts/verifica_componenti.py`) ha fermato il rilascio della **v3.51.0** su
-`2.1.276 -> 2.1.278` (pin in `hiris/Dockerfile`). La 3.51.0 è uscita con `HIRIS_COMPONENTI_OK=1`,
-**dichiarato qui e nel rilascio**, perché quella versione porta la cornice della pagina
-dell'osservatore: far salire lì una dipendenza non provata spedirebbe un cambiamento sotto il
-changelog di qualcun altro. Regola del proprietario del 07/09/2026.
-
-**Cosa fare nel rilascio successivo**: `python scripts/verifica_componenti.py --aggiorna`,
-l'annotazione nel `Dockerfile` nella forma che la regola chiede (data, uscite saltate, piano di
-ripiego), la suite intera, e poi la prova che il pin arriva davvero dentro il container —
-`GET /api/health` deve rispondere `ponte.cli: "2.1.278"`. Il ripiego dichiarato resta la
-**2.1.276**, l'ultima di cui esista una lettura vera.
-
-**Rimandata di nuovo il 22/09/2026, con la v3.59.0** (`HIRIS_COMPONENTI_OK=1`, dichiarato qui e nel
-rilascio): quella versione porta l'accoppiamento dei servizi, ed è una fetta di sicurezza — far
-salire lì una dipendenza non provata è esattamente ciò che la regola vieta.
-
-**Ma la voce va letta come sta scritta adesso**: «nel prossimo rilascio» è stato scritto il
-20/09 e da allora sono passati **otto rilasci** (3.51.0 → 3.59.0). Una voce che dice «il
-prossimo» per otto volte non sta rimandando: sta dicendo il falso, e il rimando è diventato il
-comportamento predefinito invece che una decisione. Il prossimo rilascio che **non** porti una
-fetta di sicurezza la prende, oppure si dichiara qui che la 2.1.276 è il pin scelto e il cancello
-si riancora — non c'è una terza risposta onesta.
-
-**Rimandata una decima volta il 23/09/2026, con la v3.64.0** — e questa volta con una data
-d'arrivo, non con un «prossimo». La 3.64.0 chiude la **fetta 7**, l'ultima dello sprint sicurezza:
-vale la stessa regola (una dipendenza non provata non sale sotto il changelog di una fetta di
-sicurezza), e la condizione scritta qui sopra — «il prossimo rilascio che **non** porti una fetta
-di sicurezza» — da adesso è **verificabile**, perché lo sprint è chiuso e il rilascio successivo è
-la fetta delle misure, che per costruzione non cambia comportamento.
-
-La CLI oggi disponibile è la **2.1.280** (non più la 2.1.278 di questa voce: nel frattempo ne sono
-uscite altre due). Il ripiego dichiarato resta la **2.1.276**, l'ultima di cui esista una lettura
-vera da `GET /api/health`.
-
-**Rimandata un'undicesima volta il 23/09/2026, con la v3.65.0** — e va detto che è l'undicesima,
-non nascosto sotto la regola. La 3.65.0 è la **fetta 8**, l'ultima dello sprint sicurezza (B-5),
-quindi la regola scritta qui sopra vale ancora alla lettera: una dipendenza non provata non sale
-sotto il changelog di una fetta di sicurezza. Ma la condizione «il prossimo rilascio che NON porti
-una fetta di sicurezza» adesso è esigibile davvero: **lo sprint è chiuso**, non restano fette di
-sicurezza da fare, e il rilascio successivo è la fetta delle misure.
-
-**Se la fetta delle misure non la prende, questa voce non si rimanda una dodicesima volta: si
-chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
-
-**CHIUSA il 24/09/2026 con la v3.66.0, e la fetta delle misure l'ha presa.** Da 2.1.276 a
-**2.1.281**: quattro uscite saltate (277, 278, 279, 280), che è il prezzo di undici rimandi — più
-si aspetta, più grande è il salto che si prende in una volta. Il cancello dei componenti tace per
-la prima volta da undici rilasci: **questo push non porta `HIRIS_COMPONENTI_OK=1`**.
-
-Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su questa casa.
-
-**Passo 4 SALDATO il 24/09/2026 alle 18:56.** `GET /api/health` dentro il container risponde
-`ponte.cli: "2.1.281"` e `apiKeySource: "none"` — la CLI pinnata è quella che gira davvero, e
-gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
-può dire.
-
-### ~~La CLI del ponte sale alla 2.1.283 nel prossimo rilascio~~ — **USCITA** con la v3.69.1
-
-**Chiusa il 28/09/2026**, su decisione del proprietario: la 2.1.283 sale insieme alla correzione
-dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. **Passo 4 SALDATO il 28/09/2026**: `GET /api/health` sulla v3.69.1 risponde `ponte.cli: "2.1.283"`, `apiKeySource: "none"`. Lo stesso giorno l'attuatore sul ponte ha ragionato il suo primo turno (12:58, senza strumenti) e alle 13:58 ha scritto l'attuazione con 3 esiti e archiviato 2 proposte da fare a mano.
-
-**Rimandata di nuovo il 28/09/2026.** Stesso salto `2.1.281 -> 2.1.283`, segnalato durante il
-rilascio della **v3.69.0** (HIRIS per chi non amministra), uscita con `HIRIS_COMPONENTI_OK=1` —
-dichiarato qui. Stessa ragione: la 3.69.0 cambia chi entra in HIRIS e cosa vede, e va verificata
-dal vivo da sola. Il salto merita un rilascio suo, subito dopo quella verifica.
-
-**Rimandata di nuovo il 26/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.283`
-durante il rilascio della **v3.68.0** (le chat divise e il loro seguito), uscita con
-`HIRIS_COMPONENTI_OK=1` — dichiarato qui. Stessa ragione della volta prima: la 3.68.0 cambia chi
-parla con HIRIS, le promesse e le notifiche, e va verificata dal vivo da sola; alzare la CLI sotto
-di lei vorrebbe dire cambiare due variabili insieme. Ora sono **due salti di patch** (282, 283).
-
-**Aperta il 24/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.282` durante il
-rilascio della **v3.67.1**, che è uscita con `HIRIS_COMPONENTI_OK=1` — dichiarato qui, come
-chiede la regola: un salto segnalato a rilascio in corso non sale dentro il changelog di
-qualcun altro senza che nessuno l'abbia provato.
-
-La 3.67.1 portava due correzioni misurate dal vivo (il ripiego della ricerca, i nomi degli
-strumenti) e sta per reggere **due giorni di uso vero** che servono a decidere dove
-intervenire: cambiarle sotto la CLI sarebbe cambiare due variabili insieme.
-
-È **un solo salto di patch**, non undici: chi prende il prossimo rilascio lo alza con
-`python scripts/verifica_componenti.py --aggiorna`, l'annotazione nel `Dockerfile` (data,
-uscite saltate, piano di ripiego) e la suite intera. Il ripiego dichiarato è la **2.1.281**,
-di cui esiste una lettura vera dentro il container.
-
-### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
-
-**Aperta e chiusa nello stesso giorno.** Il cancello
-(`scripts/verifica_componenti.py`) ha segnalato `2.1.266 -> 2.1.267` durante il rilascio della
-v3.24.0, che e' uscita con `HIRIS_COMPONENTI_OK=1`; questa voce diceva «entra nel rilascio
-successivo». Il proprietario ha poi deciso di alzarla **subito**, dentro la v3.24.1: pin,
-annotazione nel `Dockerfile` (data, uscite, piano di ripiego) e suite intera, nell'ordine che la
-regola chiede.
-
-**Anche il passo 4 e' saldato, lo stesso giorno.** `GET /api/health` il 10/09/2026 alle 20:21,
-add-on sulla 3.24.1, ha risposto `ponte.cli: "2.1.267"`: il pin arriva davvero dentro il
-container. E' la prima volta che la verifica non slitta «al prossimo giro» -- era rimasta in
-sospeso per due salti di fila. Il ripiego dichiarato nel `Dockerfile` resta la **2.1.263**,
-l'ultima versione precedente di cui esista una lettura vera; la 2.1.266 e' stata scavalcata
-prima di girare e non si nomina come ripiego.
-
-**Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
-delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
-cercabile, la salute di un'integrazione, il soggetto e la durata di un guasto, i calendari,
-le tracce e il log, il vocabolario importato.
-
-**Correzione del 07/09**: l'intestazione precedente diceva *«Nessuna voce passa ancora in
-Usciti [...] il lavoro è su `master`, ma la casa non ce l'ha»*. Era vero il 04/09 e falso da
-tre rilasci. Un registro che resta indietro rispetto ai fatti è esattamente il difetto che
-questo documento dichiara di non voler avere — e ci è cascato lo stesso, per quattro giorni.
-
-**Dello sprint chiuso restano qui tre voci lavorate in parte**, e due chiedono la stessa cosa:
-**`search` non distingue ancora un candidato UNICO da un candidato CERTO.**
-`memory/resolver.py:233` è ancora un conteggio, e la nozione di candidato *debole* non esiste
-da nessuna parte, né nel prodotto né nelle prove. È la **prova numero 3 delle undici** che la
-specifica dichiara necessarie a chiudere lo sprint (§11), e non è mai stata scritta. Non
-risulta nemmeno una decisione di rinunciarci: è lavoro rimasto indietro, non una scelta.
-Chiuderlo vuol dire prima **definire cosa rende debole un candidato** — è una definizione,
-non una correzione.
-
-**Lo sprint aperto oggi è un altro: i rilievi del collaudo di usabilità del 07/09**, sette
-voci, in fondo a questa sezione. Cinque sono già su `master` in locale e **non ancora
-rilasciate**: lo stato «Uscito» lo dà un rilascio, non un commit.
-
-**Due dei sette rilievi non erano quello che dicevano**, e la misura lo ha mostrato prima che
-qualcuno ci lavorasse sopra: l'Albero non nasce lungo, e tre delle otto «parole nostre» non
-sono sullo schermo. In compenso la stessa misura ha trovato **205 entità che sparivano** da
-una pagina che esiste per non far sparire niente.
 
 ### La conoscenza non ha spina dorsale — le quattro mancanze
 
@@ -809,34 +1112,6 @@ nomi di parametro inventati, non solleva: restituisce una finestra a caso, e con
 sbagliata restituisce l'intera casa. Un modello che sbaglia il nome di un argomento riceve dati
 plausibili sulla cosa sbagliata invece di un errore.
 
-### Gli strumenti rifiutano invece di indovinare
-
-`origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-Non e' un difetto: e' **una linea di condotta ripetuta in tre posti indipendenti**, misurati
-sulla casa vera il 04/09. Davanti all'incertezza il prodotto risponde con sicurezza invece di
-rifiutare.
-
-1. **`search` dichiara `ambiguo: false` su un candidato solo e sbagliato.** `search "persone"`
-   torna il solo `sensor.persons` e lo marca come non ambiguo; `search "presenza"` torna zero;
-   `search "chi c'e' in casa"` estrae la parola «casa» e offre `weather.forecast_casa`. Le
-   persone si raggiungono **solo se sai gia' che si chiamano Paolo e Marta**. Un candidato solo
-   non e' la stessa cosa di un candidato certo, e oggi il campo non li distingue.
-2. **`logbook` dichiara `required: ["ore"]` e non lo verifica.** Chiamato senza `ore` non
-   solleva: sceglie una finestra. Con un nome di argomento inventato lo ignora in silenzio e
-   restituisce l'intera casa invece dell'entita' chiesta. Un modello che sbaglia un nome riceve
-   dati plausibili sulla cosa sbagliata al posto di un errore.
-3. **`view` consegna i segnali e non la regola.** `categoria: diagnostic`, `classe: null` e un
-   `da_quando` di due giorni prima erano tutti li'; niente, in cio' che il modello riceve, dice
-   che una diagnostica non e' una misura o che uno stato fermo da giorni non puo' essere un
-   valore istantaneo.
-
-Il quarto anello — il modello che inventa una persona che non esiste — e' il **sintomo** di
-questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
-
-Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
-caso che l'ha fatto emergere, questa e' la regola che ne esce.
-
 ### L'Osservatore mostra i nomi e gli stati di Home Assistant, non i nostri
 
 **FATTA, non ancora rilasciata** — commit `e1bfe8da` (il nome si salva col cambio) e
@@ -892,26 +1167,6 @@ giusta: correggere quella sbagliata renderebbe *coerente una bugia*. La voce chi
 misura — chi scrive il contatore, chi lo legge, e perche' i due non si vedono — prima di
 chiedere una correzione.
 
-### Le parole nostre invece che le sue
-
-**FATTA IN PARTE** — commit `4e6b36ff`. Misurato: **tre delle otto parole non erano
-sullo schermo**. `ponte` è già «Abbonamento Claude», `view` e `casa ›` non esistono
-come testo, «Categorie» è vocabolario di Home Assistant e non nostro. Corrette `nucleo`
-→ «Cosa vede il modello a ogni turno», «Forza» → «Natura», «Grandezza» → «Cosa misura».
-**Resta**: «bersaglio» e i nomi degli strumenti vivono nei messaggi d'errore rivolti al
-MODELLO (`action/actuator.py`), che il modello può ripetere in chat. È un'altra cura,
-non un cambio di etichetta.
-
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
-
-Escono sullo schermo parole che sono **nomi interni**, non parole del proprietario:
-`nucleo`, `view`, `ponte`, «Forza», «Grandezza», «bersaglio», «Categorie», e la briciola
-`casa ›`.
-
-Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si traduce**, e
-il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
-i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
-
 ### Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px
 
 **FATTA IN PARTE** — commit `4e6b36ff`. I titoli c'erano ma non erano marcati: 24
@@ -957,23 +1212,6 @@ Il testo che il server compone usa `'` dove l'italiano vuole `’`. In interfacc
 come una svista tipografica **ripetuta**, e viene dal server, non dal frontend: e' li' che
 va corretto, in un posto solo.
 
----
-
-## In attesa
-
-### L'elenco dei modelli Claude dichiara a mano `anthropic-version: 2023-06-01` (R196-1) — aperta il 22/10/2026
-
-`origine: il revisore (R196-1, giro 196), sul passaggio della libreria anthropic alla 2.1.0 (ffcf872b) del 22/10/2026` · `hiris/app/api/handlers_models.py`
-
-La catena parla con Claude attraverso l'SDK `anthropic`, che dalla 2.1.0 manda
-`anthropic-version: 2026-10-21` e la chiave in `Authorization: Bearer`. L'elenco dei modelli
-nella pagina Modelli non passa dall'SDK: chiama `GET /v1/models` da sé con aiohttp, e scrive a
-mano `x-api-key` e `anthropic-version: 2023-06-01`. Sono due versioni dell'API dichiarate in due
-posti, e la seconda non segue la libreria (fondamenta 2).
-
-Da decidere: o l'elenco passa dall'SDK (`client.models.list()`), o la versione si dichiara una
-volta sola. Prima si misura che `GET /v1/models` risponda con l'intestazione nuova.
-
 ### Un 403 non dice «si sistema nella pagina Modelli» (R181-1) — aperta il 21/10/2026
 
 `origine: il revisore (R181-1, giro 181), dopo la correzione del 403 della 3.80.0; rinviata al prossimo sprint il 21/10/2026` · `hiris/app/model_resolution.py`
@@ -984,18 +1222,6 @@ moderazione è falso: lì la pagina Modelli non sistema niente (lezione G39-2).
 
 Proposta: il 403 passa in `altro`, come il 400. Prima si misura cosa cambia nella pagina Modelli,
 perché spostarlo cambia anche come si classifica l'esito del provider.
-
-### Il pre-push scatta sul bump di una versione già rilasciata — aperta il 21/10/2026
-
-`origine: il revisore (giro 186, /mnt/project-files/revisioni/giro-186.md), 21/10/2026: falso positivo sul push di 7zkiqx dopo la 3.80.0; nota bassa` · `.githooks/pre-push`
-
-Il pre-push guarda i commit fra la punta remota del ramo e quella locale. Un ramo cloud che si
-riallinea a master dopo un rilascio porta nell'intervallo il commit di versione, già rilasciato e
-già su master. Il cancello dei componenti scatta, e per pushare serve `HIRIS_COMPONENTI_OK=1`, che
-così diventa un'abitudine invece di voler dire «rilascio comunque».
-
-Proposta: l'intervallo esclude i commit già su `origin/master` (`git rev-list` con
-`^origin/master`).
 
 ### Le due rifiniture rimaste di S-37 — aperta il 21/10/2026
 
@@ -1042,68 +1268,6 @@ capito anche perché non la vede.
 
 La batteria degli attori ha misurato l'analista ma non le ricette. Si rilancia con una finestra
 più larga (`--giorni`), così che comprenda turni delle ricette.
-
-### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
-
-`origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`
-
-**Misurato (3.79.1).** Il primo giro a conversazione vuota costa 21.583 token in ingresso. In
-caratteri:
-- le definizioni dei 12 strumenti, 29.121: history 5.617, search 4.929, execute 3.510, propose
-  3.420, remember 2.774, related 2.467, promise 2.169, calendar 1.425, agenda 911, confirm 895,
-  mind 594, cancel 410;
-- la guida, 9.560 (`compose_base` 6.476, persona 594, il resto);
-- il nucleo, circa 6.200-8.000;
-- il prefisso della CLI, circa 660 token, costante, letto dalla cache.
-
-Sulla batteria: 61 giri × circa 21k di base ≈ 1,28 M su 1,73 M; l'85% è letto dalla cache.
-
-**Cosa non va (letto nel codice).**
-1. Le descrizioni di history e search sono per lo più istruzioni su come LEGGERE la risposta
-   (grana, finestra, escluse, oltre, profondità), e partono a ogni giro anche quando lo strumento
-   non si chiama. Per la fondamenta 1 quelle istruzioni viaggiano nella risposta stessa, quando
-   servono.
-2. Le regole di execute stanno due volte, nella guida (`compose_base`, una decina di righe) e
-   nella descrizione di execute: è un doppione (fondamenta 2).
-3. Il paragrafo «un numero senza le escluse non è un totale… prima restringi… disponibili» è
-   identico in search e in history; «agenda non è calendar» sta in tutti e due.
-4. Nel nucleo restano l'avviso sul vocabolario verificato fino a una versione di HA (nota per
-   noi, non per la risposta), i conteggi per tipo della voce «Senza area» e «Cosa si può chiedere
-   alle cose», che search dà già nel dettaglio.
-
-**Cosa NON si tocca.** I 12 strumenti restano tutti offerti a ogni giro (remember ed execute
-devono poter partire alla prima frase). I ricordi restano sempre nel nucleo (contratto). Gli id
-delle aree e delle automazioni restano nel nucleo (evitano ricerche).
-
-**Chi ne beneficia.** La chat; l'analista (search, related, history, mind, circa 13.600 caratteri
-dei suoi strumenti) e il proponente (gli stessi più propose). Osservatore e ricette no: girano
-senza strumenti, con prompt propri.
-
-**Stima da verificare.** Circa 10-12.000 caratteri in meno a giro, un quarto della base. Va
-misurato prima e dopo con una batteria a conversazione nuova per domanda: la batteria di oggi
-tiene le 28 domande nello stesso filo, e la storia accumulata pesa circa il 20% (≈ 342k token).
-
-**Prima di toccare.** Misurare la qualità oltre ai token: i giudizi della batteria sono ancora
-tutti «da giudicare».
-
-### `release.py` scrive la versione sulle voci uscite prima del loro rilascio — aperta il 15/10/2026
-
-`origine: il revisore (N174-1), dopo il rilascio 3.79.1, raccolta dal coordinatore il 15/10/2026` · `scripts/release.py::close_register` · `scripts/registro.py::_BACKLOG_DONE` · `docs/BACKLOG.md`
-
-Una voce che esce prima del suo rilascio si scrive `— **USCITA col prossimo rilascio**`, perche' la
-versione ancora non c'e'. Poi nessuno la riscrive: `release.py` timbra il registro dei doppioni
-(`close_register`) ma non tocca il BACKLOG. Misurato il 15/10/2026: dieci voci erano rimaste cosi'.
-Sette erano uscite settimane prima, sei con la v3.68.0 e una con la v3.69.0 (verificate commit per
-commit: il commit che scrive il titolo e il primo tag che lo contiene). Le altre tre erano della
-3.79.1, e si sono scritte a mano nel commit di versione (N171-1). Tutte e dieci ora portano la loro
-versione, ma il buco resta.
-
-Cosa si chiede: al passo 5b, accanto al registro, `release.py` riscrive nei **titoli** del BACKLOG
-(le intestazioni `###` e `####`, come le legge `registro.backlog_titles`) ogni «USCITA col
-prossimo rilascio» in «USCITA con la vX.Y.Z», e lo dice nell'output. Solo i titoli: questa voce
-la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `_BACKLOG_DONE` la
-leggerebbe come chiusa. Una prova con un BACKLOG
-finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
 
 ### Tappa 7: le note basse del revisore — aperta il 07/10/2026
 
@@ -1226,80 +1390,6 @@ nome nella riga del provider (`providerRow` in `models-route.js`, che legge
 `esito.tipo === 'rifiutato'`) e la regola «da quante». Prima del disegno serve il parere
 dell'agente `ux-ui-specialist`.
 
-### Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato» — aperta il 05/10/2026
-
-`origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
-
-*Fatto nel codice il 15/10/2026 (ramo, non rilasciata):* P7 ha misurato la CLI vera (2.1.300,
-`claude-opus-5-5`, dal PC): la ripresa arriva come evento `user` con `isSynthetic: true` in cima
-all'evento; finite le tre riprese il turno esce con `rc` 1 e `result` dice `subtype: "success"` con
-`is_error: true`. `agent/runner.read_stream` conta le riprese dal flag (`resumes`); un turno con
-almeno una ripresa esce `troncato` con il solo avviso di troncatura (D8); i sei raccoglitori del
-ponte passano `truncated=` al loro lettore (`reasoning.queue.turn_truncated`), e una prova li chiede
-al sorgente. La misura si rifa' a ogni versione della CLI (passo 5 del bump nel `Dockerfile`).
-Prove in `tests/test_ripresa_al_tetto.py`, sugli stream veri di P7. Esce dal BACKLOG col rilascio.
-
-Quando una risposta arriva al tetto di token, la CLI del ponte (2.1.286) la riprende da sola fino a
-tre volte e poi dichiara `end_turn`; il campo `result` porta solo l'ULTIMO pezzo. In chat si
-vedrebbe la coda di una risposta lunga; un attore leggerebbe un JSON spezzato. Il ponte deve
-riconoscere la ripresa (un evento `user` con `isSynthetic: true` nel flusso) e dichiarare il turno
-`troncato`, con la regola D2 (un turno troncato non si legge). **Prima si misura con la CLI vera**
-su una risposta lunga, non col server finto.
-
-### Il conteggio instabile di `npm test` — aperta il 05/10/2026
-
-*Fatto nel codice il 07/10/2026 (ramo, non rilasciata):* la causa era `--test-force-exit`. Ogni
-figlio esce con `process.exit()` appena finisce l'ultima prova, e sulle pipe POSIX le sue
-scritture sono asincrone: se il padre legge lento, gli esiti di coda di un file si perdono, il
-figlio esce 0 e nessuna prova e' rossa. Riprodotta fermando a intermittenza il padre: 553, 551 e
-552 prove su 638, sempre 0 rosse; senza `--test-force-exit`, 638 su 638. La correzione rende
-bloccante l'uscita in ogni processo (`tests/js/helpers/uscita-intera.mjs`, con `--import`); il
-confronto col giro prima e' un reporter di `npm test` (`tests/js/helpers/conteggio-prove.mjs`).
-Si chiude col rilascio.
-
-`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 2, domanda 3), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · stesso documento della voce sopra
-
-`npm test` a volte raccoglie meno prove, senza nessuna rossa. Si cerca la causa, e la verifica
-confronta il numero di prove JS raccolte con quello del giro precedente (regola di `CLAUDE.md`,
-«Il conteggio delle prove JS e' un fatto che si confronta», 05/10/2026).
-
-### La definizione di `propose` torna alla tabella degli strumenti — aperta il 05/10/2026
-
-*Fatto nel codice il 06/10/2026 (Task 4.2, ramo, non rilasciata):* il catalogo del proponente
-chiede `propose` a `KNOWLEDGE_TOOLS` per nome (`proposer_turn.proposer_tools`), e
-`PROPOSE_TOOL_DEF` non si importa piu' fuori dalla tabella. Si chiude col rilascio.
-
-`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
-
-`mind/proposer_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
-degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
-(le descrizioni delle proposte servono anche all'attuatore).
-
-### I nomi delle persone verso un modello, per tutte le porte degli attori — aperta il 05/10/2026
-
-`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
-
-La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
-porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
-Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
-come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
-
-Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
-
-- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
-  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
-- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
-- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
-  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
-  dispositivo.
-
-Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
-davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
-attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
-del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
-segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
-alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
-
 ### I fogli di stile: due sistemi di variabili, e l'override caricato prima — aperta il 05/10/2026
 
 `origine: il registro dei doppioni, voce C-24; spostata qui dalla Tappa 4 dello sprint «Una fonte sola di verita'» (D10, decisione del proprietario del 05/10/2026)` · nessun altro documento
@@ -1317,20 +1407,6 @@ Porta con se' anche **M-37** (classi CSS definite e mai citate; `hiris-config-ov
 tutto vecchia interfaccia), trasferita qui dalla fetta F0 della Chiusura dello sprint (decisione del
 proprietario del 13/10/2026). Le due voci stanno sotto «Trasferite» nel registro dei doppioni e si
 riaprono qui: quando la copia e' uscita, il lavoro si chiude in questa voce.
-
-### La pagina dell'osservatore si riprogetta, dopo gli attori — aperta il 13/10/2026
-
-`origine: il registro dei doppioni, voci C-25 e C-27, trasferite dalla fetta F0 della Chiusura dello sprint (decisione del proprietario del 13/10/2026)` · analisi di leggibilita' in `docs/superpowers/audit-2026-10-01/pagina.md` (fuori da git)
-
-La pagina dell'osservatore si ridisegna **dopo** che gli attori si sono riparati (voce «Gli attori
-si riparano dal basso, e l'attuatore e' in pausa»): ridisegnarla prima vorrebbe dire presentare
-meglio un contenuto che non regge. Porta con se' due voci del registro, spostate dalla Tappa 4 (D10,
-05/10/2026) e trasferite qui il 13/10/2026:
-
-- **C-25** — nomi che collidono e notizie con due nomi nella pagina;
-- **C-27** — cronaca e primo piano: lo stesso fatto in piu' voci.
-
-Prima di disegnare si interpella `ux-ui-specialist`.
 
 ### La storia, con la stessa forma — la fetta successiva a «una porta sola» — **USCITA con la v3.72.0** (30/09/2026); resta la verifica dal vivo
 
@@ -1537,17 +1613,6 @@ ux-ui-specialist (una riga sola con la copertura, la causa a parole, il perche' 
 `MINIMUM_COVERAGE`, o un giorno intero fermo) il rifiuto resta `ferma`, non `copertura_bassa`. I
 contatori non cambiano: si rifiutano solo se il blocco arriva a fine giornata.
 
-### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
-
-`origine: spec del 29/09/2026 §8, «si cambia una cosa alla volta»` · nessun documento
-
-La spec (§8) nomina «il `ToolSearch` spento sul ponte» come una prova a parte. La prova è
-spegnerlo sul ponte (`ENABLE_TOOL_SEARCH=false`, nome dalla spec, non riverificato nel codice) e **misurare**, sulla stessa
-batteria delle 28 domande, giri, token e latenza. È una fetta sua, e va **dopo** il rilascio della
-3.71.0 e dopo la rilettura della batteria: cambiarla insieme alla porta renderebbe illeggibile il
-«prima e dopo». Il tema si aggancia a «Ottimizzazione: base dati, chiamate e consumo di token»
-qui sotto: le definizioni degli strumenti erano il 57,5% del carico.
-
 ### Dismissione del gateway MCP su .31 — aperta il 30/09/2026
 
 `origine: il proprietario, 29/09/2026 («da non più calcolare, lo eliminiamo»)` · `reference_hiris_mcp_gateway_31` (`/opt/hiris-mcp-gateway`, porte 18080/18090, Cloudflare)
@@ -1691,6 +1756,8 @@ fare la batteria (§6, §7) e le pagine (§5): la fase 1 apre solo la strada che
 
 ### Sul ponte un `result` con `is_error: true` e codice 0 si registra `riuscito` — aperta il 28/09/2026
 
+`riletta il 22/10/2026 sul codice di oggi (master @ 46039704): il difetto vive ancora, e non era mai stato dell'attuatore. In `agent/runner.py::_reason_chat` `is_error` si legge solo nel ramo `invocation.rc != 0`, per il log; con `rc` 0, un `result` non vuoto diventa la risposta con `outcome: "riuscito"` qualunque cosa dica `is_error`. Vale per ogni specie che passa dal ponte: la chat, l'osservatore, le ricette, l'analista e il proponente. Il riferimento a `server.py` non c'entrava gia' allora: la funzione e' sempre stata nel runner del ponte`
+
 `origine: revisione finale della fetta «le misure complete», 28/09/2026` · `hiris/app/agent/runner.py::_reason_chat`
 
 Un difetto gia' esistente prima di questa fetta, e la sua misura l'ha solo reso visibile: quando la
@@ -1702,131 +1769,6 @@ il codice di processo — e i due possono raccontare cose diverse.
 di uscita, e un `result` che lo dichiara vero scrive `outcome: "fallito"` come gia' fa un errore di
 processo. Fino ad allora, il documento di esito (§8 della spec) che conta i turni riusciti del
 ponte include un numero non ancora corretto di errori della CLI travestiti da successi.
-
-### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
-
-**Superata dal Task 1.6 degli attori (05/10/2026, ramo `claude/attori-1-2-1-6-causa-jbjqlb`;
-D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_recipes` e' uscito, e
-le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
-della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
-
-`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/proposer_turn.py::SYSTEM`
-
-Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
-(`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
-riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` compone la domanda
-con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
-sul ponte, arriva al modello come osservazione qualunque e resta rotta.
-
-Il prompt di sistema (`proposer_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
-fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
-falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
-ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
-aperta solo la riparazione che manca.
-
-**Perche' resta fuori**: la riparazione e' un turno di ricetta, e sul ponte un turno si accoda e
-si raccoglie minuti dopo; farla «prima della domanda» vorrebbe dire due turni in fila, con la
-domanda dell'attuatore che aspetta la raccolta delle ricette. La fetta non l'ha inventata.
-
-**Cosa la chiude**: sul ponte, una ricetta rotta si riscrive (accodando il turno di ricetta
-esistente, `kind="ricetta"`, e facendo partire la domanda dell'attuatore solo quando e' stato
-raccolto), e l'attuazione archiviata porta l'esito `riparazione` come sulla catena. Si verifica
-dal vivo: una
-ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscritta.
-
-### Sul ponte una risposta rifiutata ferma l'attuatore fino al giorno dopo — aperta il 28/09/2026
-
-`origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
-
-Quando la risposta del ponte e' **rifiutata** (`proposer_turn.apply_actuation` torna
-`attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
-senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
-collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora
-quel turno, con la stessa risposta: la raccolta la rilegge, la rifiuta di nuovo e il giro torna
-senza accodare una domanda nuova. L'attuatore resta fermo **per il resto del giorno**, finche' la
-sveglia del turno (`giorno`) non smette di essere oggi. Sulla catena no: la risposta rifiutata non
-si archivia e il giro dopo richiede.
-
-**L'analista si comporta allo stesso modo** (`_collect_analyst_turn` e `analyst_round`): stessa
-forma, stessa conseguenza. Non e' una svista di una sola strada.
-
-**Il compromesso**: riaccodare a ogni giro vuol dire, nel caso peggiore (un modello che sbaglia
-sempre la stessa forma), una domanda all'ora pagata sul piano per tutto il giorno; fermarsi vuol
-dire perdere l'attuazione di quel giorno per una risposta storta. Oggi il codice sceglie la
-seconda senza dirlo. La fetta non ha cambiato il comportamento (decisione del coordinatore).
-
-**In coda al tema «Ottimizzazione: base dati, chiamate e consumo di token»** (proprietario,
-28/09/2026): si decide con le misure di quel tema.
-
-**Da decidere, dal proprietario**: se una risposta rifiutata sul ponte si richiede (magari con un
-tetto di tentativi al giorno), e se la stessa regola vale per l'analista.
-
-### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
-
-Con l'accesso ai non amministratori, la pagina Memoria mostra a ciascuno **solo i ricordi che ha
-detto lui**, ma in chat la memoria di HIRIS **resta condivisa** (decisione delle chat divise,
-25/09/2026): il modello legge i ricordi di tutti (lo strumento `fetch`, il nucleo). Quindi un non
-amministratore può farsi ripetere, chiedendo, ciò che un altro ha detto a HIRIS. E ciò che lui fa
-ricordare (`remember`) entra nei turni successivi di tutti, amministratori compresi: un canale di
-iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09).
-
-**Da decidere**: se certi ricordi diventano personali (visibili al modello solo nel filo di chi li
-ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
-pagina Memoria.
-
-### Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona — aperta il 27/09/2026
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
-
-Ogni turno di chat di un non amministratore spende sui provider configurati dal proprietario (catena
-e piano). Esiste solo il tetto globale dei turni per conversazione (`max_chat_turns`), non un tetto
-per persona né per giorno; nascondere il widget dei consumi a chi non amministra non toglie la spesa.
-Il registro dei turni (`turn.subject_json`) sa già chi ha chiesto: la misura per persona c'è, manca
-il freno.
-
-**Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
-
-### Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS — aperta il 27/09/2026
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
-
-La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
-firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
-distingue solo lettura e scrittura: un servizio approvato come `utente` può chiamare le rotte di
-configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/usage/reset`, …)
-che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
-il chiamante può in HA».
-
-**Anche in lettura** (aggiunto dal Task 5 della stessa fetta, 27/09/2026): i filtri che la fetta
-ha messo sulle letture valgono solo per le persone dall'ingress (`soffitto.restricted_person`,
-che guarda `auth_via == "ingress"`). Un servizio firmato con ruolo `utente` o `lettore` riceve da
-`GET /api/memories` **tutti** i ricordi (non solo i suoi) e da `GET /api/chat-settings` **tutte**
-le impostazioni della chat, prompt di sistema compreso — non solo `name` e `max_chat_turns`.
-
-**Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
-applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi filtri di lettura
-(`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
-`utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
-
-### I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant` — aperta il 27/09/2026
-
-`origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
-
-Home Assistant registra alcuni servizi con `async_register_admin_service`: a un non amministratore
-li rifiuta (`helpers/service.py`). HIRIS li chiama col proprio token di amministratore, quindi deve
-rifiutarli da sé. Oggi lo fa **solo per il dominio `homeassistant`** (verificato il 27/09/2026 su
-Core 2026.9.3): a chi non amministra `execute` concede solo `turn_on`, `turn_off`, `toggle`,
-`update_entity`. I servizi riservati di **altri domini che dichiarano un bersaglio** (entità,
-dispositivo, area) passano la porta come qualunque comando: quelli senza bersaglio sono gia'
-irraggiungibili (`action/verification.py`, un bersaglio vuoto e' sempre un rifiuto).
-
-**Perche' resta fuori**: l'elenco di quali servizi di quali domini siano riservati non e' esposto
-da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione), e scriverlo a mano
-per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
-servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
-nessuno raggiungibile con un bersaglio.
 
 ### ~~In sviluppo `can_configure` e' vero mentre `can_build` e' falso~~ — CHIUSA il 07/10/2026 nel codice, non ancora rilasciata (Tappa 7, T6)
 
@@ -1873,55 +1815,6 @@ per gli **altri add-on** della casa la porta resta aperta, e HIRIS non la puo' c
 **Perche' resta fuori**: non e' codice di HIRIS. **Cosa la chiude**: niente dentro HIRIS; va
 detto a chi installa, e riverificato se Home Assistant cambia `WS_NO_ADMIN_ENDPOINTS` o il proxy
 ingress.
-
-### Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo — aperta il 27/09/2026
-
-`origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
-
-Il guscio ricorda `can_configure` in `localStorage["hiris.can_configure"]`, per profilo del
-browser. Su un dispositivo condiviso, se un amministratore ha aperto HIRIS e poi entra un non
-amministratore con lo stesso profilo, questo vede **per un attimo** il menu di configurazione e il
-guscio fa **una** lettura riservata, che il server rifiuta; alla prima risposta di `/api/pending`
-il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, nessun dato passa.
-**Cosa la chiude**: legare il ricordo alla persona (per esempio alla chiave del soggetto), o non
-usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
-per l'amministratore.
-
-### La Memoria si raggiunge dalla chat solo passando dagli Impegni — aperta il 27/09/2026
-
-`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
-
-Per chi non amministra la barra laterale della chat mostra «Impegni» (`config#/agenda`) ma non il
-link «Configurazione»: la Memoria c'e', ma la si trova solo dal menu del guscio `/config`, dopo
-esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serve una voce nuova nella chat, fuori dal
-perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
-della chat per chi non configura.
-
-### Il testo della pagina non concessa — aperta il 27/09/2026
-
-`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
-
-Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX ha suggerito «…riservata
-a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
-la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
-posto solo (arriva anche al guscio come `configure_refusal`).
-
-### Una risposta tardiva di `can_configure` rimonta la pagina aperta — aperta il 27/09/2026
-
-`origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
-
-Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` fino a 3 secondi
-(`ROUTER_WAIT_MS`), poi parte chiuso. Una risposta che arriva dopo rimonta la pagina aperta
-(`HirisRouter.refresh()`), anche quando la pagina era gia' quella giusta: un ridisegno in piu', non
-un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
-mostra.
-
-> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
-> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
-> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
-> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
-> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
-> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
 ### ~~Chi ha chiesto una promessa~~ — **USCITA con la v3.68.0**
 
@@ -2018,42 +1911,6 @@ CHI gli sta parlando — e non e' detto che sia il proprietario. Nessuno dei due
 sui fatti (execute/propose restano quello che sono), ma entrambi presumono un ascoltatore che
 questa fetta ha appena smesso di essere l'unico.
 
-### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
-
-`origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
-
-La sezione «Chi ti sta parlando» sta **prima** del nucleo (spec §5). Sul ponte la cache della CLI
-riusa il prefisso del messaggio: due persone che si alternano non condividono piu' il prefisso del
-nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda con le misure d'uso
-(la cache del ponte per turno). Se pesa, la sezione si sposta **dopo** il nucleo in
-`compose_chat_context` — un punto solo, nessun altro chiamante la compone.
-
-### Le persone anonime dell'ingress condividono un filo
-
-`origine: dichiarato dalla fetta «le chat divise», spec §2, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §2
-
-Una persona anonima (ingress senza intestazioni Home Assistant) ha soggetto `persona:-`: un filo
-anonimo condiviso, dichiarato apposta e non un difetto — ma resta un filo dove chi entra da quella
-porta legge la cronologia di chiunque altro sia entrato anonimo prima di lui. Non e' successo
-niente di simile finora (l'ingress porta sempre le intestazioni su questa casa), ma il giorno in
-cui succede due persone anonime si vedrebbero le conversazioni a vicenda.
-
-**Dalla fetta «il seguito delle chat divise» (26/09/2026):** lo stesso filo condiviso ora può
-anche **creare promesse `fai`** — un anonimo comanda quanto un altro anonimo. Rischio accettato,
-non nuovo rispetto a sopra (è la stessa non-identità), ma con un freno vero: al risveglio
-`soffitto.ceiling_at_wake` rilegge il ruolo da capo, e un soggetto senza `id` (`persona:-` non ne
-porta uno) non risolve a nessun ruolo che comandi — la promessa fallisce chiusa, mai eseguita
-alla cieca.
-
-**Dalla fetta «HIRIS per chi non amministra» (27/09/2026):** dall'ingress una persona anonima non
-entra piu'. Il cancello al confine (`api/admission.py`) non trova chi e' fra gli utenti di Home
-Assistant e la rifiuta su ogni rotta — con l'opzione `non_admin_access` spenta col testo
-dell'opzione, accesa con «Home Assistant non mi ha detto chi sei…» — provato in
-`tests/test_admission.py` (la tabella {amministratore, utente, ignoto, anonimo} × opzione × rotta).
-Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era prima, finche' esiste.
-La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
-farne.
-
 ### Il legame utente→dispositivo dell'app companion non è esposto dalle API di Home Assistant
 
 `origine: misurato durante la fetta «il seguito delle chat divise», Task 1, 25/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §1
@@ -2064,16 +1921,6 @@ vive nei file interni `.storage`, che HIRIS non legge. Decisione accettata: si u
 (`person.*`, che porta `user_id` e `device_trackers` come dato ufficiale) invece del legame diretto
 utente→dispositivo — chi vuole meno notifiche toglie un dispositivo dalla sua persona in Home
 Assistant, non da HIRIS.
-
-### `GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata
-
-`origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
-
-Il cancello di chi costruisce (`soffitto.require_builder`) protegge `POST /api/mind/judgment` (la
-scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /api/mind/knowledge`
-(la lettura del sapere della casa): chi non costruisce vede ancora il modulo «Correzioni» nella
-pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
-questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
 
 ### Una promessa «fai» non manda push, solo il racconto in chat
 
@@ -3612,65 +3459,6 @@ l'osservatore non ha, e va disegnata invece che infilata.
 pavimento prima di quella vorrebbe dire scrivere la **quarta** lista a mano invece di toglierne
 tre.
 
-### Il nucleo è statico, e il proprietario chiede se non sia povero
-
-`origine: il proprietario, 07/09/2026, discutendo la completezza degli attributi` · `nessun documento`
-
-> *«Il nucleo va bene crearlo per passare qualcosa che non sia tutta la casa ai modelli, ci
-> permette di risparmiare token — ma se non è dinamico in base al quesito, non credi sia povero
-> di informazioni?»*
-
-**I numeri, misurati sul ponte il 07/09** (105 turni), che vanno letti prima di progettare:
-
-| | |
-|---|---|
-| token in **freschi** | **662** in totale, su 105 turni — sei per turno |
-| token letti **dalla cache** | **5.603.549** |
-| token **scritti** in cache | 1.914.948 |
-
-**Il 99,99% del contesto non si paga a ogni turno: si rilegge.** Ed è possibile *proprio perché* è
-identico. Un contesto che cambia a ogni domanda non si rilegge: si riscrive, e la riscrittura
-costa più di una lettura fresca.
-
-**Ma il proprietario ha ragione sul difetto, e sbaglia bersaglio chi risponde «lasciamolo
-statico».** Il nucleo non è povero di dettagli: **tronca**, e il codice lo dichiara misurandolo
-(`briefing.py:277`) — *«citando tutti i nomi sopravvivono 7 aree su 20 invece di 17»*.
-
-> Il difetto vero non è «non sa che il termostato arriva a 40 gradi»: è **«non sa che quel
-> termostato esiste»**, e allora non può nemmeno andarlo a cercare. HIRIS ha sedici strumenti: il
-> compito del nucleo non è contenere la casa, è darne una **mappa** abbastanza buona da far capire
-> cosa vale la pena chiedere. Un nucleo che tronca tredici aree su venti non fallisce come
-> riassunto: fallisce come mappa.
-
-**Due cose da sapere prima di scrivere una riga:**
-
-1. **La cache dipende da DOVE sta il pezzo che cambia.** I ~53.000 token riletti a ogni turno non
-   sono il nucleo (≈1.500): il grosso è il prompt di sistema più le descrizioni dei sedici
-   strumenti. Un'appendice variabile messa **in coda**, dopo tutto ciò che è stabile, invalida solo
-   se stessa. Dinamico *in coda* costa quasi niente; dinamico *in testa* costa dieci volte tanto.
-2. **Scegliere il contesto dalla domanda è recupero, e il nostro recupero è debole.** È la stessa
-   lacuna ancora aperta in «Scelti»: `search` non distingue un candidato **unico** da uno
-   **certo**. Un recupero che sbaglia consegna al modello un contesto **sbagliato e sicuro di sé**,
-   e il modello non sa cosa gli manca — peggio di un contesto generico, che almeno si dichiara
-   tale.
-
-**La forma proposta**, non decisa: due strati. Una **mappa stabile in testa**, completa su *cosa
-esiste e dove*, mai troncata sulle aree — è ciò che rende possibile chiedere, ed è ciò che la cache
-rilegge gratis. E un'**appendice variabile in coda**, scelta sulla domanda, che porta il dettaglio
-e **dichiara di essere una selezione**, così il modello sa che sotto c'è altro.
-
-**E la misura che va fatta prima**: quante volte il modello sbaglia o gira a vuoto perché il nucleo
-era povero? Le tracce e il log ci sono dalla v3.22.0 — **si può guardare invece di supporre**. Se
-il modello compensa già bene con gli strumenti, il lavoro vero è solo smettere di troncare la
-mappa; se si perde, l'appendice serve davvero.
-
-**Il collegamento con «Il vocabolario dei tipi», dichiarato per non lasciarlo al caso**: rendere
-completi gli attributi aumenta la pressione sul tetto dei 6.000 caratteri. La decisione presa è
-che **la completezza va nel dettaglio di una entità, non nel nucleo** — altrimenti la prima persona
-che ci lavora la prende per caso.
-
-**Si incrocia con «L'analista»**: è lui che dovrebbe decidere *cosa* mettere in quell'appendice.
-
 ### ~~`chat_stream` vive solo per i test~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
 
 **Come si è chiusa.** È stata presa la strada 1: `chat_stream` è uscito dai due runner e dal
@@ -3896,22 +3684,6 @@ anche cio' che ti fa sapere subito»). **Da valutare nella fetta della pagina**,
 in riga: e' li' che il proprietario scrivera' questo campo per la prima volta con le mani, ed e' li'
 che una cortesia serve davvero -- oggi ci si arriva solo da `curl`.
 
-### Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta
-
-`origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
-
-**Il fatto.** Il giudizio nuovo compare nella pagina del sapere (sezione 04) con la sua riga e il
-suo gruppo, e **il ritorno al seme si fa gia' dalla pagina**: il comando «Torna al seme» vale per
-qualunque riga corretta, di qualunque campo. Cio' che manca e' **scrivere un valore nuovo**, che
-oggi si fa **solo dalla rotta** (`POST /api/mind/judgment`, a mano o da script): l'editor in riga
-della sezione 04 tocca solo `genere`. Non e' un difetto di questa fetta: e' un limite dichiarato
-finche' la pagina dell'osservatore non lo dispone.
-
-**Cosa servirebbe.** Estendere l'editor in riga della sezione 04 a `da_sapere_subito` (il ritorno
-al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
-dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
-dipende.
-
 ### Le citazioni per numero di riga marciscono: si cita per nome
 
 `origine: la fetta «da sapere subito», 18/09/2026, misurato durante il Task 4` · `nessun documento`
@@ -3964,6 +3736,341 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~Il ponte riconosce la ripresa al tetto e dichiara il turno «troncato»~~ — **USCITA con la v3.80.0** — aperta il 05/10/2026
+
+`verificata il 22/10/2026 (Fase 0 dello sprint «Il giro snello e il Brain leggibile»): il lavoro e' il commit `deed7093` (16/10/2026, «la ripresa al tetto di token dichiara il turno troncato (B25, T11)»), e il primo tag che lo contiene e' `v3.80.0` (`git tag --contains deed7093`)`
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (B25, domanda 1), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · documento: `/mnt/project-files/2026-10-05-integrazione-tappe-4-6-rapporto.md`, sezione «B25, in dettaglio»
+
+*Fatto nel codice il 15/10/2026 (ramo, non rilasciata):* P7 ha misurato la CLI vera (2.1.300,
+`claude-opus-5-5`, dal PC): la ripresa arriva come evento `user` con `isSynthetic: true` in cima
+all'evento; finite le tre riprese il turno esce con `rc` 1 e `result` dice `subtype: "success"` con
+`is_error: true`. `agent/runner.read_stream` conta le riprese dal flag (`resumes`); un turno con
+almeno una ripresa esce `troncato` con il solo avviso di troncatura (D8); i sei raccoglitori del
+ponte passano `truncated=` al loro lettore (`reasoning.queue.turn_truncated`), e una prova li chiede
+al sorgente. La misura si rifa' a ogni versione della CLI (passo 5 del bump nel `Dockerfile`).
+Prove in `tests/test_ripresa_al_tetto.py`, sugli stream veri di P7. Esce dal BACKLOG col rilascio.
+
+Quando una risposta arriva al tetto di token, la CLI del ponte (2.1.286) la riprende da sola fino a
+tre volte e poi dichiara `end_turn`; il campo `result` porta solo l'ULTIMO pezzo. In chat si
+vedrebbe la coda di una risposta lunga; un attore leggerebbe un JSON spezzato. Il ponte deve
+riconoscere la ripresa (un evento `user` con `isSynthetic: true` nel flusso) e dichiarare il turno
+`troncato`, con la regola D2 (un turno troncato non si legge). **Prima si misura con la CLI vera**
+su una risposta lunga, non col server finto.
+
+### ~~Il conteggio instabile di `npm test`~~ — **USCITA con la v3.78.0** — aperta il 05/10/2026
+
+`verificata il 22/10/2026: il lavoro sono i commit `66a63b92` («npm test non perde piu' le prove, e confronta il conteggio col giro prima») e `142eb6b0` («il conto che scende non si salva, se non lo accetti», N75-1), del 07/10/2026; il primo tag che li contiene tutti e due e' `v3.78.0`. La regola vive in CLAUDE.md, «Il conteggio delle prove JS e' un fatto che si confronta»`
+
+*Fatto nel codice il 07/10/2026 (ramo, non rilasciata):* la causa era `--test-force-exit`. Ogni
+figlio esce con `process.exit()` appena finisce l'ultima prova, e sulle pipe POSIX le sue
+scritture sono asincrone: se il padre legge lento, gli esiti di coda di un file si perdono, il
+figlio esce 0 e nessuna prova e' rossa. Riprodotta fermando a intermittenza il padre: 553, 551 e
+552 prove su 638, sempre 0 rosse; senza `--test-force-exit`, 638 su 638. La correzione rende
+bloccante l'uscita in ogni processo (`tests/js/helpers/uscita-intera.mjs`, con `--import`); il
+confronto col giro prima e' un reporter di `npm test` (`tests/js/helpers/conteggio-prove.mjs`).
+Si chiude col rilascio.
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 2, domanda 3), approvata dal proprietario il 05/10/2026 (consigliata); da fare alla Tappa 8` · stesso documento della voce sopra
+
+`npm test` a volte raccoglie meno prove, senza nessuna rossa. Si cerca la causa, e la verifica
+confronta il numero di prove JS raccolte con quello del giro precedente (regola di `CLAUDE.md`,
+«Il conteggio delle prove JS e' un fatto che si confronta», 05/10/2026).
+
+### ~~La definizione di `propose` torna alla tabella degli strumenti~~ — **USCITA con la v3.78.0** — aperta il 05/10/2026
+
+`verificata il 22/10/2026: il lavoro e' il commit `b79c3470` (06/10/2026, Task 4.2), primo tag `v3.78.0`. Nel codice di oggi `mind/proposer_turn.py::proposer_tools` chiede `propose` a `KNOWLEDGE_TOOLS` per nome, e `PROPOSE_TOOL_DEF` vive solo in `home_space/tools.py`, dove sta la tabella`
+
+*Fatto nel codice il 06/10/2026 (Task 4.2, ramo, non rilasciata):* il catalogo del proponente
+chiede `propose` a `KNOWLEDGE_TOOLS` per nome (`proposer_turn.proposer_tools`), e
+`PROPOSE_TOOL_DEF` non si importa piu' fuori dalla tabella. Si chiude col rilascio.
+
+`origine: rapporto dell'integrazione delle Tappe 4-6 (trovato 3, domanda 5), approvata dal proprietario il 05/10/2026 (consigliata); da fare allo strato 4 degli attori, insieme a B29` · stesso documento delle voci sopra
+
+`mind/proposer_turn.py` importa `PROPOSE_TOOL_DEF` direttamente, invece di chiederlo alla tabella
+degli strumenti (Tappa 5). Si ricollega quando l'attuatore torna (strato 4), con la decisione B29
+(le descrizioni delle proposte servono anche all'attuatore).
+
+### ~~Sul ponte l'attuatore non ripara le ricette rotte~~ — **USCITA con la v3.76.0**, superata da se' — aperta il 28/09/2026
+
+`verificata il 22/10/2026: superata, non fatta. La riparazione non e' piu' di nessun attuatore: il commit `7550547b` (05/10/2026, Task 1.6 degli attori, D2) toglie `_repair_recipes` e la ricetta si ripara nel suo giro (`mind/recipe_turn.py::recipes_to_repair`), sulla catena e sul ponte; primo tag che lo contiene `v3.76.0`. L'attuatore e' uscito con la 3.78.0 (`mind/actuator.py`, `mind/actuator_turn.py`)`
+
+**Superata dal Task 1.6 degli attori (05/10/2026, ramo `claude/attori-1-2-1-6-causa-jbjqlb`;
+D2 del proprietario).** La riparazione non e' piu' dell'attuatore: `_repair_recipes` e' uscito, e
+le ricette rotte le richiede il giro delle ricette (`recipe_turn.recipes_to_repair`, dalla causa
+della misura), sulla catena e sul ponte. Si sposta fra le uscite col rilascio dello strato 1.
+
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/proposer_turn.py::SYSTEM`
+
+Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
+(`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
+riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` compone la domanda
+con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
+sul ponte, arriva al modello come osservazione qualunque e resta rotta.
+
+Il prompt di sistema (`proposer_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
+fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
+falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
+ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
+aperta solo la riparazione che manca.
+
+**Perche' resta fuori**: la riparazione e' un turno di ricetta, e sul ponte un turno si accoda e
+si raccoglie minuti dopo; farla «prima della domanda» vorrebbe dire due turni in fila, con la
+domanda dell'attuatore che aspetta la raccolta delle ricette. La fetta non l'ha inventata.
+
+**Cosa la chiude**: sul ponte, una ricetta rotta si riscrive (accodando il turno di ricetta
+esistente, `kind="ricetta"`, e facendo partire la domanda dell'attuatore solo quando e' stato
+raccolto), e l'attuazione archiviata porta l'esito `riparazione` come sulla catena. Si verifica
+dal vivo: una
+ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscritta.
+
+### ~~Sul ponte una risposta rifiutata ferma l'attuatore fino al giorno dopo~~ — **USCITA con la v3.78.0** — aperta il 28/09/2026
+
+`verificata il 22/10/2026 sul codice di oggi (master @ 46039704): il difetto non vive piu' ne' sull'analista ne' sul proponente, che ha preso il posto dell'attuatore. L'analista: commit `d605aecb` (06/10/2026, «un rifiuto non blocca l'analista»), `mind/analyst_round.py::analyst_round` chiude il giro solo con un'analisi SCRITTA; un rifiuto o un vuoto aspettano `steering.too_soon_to_ask_again` e poi si richiede, e il turno nuovo prende il posto del vecchio. Il proponente: commit `b79c3470` (06/10/2026), `mind/proposer_round.py::proposer_round` raccoglie, poi richiede con lo stesso freno. Primo tag di tutti e due: `v3.78.0`. Il freno e' `steering.RETRY_HOLD_S` (un'ora), senza un tetto di tentativi al giorno: la domanda «magari con un tetto» qui sotto non e' un difetto aperto, e se serve diventa una voce sua`
+
+`origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
+
+Quando la risposta del ponte e' **rifiutata** (`proposer_turn.apply_actuation` torna
+`attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
+senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
+collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora
+quel turno, con la stessa risposta: la raccolta la rilegge, la rifiuta di nuovo e il giro torna
+senza accodare una domanda nuova. L'attuatore resta fermo **per il resto del giorno**, finche' la
+sveglia del turno (`giorno`) non smette di essere oggi. Sulla catena no: la risposta rifiutata non
+si archivia e il giro dopo richiede.
+
+**L'analista si comporta allo stesso modo** (`_collect_analyst_turn` e `analyst_round`): stessa
+forma, stessa conseguenza. Non e' una svista di una sola strada.
+
+**Il compromesso**: riaccodare a ogni giro vuol dire, nel caso peggiore (un modello che sbaglia
+sempre la stessa forma), una domanda all'ora pagata sul piano per tutto il giorno; fermarsi vuol
+dire perdere l'attuazione di quel giorno per una risposta storta. Oggi il codice sceglie la
+seconda senza dirlo. La fetta non ha cambiato il comportamento (decisione del coordinatore).
+
+**In coda al tema «Ottimizzazione: base dati, chiamate e consumo di token»** (proprietario,
+28/09/2026): si decide con le misure di quel tema.
+
+**Da decidere, dal proprietario**: se una risposta rifiutata sul ponte si richiede (magari con un
+tetto di tentativi al giorno), e se la stessa regola vale per l'analista.
+
+### ~~L5 — `ToolSearch` spento sul ponte, prova misurata~~ — **USCITA con la v3.79.0**, superata — aperta il 30/09/2026
+
+`chiusa il 22/10/2026 come superata: non resta niente da misurare. Dal commit `b95c902e` (13/10/2026, L1 della Chiusura, primo tag `v3.79.0`) il ponte passa `--tools ""`, e con quello il rinvio degli strumenti dietro `ToolSearch` si spegne da se' e gli schemi arrivano subito (rapporto FM, `/mnt/project-files/chiusura/fm-token.md`: la stessa richiesta con e senza `ENABLE_TOOL_SEARCH`). E' scritto nel commento sopra `_LOCAL_TOOLS_DENY` in `hiris/app/agent/runner.py` e nel `Dockerfile` (le note della CLI 2.1.302 e 2.1.305)`
+
+`origine: spec del 29/09/2026 §8, «si cambia una cosa alla volta»` · nessun documento
+
+La spec (§8) nomina «il `ToolSearch` spento sul ponte» come una prova a parte. La prova è
+spegnerlo sul ponte (`ENABLE_TOOL_SEARCH=false`, nome dalla spec, non riverificato nel codice) e **misurare**, sulla stessa
+batteria delle 28 domande, giri, token e latenza. È una fetta sua, e va **dopo** il rilascio della
+3.71.0 e dopo la rilettura della batteria: cambiarla insieme alla porta renderebbe illeggibile il
+«prima e dopo». Il tema si aggancia a «Ottimizzazione: base dati, chiamate e consumo di token»
+qui sotto: le definizioni degli strumenti erano il 57,5% del carico.
+
+### I soggetti tecnici raggruppati per integrazione — **USCITA con la v3.54.0**, resta `volte`
+
+È il **terzo punto della §3** di `docs/design/2026-09-18-la-pagina-dell-osservatore.md`, l'unico
+rimasto fuori dalla 3.52.0: «il raggruppamento dei soggetti tecnici per integrazione, con `volte` e
+**la finestra** a cui quel numero si riferisce — un numero di volte senza finestra non significa
+niente».
+
+**Non serve al primo piano** (che raggruppa la cronaca di UN giorno, e la finestra è quel giorno):
+serve alla scheda «L'osservatore», e vive sull'altra rotta, `GET /api/mind/watching`. Misurato il
+18/09 sulla casa: **39 soggetti tecnici su 153**, da **30 logger distinti** che sono **23
+integrazioni** una volta raggruppati. Oggi la pagina li elenca uno per uno, col percorso del
+sorgente in chiaro, e non dice mai quante volte una condizione è ricorsa.
+
+**Fatto il 20/09 con la 3.54.0**: la rotta arricchisce le voci tecniche con `integrazione` e
+`nome`, usando `mind/report.integration_of` — la stessa regola del primo piano, in un posto solo.
+La pagina raggruppa e mostra «Hassio — 6 voci», col percorso del sorgente solo nel dettaglio.
+
+**Resta `volte` e la sua finestra**, e non è un dettaglio: la riga dice quante VOCI DI REGISTRO
+distinte ha quell'integrazione, non **quante volte** una condizione è ricorsa — che è il numero che
+la §3 chiedeva («un numero di volte senza finestra non significa niente»). Quella rotta non porta
+nessun contatore: va deciso su quale finestra si conta (il grezzo dura 22 giorni) e chi la conta.
+Finché non c'è, la pagina non dice un numero che non ha.
+
+### ~~La chat è una sola per costruzione~~ — **USCITA con la v3.68.0**
+
+`origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
+
+Oggi HIRIS riceve input da **una chat sola**, e lo schema lo dà per scontato:
+
+    chat_sessions(session_id, started_at, last_msg_at, summary)
+    chat_messages(id, session_id, role, content, timestamp)
+
+Nessuna colonna per **chi** né per **quale sistema**. E la sessione attiva si sceglie così:
+
+    SELECT session_id FROM chat_sessions WHERE summary IS NULL
+    ORDER BY last_msg_at DESC LIMIT 1
+
+**L'ultima che ha parlato, chiunque fosse.** Il giorno in cui Retro Panel manda un messaggio
+mentre il proprietario sta chattando, i due finiscono nella stessa sessione e ognuno legge la
+cronologia dell'altro come propria.
+
+Non è un limite dichiarato: è un'assunzione implicita, e va resa esplicita o tolta. Perché HIRIS
+riceva input da chat diverse per utente e per sistema, la sessione va chiavata su **(soggetto,
+origine)** e `load_context` deve leggere quella del chiamante.
+
+**Il registro dei turni è già pronto per quel giorno**: `turn.subject_json` porta chi ha chiesto,
+con la stessa forma del soggetto della cronaca. Quando la seconda chat arriverà, le misure sapranno
+già distinguerle — invece di scoprire allora che non possono.
+
+**CHIUSA il 25/09/2026 con la fetta «le chat divise»** (`docs/design/2026-09-25-le-chat-divise.md`).
+La chiave e' esattamente quella qui sopra prevista, **(soggetto, ingresso)**, in un modulo suo
+(`hiris/app/chat_thread.py::ChatThread`): `chat_sessions` guadagna `subject_key` ed `entry_point`,
+`load_context`/`clear`/il 409/il poll leggono e scrivono il filo del chiamante, e la cronologia di
+prima della fetta resta orfana finché il proprietario non la adotta dal pannello. Quello che la
+voce non prevedeva: la memoria (i ricordi) **non si è divisa** — resta di HIRIS, condivisa, ma ogni
+ricordo sa ora chi l'ha detto, e il modello sa chi gli sta parlando. Ciò che questa fetta lascia
+fuori è dichiarato sotto, voce per voce.
+
+### ~~`chatbots.json` resta finché non lo guardi~~ — **CHIUSA** l'08/10/2026 (Tappa 8, D6)
+
+`origine: decisione del proprietario, 24/09/2026`
+
+La 3.66.0 cancella **dieci** archivi dismessi su undici. `chatbots.json` no: contiene il prompt
+personalizzato che il proprietario aveva salvato sul bot di default, e il registro d'avvio dice da
+mesi che non viene migrato. Si guarda cosa c'è dentro, poi si decide.
+
+Il criterio scritto con la fetta è: **un archivio si cancella quando è morto E quando qualcuno ha
+deciso** — non per la sola prima metà.
+
+**Chiusa l'08/10/2026**: lo Sprint ha mostrato il file al proprietario (D6 della Tappa 8, «prima si
+guarda, poi si cancella»), e `chatbots.json` è entrato in `conservazione.RESIDUI_DISMESSI` con
+`agents.json`; l'annuncio d'avvio è uscito.
+
+### ~~La CLI del ponte sale alla 2.1.278 nel prossimo rilascio~~ — **USCITA** con la v3.66.0
+
+Il cancello (`scripts/verifica_componenti.py`) ha fermato il rilascio della **v3.51.0** su
+`2.1.276 -> 2.1.278` (pin in `hiris/Dockerfile`). La 3.51.0 è uscita con `HIRIS_COMPONENTI_OK=1`,
+**dichiarato qui e nel rilascio**, perché quella versione porta la cornice della pagina
+dell'osservatore: far salire lì una dipendenza non provata spedirebbe un cambiamento sotto il
+changelog di qualcun altro. Regola del proprietario del 07/09/2026.
+
+**Cosa fare nel rilascio successivo**: `python scripts/verifica_componenti.py --aggiorna`,
+l'annotazione nel `Dockerfile` nella forma che la regola chiede (data, uscite saltate, piano di
+ripiego), la suite intera, e poi la prova che il pin arriva davvero dentro il container —
+`GET /api/health` deve rispondere `ponte.cli: "2.1.278"`. Il ripiego dichiarato resta la
+**2.1.276**, l'ultima di cui esista una lettura vera.
+
+**Rimandata di nuovo il 22/09/2026, con la v3.59.0** (`HIRIS_COMPONENTI_OK=1`, dichiarato qui e nel
+rilascio): quella versione porta l'accoppiamento dei servizi, ed è una fetta di sicurezza — far
+salire lì una dipendenza non provata è esattamente ciò che la regola vieta.
+
+**Ma la voce va letta come sta scritta adesso**: «nel prossimo rilascio» è stato scritto il
+20/09 e da allora sono passati **otto rilasci** (3.51.0 → 3.59.0). Una voce che dice «il
+prossimo» per otto volte non sta rimandando: sta dicendo il falso, e il rimando è diventato il
+comportamento predefinito invece che una decisione. Il prossimo rilascio che **non** porti una
+fetta di sicurezza la prende, oppure si dichiara qui che la 2.1.276 è il pin scelto e il cancello
+si riancora — non c'è una terza risposta onesta.
+
+**Rimandata una decima volta il 23/09/2026, con la v3.64.0** — e questa volta con una data
+d'arrivo, non con un «prossimo». La 3.64.0 chiude la **fetta 7**, l'ultima dello sprint sicurezza:
+vale la stessa regola (una dipendenza non provata non sale sotto il changelog di una fetta di
+sicurezza), e la condizione scritta qui sopra — «il prossimo rilascio che **non** porti una fetta
+di sicurezza» — da adesso è **verificabile**, perché lo sprint è chiuso e il rilascio successivo è
+la fetta delle misure, che per costruzione non cambia comportamento.
+
+La CLI oggi disponibile è la **2.1.280** (non più la 2.1.278 di questa voce: nel frattempo ne sono
+uscite altre due). Il ripiego dichiarato resta la **2.1.276**, l'ultima di cui esista una lettura
+vera da `GET /api/health`.
+
+**Rimandata un'undicesima volta il 23/09/2026, con la v3.65.0** — e va detto che è l'undicesima,
+non nascosto sotto la regola. La 3.65.0 è la **fetta 8**, l'ultima dello sprint sicurezza (B-5),
+quindi la regola scritta qui sopra vale ancora alla lettera: una dipendenza non provata non sale
+sotto il changelog di una fetta di sicurezza. Ma la condizione «il prossimo rilascio che NON porti
+una fetta di sicurezza» adesso è esigibile davvero: **lo sprint è chiuso**, non restano fette di
+sicurezza da fare, e il rilascio successivo è la fetta delle misure.
+
+**Se la fetta delle misure non la prende, questa voce non si rimanda una dodicesima volta: si
+chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
+
+**CHIUSA il 24/09/2026 con la v3.66.0, e la fetta delle misure l'ha presa.** Da 2.1.276 a
+**2.1.281**: quattro uscite saltate (277, 278, 279, 280), che è il prezzo di undici rimandi — più
+si aspetta, più grande è il salto che si prende in una volta. Il cancello dei componenti tace per
+la prima volta da undici rilasci: **questo push non porta `HIRIS_COMPONENTI_OK=1`**.
+
+Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su questa casa.
+
+**Passo 4 SALDATO il 24/09/2026 alle 18:56.** `GET /api/health` dentro il container risponde
+`ponte.cli: "2.1.281"` e `apiKeySource: "none"` — la CLI pinnata è quella che gira davvero, e
+gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
+può dire.
+
+### ~~La CLI del ponte sale alla 2.1.283 nel prossimo rilascio~~ — **USCITA** con la v3.69.1
+
+**Chiusa il 28/09/2026**, su decisione del proprietario: la 2.1.283 sale insieme alla correzione
+dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. **Passo 4 SALDATO il 28/09/2026**: `GET /api/health` sulla v3.69.1 risponde `ponte.cli: "2.1.283"`, `apiKeySource: "none"`. Lo stesso giorno l'attuatore sul ponte ha ragionato il suo primo turno (12:58, senza strumenti) e alle 13:58 ha scritto l'attuazione con 3 esiti e archiviato 2 proposte da fare a mano.
+
+**Rimandata di nuovo il 28/09/2026.** Stesso salto `2.1.281 -> 2.1.283`, segnalato durante il
+rilascio della **v3.69.0** (HIRIS per chi non amministra), uscita con `HIRIS_COMPONENTI_OK=1` —
+dichiarato qui. Stessa ragione: la 3.69.0 cambia chi entra in HIRIS e cosa vede, e va verificata
+dal vivo da sola. Il salto merita un rilascio suo, subito dopo quella verifica.
+
+**Rimandata di nuovo il 26/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.283`
+durante il rilascio della **v3.68.0** (le chat divise e il loro seguito), uscita con
+`HIRIS_COMPONENTI_OK=1` — dichiarato qui. Stessa ragione della volta prima: la 3.68.0 cambia chi
+parla con HIRIS, le promesse e le notifiche, e va verificata dal vivo da sola; alzare la CLI sotto
+di lei vorrebbe dire cambiare due variabili insieme. Ora sono **due salti di patch** (282, 283).
+
+**Aperta il 24/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.282` durante il
+rilascio della **v3.67.1**, che è uscita con `HIRIS_COMPONENTI_OK=1` — dichiarato qui, come
+chiede la regola: un salto segnalato a rilascio in corso non sale dentro il changelog di
+qualcun altro senza che nessuno l'abbia provato.
+
+La 3.67.1 portava due correzioni misurate dal vivo (il ripiego della ricerca, i nomi degli
+strumenti) e sta per reggere **due giorni di uso vero** che servono a decidere dove
+intervenire: cambiarle sotto la CLI sarebbe cambiare due variabili insieme.
+
+È **un solo salto di patch**, non undici: chi prende il prossimo rilascio lo alza con
+`python scripts/verifica_componenti.py --aggiorna`, l'annotazione nel `Dockerfile` (data,
+uscite saltate, piano di ripiego) e la suite intera. Il ripiego dichiarato è la **2.1.281**,
+di cui esiste una lettura vera dentro il container.
+
+### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
+
+**Aperta e chiusa nello stesso giorno.** Il cancello
+(`scripts/verifica_componenti.py`) ha segnalato `2.1.266 -> 2.1.267` durante il rilascio della
+v3.24.0, che e' uscita con `HIRIS_COMPONENTI_OK=1`; questa voce diceva «entra nel rilascio
+successivo». Il proprietario ha poi deciso di alzarla **subito**, dentro la v3.24.1: pin,
+annotazione nel `Dockerfile` (data, uscite, piano di ripiego) e suite intera, nell'ordine che la
+regola chiede.
+
+**Anche il passo 4 e' saldato, lo stesso giorno.** `GET /api/health` il 10/09/2026 alle 20:21,
+add-on sulla 3.24.1, ha risposto `ponte.cli: "2.1.267"`: il pin arriva davvero dentro il
+container. E' la prima volta che la verifica non slitta «al prossimo giro» -- era rimasta in
+sospeso per due salti di fila. Il ripiego dichiarato nel `Dockerfile` resta la **2.1.263**,
+l'ultima versione precedente di cui esista una lettura vera; la 2.1.266 e' stata scavalcata
+prima di girare e non si nomina come ripiego.
+
+**Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
+delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
+cercabile, la salute di un'integrazione, il soggetto e la durata di un guasto, i calendari,
+le tracce e il log, il vocabolario importato.
+
+**Correzione del 07/09**: l'intestazione precedente diceva *«Nessuna voce passa ancora in
+Usciti [...] il lavoro è su `master`, ma la casa non ce l'ha»*. Era vero il 04/09 e falso da
+tre rilasci. Un registro che resta indietro rispetto ai fatti è esattamente il difetto che
+questo documento dichiara di non voler avere — e ci è cascato lo stesso, per quattro giorni.
+
+**Dello sprint chiuso restano qui tre voci lavorate in parte**, e due chiedono la stessa cosa:
+**`search` non distingue ancora un candidato UNICO da un candidato CERTO.**
+`memory/resolver.py:233` è ancora un conteggio, e la nozione di candidato *debole* non esiste
+da nessuna parte, né nel prodotto né nelle prove. È la **prova numero 3 delle undici** che la
+specifica dichiara necessarie a chiudere lo sprint (§11), e non è mai stata scritta. Non
+risulta nemmeno una decisione di rinunciarci: è lavoro rimasto indietro, non una scelta.
+Chiuderlo vuol dire prima **definire cosa rende debole un candidato** — è una definizione,
+non una correzione.
+
+**Lo sprint aperto oggi è un altro: i rilievi del collaudo di usabilità del 07/09**, sette
+voci, in fondo a questa sezione. Cinque sono già su `master` in locale e **non ancora
+rilasciate**: lo stato «Uscito» lo dà un rilascio, non un commit.
+
+**Due dei sette rilievi non erano quello che dicevano**, e la misura lo ha mostrato prima che
+qualcuno ci lavorasse sopra: l'Albero non nasce lungo, e tre delle otto «parole nostre» non
+sono sullo schermo. In compenso la stessa misura ha trovato **205 entità che sparivano** da
+una pagina che esiste per non far sparire niente.
 
 ### ~~`release.py` si ferma sul commit vuoto quando non c'è niente da timbrare~~ — **USCITA con la v3.81.0** — aperta il 21/10/2026
 
@@ -4146,7 +4253,6 @@ il registro delle entita' non manda la classe -- prima che `_enrich_entity` aves
 scriverla SOLO quando c'e' una classe vera (come gia' faceva per `unita`). Rimossi i tre pre-semi:
 `_enrich_entity` resta la porta unica che decide se la chiave compare, per `classe` come per
 `unita`, `categoria` e `nascosta`.
-
 
 ### La piattaforma non e' cercabile — **USCITA con la v3.22.0**
 
@@ -4356,4 +4462,3 @@ Era nata da un ricordo del 31/08 che registrava la **decisione**; la decisione e
 eseguita lo stesso giorno. E' il primo caso in cui il registro corregge se stesso, ed e'
 il motivo per cui una voce dichiara sempre da dove viene: una decisione ricordata non e'
 un lavoro da fare.
-
