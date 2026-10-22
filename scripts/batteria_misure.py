@@ -20,6 +20,17 @@ Il cronometro va dalla domanda alla risposta: sulla catena `POST /api/chat`
 risponde 200; sul ponte 202 e la risposta si ritira da
 `/api/chat/reply/{job_id}`. Chi ha risposto davvero lo dice il registro dei
 turni, non questo script.
+
+**Una conversazione per domanda** (`--domande-isolate`, sprint «Il giro
+snello», 1.1): senza, le domande stanno in un filo solo e ognuna porta la
+storia delle precedenti, quindi il prima e il dopo di uno snellimento non si
+confrontano. Con l'opzione, dopo ogni risposta il filo di chi firma si svuota
+con le rotte della pagina (chiudere, elencare, cancellare): cancellare e non
+solo chiudere, perche' i riassunti delle conversazioni chiuse rientrano nel
+contesto delle successive (`handlers_chat.compose_chat_context`, «Sessioni
+precedenti»). Le risposte restano nel file degli esiti; i token restano nel
+registro dei consumi, che la chat non tocca. Un filo che ha gia' conversazioni
+non parte: le cancella solo `--svuota-filo`, detto da chi lancia.
 """
 import argparse
 import json
@@ -95,6 +106,47 @@ def chiedi(url: str, chiave: str, domanda: str, attesa: int = 900):
     return time.perf_counter() - inizio, "scaduto", "", job
 
 
+def _corpo(grezzo: bytes) -> dict:
+    return json.loads(grezzo) if grezzo else {}
+
+
+def conversazioni(url: str, chiave: str) -> list[dict]:
+    """Le conversazioni del filo di chi firma, come le elenca la pagina."""
+    stato, grezzo = _bussa(url, chiave, "GET", "/api/chat/conversations")
+    if stato != 200:
+        raise SystemExit(f"l'elenco delle conversazioni risponde [{stato}]: "
+                         f"{_corpo(grezzo).get('error', '')}")
+    return _corpo(grezzo).get("conversations", [])
+
+
+def svuota_filo(url: str, chiave: str, attesa: int = 900) -> int:
+    """Chiude la conversazione aperta e cancella tutte quelle del filo.
+
+    Finche' una risposta e' in volo (una domanda scaduta, sul ponte) la
+    chiusura risponde 409: si aspetta che arrivi, perche' svuotare adesso la
+    farebbe atterrare nella conversazione della domanda dopo. Un rifiuto
+    diverso ferma la batteria: proseguire misurerebbe domande con la storia
+    dentro. Restituisce quante conversazioni ha cancellato."""
+    inizio = time.perf_counter()
+    while True:
+        stato, grezzo = _bussa(url, chiave, "POST", "/api/chat/conversations", b"{}")
+        if stato == 200:
+            break
+        if stato != 409 or time.perf_counter() - inizio >= attesa:
+            raise SystemExit(f"chiudere la conversazione risponde [{stato}]: "
+                             f"{_corpo(grezzo).get('error', '')}")
+        time.sleep(PASSO_S)
+    cancellate = 0
+    for c in conversazioni(url, chiave):
+        stato, grezzo = _bussa(url, chiave, "DELETE",
+                               f"/api/chat/conversations/{c['id']}")
+        if stato != 200:
+            raise SystemExit(f"cancellare la conversazione {c['id']} risponde "
+                             f"[{stato}]: {_corpo(grezzo).get('error', '')}")
+        cancellate += 1
+    return cancellate
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     a = argparse.ArgumentParser(description=__doc__,
@@ -107,9 +159,26 @@ def main() -> None:
     a.add_argument("--automatico", action="store_true",
                    help="salta le domande con effetti veri, giudizi da dare dopo")
     a.add_argument("--solo", type=int, nargs="*", help="solo questi numeri")
+    a.add_argument("--domande-isolate", action="store_true",
+                   help="ogni domanda in una conversazione nuova, senza storia")
+    a.add_argument("--svuota-filo", action="store_true",
+                   help="con --domande-isolate: cancella le conversazioni che "
+                        "il filo di chi firma ha gia'")
     s = a.parse_args()
     chiave = str(pathlib.Path(s.chiave).expanduser())
     conferme = not s.automatico
+    if s.svuota_filo and not s.domande_isolate:
+        raise SystemExit("--svuota-filo vale solo con --domande-isolate")
+    if s.domande_isolate:
+        gia = conversazioni(s.url, chiave)
+        if gia and not s.svuota_filo:
+            raise SystemExit(f"il filo di chi firma ha gia' {len(gia)} "
+                             "conversazioni: i loro riassunti entrerebbero in "
+                             "ogni domanda. Rilancia con --svuota-filo per "
+                             "cancellarle.")
+        if gia:
+            print(f"cancellate {svuota_filo(s.url, chiave)} conversazioni "
+                  "che il filo aveva gia'", flush=True)
 
     esiti = []
     for d in domande_ammesse(carica_domande(s.domande), conferme=conferme):
@@ -133,9 +202,12 @@ def main() -> None:
             print(f"    RIMETTI A POSTO: {d['effetto']} creato da questa domanda.")
         esiti.append({**d, "secondi": round(secondi, 2), "stato": stato,
                       "risposta": risposta, "giudizio": giudizio, "job_id": job,
-                      "etichetta": s.etichetta, "ts": time.time()})
+                      "etichetta": s.etichetta, "ts": time.time(),
+                      "domanda_isolata": s.domande_isolate})
         pathlib.Path(s.esiti).expanduser().write_text(
             json.dumps(esiti, ensure_ascii=False, indent=1), encoding="utf-8")
+        if s.domande_isolate:
+            svuota_filo(s.url, chiave)
     print("\n" + json.dumps(riassunto(esiti), ensure_ascii=False, indent=1))
 
 
