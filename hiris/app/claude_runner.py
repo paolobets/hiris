@@ -626,7 +626,8 @@ _current_measure: "contextvars.ContextVar" = contextvars.ContextVar(
 #
 # Il segnale viene da cio' che il PROVIDER dichiara, mai dal testo:
 # - Anthropic, `stop_reason` (SDK `anthropic` 1.11.0, `types/message.py`,
-#   letto il 05/10/2026): `"max_tokens"` -- «we exceeded the requested
+#   letto il 05/10/2026; uguale nella 2.1.0, `types/stop_reason.py`, riletto
+#   il 22/10/2026): `"max_tokens"` -- «we exceeded the requested
 #   `max_tokens` or the model's maximum» -- e `"model_context_window_exceeded"`
 #   -- «we exceeded the model's context window». Tutti e due fermano la
 #   risposta a meta'.
@@ -793,8 +794,9 @@ class ClaudeRunner:
     ) -> None:
         # **Il tempo e i ritentativi si DICHIARANO** (Tappa 7, T10; S-13), e
         # sono quelli dell'SDK: `anthropic` 1.11.0, `_constants.py`, letto il
-        # 07/10/2026 -- `DEFAULT_TIMEOUT = Timeout(600, connect=5.0)`,
-        # `DEFAULT_MAX_RETRIES = 2`. L'SDK ritenta da se' 408, 409, 429, i
+        # 07/10/2026, e uguali nella 2.1.0 (riletto il 22/10/2026) --
+        # `DEFAULT_TIMEOUT = Timeout(600, connect=5.0)`, `DEFAULT_MAX_RETRIES = 2`.
+        # L'SDK ritenta da se' 408, 409, 429, i
         # 5xx (529 compreso) e gli errori di connessione, con un'attesa che
         # parte da mezzo secondo, raddoppia fino a 8 e rispetta `retry-after`
         # (`_base_client.py`, `_should_retry` e `_calculate_retry_timeout`,

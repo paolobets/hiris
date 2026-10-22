@@ -104,7 +104,8 @@ def _risposta_anthropic(stop_reason: str, testo: str = "inizio della risp"):
 ])
 async def test_ClaudeRunner_dice_la_troncatura(stop_reason, troncato):
     """Fonte dei valori: SDK `anthropic` 1.11.0, `types/message.py` (letto il
-    05/10/2026; vedi `claude_runner._current_truncated`).
+    05/10/2026; uguale nella 2.1.0, `types/stop_reason.py`, il 22/10/2026;
+    vedi `claude_runner._current_truncated`).
 
     Mutazione ESEGUITA: `ClaudeRunner` che ignora `stop_reason` (il ramo
     `max_tokens` non scrive `last_truncated`) -- rossa sul primo caso."""
