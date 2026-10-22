@@ -961,6 +961,19 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### L'elenco dei modelli Claude dichiara a mano `anthropic-version: 2023-06-01` (R196-1) — aperta il 22/10/2026
+
+`origine: il revisore (R196-1, giro 196), sul passaggio della libreria anthropic alla 2.1.0 (ffcf872b) del 22/10/2026` · `hiris/app/api/handlers_models.py`
+
+La catena parla con Claude attraverso l'SDK `anthropic`, che dalla 2.1.0 manda
+`anthropic-version: 2026-10-21` e la chiave in `Authorization: Bearer`. L'elenco dei modelli
+nella pagina Modelli non passa dall'SDK: chiama `GET /v1/models` da sé con aiohttp, e scrive a
+mano `x-api-key` e `anthropic-version: 2023-06-01`. Sono due versioni dell'API dichiarate in due
+posti, e la seconda non segue la libreria (fondamenta 2).
+
+Da decidere: o l'elenco passa dall'SDK (`client.models.list()`), o la versione si dichiara una
+volta sola. Prima si misura che `GET /v1/models` risponda con l'intestazione nuova.
+
 ### Un 403 non dice «si sistema nella pagina Modelli» (R181-1) — aperta il 21/10/2026
 
 `origine: il revisore (R181-1, giro 181), dopo la correzione del 403 della 3.80.0; rinviata al prossimo sprint il 21/10/2026` · `hiris/app/model_resolution.py`

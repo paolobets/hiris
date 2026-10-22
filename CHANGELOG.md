@@ -16,6 +16,17 @@ Le push agli amministratori, quelle sulle integrazioni ferme e sulle proposte im
 
   HIRIS chiede a Home Assistant, a ogni giro, quali notifiche sta mostrando. Dopo un riavvio di Home Assistant le notifiche tornano da sole. HIRIS tocca solo le notifiche sue: quelle di Home Assistant e delle integrazioni restano come sono.
 
+### Componenti
+
+- CLI del ponte **2.1.308** (dalla 2.1.306), per scelta di Paolo del 22/10/2026.
+  - Letto il CHANGELOG ufficiale della 2.1.307 e della 2.1.308. Nessuna voce cambia `stream-json`, `system/init`, `--mcp-config` o la ripresa al tetto.
+  - Dalla 2.1.307, una chiamata a uno strumento di HIRIS non si ripete più quando la connessione si chiude a metà: la CLI riprova solo gli strumenti dichiarati di sola lettura o idempotenti, e HIRIS non ne dichiara nessuno.
+  - Misurato nella nuvola con l'argv di produzione e un'API finta, sulla 2.1.306 e sulla 2.1.308. Gli strumenti e il prompt sono gli stessi, e la ripresa al tetto arriva nella stessa forma: il turno esce «troncato» anche sulla 2.1.308.
+- Libreria `anthropic` **2.1.0** (dalla 1.x; pavimento 2.1.0, tetto sotto la 3.0.0), per scelta di Paolo del 22/10/2026.
+  - Lette le note di migrazione ufficiali della versione 2026-10-21 dell'API. Nessuna delle cose che toglie è usata da HIRIS: niente `temperature`, `top_p` o `top_k`, niente documenti nei messaggi dell'assistente, niente citazioni nei messaggi dell'utente. Il codice non cambia, cambiano solo il requisito e due commenti.
+  - La catena manda ora `anthropic-version: 2026-10-21` e la chiave in `Authorization: Bearer`. Tempo, ritentativi e campi dei consumi, cache compresa, restano gli stessi.
+  - Misurato nella nuvola con un'API finta: la risposta normale, il tetto («troncato»), un 429 seguito da una risposta buona (due richieste) e un 529 ostinato (tre richieste, poi l'avviso di errore temporaneo). Con l'API vera di Claude non è stato provato: manca il credito.
+
 ### Da sapere
 
 - Le notifiche persistenti di Home Assistant le vede ogni utente di Home Assistant, non solo gli amministratori.
