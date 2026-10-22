@@ -183,3 +183,25 @@ def test_svuotare_aspetta_la_risposta_in_volo(monkeypatch):
     monkeypatch.setattr(m, "_bussa", lambda *a, **k: (403, b'{"error": "no"}'))
     with pytest.raises(SystemExit, match=r"\[403\]: no"):
         m.svuota_filo("u", "k", attesa=5)
+
+
+@pytest.mark.parametrize("rifiuto", [404, 409])
+def test_una_cancellazione_rifiutata_ferma_la_batteria(monkeypatch, rifiuto):
+    """Una conversazione rimasta nel filo porterebbe il suo riassunto nelle
+    domande dopo: un rifiuto della DELETE non si conta come cancellazione,
+    ferma la batteria (revisione, giro 198, R198-1).
+
+    Mutazione ESEGUITA: il controllo sullo stato della DELETE tolto -- rossa."""
+    m = _modulo()
+    monkeypatch.setattr(m, "PASSO_S", 0)
+    filo = _FiloFinto(gia=1)
+
+    def bussa(url, chiave, metodo, percorso, corpo=b"", attesa=60):
+        if metodo == "DELETE":
+            return rifiuto, json.dumps({"error": "rifiutata"}).encode()
+        return filo(url, chiave, metodo, percorso, corpo, attesa)
+
+    monkeypatch.setattr(m, "_bussa", bussa)
+    with pytest.raises(SystemExit, match=rf"vecchia0 risponde \[{rifiuto}\]: rifiutata"):
+        m.svuota_filo("u", "k", attesa=5)
+    assert filo.conv == {"vecchia0": []}
