@@ -131,6 +131,38 @@ ricordi: ciò che le persone hanno detto a HIRIS si ridice. Il contratto dice ch
 persona ha detto non evapora (`docs/design/2026-08-05-la-conoscenza-di-hiris.md`): qui la persona
 è Paolo, che sceglie di ricominciare, e il backup lo conserva.
 
+### Le risposte sbagliate della batteria di prima: quattro rimedi — aperta il 23/10/2026
+
+`origine: misura di prima della Fase 1 (batteria --domande-isolate sulla catena, 22/10/2026: 23 giuste su 28); Paolo, 23/10/2026 07:10 («ok inseriamo i rimedi e partiamo con l'intero sprint»)` · proposta: `/mnt/project-files/piani/2026-10-23-rimedi-risposte-proposta.md`, da approvare prima del codice
+
+- **A — «Da quando» non è «dal riavvio»** (domande 6, 7, 28). `ultimo_cambio` viene da
+  `last_changed`, che dopo un riavvio di HA è l'istante del riavvio: 101 delle 118 entità
+  `unavailable` lo avevano dentro il riavvio del 17/10 (21:27-21:29Z), e la chat l'ha presentato come
+  inizio del guasto. Rimedio proposto: le risposte portano il riavvio come HA lo dichiara nel suo
+  registro, da «stopped» a «started» (misurato il 23/10: 101 delle 118 cadono fra «stopped» e 4 ms
+  dopo «started», e HA non lega quei 54 stati all'avvio con nessun `context`), accanto a ogni
+  `ultimo_cambio`, nella stessa forma che `_view_integration` dà già con `avvio_home_assistant`. Il
+  verdetto lo dice il modello, o una regola che sceglie Paolo, mai una tolleranza nostra; l'inizio
+  vero si chiede allo storico di HA. Fase 2.
+- **B — La chat ripete un'analisi vecchia invece di guardare la casa** (domanda 18). Ha ripreso
+  dall'analisi del 13/10 «i termometri delle stanze sono disabilitati»: vero per i
+  `sensor.*_t_temperature` (`disabled_by: config_entry`), falso per le 8 `climate` con
+  `current_temperature`. Rimedi proposti: le osservazioni dell'analista nominano le entità di cui
+  parlano (`soggetti`, controllati contro la casa); lo strumento `mind` le consegna col giorno e lo
+  stato di adesso. Il riscaldamento è nello scope ma non diventa una misura: le statistiche
+  dei vecchi sensori AVE si fermano il 29/09, i nuovi di «Configurazione AVE» hanno storico pieno
+  ma nessuna statistica perché non dichiarano `state_class`, e le ricette
+  misurano solo dalle statistiche (11 rifiuti «ricetta_non_serve» del 19/10). Risolto fuori da HIRIS (Paolo,
+  23/10): il suo ponte `ave-controller` non dichiarava `state_class` su `ave_thermo_temp`, e lo
+  corregge lì. Fasi B e 2.
+- **C — Un'automazione in `search` dice solo come si chiama** (domanda 30). Rimedio proposto: la
+  riga porta la `description` di HA e, se manca, un riassunto di inneschi e azioni composto dal
+  codice dal corpo. Fase 2.
+- **D — I criteri della batteria invecchiano con la casa** (criteri 6 e 30: oggi 28 automazioni,
+  3 script, 118 `unavailable`). Rimedio proposto: una domanda può portare `misura`, un valore letto
+  da HA con `scripts/casa.py` un attimo prima di chiedere e scritto nel criterio e negli esiti.
+  Fase 1 (1.4), pronta prima della misura di dopo.
+
 ### Il contesto fisso di ogni giro: ciò che serve a decidere, non a leggere — aperta il 15/10/2026
 
 `origine: Paolo, 15/10/2026, dopo la batteria finale della Chiusura (3.79.1, ponte, claude-opus-5-5): «sì mi torna migliorare questo aspetto»; testo proposto dallo Sprint` · misure sul PC: `~/.hiris-sprint/chiusura/confronto-batterie.json`, `~/.hiris-sprint/batterie/chat-3.79.1.json`
