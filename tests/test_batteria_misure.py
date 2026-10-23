@@ -205,3 +205,78 @@ def test_una_cancellazione_rifiutata_ferma_la_batteria(monkeypatch, rifiuto):
     with pytest.raises(SystemExit, match=rf"vecchia0 risponde \[{rifiuto}\]: rifiutata"):
         m.svuota_filo("u", "k", attesa=5)
     assert filo.conv == {"vecchia0": []}
+
+
+# --- I criteri vivi (rimedio D delle risposte sbagliate, 23/10/2026): i
+# criteri 6 e 30 scritti a mano erano invecchiati con la casa.
+
+_STATI = [{"entity_id": "light.a", "state": "unavailable"},
+          {"entity_id": "sensor.b", "state": "unavailable"},
+          {"entity_id": "automation.c", "state": "on"},
+          {"entity_id": "automation.d", "state": "off"}]
+
+
+def _domanda(**misura):
+    return {"n": 6, "aspetto": "guasti", "domanda": "q", "effetto": None,
+            "giudice": "hiris", "atteso": "dice che sono {misura}", "misura": misura}
+
+
+def test_il_criterio_prende_il_valore_dalla_casa_un_attimo_prima():
+    """Mutazioni ESEGUITE: `conta_stato` che conta tutti gli stati -- rossa;
+    `criterio` che non sostituisce il segnaposto -- rossa."""
+    m = _modulo()
+    letta = m.misura(_domanda(lettura="conta_stato", valore="unavailable"),
+                     stati=lambda: _STATI)
+    assert letta["valore"] == 2 and letta["ts"] > 0
+    assert m.criterio(_domanda(), letta) == "dice che sono 2"
+    dominio = m.misura(_domanda(lettura="conta_dominio", valore="automation"),
+                       stati=lambda: _STATI)
+    assert dominio["valore"] == 2
+    assert m.misura({"n": 1, "atteso": "x"}) is None
+
+
+def test_una_misura_storta_si_rifiuta_prima_di_cominciare(tmp_path):
+    """Una lettura non ammessa, o un atteso senza `{misura}`, ferma il
+    caricamento: a meta' batteria costerebbe le domande gia' fatte.
+
+    Mutazione ESEGUITA: `carica_domande` senza il controllo -- rossa."""
+    m = _modulo()
+    for domanda in (_domanda(lettura="leggi_tutto", valore="x"),
+                    {**_domanda(lettura="conta_stato", valore="on"), "atteso": "fisso"}):
+        f = tmp_path / "d.json"
+        f.write_text(json.dumps([domanda]), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            m.carica_domande(str(f))
+
+
+def test_negli_esiti_restano_il_criterio_riempito_e_il_valore_letto(monkeypatch, tmp_path):
+    """Il giudizio si da' contro la casa di quel momento: l'esito porta
+    l'atteso con il valore e la lettura con l'istante. Una casa che non
+    risponde salta quella domanda e basta.
+
+    Mutazioni ESEGUITE: l'esito con l'`atteso` del file -- rossa; il guasto
+    della casa che ferma la batteria invece di saltare -- rossa."""
+    m = _modulo()
+    domande = tmp_path / "d.json"
+    domande.write_text(json.dumps([
+        _domanda(lettura="conta_stato", valore="unavailable"),
+        {**_domanda(lettura="conta_stato", valore="on"), "n": 7}]), encoding="utf-8")
+    esiti = tmp_path / "e.json"
+    letture = iter([_STATI, None])
+
+    def stati():
+        dati = next(letture)
+        if dati is None:
+            raise SystemExit("casa: Home Assistant non raggiungibile")
+        return dati
+
+    monkeypatch.setattr(m, "leggi_stati", stati)
+    monkeypatch.setattr(m.misura, "__defaults__", (stati,))
+    monkeypatch.setattr(m, "_bussa", _FiloFinto())
+    monkeypatch.setattr("sys.argv", [
+        "batteria", "--domande", str(domande), "--chiave", "k", "--url", "u",
+        "--etichetta", "catena", "--esiti", str(esiti), "--automatico"])
+    m.main()
+    [esito] = json.loads(esiti.read_text(encoding="utf-8"))
+    assert esito["n"] == 6 and esito["atteso"] == "dice che sono 2"
+    assert esito["misura_letta"]["valore"] == 2
