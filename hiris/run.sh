@@ -56,6 +56,9 @@ if bashio::config.has_value 'supervisor_ingress_cidr'; then
     SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr')
 fi
 export SUPERVISOR_INGRESS_CIDR
+# La pulizia totale del 23/10/2026 (`conservazione.accantona_archivi`), a
+# scadenza: esce nella release dopo, insieme alla sua opzione.
+export HIRIS_PULIZIA_TOTALE=$(bashio::config 'pulizia_totale')
 
 # Versione B: esce HIRIS_DEBUG_EXPOSE_PORT/debug_expose_port, con il blocco di
 # sette `bashio::log.warning` che era il suo unico effetto. Non apriva niente:

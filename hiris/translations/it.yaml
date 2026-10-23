@@ -61,3 +61,6 @@ configuration:
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
     description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Vuoto: la rete del Supervisor."
+  pulizia_totale:
+    name: "Avanzate · pulizia totale (una volta)"
+    description: "Accesa, al prossimo avvio HIRIS mette da parte osservazioni, sapere, chat e ricordi in /data/accantonati-2026-10-23 e riparte con quegli archivi vuoti. Copia e verifica prima di togliere; si fa una volta sola. Fai prima il backup dell'add-on."
