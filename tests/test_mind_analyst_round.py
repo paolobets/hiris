@@ -438,3 +438,55 @@ async def test_dopo_un_RIFIUTO_non_si_richiede_a_ogni_giro(casa):
     await analyst_round.analyst_round(app)
 
     assert len(modello.chiamate) == 0
+
+
+# ---------------------------------------------------------------------------
+# **I soggetti si confrontano con la casa di adesso** (rimedio B.1,
+# 23/10/2026), sulle due strade: la catena e la risposta raccolta dal ponte.
+# ---------------------------------------------------------------------------
+
+_INVENTATO = json.dumps({"osservazioni": [
+    {"quale": 0, "innesco": 1, "cosa": "i termometri sono spenti",
+     "soggetti": ["climate.inventato"], "spiegato": None}]})
+
+
+def _with_house(app):
+    from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+    from tests._anagrafe_finta import AnagrafeFinta
+    from tests._specchio_finto import SpecchioFinto, raw_state
+
+    app[HOME_SPACE_KEY] = AnagrafeFinta({"entita": [{"id": "climate.camera"}],
+                                         "dispositivi": [], "aree": []})
+    app[ENTITY_CACHE_KEY] = SpecchioFinto([raw_state("climate.camera", "heat")])
+    return app
+
+
+def _subject_refused(esito):
+    from hiris.app.mind.analyst import NOT_IN_HOUSE
+    return f"l'osservazione 1 parla di climate.inventato: {NOT_IN_HOUSE}" in esito["problemi"]
+
+
+@pytest.mark.asyncio
+async def test_sulla_CATENA_un_soggetto_che_la_casa_non_ha_fa_rifiutare(casa):
+    """Mutazione ESEGUITA (23/10/2026): il giro della catena che non passa la
+    casa ad `apply_analysis` -- rossa."""
+    app, store, _modello = casa
+    app[LLM_ROUTER_KEY] = RunnerFinto(_INVENTATO)
+
+    esito = await analyst_round.analyst_round(_with_house(app))
+
+    assert esito["analisi"] is None
+    assert _subject_refused(esito), esito["problemi"]
+    assert store.analysis(_oggi(app)) is None
+
+
+def test_dal_PONTE_un_soggetto_che_la_casa_non_ha_fa_rifiutare(casa):
+    """Mutazione ESEGUITA (23/10/2026): il raccoglitore che non passa la casa
+    ad `apply_analysis` -- rossa."""
+    app, store, _modello = casa
+    app[REASONING_QUEUE_KEY] = _CodaDiOggi(_oggi(app), 60, reply=_INVENTATO)
+
+    raccolto = analyst_round._collect_analyst_turn(_with_house(app), store, _oggi(app))
+
+    assert raccolto["analisi"] is None
+    assert _subject_refused(raccolto), raccolto["problemi"]

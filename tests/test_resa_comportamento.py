@@ -146,6 +146,26 @@ def test_la_voce_corta_dice_cosa_fa_dal_corpo():
                        "passi": [{"tipo": "light.turn_on", "entita": ["light.ingresso"]}]}
 
 
+def test_gli_inneschi_ANNIDATI_si_spianano():
+    """Home Assistant accetta, fra gli inneschi, un elenco annidato
+    `{"triggers": [...]}` (core 2026.9.4, `config_validation`): nel riassunto
+    escono i suoi inneschi, non una riga col tipo «triggers» (R206-2, giro
+    206 del revisore).
+
+    Mutazione ESEGUITA (23/10/2026): togliere lo spianamento da
+    `behavior_summary` -- rossa."""
+    from hiris.app.home_space.render import behavior_summary
+
+    corpo = {"triggers": [
+        {"triggers": [{"trigger": "state", "entity_id": "binary_sensor.porta"},
+                      {"trigger": "time", "at": "07:00"}]},
+        {"trigger": "sun", "event": "sunset"}],
+        "actions": []}
+    assert behavior_summary(corpo) == {"inneschi": [
+        {"tipo": "state", "entita": ["binary_sensor.porta"]}, {"tipo": "time"},
+        {"tipo": "sun"}]}
+
+
 def test_la_descrizione_di_home_assistant_vince_sul_riassunto():
     """Con la `description` scritta dal proprietario, la voce porta lei e non
     il riassunto: e' la sua parola, e costa meno.

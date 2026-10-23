@@ -1260,6 +1260,29 @@ def test_without_a_seen_restart_the_uptime_sensor_speaks():
     assert detail["riavvio_home_assistant"]["fonte"] == "sensor.uptime"
 
 
+def test_a_newer_uptime_wins_over_an_older_seen_window():
+    """R206-1 (giro 206 del revisore): la finestra tenuta e' quella
+    dell'ultimo riavvio VISTO. Se Home Assistant riparte mentre l'add-on non
+    lo vede (lo ritrova gia' `RUNNING`, finestra `riavvio: false`), la
+    finestra vecchia resta, e `sensor.uptime` dice il riavvio nuovo: vince
+    il piu' recente. Per lo stesso riavvio `sensor.uptime` cade dentro la
+    finestra, e vince la finestra, che copre il tratto intero.
+
+    Mutazione ESEGUITA (23/10/2026): `House.restart` che usa la finestra
+    quando c'e', senza confrontarla con `sensor.uptime` -- rossa sul primo
+    caso (esce la finestra del 29/08)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
+    newer = dict(states, **{"sensor.uptime": "2026-09-04T14:00:10+00:00"})
+    casa = House(house, Mirror(state=newer, since=since), restart=_RESTART)
+    assert casa.restart() == {"avviato": "2026-09-04T14:00:10+00:00",
+                              "fonte": "sensor.uptime"}
+
+    same = dict(states, **{"sensor.uptime": "2026-08-29T10:41:00+00:00"})
+    casa = House(house, Mirror(state=same, since=since), restart=_RESTART)
+    assert casa.restart()["a"] == _RESTART["a"]
+
+
 def test_an_unavailable_uptime_sensor_is_not_a_restart():
     """`unavailable` e `unknown` sono stringhe piene, non istanti: senza
     un'altra fonte, il riavvio non esce. L'assenza e' assenza.

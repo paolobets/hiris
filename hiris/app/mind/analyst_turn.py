@@ -17,6 +17,14 @@ nostro (sarebbe correggere invece di rifiutare). Stessa dottrina delle ricette.
 **Cosa** ha visto, **su quale misura** (il numero) e **se e' spiegato**.
 **Perche'** lo dice -- quale dei tre inneschi -- lo sa il codice, che li marca
 sulla riga: il modello sceglie solo fra quelli, quando sono piu' d'uno.
+**Di chi parla**: i `soggetti`, gli `entity_id` di cui la frase dice
+qualcosa (rimedio B.1, 23/10/2026). Un'affermazione sulla casa senza i suoi
+soggetti non si puo' verificare -- e' la fondamenta 1 -- e il 13/10/2026
+l'analista ha scritto «i termometri delle stanze sono disabilitati», una
+frase che non nominava nessuna entita', e la chat l'ha ripetuta per giorni
+come se fosse di adesso. Con i soggetti, chi rilegge l'osservazione le mette
+accanto lo stato di oggi (`view.MindView`), e un id che la casa non ha fa
+rifiutare la risposta, come un numero.
 **Cosa cambierebbe** rispetto all'obiettivo e' facoltativo dal Task 3.5 del
 piano degli attori: obbligatorio, contraddiceva «il silenzio e' un esito
 legittimo» -- spingeva a inventare un'azione per ogni constatazione (audit del
@@ -94,7 +102,7 @@ def fondamento(stamps) -> dict:
 def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
                    previous: list[dict] | None = None,
                    tool_calls: list[dict] | None = None,
-                   presence=None) -> dict:
+                   presence=None, house=None) -> dict:
     """Cosa si fa della risposta: si valida, e si **arricchisce coi numeri**.
 
     `tool_calls` sono le letture fatte nel turno, dal registro delle chiamate
@@ -106,7 +114,13 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
     del turno, con lo stesso nome nudo (`analyst_round._collect_analyst_turn`).
 
     `presence` (`privacy.PresenceMask`) riporta all'id vero un segnaposto che
-    il modello ha letto negli strumenti e scritto in un `rimetti`.
+    il modello ha letto negli strumenti e scritto in un `rimetti` o fra i
+    `soggetti`.
+
+    `house` e' la casa di adesso: i `soggetti` che non conosce fanno
+    rifiutare la risposta (`_subjects`). Senza casa, o con una casa non letta
+    per intero (`analyst.house_readable`), si guarda solo la forma: «non c'e'»
+    si dice solo di una casa letta, come per il rimetti (G74-1).
 
     `previous` e' la memoria (`analyst.previous_observations`, D4): il codice
     attacca a ogni osservazione se e' nuova (`analyst.novelty`), e quella gia'
@@ -153,7 +167,12 @@ def apply_analysis(series: dict, answer: str, *, truncated: bool = False,
         if not isinstance(line, dict):
             problems.append(f"l'osservazione {number} non e' un'osservazione: {line!r}")
             continue
+        subjects = _subjects(
+            presence.unmask(line.get("soggetti")) if presence is not None
+            else line.get("soggetti"), number, problems, house)
         built = _enrich(line, number, known, problems, days)
+        if built is not None:
+            built["soggetti"] = subjects
         if built is not None:
             fresh = analyst.novelty(built, previous or [])
             if fresh is None:
@@ -276,6 +295,37 @@ def _trigger(written, row: dict, which: int, number: int, problems: list,
     return None
 
 
+def _subjects(written, number: int, problems: list, house) -> list[str]:
+    """I **soggetti** di un'osservazione (rimedio B.1): gli `entity_id` di
+    cui la frase parla, almeno uno, ognuno una volta, nell'ordine scritto.
+
+    Un id che la casa di adesso non conosce (`House.source` -> `None`) si
+    rifiuta col suo nome: una frase su un'entita' che non c'e' e' la stessa
+    cosa di un numero inventato. Un'entita' spenta o sparita dagli stati
+    resta un soggetto legittimo -- «e' spenta» e' proprio una delle cose che
+    si possono dire di lei.
+    """
+    if not isinstance(written, list) or not written:
+        problems.append(
+            f"l'osservazione {number} non porta `soggetti`, gli entity_id di "
+            "cui parla: una frase sulla casa senza le sue entita' non si puo' "
+            "verificare (cercali con search o related)")
+        return []
+    out: list[str] = []
+    for ident in written:
+        clean = str(ident or "").strip() if isinstance(ident, str) else ""
+        if not is_entity_id(clean):
+            problems.append(f"l'osservazione {number} ha un soggetto che non e' "
+                            f"un entity_id: {ident!r}")
+        elif (house is not None and analyst.house_readable(house)
+              and house.source(clean) is None):
+            problems.append(f"l'osservazione {number} parla di {clean}: "
+                            f"{analyst.NOT_IN_HOUSE}")
+        elif clean not in out:
+            out.append(clean)
+    return out
+
+
 def _text(value) -> str | None:
     """Un campo di testo facoltativo: la frase, o `None` se non c'e'."""
     clean = str(value or "").strip()
@@ -333,12 +383,17 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
   {"quale": <il NUMERO fra parentesi quadre della misura, come nell'elenco>,
    "innesco": <solo se la misura ne ha piu' d'uno: uno dei suoi «inneschi»>,
    "cosa": "cosa hai visto, in una frase",
+   "soggetti": ["<entity_id di cui la frase parla: almeno uno>"],
    "spiegato": "da cosa e' spiegato, oppure null se non lo e'",
    "cosa_cambierebbe": "facoltativo: cosa cambierebbe rispetto all'obiettivo",
    "da_riverificare": "facoltativo: cosa vuoi ricontrollare"}
 ],
  "rimetti": [{"id": "<entity_id da far rientrare fra le cose guardate>",
               "perche": "perche' serve"}]}
+
+«soggetti» sono le entita' di cui parli, coi loro entity_id veri (li trovi
+con search o related): una frase su «i termometri» senza i loro id viene
+rifiutata, e lo stesso un id che la casa non ha.
 
 Gli inneschi sono tre, e il codice li ha gia' marcati su ogni misura:
   1 = qualcosa e' cambiato, e non e' spiegato da cio' che gia' sappiamo

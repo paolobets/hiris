@@ -31,6 +31,7 @@ from tests.test_proponente import osservazioni as osservazioni_proponente
 DECISIONI = [{"id": "climate.camera_t", "dentro": True, "motivo": "scalda"}]
 ANALISI = {"osservazioni": [{"quale": 0, "innesco": 1,
                              "cosa": "il prelievo e' salito", "spiegato": None,
+                             "soggetti": ["sensor.prelievo"],
                              "cosa_cambierebbe": "meno prelievo, meno spesa"}]}
 ESITI_PROPONENTE = {"esiti": [{"osservazione": 0, "esito": "niente",
                                "perche": "il sensore era fermo"}]}

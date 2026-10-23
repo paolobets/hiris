@@ -457,12 +457,25 @@ class House:
           cade a meta' dell'avvio: il 17/10, 26 delle 101 venivano prima
           (home-assistant.io/integrations/uptime/: «the date and time when
           Home Assistant was last started»). Fino al 23/10/2026 era la sola
-          fonte, e solo per `view` di un'integrazione."""
-        if self._restart is not None:
-            return {"da": self._restart.get("da"), "a": self._restart.get("a"),
-                    "fonte": "l'add-on ha visto Home Assistant fermarsi e ripartire"}
+          fonte, e solo per `view` di un'integrazione.
+
+        **Vince il riavvio piu' recente** (R206-1, giro 206 del revisore). La
+        finestra resta quella dell'ultimo riavvio VISTO, e un riavvio finito
+        prima che l'add-on tornasse non ne apre una nuova (la finestra
+        `riavvio: false` di `HAClient`): se `sensor.uptime` dice un istante
+        dopo la fine della finestra tenuta, e' un riavvio piu' nuovo, e la
+        finestra vecchia direbbe «riavviato tre giorni fa». Per lo stesso
+        riavvio `sensor.uptime` cade dentro la finestra, e vince lei, che
+        copre il tratto intero."""
         uptime = self.mirror.state.get("sensor.uptime")
-        if isinstance(uptime, str) and instant_epoch(uptime) is not None:
+        started = instant_epoch(uptime) if isinstance(uptime, str) else None
+        window_end = (self._restart or {}).get("a")
+        if self._restart is not None and (
+                started is None or not isinstance(window_end, int | float)
+                or started <= window_end):
+            return {"da": self._restart.get("da"), "a": window_end,
+                    "fonte": "l'add-on ha visto Home Assistant fermarsi e ripartire"}
+        if started is not None:
             return {"avviato": uptime, "fonte": "sensor.uptime"}
         return None
 

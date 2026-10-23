@@ -348,7 +348,7 @@ def test_con_la_casa_non_letta_il_rifiuto_dice_il_vero(archivio, casa):
     non ha questa entita'»: falso, e archiviato nell'analisi. La ragione e'
     quella vera, e la decisione dell'osservatore resta com'era.
 
-    Mutazione ESEGUITA (07/10/2026): `_house_readable` che torna sempre vero
+    Mutazione ESEGUITA (07/10/2026): `house_readable` che torna sempre vero
     -- rossa in tutti e tre i casi (la ragione torna `NOT_IN_HOUSE`)."""
     archivio.decide_scope("sensor.pioggia", inside=False, reason="non pesa",
                           author=OBSERVER, when_ts=1000.0)
