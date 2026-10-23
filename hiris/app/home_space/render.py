@@ -545,6 +545,90 @@ BODY_UNKNOWN = "non conosco il corpo"
 _BEHAVIOR_MEDIUM = (("mode", "modalita"), ("current", "in_esecuzione"))
 
 
+# Le chiavi del corpo di un'automazione o di uno script, come Home Assistant
+# le accetta in `raw_config` (il corpo COME SCRITTO, prima della validazione):
+# letti nel sorgente di Core al tag 2026.9.4 il 23/10/2026.
+# `components/automation/config.py` (`description`, `triggers` e `actions`,
+# con `trigger` e `action` ancora accettati e rinominati da `cv.renamed`);
+# `components/script/config.py` (`sequence`, `description`);
+# `helpers/config_validation.py`: un innesco porta `trigger` o, alla vecchia,
+# `platform` (`_trigger_pre_validator`), e una voce `{"triggers": [...]}` sola
+# e' un elenco annidato (`_base_trigger_list_flatten`); un passo che chiama un
+# servizio porta `action` o, alla vecchia, `service` (riga 1487).
+_BODY_TRIGGERS = ("triggers", "trigger")
+_BODY_ACTIONS = ("actions", "action", "sequence")
+_TRIGGER_KIND = ("trigger", "platform")
+_SERVICE_KEYS = ("action", "service")
+
+
+def _listed(value) -> list:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _first_of(body: dict, keys: tuple[str, ...]):
+    return next((body[key] for key in keys if key in body), None)
+
+
+def _entities_of(step: dict) -> list[str]:
+    """Le entita' che un passo o un innesco nomina: `entity_id` suo o del
+    `target`, come Home Assistant le scrive (una stringa o un elenco)."""
+    target = step.get("target") if isinstance(step.get("target"), dict) else {}
+    found: list[str] = []
+    for value in (step.get("entity_id"), target.get("entity_id")):
+        found += [v for v in _listed(value) if isinstance(v, str)]
+    return found
+
+
+def _summary_line(step: dict, kind_keys: tuple[str, ...]) -> dict:
+    """Un innesco o un passo in fatti: il suo tipo, con la parola di Home
+    Assistant, e le entita' che nomina. Per un passo che non chiama un
+    servizio (un'attesa, una scelta, una condizione) il tipo e' la sua chiave."""
+    kind = next((step[key] for key in kind_keys if isinstance(step.get(key), str)), None)
+    if kind is None:
+        kind = next((key for key in step if key not in ("alias", "enabled", "id")), None)
+    line: dict = {"tipo": kind}
+    entities = _entities_of(step)
+    if entities:
+        line["entita"] = entities
+    return line
+
+
+def behavior_summary(body) -> dict | None:
+    """Cosa fa un'automazione o uno script, dal suo corpo, in fatti e non in
+    frasi (rimedio C delle risposte sbagliate, 23/10/2026): gli inneschi e
+    i passi, ognuno col suo tipo e le entita' che nomina. La frase la dice
+    chi legge. `None` senza corpo; un'automazione da blueprint dice il suo
+    blueprint, perche' inneschi e azioni stanno li'.
+
+    Serve a `search`, dove un elenco di automazioni portava solo nome e
+    ultima esecuzione (la domanda 30 della batteria del 22/10/2026: su 28
+    automazioni la chat non le ha aperte una per una). Misurato quel giorno:
+    la `description` di Home Assistant ce l'hanno 19 automazioni su 28 e uno
+    script su tre; il riassunto e' per le altre."""
+    if not isinstance(body, dict):
+        return None
+    blueprint = body.get("use_blueprint")
+    if isinstance(blueprint, dict):
+        return {"blueprint": blueprint.get("path")}
+    triggers: list = []
+    for trigger in _listed(_first_of(body, _BODY_TRIGGERS)):
+        if isinstance(trigger, dict) and len(trigger) == 1 and "triggers" in trigger:
+            triggers += _listed(trigger["triggers"])
+        else:
+            triggers.append(trigger)
+    summary: dict = {}
+    lines = [_summary_line(x, _TRIGGER_KIND) for x in triggers if isinstance(x, dict)]
+    if lines:
+        summary["inneschi"] = lines
+    steps = [_summary_line(x, _SERVICE_KEYS)
+             for x in _listed(_first_of(body, _BODY_ACTIONS)) if isinstance(x, dict)]
+    if steps:
+        summary["passi"] = steps
+    return summary
+
+
 def render_behavior(house: House, item: dict, depth: str, *, zone=None) -> dict:
     """UN'AUTOMAZIONE O UNO SCRIPT, a una profondita': la sola funzione che
     li compone (Tappa 9, F4; C-42 e «trovato 1» della Tappa 4).
@@ -559,7 +643,8 @@ def render_behavior(house: House, item: dict, depth: str, *, zone=None) -> dict:
 
     - `corta` -- `id`, `nome` (vivo, con l'id come ripiego: D1), `genere`,
       `stato`, `attiva` (solo le automazioni: il fatto di C-57/D4),
-      `ultima_esecuzione`;
+      `ultima_esecuzione`, e cosa fa: `descrizione` (la `description` di
+      Home Assistant) o, senza, `riassunto` (`behavior_summary`);
     - `media` -- piu' `modalita` e `in_esecuzione`;
     - `completa` -- piu' `corpo`, filtrato al confine (reperto B-1): `None`
       quando HIRIS non l'ha, e il perche' lo dice `unread_bodies`.
@@ -581,6 +666,17 @@ def render_behavior(house: House, item: dict, depth: str, *, zone=None) -> dict:
     values = (mirror.attributes.get(ident) or {}).get("values") or {}
     if "last_triggered" in values:
         row["ultima_esecuzione"] = instant_out(values["last_triggered"], zone)
+    # Cosa fa (rimedio C, 23/10/2026): la `description` che il proprietario
+    # ha scritto in Home Assistant; senza, il riassunto composto dal corpo.
+    # A ogni profondita', perche' corta ⊆ media ⊆ completa (D1 della Tappa 4).
+    body = item.get("corpo")
+    description = body.get("description") if isinstance(body, dict) else None
+    if isinstance(description, str) and description.strip():
+        row["descrizione"] = sanitize_structure(description.strip())
+    else:
+        summary = behavior_summary(body)
+        if summary:
+            row["riassunto"] = sanitize_structure(summary)
     if depth == "corta":
         return row
     for key, label in _BEHAVIOR_MEDIUM:

@@ -75,6 +75,14 @@ FIELDS: dict[str, Field] = {
     "ultimo_cambio": _field("l'ultimo cambio di stato", "istante (ISO 8601 con l'offset "
                             "della casa)", "entita", *_RUNNING, "scena", replaces=("da_quando",)),
     "ultima_esecuzione": _field("l'ultima volta che e' girata", "istante", *_RUNNING),
+    "descrizione": _field("la descrizione che il proprietario ha scritto in Home Assistant",
+                          "testo, la `description` di Home Assistant; solo quando c'e'",
+                          *_RUNNING, "impegno"),
+    "riassunto": _field("cosa fa un'automazione o uno script, dal suo corpo, quando manca "
+                        "la descrizione",
+                        "{inneschi, passi}: per ognuno il tipo, con la parola di Home "
+                        "Assistant, e le entita' che nomina; {blueprint} per un blueprint",
+                        *_RUNNING),
     "quando": _field("l'istante di un evento o di una misura", "istante", "evento", "misura",
                      replaces=("quando_ts", "misurato_ts", "letta_alle", "deciso_ts",
                                "da_quando_ts")),
