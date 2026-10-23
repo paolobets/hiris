@@ -29,7 +29,9 @@ from datetime import timedelta
 from ..home_space import historian
 from ..home_space.house import House
 from ..home_space.log_source import Manifest, integration_of, manifest_of
+from ..home_space.privacy import redact_row
 from ..home_space.reader import HOME_SPACE_KEY
+from ..home_space.render import render_entity
 from ..home_space.topology import read_mirror
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import proposer_turn
@@ -240,10 +242,12 @@ class MindView:
     # -- le analisi -------------------------------------------------------
 
     def analyses(self) -> list[dict]:
-        """Le ultime analisi, dalla piu' recente, coi nomi risolti adesso."""
+        """Le ultime analisi, dalla piu' recente, coi nomi risolti adesso e
+        lo stato di adesso dei soggetti (`_with_now`)."""
         names = self.device_names()
+        now = self._now_of()
         return self._in_house_hour(
-            [{**a, "osservazioni": _worded(_named(names, a.get("osservazioni")))}
+            [{**a, "osservazioni": now(_worded(_named(names, a.get("osservazioni"))))}
              for a in self.store.analyses(limit=RECENT_DAYS)])
 
     def analysis(self, day: str) -> dict | None:
@@ -257,13 +261,57 @@ class MindView:
         e quella del 15/09/2026 e' nata prima che i nomi dei dispositivi
         arrivassero: porta `nome: null`, e riscriverla costerebbe 35.000 token
         per cambiare un'etichetta. Accanto a ogni osservazione, l'esito
-        del proponente (`_with_outcomes`)."""
+        del proponente (`_with_outcomes`) e lo stato di adesso dei suoi
+        soggetti (`_with_now`).
+
+        Porta il suo `giorno`, come ogni analisi di `analyses()`: la stessa
+        analisi ha la stessa forma dalle due letture (fondamenta 3), e chi la
+        riceve sa di quando e' senza ricordarsi cosa ha chiesto."""
         found = self.store.analysis(day)
         if found is None:
             return None
         names = self.device_names()
-        found = {**found, "osservazioni": _worded(_named(names, found.get("osservazioni")))}
+        found = {**found, "giorno": day,
+                 "osservazioni": self._now_of()(
+                     _worded(_named(names, found.get("osservazioni"))))}
         return self._in_house_hour(_with_outcomes(found))
+
+    def _now_of(self):
+        """**Lo stato di adesso accanto a cio' che l'analista ha scritto**
+        (rimedio B.2, 23/10/2026): una funzione che a ogni osservazione coi
+        `soggetti` attacca `adesso`, una riga per soggetto, resa come da ogni
+        altra porta (`render.render_entity`, profondita' corta, col filtro di
+        riservatezza: la stessa riga di `search`).
+
+        **Perche'.** Un'analisi e' scritta un giorno, e si rilegge dopo: il
+        13/10/2026 l'analista ha scritto «i termometri sono disabilitati», e la
+        chat l'ha ripetuta il 22/10 come un fatto di adesso, mentre i
+        termostati scaldavano. Con la riga di oggi accanto, chi legge -- il
+        modello o la pagina -- confronta da se' cio' che fu detto con cio' che
+        e': nessuna istruzione nuova, il fatto viaggia nella risposta.
+
+        **La casa si legge una volta per lettura**, non una per osservazione.
+        Senza anagrafe non si attacca niente: una casa vuota renderebbe ogni
+        soggetto «sconosciuto», che e' un'affermazione (`_house_read`). Le
+        osservazioni scritte prima dei `soggetti` non guadagnano un `adesso`
+        vuoto."""
+        house = self._house_read()
+        if house is None:
+            return lambda lines: lines
+        zone = historian.home_space_zone(historian.house_timezone(self._home_space))
+
+        def now(lines: list) -> list:
+            seen = []
+            for line in lines:
+                subjects = line.get("soggetti") if isinstance(line, dict) else None
+                if subjects:
+                    line = {**line, "adesso": [
+                        redact_row(render_entity(house, ident, "corta", zone=zone,
+                                                 judgments=self._judgments))
+                        for ident in subjects]}
+                seen.append(line)
+            return seen
+        return now
 
     # -- i nomi -----------------------------------------------------------
 

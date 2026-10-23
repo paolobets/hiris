@@ -255,3 +255,83 @@ async def test_l_energia_e_la_dashboard_della_casa(tmp_path):
     assert answer == {"energia": expected}
     assert all(role["statistiche"] is None for role in answer["energia"]["ruoli"])
 
+
+
+# -- Lo stato di adesso accanto all'analisi (rimedio B.2, 23/10/2026) --------
+
+def _app_with_subjects(tmp_path) -> dict:
+    """Un'analisi del 13/10 che parla di un termostato e di un telefono, e la
+    casa di adesso che li conosce."""
+    from hiris.app.home_space.reader import HOME_SPACE_KEY
+    from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
+    from tests._anagrafe_finta import AnagrafeFinta
+    from tests._specchio_finto import SpecchioFinto, raw_state
+
+    app = _app(tmp_path)
+    app[OBSERVATIONS_KEY].replace_analysis("2026-10-13", {"osservazioni": [
+        {"soggetto": "dev_a", "cosa": "i termometri sono disabilitati", "innesco": 3,
+         "soggetti": ["climate.camera", "device_tracker.telefono"]},
+        {"soggetto": "dev_a", "cosa": "scritta prima dei soggetti", "innesco": 2}]})
+    app[HOME_SPACE_KEY] = AnagrafeFinta({"entita": [
+        {"id": "climate.camera"}, {"id": "device_tracker.telefono"}],
+        "dispositivi": [], "aree": []})
+    app[ENTITY_CACHE_KEY] = SpecchioFinto([
+        raw_state("climate.camera", "heat", "Camera", current_temperature=20.5),
+        raw_state("device_tracker.telefono", "Lavoro", "Telefono")])
+    return app
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("day", ["2026-10-13", None])
+async def test_l_analisi_arriva_con_lo_STATO_DI_ADESSO_dei_suoi_soggetti(tmp_path, day):
+    """Il 22/10/2026 la chat ha ripetuto «i termometri sono disabilitati»,
+    scritto dall'analista il 13/10, mentre i termostati scaldavano. Ogni
+    osservazione coi `soggetti` esce con `adesso`: la riga corta di oggi di
+    ognuno, la stessa di `search`, col filtro di riservatezza (la zona di chi
+    si muove non esce). Un'osservazione senza soggetti non ne guadagna uno
+    vuoto, e l'analisi dice il suo `giorno` anche chiesta per giorno.
+
+    Mutazioni ESEGUITE (23/10/2026): `_now_of` tolto da `MindView.analysis`
+    -- rossa sul giorno chiesto; `redact_row` tolto da `_now_of` -- rossa
+    («Lavoro» esce)."""
+    app = _app_with_subjects(tmp_path)
+    dispatcher = create_tool_dispatcher(app, soffitto=_AMMINISTRATORE)
+
+    answer = await dispatcher.dispatch("mind", {"cosa": "analisi", "giorno": day}
+                                       if day else {"cosa": "analisi"})
+
+    found = answer["analisi"] if day else answer["analisi"][0]
+    assert found["giorno"] == "2026-10-13"
+    detta, vecchia = found["osservazioni"]
+    adesso = {riga["id"]: riga for riga in detta["adesso"]}
+    assert adesso["climate.camera"]["stato"] == "heat"
+    assert adesso["device_tracker.telefono"]["stato"] == "not_home"
+    assert "adesso" not in vecchia
+
+
+@pytest.mark.asyncio
+async def test_senza_anagrafe_l_analisi_non_inventa_lo_stato_di_adesso(tmp_path):
+    """Una casa non letta renderebbe ogni soggetto «sconosciuto», che e'
+    un'affermazione: con l'anagrafe mai letta (all'avvio, Home Assistant
+    irraggiungibile) `adesso` non c'e'.
+
+    Mutazione ESEGUITA (23/10/2026): `_now_of` che legge la casa senza
+    `_house_read` -- rossa (esce una riga senza stato per ogni soggetto)."""
+    from hiris.app.home_space.reader import HOME_SPACE_KEY
+    from tests._anagrafe_finta import AnagrafeFinta
+
+    app = _app_with_subjects(tmp_path)
+    app[HOME_SPACE_KEY] = AnagrafeFinta()
+    answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
+        "mind", {"cosa": "analisi", "giorno": "2026-10-13"})
+    assert "adesso" not in answer["analisi"]["osservazioni"][0]
+
+
+@pytest.mark.asyncio
+async def test_lo_stato_di_adesso_e_lo_stesso_dalla_rotta(tmp_path):
+    """Fondamenta 3: la pagina riceve la stessa analisi del modello."""
+    app = _app_with_subjects(tmp_path)
+    answer = await create_tool_dispatcher(app, soffitto=_AMMINISTRATORE).dispatch(
+        "mind", {"cosa": "analisi", "giorno": "2026-10-13"})
+    page = _body(await handle_analysis(_Richiesta(app, {"day": "2026-10-13"})))
+    assert page["analisi"] == answer["analisi"]
