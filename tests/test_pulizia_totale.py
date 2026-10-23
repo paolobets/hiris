@@ -12,6 +12,7 @@ diario: e' il caso della casa, e copiare il solo `.db` le perderebbe.
 dopo.
 """
 import json
+import logging
 import pathlib
 import sqlite3
 from collections import namedtuple
@@ -148,8 +149,10 @@ def test_un_avvio_interrotto_dopo_le_copie_si_completa(casa, monkeypatch):
     """L'avvio si ferma fra il rename e il manifesto: le copie ci sono e sono
     verificate, gli originali anche. Il giro dopo li toglie e scrive il
     manifesto, invece di rifare le copie sopra quelle buone."""
-    monkeypatch.setattr(conservazione, "_togli_originali",
-                        lambda _d: (_ for _ in ()).throw(OSError("spento")))
+    def spento(*_argomenti):
+        raise OSError("spento")
+
+    monkeypatch.setattr(conservazione, "_togli_originali", spento)
     accantona_archivi(str(casa), attiva=True)
     assert (casa / CARTELLA_ACCANTONATI).is_dir()
     assert not (casa / CARTELLA_ACCANTONATI / "MANIFESTO.json").exists()
@@ -197,3 +200,110 @@ async def test_l_avvio_la_fa_prima_che_un_archivio_si_apra(casa):
                 conn.close()
             assert "voci" not in tabelle, f"{nome} porta ancora le righe di prima"
             assert _righe(casa / CARTELLA_ACCANTONATI / nome) == _RIGHE[nome]
+
+
+def test_un_archivio_riscritto_dopo_la_prima_pulizia_non_si_toglie(casa, monkeypatch):
+    """R204-1, giro 204. Il primo avvio toglie gli originali e non riesce a
+    scrivere il manifesto; l'avvio prosegue, `chat_history.db` rinasce e
+    riceve righe nuove, che non hanno copia. Il secondo avvio NON le toglie.
+    Prodotto dal revisore sul codice di fc27ea05: 4 righe nuove perse."""
+    def niente_manifesto(*_argomenti):
+        raise OSError("disco")
+
+    monkeypatch.setattr(conservazione, "_scrivi_manifesto", niente_manifesto)
+    accantona_archivi(str(casa), attiva=True)
+    monkeypatch.undo()
+    assert not (casa / "chat_history.db").exists()
+    rinato = _archivio(casa, "chat_history.db", 4)
+    rinato.close()
+
+    accantona_archivi(str(casa), attiva=True)
+
+    assert _righe(casa / "chat_history.db") == 4
+    assert not (casa / CARTELLA_ACCANTONATI / "MANIFESTO.json").exists()
+    assert _righe(casa / CARTELLA_ACCANTONATI / "chat_history.db") == _RIGHE["chat_history.db"]
+
+
+def test_dopo_le_copie_il_registro_non_dice_non_toccati(casa, monkeypatch, caplog):
+    """R204-1 (b): se la rimozione e' cominciata, «non sono stati toccati»
+    sarebbe falso."""
+    def niente_manifesto(*_argomenti):
+        raise OSError("disco")
+
+    monkeypatch.setattr(conservazione, "_scrivi_manifesto", niente_manifesto)
+    with caplog.at_level(logging.ERROR, logger="hiris.app.conservazione"):
+        accantona_archivi(str(casa), attiva=True)
+
+    errori = " ".join(r.getMessage() for r in caplog.records)
+    assert "NON finita" in errori and "non sono stati toccati" not in errori
+
+
+def _copie_rotte(monkeypatch, dove: str):
+    vero = conservazione._descrivi
+
+    def rotta(percorso):
+        integrita, righe = vero(percorso)
+        return ("pagina 3: guasta" if dove in percorso else integrita), righe
+
+    monkeypatch.setattr(conservazione, "_descrivi", rotta)
+
+
+def test_una_copia_guasta_lascia_gli_originali(casa, monkeypatch):
+    """R204-2: l'integrita' della copia. Mutazione ESEGUITA: togliere il
+    controllo in `_copia_verificata` -- rossa."""
+    _copie_rotte(monkeypatch, ".accantonati-in-corso")
+
+    accantona_archivi(str(casa), attiva=True)
+
+    assert not (casa / CARTELLA_ACCANTONATI).exists()
+    assert all(_righe(casa / n) == r for n, r in _RIGHE.items())
+
+
+def test_al_completamento_una_copia_guasta_non_scrive_il_manifesto(casa, monkeypatch):
+    """R204-2, il secondo avvio. Mutazione ESEGUITA: togliere il controllo
+    nel completamento -- rossa."""
+    def spento(*_argomenti):
+        raise OSError("spento")
+
+    monkeypatch.setattr(conservazione, "_togli_originali", spento)
+    accantona_archivi(str(casa), attiva=True)
+    monkeypatch.undo()
+    _copie_rotte(monkeypatch, CARTELLA_ACCANTONATI)
+
+    accantona_archivi(str(casa), attiva=True)
+
+    assert not (casa / CARTELLA_ACCANTONATI / "MANIFESTO.json").exists()
+    assert all(_righe(casa / n) == r for n, r in _RIGHE.items())
+
+
+@pytest.mark.parametrize("ripresa", [False, True])
+def test_il_registro_nomina_ogni_archivio(casa, monkeypatch, caplog, ripresa):
+    """R204-4: per nome, coi byte e le righe, anche al secondo avvio.
+    Mutazione ESEGUITA: niente riga per archivio -- rossa."""
+    if ripresa:
+        def spento(*_argomenti):
+            raise OSError("spento")
+
+        monkeypatch.setattr(conservazione, "_togli_originali", spento)
+        accantona_archivi(str(casa), attiva=True)
+        monkeypatch.undo()
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="hiris.app.conservazione"):
+        accantona_archivi(str(casa), attiva=True)
+
+    righe = [r.getMessage() for r in caplog.records]
+    for nome, n in _RIGHE.items():
+        assert any(nome in r and f"voci {n}" in r for r in righe), nome
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ambiente", [{}, {"HIRIS_PULIZIA_TOTALE": "false"}])
+async def test_l_avvio_senza_l_opzione_non_tocca_niente(casa, ambiente):
+    """R204-3: spenta per difetto, sul cablaggio vero. Mutazione ESEGUITA:
+    `!= "false"` al posto di `== "true"` in `startup.py` -- rossa."""
+    from tests._avvio import started_with
+
+    async with started_with(casa, ambiente):
+        assert not (casa / CARTELLA_ACCANTONATI).exists()
+        for nome, n in _RIGHE.items():
+            assert _righe(casa / nome) == n, nome

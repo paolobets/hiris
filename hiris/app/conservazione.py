@@ -347,8 +347,8 @@ def _copia_verificata(origine: str, copia: str) -> dict:
     return {"byte": byte, "righe": righe}
 
 
-def _togli_originali(data_dir: str) -> None:
-    for nome in ARCHIVI_ACCANTONATI:
+def _togli_originali(data_dir: str, nomi: Iterable[str]) -> None:
+    for nome in nomi:
         for compagno in _COMPAGNI:
             percorso = os.path.join(data_dir, nome + compagno)
             if os.path.exists(percorso):
@@ -361,6 +361,26 @@ def _scrivi_manifesto(cartella: str, archivi: dict) -> None:
                        "archivi": archivi})
 
 
+def _completa(data_dir: str, cartella: str, archivi: dict) -> None:
+    """Toglie gli originali e scrive il manifesto. **Toglie solo un originale
+    uguale alla sua copia**, righe per tabella (R204-1, giro 204): fra due
+    avvii un archivio puo' essere rinato e aver ricevuto righe nuove, che non
+    hanno copia. Se uno solo e' diverso non si toglie niente e il manifesto
+    non si scrive: decide il proprietario. Un archivio che non ha copia (non
+    c'era alla prima pulizia) non si guarda nemmeno."""
+    diversi = []
+    for nome, esito in archivi.items():
+        originale = os.path.join(data_dir, nome)
+        if os.path.exists(originale) and _descrivi(originale)[1] != esito["righe"]:
+            diversi.append(nome)
+    if diversi:
+        raise ValueError(
+            f"{', '.join(diversi)} non sono piu' uguali alla copia (righe "
+            "scritte dopo la prima pulizia?): non si tolgono")
+    _togli_originali(data_dir, archivi)
+    _scrivi_manifesto(cartella, archivi)
+
+
 def accantona_archivi(data_dir: str, attiva: bool) -> None:
     """La pulizia totale: copia i quattro `ARCHIVI_ACCANTONATI` in
     `CARTELLA_ACCANTONATI`, verifica OGNI copia, e solo se tornano tutte toglie
@@ -371,9 +391,11 @@ def accantona_archivi(data_dir: str, attiva: bool) -> None:
     ferma, anche se l'opzione resta accesa.
 
     Tutto o niente: una copia che non torna, o lo spazio che non basta,
-    lasciano gli originali dove sono, e HIRIS parte coi dati di prima. Si dice
-    nel registro ogni archivio per nome, coi suoi byte e le sue righe:
-    cancellare dati di un utente in silenzio e' proibito dalle fondamenta.
+    lasciano gli originali dove sono, e HIRIS parte coi dati di prima. Se
+    l'avvio si ferma dopo le copie, al giro dopo si completa, togliendo solo
+    gli originali ancora uguali alla copia (`_completa`). Si dice nel registro
+    ogni archivio per nome, coi suoi byte e le sue righe: cancellare dati di un
+    utente in silenzio e' proibito dalle fondamenta.
 
     Non solleva mai, come `decidi_vault`: e' un gesto, non una condizione di
     funzionamento."""
@@ -384,10 +406,12 @@ def accantona_archivi(data_dir: str, attiva: bool) -> None:
         logger.info("pulizia totale: gia' fatta (%s), non si ripete; "
                     "l'opzione `pulizia_totale` si puo' spegnere", cartella)
         return
+    copie_fatte = os.path.isdir(cartella)
+    ripresa = copie_fatte
     try:
-        if os.path.isdir(cartella):
-            # Le copie sono gia' verificate: l'avvio di prima si e' fermato
-            # fra il rename e il manifesto. Si completa.
+        if ripresa:
+            # L'avvio di prima si e' fermato dopo le copie: si rileggono,
+            # verificate di nuovo, e si completa.
             archivi = {}
             for nome in ARCHIVI_ACCANTONATI:
                 copia = os.path.join(cartella, nome)
@@ -396,41 +420,47 @@ def accantona_archivi(data_dir: str, attiva: bool) -> None:
                     if integrita != "ok":
                         raise ValueError(f"{nome}: integrita' della copia: {integrita}")
                     archivi[nome] = {"byte": _byte(copia), "righe": righe}
-            _togli_originali(data_dir)
-            _scrivi_manifesto(cartella, archivi)
-            logger.warning("pulizia totale: completata al secondo avvio, le "
-                           "copie sono in %s", cartella)
-            return
-        presenti = [n for n in ARCHIVI_ACCANTONATI
-                    if os.path.exists(os.path.join(data_dir, n))]
-        for nome in ARCHIVI_ACCANTONATI:
-            if nome not in presenti:
-                logger.info("pulizia totale: %s non c'era", nome)
-        servono = sum(_byte(os.path.join(data_dir, n)) for n in presenti)
-        libero = shutil.disk_usage(data_dir).free
-        if libero < servono:
-            logger.error("pulizia totale: NON fatta, servono %d byte e ne "
-                         "restano %d liberi; gli archivi restano dove sono",
-                         servono, libero)
-            return
-        in_corso = os.path.join(data_dir, _CARTELLA_IN_CORSO)
-        shutil.rmtree(in_corso, ignore_errors=True)
-        os.makedirs(in_corso)
-        try:
-            archivi = {n: _copia_verificata(os.path.join(data_dir, n),
-                                            os.path.join(in_corso, n))
-                       for n in presenti}
-        except Exception:
+        else:
+            presenti = [n for n in ARCHIVI_ACCANTONATI
+                        if os.path.exists(os.path.join(data_dir, n))]
+            for nome in ARCHIVI_ACCANTONATI:
+                if nome not in presenti:
+                    logger.info("pulizia totale: %s non c'era", nome)
+            servono = sum(_byte(os.path.join(data_dir, n)) for n in presenti)
+            libero = shutil.disk_usage(data_dir).free
+            if libero < servono:
+                logger.error("pulizia totale: NON fatta, servono %d byte e ne "
+                             "restano %d liberi; gli archivi restano dove sono",
+                             servono, libero)
+                return
+            in_corso = os.path.join(data_dir, _CARTELLA_IN_CORSO)
             shutil.rmtree(in_corso, ignore_errors=True)
-            raise
-        os.rename(in_corso, cartella)
-        _togli_originali(data_dir)
-        _scrivi_manifesto(cartella, archivi)
+            os.makedirs(in_corso)
+            try:
+                archivi = {n: _copia_verificata(os.path.join(data_dir, n),
+                                                os.path.join(in_corso, n))
+                           for n in presenti}
+            except Exception:
+                shutil.rmtree(in_corso, ignore_errors=True)
+                raise
+            os.rename(in_corso, cartella)
+            copie_fatte = True
+        _completa(data_dir, cartella, archivi)
     except Exception as errore:
-        logger.error("pulizia totale: NON fatta (%s: %s); gli archivi che "
-                     "restano in %s non sono stati toccati",
-                     type(errore).__name__, errore, data_dir)
+        if copie_fatte:
+            logger.error(
+                "pulizia totale: NON finita (%s: %s). Le copie verificate sono "
+                "in %s; gli originali uguali alla copia possono essere gia' "
+                "stati tolti, gli altri restano. Al prossimo avvio con "
+                "l'opzione accesa si riprova, togliendo solo cio' che e' "
+                "uguale alla copia", type(errore).__name__, errore, cartella)
+        else:
+            logger.error("pulizia totale: NON fatta (%s: %s); gli archivi in %s "
+                         "non sono stati toccati",
+                         type(errore).__name__, errore, data_dir)
         return
+    if ripresa:
+        logger.warning("pulizia totale: completata al secondo avvio")
     for nome, esito in archivi.items():
         logger.warning("pulizia totale: %s messo da parte (%d byte, %s), la "
                        "copia verificata e' in %s", nome, esito["byte"],
