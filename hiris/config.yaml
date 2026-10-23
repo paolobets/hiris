@@ -227,6 +227,12 @@ options:
   # fabbrica ha una casa sola, `api/ingresso.py::RETE_PREDEFINITA`. Si scrive
   # solo per restringere (es. 172.30.32.2/32).
   supervisor_ingress_cidr: ""
+  # La pulizia totale del 23/10/2026 (`conservazione.accantona_archivi`): una
+  # DECISIONE in questa pagina, ammessa per iscritto in
+  # `tests/test_config_page.py` perche' deve valere prima che qualunque
+  # archivio si apra, quindi prima di ogni pagina di HIRIS. A scadenza: esce
+  # nella release dopo, e il Supervisor scarta da se' la chiave rimasta.
+  pulizia_totale: false
 
   # ── Opzioni uscite, e perche' ─────────────────────────────────────────────
   # fetta E3 Task 7: escono `sentinel_daily_cap`/`sentinel_cooldown_min` --
@@ -278,3 +284,4 @@ schema:
   # ── 5. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level: "list(debug|info|warning|error)"
   supervisor_ingress_cidr: "str?"
+  pulizia_totale: bool

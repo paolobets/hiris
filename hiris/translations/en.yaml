@@ -59,3 +59,6 @@ configuration:
   supervisor_ingress_cidr:
     name: "Advanced · networks recognised as ingress"
     description: "Requests from these networks get in without a token, all others do not. Widening it opens HIRIS's API. Empty: the Supervisor's network."
+  pulizia_totale:
+    name: "Advanced · full clean-up (once)"
+    description: "On: at the next start HIRIS sets aside observations, knowledge, chats and memories in /data/accantonati-2026-10-23 and starts again with those archives empty. It copies and verifies before removing, and does it once only. Back up the add-on first."

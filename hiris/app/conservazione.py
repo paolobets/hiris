@@ -24,7 +24,9 @@ coda non accoda niente, e a ponte spento un ripiego schiantato teneva la
 conversazione bloccata sul 409.
 
 **I residui** (`RESIDUI_DISMESSI`, `cancella_residui`, `decidi_vault`): gli
-archivi dismessi che l'avvio cancella.
+archivi dismessi che l'avvio cancella. **La pulizia totale**
+(`accantona_archivi`, 23/10/2026): i quattro archivi che il proprietario ha
+deciso di svuotare, messi da parte una volta sola; codice a scadenza.
 
 Spostati da `server.py` l'08/10/2026; `startup.py` li iscrive allo
 schedulatore, o li chiama all'avvio, e basta.
@@ -34,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import sqlite3
 import time
 from collections.abc import Iterable
@@ -44,6 +47,7 @@ from .models_store import MODELS_CONFIG_KEY, bridge_deadline_min
 from .reasoning.consegna import close_expired_promise
 from .reasoning.queue import REASONING_QUEUE_KEY
 from .steering import JOB_SPECIES
+from .storage import write_json_atomic
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -271,6 +275,167 @@ def decidi_vault(data_dir: str) -> None:
             "leggeva piu' da quando brain/privacy.py e' uscito, e nessuna "
             "interfaccia lo svuotava: restava solo a farsi copiare nei backup.",
             righe)
+
+
+#: **La pulizia totale del 23/10/2026** (Fase P dello sprint «Il giro snello e
+#: il Brain leggibile»). Il proprietario ha deciso di ripartire con questi
+#: quattro archivi vuoti: dal suo PC non si arriva a `/data` dell'add-on, e la
+#: scelta (23/10/2026, «ok con il consigliata») e' che lo faccia HIRIS, una
+#: volta sola. **Codice a scadenza**: esce per intero nella release dopo (voce
+#: del BACKLOG); la cartella delle copie resta finche' il proprietario non
+#: decide.
+#:
+#: L'elenco e' NOMINATO, come `RESIDUI_DISMESSI`: nient'altro di `/data` si
+#: tocca -- ne' le opzioni, ne' i modelli, ne' le promesse o le costruzioni.
+ARCHIVI_ACCANTONATI = ("osservazioni.db", "sapere.db", "chat_history.db",
+                       "memoria.db")
+#: Dove finiscono le copie verificate, dentro `/data`, e il segno che la
+#: pulizia e' fatta (`MANIFESTO.json`, scritto per ultimo).
+CARTELLA_ACCANTONATI = "accantonati-2026-10-23"
+_CARTELLA_IN_CORSO = ".accantonati-in-corso"
+_MANIFESTO = "MANIFESTO.json"
+#: Gli archivi sono in WAL (`storage.connect`): il diario e la memoria
+#: condivisa vanno con il loro archivio, o le scritture non ancora riportate
+#: resterebbero orfane accanto a un archivio nuovo.
+_COMPAGNI = ("", "-wal", "-shm")
+
+
+def _conta_righe(conn: sqlite3.Connection) -> dict[str, int]:
+    tabelle = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    return {t: conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+            for t in tabelle}
+
+
+def _descrivi(percorso: str) -> tuple[str, dict[str, int]]:
+    """L'integrita' di un archivio e le righe di ogni sua tabella."""
+    conn = sqlite3.connect(percorso)
+    try:
+        return (conn.execute("PRAGMA integrity_check").fetchone()[0],
+                _conta_righe(conn))
+    finally:
+        conn.close()
+
+
+def _byte(percorso: str) -> int:
+    return sum(os.path.getsize(percorso + c) for c in _COMPAGNI
+               if os.path.exists(percorso + c))
+
+
+def _copia_verificata(origine: str, copia: str) -> dict:
+    """Copia `origine` in `copia` con l'API di backup di SQLite (una
+    fotografia coerente, diario WAL compreso) e la VERIFICA: integrita' `ok`
+    e, tabella per tabella, le stesse righe dell'originale. Solleva se non
+    torna: chi chiama non tocca gli originali."""
+    byte = _byte(origine)
+    sorgente = sqlite3.connect(f"file:{origine}?mode=ro", uri=True)
+    try:
+        righe = _conta_righe(sorgente)
+        destinazione = sqlite3.connect(copia)
+        try:
+            sorgente.backup(destinazione)
+        finally:
+            destinazione.close()
+    finally:
+        sorgente.close()
+    integrita, righe_copia = _descrivi(copia)
+    if integrita != "ok":
+        raise ValueError(f"integrita' della copia: {integrita}")
+    if righe_copia != righe:
+        raise ValueError(f"righe diverse: originale {righe}, copia {righe_copia}")
+    return {"byte": byte, "righe": righe}
+
+
+def _togli_originali(data_dir: str) -> None:
+    for nome in ARCHIVI_ACCANTONATI:
+        for compagno in _COMPAGNI:
+            percorso = os.path.join(data_dir, nome + compagno)
+            if os.path.exists(percorso):
+                os.remove(percorso)
+
+
+def _scrivi_manifesto(cartella: str, archivi: dict) -> None:
+    write_json_atomic(os.path.join(cartella, _MANIFESTO),
+                      {"fatta": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                       "archivi": archivi})
+
+
+def accantona_archivi(data_dir: str, attiva: bool) -> None:
+    """La pulizia totale: copia i quattro `ARCHIVI_ACCANTONATI` in
+    `CARTELLA_ACCANTONATI`, verifica OGNI copia, e solo se tornano tutte toglie
+    gli originali. L'avvio prosegue e gli archivi rinascono vuoti.
+
+    Va chiamata **prima che qualunque archivio si apra**. Si accende con
+    l'opzione `pulizia_totale` (`attiva`); fatta una volta, il manifesto la
+    ferma, anche se l'opzione resta accesa.
+
+    Tutto o niente: una copia che non torna, o lo spazio che non basta,
+    lasciano gli originali dove sono, e HIRIS parte coi dati di prima. Si dice
+    nel registro ogni archivio per nome, coi suoi byte e le sue righe:
+    cancellare dati di un utente in silenzio e' proibito dalle fondamenta.
+
+    Non solleva mai, come `decidi_vault`: e' un gesto, non una condizione di
+    funzionamento."""
+    if not attiva:
+        return
+    cartella = os.path.join(data_dir, CARTELLA_ACCANTONATI)
+    if os.path.exists(os.path.join(cartella, _MANIFESTO)):
+        logger.info("pulizia totale: gia' fatta (%s), non si ripete; "
+                    "l'opzione `pulizia_totale` si puo' spegnere", cartella)
+        return
+    try:
+        if os.path.isdir(cartella):
+            # Le copie sono gia' verificate: l'avvio di prima si e' fermato
+            # fra il rename e il manifesto. Si completa.
+            archivi = {}
+            for nome in ARCHIVI_ACCANTONATI:
+                copia = os.path.join(cartella, nome)
+                if os.path.exists(copia):
+                    integrita, righe = _descrivi(copia)
+                    if integrita != "ok":
+                        raise ValueError(f"{nome}: integrita' della copia: {integrita}")
+                    archivi[nome] = {"byte": _byte(copia), "righe": righe}
+            _togli_originali(data_dir)
+            _scrivi_manifesto(cartella, archivi)
+            logger.warning("pulizia totale: completata al secondo avvio, le "
+                           "copie sono in %s", cartella)
+            return
+        presenti = [n for n in ARCHIVI_ACCANTONATI
+                    if os.path.exists(os.path.join(data_dir, n))]
+        for nome in ARCHIVI_ACCANTONATI:
+            if nome not in presenti:
+                logger.info("pulizia totale: %s non c'era", nome)
+        servono = sum(_byte(os.path.join(data_dir, n)) for n in presenti)
+        libero = shutil.disk_usage(data_dir).free
+        if libero < servono:
+            logger.error("pulizia totale: NON fatta, servono %d byte e ne "
+                         "restano %d liberi; gli archivi restano dove sono",
+                         servono, libero)
+            return
+        in_corso = os.path.join(data_dir, _CARTELLA_IN_CORSO)
+        shutil.rmtree(in_corso, ignore_errors=True)
+        os.makedirs(in_corso)
+        try:
+            archivi = {n: _copia_verificata(os.path.join(data_dir, n),
+                                            os.path.join(in_corso, n))
+                       for n in presenti}
+        except Exception:
+            shutil.rmtree(in_corso, ignore_errors=True)
+            raise
+        os.rename(in_corso, cartella)
+        _togli_originali(data_dir)
+        _scrivi_manifesto(cartella, archivi)
+    except Exception as errore:
+        logger.error("pulizia totale: NON fatta (%s: %s); gli archivi che "
+                     "restano in %s non sono stati toccati",
+                     type(errore).__name__, errore, data_dir)
+        return
+    for nome, esito in archivi.items():
+        logger.warning("pulizia totale: %s messo da parte (%d byte, %s), la "
+                       "copia verificata e' in %s", nome, esito["byte"],
+                       ", ".join(f"{t} {r}" for t, r in esito["righe"].items())
+                       or "nessuna tabella", cartella)
 
 
 # ── Ponte push (Piano A): spazzata dei job scaduti senza risposta dal

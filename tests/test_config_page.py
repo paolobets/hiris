@@ -63,6 +63,9 @@ IN_FONDO_PERCHE_PERICOLOSE = [
     # servizio esterno si accoppia dalla pagina Servizi e firma. La pagina
     # dell'add-on custodisce un campo in meno, che e' il verso giusto.
     "supervisor_ingress_cidr",
+    # A scadenza (23/10/2026): la pulizia totale svuota quattro archivi, ed e'
+    # la piu' pericolosa della pagina. Esce nella release dopo.
+    "pulizia_totale",
 ]
 
 # Il gruppo annidato rimasto (`memory` e' uscito con la Tappa 0 dello sprint
@@ -171,7 +174,12 @@ def test_il_ponte_non_e_piu_un_interruttore_di_questa_pagina():
     # L'UNICA eccezione, scritta a mano con la sua ragione: `non_admin_access`
     # e' qui per decisione del proprietario (spec 2026-09-27 §0, decisione 2),
     # perche' chi puo' usare HIRIS deve valere prima di qualunque sua pagina.
-    assert booleani == ["non_admin_access"], (
+    #
+    # La SECONDA, a scadenza (23/10/2026): `pulizia_totale`, la pulizia totale
+    # decisa dal proprietario. Deve valere prima che qualunque archivio si
+    # apra, quindi prima di qualunque pagina di HIRIS; esce nella release dopo,
+    # con `conservazione.accantona_archivi`.
+    assert booleani == ["non_admin_access", "pulizia_totale"], (
         f"un interruttore e' tornato nella pagina dell'add-on: {booleani}. "
         "Questa pagina custodisce credenziali, non prende decisioni"
     )
@@ -302,6 +310,8 @@ def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
         "openai_api_key", "local_model", "theme",
         "non_admin_access",
         "log_level", "supervisor_ingress_cidr",
+        # A scadenza: la pulizia totale del 23/10/2026, vedi sopra.
+        "pulizia_totale",
     }
 
 
