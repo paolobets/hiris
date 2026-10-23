@@ -444,7 +444,7 @@ async def test_alla_riconnessione_l_osservatore_si_riallinea_con_la_stessa_fotog
     assert {s["entity_id"] for s in photo} == {
         s["entity_id"] for s in synthetic_inputs()["states"]}
     [window] = windows
-    assert set(window) == {"da", "a"} and window["da"] <= window["a"]
+    assert set(window) == {"da", "a", "riavvio"} and window["da"] <= window["a"]
 
 
 @pytest.mark.asyncio

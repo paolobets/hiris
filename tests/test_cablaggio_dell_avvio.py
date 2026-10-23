@@ -484,6 +484,30 @@ async def test_a_closed_disconnection_window_forgets_the_written_notices(started
     assert written == {}
 
 
+async def test_a_restart_window_reaches_the_home_space(started_app):
+    """La finestra che Home Assistant ha chiuso da riavviato (`riavvio` vero)
+    arriva all'anagrafe DELL'APP, che la tiene per metterla accanto a ogni
+    `ultimo_cambio` (rimedio A, 23/10/2026).
+
+    Mutazione ESEGUITA: tolta
+    `ha_client.add_disconnection_listener(home_space_store.hold_restart)` --
+    rossa."""
+    house = started_app[HA_CLIENT_KEY]
+    real = started_app[WATCHER_KEY]
+
+    class Osservatore:
+        def record_disconnection(self, window):
+            pass
+
+    started_app[WATCHER_KEY] = Osservatore()
+    try:
+        for listener in house.registered("disconnection"):
+            listener({"da": 1.0, "a": 2.0, "riavvio": True})
+    finally:
+        started_app[WATCHER_KEY] = real
+    assert started_app[HOME_SPACE_KEY].restart() == {"da": 1.0, "a": 2.0}
+
+
 async def test_a_reference_change_rereads_the_state_words(started_app):
     """A-14: il proprietario cambia la lingua della casa e Home Assistant
     manda `core_config_updated`. L'anagrafe si ricostruisce e legge la

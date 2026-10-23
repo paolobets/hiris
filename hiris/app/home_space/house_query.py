@@ -32,6 +32,7 @@ from .render import (
     render_entity,
     render_integration,
     render_memory,
+    restart_alongside,
 )
 from .topology import (
     _ID_WITHOUT_AREA,
@@ -625,8 +626,11 @@ def query_house(house: House, behavior, filters: HouseFilters, *,
                                          judgments, deepest, memories)
     # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
     # di ogni profondita', passa di qui prima di uscire.
-    return envelope(found, depth, [redact_row(v) for v in page],
-                    excluded=excluded, beyond=beyond)
+    # L'ultimo riavvio di Home Assistant accanto a ogni `ultimo_cambio`,
+    # nella stessa forma di `view` (`render.restart_alongside`).
+    return restart_alongside(envelope(found, depth, [redact_row(v) for v in page],
+                                      excluded=excluded, beyond=beyond),
+                             house, home_space_zone(timezone))
 
 
 def envelope(found: int, depth: str, rows: list, *, excluded: dict | None = None,

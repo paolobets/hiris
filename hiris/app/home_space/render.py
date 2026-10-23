@@ -24,7 +24,7 @@ from ..proxy.entity_cache import (
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .ha_vocabulary import domain_of, entity_category_measure_rule
-from .historian import home_space_zone, instant_out
+from .historian import home_space_zone, instant_epoch, instant_out
 from .reference import normalize
 from .topology import (
     DISABLED,
@@ -296,6 +296,67 @@ def render_entity(house: House, entity_id: str, depth: str, *, zone=None,
 # --------------------------------------------------------------------------
 
 #: Il separatore dei campi di una riga.
+#: La chiave con cui il riavvio di Home Assistant esce accanto alle righe
+#: (`restart_alongside`), una volta per risposta.
+RESTART_KEY = "riavvio_home_assistant"
+
+#: Cio' che chi legge deve sapere per non sbagliare, detto nella risposta e
+#: non nella descrizione dello strumento (sprint «Il giro snello», 2.3).
+RESTART_NOTE = ("un ultimo_cambio dentro o subito dopo il riavvio e' l'ora in cui Home "
+                "Assistant ha ricaricato l'entita', non l'inizio del suo stato: dillo "
+                "«almeno dal riavvio», e l'inizio vero chiedilo a «history» di "
+                "quell'entita'.")
+
+
+def _changed_rows(answer):
+    """Gli id delle righe che portano `ultimo_cambio`, ovunque stiano nella
+    risposta: la voce di `search`, la scheda di `view`, le entita' annidate di
+    un'area, di un dispositivo, di un'integrazione."""
+    if isinstance(answer, dict):
+        if "ultimo_cambio" in answer and isinstance(answer.get("id"), str):
+            yield answer["id"]
+        for value in answer.values():
+            yield from _changed_rows(value)
+    elif isinstance(answer, list):
+        for value in answer:
+            yield from _changed_rows(value)
+
+
+def restart_alongside(answer: dict, house: House, zone=None) -> dict:
+    """La risposta con l'ultimo riavvio di Home Assistant accanto
+    (`RESTART_KEY`), quando almeno una sua riga e' cambiata da quando il
+    riavvio e' cominciato (rimedio A, Paolo 23/10/2026; il perche' in
+    `House.restart`).
+
+    Il codice non dice quale riga sia «del riavvio»: Home Assistant non lo
+    dichiara, e un margine in secondi sarebbe una soglia nostra. Mette i due
+    istanti uno accanto all'altro, come `mute_da` (spec §4), con la nota per
+    chi legge. Un punto solo per `search` e `view` (fondamenta 3): fino al
+    23/10/2026 l'avvio usciva solo dalla scheda di un'integrazione
+    (`avvio_home_assistant`, da `sensor.uptime`), e una riga di `search` lo
+    taceva.
+
+    Senza riavvio noto, o senza righe cambiate dopo il suo inizio, la
+    risposta esce com'e'."""
+    restart = house.restart()
+    if restart is None:
+        return answer
+    begun = restart.get("da")
+    if begun is None:
+        begun = instant_epoch(restart.get("avviato"))
+    if begun is None:
+        return answer
+    since = house.mirror.since
+    if not any((instant_epoch(since.get(entity_id)) or float("-inf")) >= begun
+               for entity_id in _changed_rows(answer)):
+        return answer
+    # Senza fuso, UTC (`home_space_zone`): mai l'ora del processo.
+    zone = zone if zone is not None else home_space_zone(None)
+    out = {key: instant_out(value, zone) for key, value in restart.items()
+           if key in ("da", "a", "avviato")}
+    return {**answer, RESTART_KEY: {**out, "fonte": restart["fonte"], "nota": RESTART_NOTE}}
+
+
 _LINE_SEPARATOR = " · "
 
 def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None = None) -> str:

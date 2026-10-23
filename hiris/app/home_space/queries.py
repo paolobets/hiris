@@ -62,6 +62,7 @@ from .render import (
     render_entity,
     render_integration,
     render_memory,
+    restart_alongside,
     rows_depth,
 )
 from .topology import (
@@ -564,39 +565,16 @@ def _view_integration(house: House, reference,
     quando» quando non si e' sicuri che sia sincrono sarebbe proprio la
     risposta sicura che questo sprint toglie.
 
-    `avvio_home_assistant` esce accanto a `mute_da`, non a una seconda
-    chiamata di distanza (spec §4 ③): e' lo stato di `sensor.uptime`, letto
-    dallo SPECCHIO degli stati che questa funzione gia' riceve (`state`),
-    mai una chiamata nuova verso Home Assistant. L'integrazione Uptime e'
-    facoltativa -- verificato sulla documentazione ufficiale
-    (home-assistant.io/integrations/uptime/): il sensore, device class
-    timestamp, porta «the date and time when Home Assistant was last
-    started», scritto una volta all'avvio e fermo fino al riavvio
-    successivo. Misurato sulla casa vera (02/09): TRE piattaforme (tuya,
-    lifx, matter) condividono lo stesso `mute_da` -- non tre guasti
-    simultanei, ma la firma di un riavvio che ha ri-datato tutto insieme;
-    sottratto da `sensor.uptime`, lifx e tuya distano meno di un secondo e
-    matter -18 s (il riavvio). Alexa NON e' fra queste: e' a +28,4 minuti
-    dall'avvio, la zona di mezzo che il §4 ③ prescrive di non chiudere --
-    ne' riavvio ne' guasto, si dichiara il dubbio (correzione del 05/09,
-    la spec stessa contava "quattro" includendola per errore, docs/design,
-    commit `022cb0b2`). Hydrawise -- l'unica integrazione davvero rotta --
-    ne dista 47 ore. Il codice non emette QUESTO verdetto: mette solo i due
-    istanti fianco a fianco, la frase la dice chi legge (spec §4: "il
-    codice calcola i fatti, il modello dice la frase"). La chiave esce SOLO
-    quando ENTRAMBE le condizioni valgono: `mute_da` e' gia' nel dettaglio
-    (senza un istante da confrontare non c'e' nulla da mettere accanto) e
-    `sensor.uptime` porta un istante VALIDO nello specchio degli stati --
-    passato per lo stesso `instant_epoch` che valida `mute_da` poche righe
-    sotto, non la sola verita' Python. Serve: `unavailable` e `unknown`
-    sono STRINGHE PIENE, non `None` ne' stringa vuota, che una guardia di
-    sola truthiness lascerebbe passare come se fossero un istante (rilievo
-    di revisione, 05/09: la funzione usa gia' quelle due stesse stringhe
-    come sentinelle per classificare le entita' mute, poche righe sopra --
-    ignorarle qui per lo stesso sensore sarebbe incoerente). Dove
-    `sensor.uptime` manca, o e' una di quelle sentinelle, o non e' un
-    istante valido, la chiave non esce affatto: l'assenza e' assenza, mai
-    un `None` ne' una sentinella spacciata per un fatto.
+    L'avvio di Home Assistant accanto a `mute_da` (spec §4 ③) non e' piu'
+    qui dal 23/10/2026: lo mette `view` accanto a OGNI risposta con un
+    `ultimo_cambio` (`render.restart_alongside`, con la fonte in
+    `House.restart`). Fino a quel giorno questo ramo leggeva `sensor.uptime`
+    da se', in una chiave sua (`avvio_home_assistant`), e `search` lo
+    taceva: la chat ha dato per inizio di un guasto l'ora del riavvio del
+    17/10. La misura del 02/09 resta la ragione: tre piattaforme (tuya,
+    lifx, matter) con lo stesso `mute_da` non erano tre guasti, ma la firma
+    di un riavvio; Hydrawise, l'unica davvero rotta, ne distava 47 ore. Il
+    codice non emette il verdetto: mette i due istanti fianco a fianco.
 
     `reference` si normalizza (`reference.normalize`, quella del riferimento)
     prima del confronto -- passata da `str()` prima, perche' lo schema dello
@@ -693,10 +671,6 @@ def _view_integration(house: House, reference,
             earliest, latest = min(epochs), max(epochs)
             if latest - earliest <= _SYNCHRONY_WINDOW_SECONDS:
                 detail["mute_da"] = moments[epochs.index(earliest)]
-    if "mute_da" in detail:
-        ha_start = mirror.state.get("sensor.uptime")
-        if ha_start and instant_epoch(ha_start) is not None:
-            detail["avvio_home_assistant"] = ha_start
     return detail
 
 
@@ -854,24 +828,28 @@ def view(house: House, behavior: list[dict], memories: list[dict],
     memory_zone = zone if zone is not None else home_space_zone(None)
     memories = [render_memory(r, house, zone=memory_zone)
                 for r in sanitized_memories(memories)]
+    # L'ultimo riavvio di Home Assistant accanto a ogni `ultimo_cambio`
+    # (`render.restart_alongside`): un punto solo, per ogni ramo.
     if kind == "area":
-        return _view_area(house, memories, reference, translations, zone,
-                          judgments=judgments)
-    if kind == "entita":
-        return _view_entity(house, memories, reference, registry,
-                            translations, knowledge, judgments=judgments, zone=zone)
-    if kind == "dispositivo":
-        return _view_device(house, memories, reference, translations, zone,
+        answer = _view_area(house, memories, reference, translations, zone,
                             judgments=judgments)
-    if kind in _BEHAVIOR_TYPES:
-        return _view_behavior(house, behavior, memories, kind, reference,
-                              unread_bodies, zone=zone)
-    if kind == "ricordo":
+    elif kind == "entita":
+        answer = _view_entity(house, memories, reference, registry,
+                              translations, knowledge, judgments=judgments, zone=zone)
+    elif kind == "dispositivo":
+        answer = _view_device(house, memories, reference, translations, zone,
+                              judgments=judgments)
+    elif kind in _BEHAVIOR_TYPES:
+        answer = _view_behavior(house, behavior, memories, kind, reference,
+                                unread_bodies, zone=zone)
+    elif kind == "ricordo":
         return _view_memory(memories, reference)
-    if kind == "integrazione":
-        return _view_integration(house, reference, translations, zone,
-                                 judgments=judgments)
-    raise ValueError(f"il dettaglio non sa aprire il genere {kind!r}")
+    elif kind == "integrazione":
+        answer = _view_integration(house, reference, translations, zone,
+                                   judgments=judgments)
+    else:
+        raise ValueError(f"il dettaglio non sa aprire il genere {kind!r}")
+    return restart_alongside(answer, house, zone)
 
 
 def related(answer: dict, kind: str, reference) -> dict:

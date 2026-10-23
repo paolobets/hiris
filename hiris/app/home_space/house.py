@@ -42,6 +42,7 @@ from .ha_vocabulary import (
     domain_of,
     has_statistics,
 )
+from .historian import instant_epoch
 from .house_query import (
     _BEHAVIOR_KINDS,
     HouseFilters,
@@ -107,7 +108,8 @@ class House:
     def __init__(self, home_space: dict, mirror: Mirror,
                  unavailable: tuple[str, ...] = (),
                  statistic_ids: frozenset[str] | set[str] | None = None,
-                 energy: dict | None = None) -> None:
+                 energy: dict | None = None,
+                 restart: dict | None = None) -> None:
         self.home_space = home_space
         self.mirror = mirror
         self.unavailable = tuple(unavailable)
@@ -117,6 +119,9 @@ class House:
         # L'ultima dashboard Energia tenuta (`HomeSpace.energy`), o `None` se
         # nessuna lettura e' riuscita: la sorgente di `energy_role` (D13).
         self.energy = energy
+        # L'ultimo riavvio di Home Assistant visto dall'add-on
+        # (`HomeSpace.restart`), o `None`: la sorgente di `restart`.
+        self._restart = restart
         self._floors: list[dict] | None = None
         self._places: dict[str, tuple[dict, dict, dict]] | None = None
         self._area_index: dict[str, tuple[dict, dict]] | None = None
@@ -140,7 +145,7 @@ class House:
             return cls({}, read_mirror(cache), statistic_ids=statistic_ids)
         return cls(home_space_store.read(), read_mirror(cache),
                    tuple(home_space_store.unavailable()), statistic_ids,
-                   home_space_store.energy())
+                   home_space_store.energy(), home_space_store.restart())
 
     @classmethod
     def read_ids(cls, home_space_store, cache, entity_ids) -> House:
@@ -156,7 +161,7 @@ class House:
         if home_space_store is None:
             return cls({}, mirror)
         return cls(home_space_store.read(), mirror, tuple(home_space_store.unavailable()),
-                   energy=home_space_store.energy())
+                   energy=home_space_store.energy(), restart=home_space_store.restart())
 
     def hierarchy(self) -> list[dict]:
         """L'albero piano -> area -> entita' di `topology.hierarchy`, con i
@@ -425,7 +430,41 @@ class House:
         Nessuna lettura nuova: chi la chiama ha gia' l'elenco in mano
         (`house_history.statistic_ids_for_round`, la lettura unica del giro)."""
         return House(self.home_space, self.mirror, self.unavailable, statistic_ids,
-                     self.energy)
+                     self.energy, self._restart)
+
+    def restart(self) -> dict | None:
+        """L'ultimo riavvio di Home Assistant, con la fonte che lo dice, o
+        `None` quando nessuna fonte lo sa (rimedio A delle risposte
+        sbagliate, approvato da Paolo il 23/10/2026).
+
+        Il bisogno, misurato sulla casa il 23/10/2026: dopo il riavvio del
+        17/10, 101 delle 118 entita' `unavailable` avevano `last_changed`
+        fra «Home Assistant stopped» (21:27:52Z) e pochi millisecondi dopo
+        «started» (21:29:22Z, registro di HA), e la chat l'ha detto come
+        l'inizio del guasto. Home Assistant non lega quei cambi all'avvio
+        (ognuno ha un `context` suo), quindi il codice non emette il
+        verdetto: mette l'istante del riavvio accanto, e la frase la dice
+        chi legge (come `mute_da`, spec §4).
+
+        Due fonti, in quest'ordine:
+
+        - `{"da", "a"}` (epoch): la finestra che l'add-on ha visto, dalla
+          caduta della connessione a quando Home Assistant si e' dichiarato
+          avviato (`homeassistant_started`; `HomeSpace.hold_restart`). Copre
+          il tratto intero, dall'arresto alla fine dell'avvio.
+        - `{"avviato"}`: lo stato di `sensor.uptime`, quando c'e' ed e' un
+          istante. L'integrazione Uptime e' facoltativa, e il suo istante
+          cade a meta' dell'avvio: il 17/10, 26 delle 101 venivano prima
+          (home-assistant.io/integrations/uptime/: «the date and time when
+          Home Assistant was last started»). Fino al 23/10/2026 era la sola
+          fonte, e solo per `view` di un'integrazione."""
+        if self._restart is not None:
+            return {"da": self._restart.get("da"), "a": self._restart.get("a"),
+                    "fonte": "l'add-on ha visto Home Assistant fermarsi e ripartire"}
+        uptime = self.mirror.state.get("sensor.uptime")
+        if isinstance(uptime, str) and instant_epoch(uptime) is not None:
+            return {"avviato": uptime, "fonte": "sensor.uptime"}
+        return None
 
     def calendars(self) -> list[dict]:
         """I calendari di questa casa, `{id, nome}`, dallo specchio (A-34, F1

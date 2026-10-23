@@ -1220,77 +1220,86 @@ def test_an_integration_declares_when_the_config_registry_did_not_answer():
     assert detail["elenco_incompleto"] == ["integrazioni"]
 
 
-def test_an_integration_carries_the_home_assistant_start_next_to_mute_da():
-    """Il confronto che scioglie il dubbio dev'essere NELLA risposta, non a
-    una seconda chiamata di distanza (spec §4 ③): `avvio_home_assistant` --
-    lo stato di `sensor.uptime`, letto dallo specchio degli stati che questa
-    funzione gia' riceve -- viaggia accanto a `mute_da`.
+# --- Il riavvio di Home Assistant accanto a `ultimo_cambio` (rimedio A,
+# Paolo 23/10/2026): un punto solo per ogni porta, `render.restart_alongside`.
 
-    Mutazione: non leggere `sensor.uptime` -- il test torna rosso su
-    `assert detail["avvio_home_assistant"] == "2026-09-02T17:54:44+00:00"`
-    (la chiave mancherebbe del tutto, KeyError)."""
+_RESTART = {"da": 1_788_000_000.0, "a": 1_788_000_090.0}  # 2026-08-29 10:40:00Z / 10:41:30Z
+
+
+def test_an_integration_carries_the_restart_next_to_mute_da():
+    """La scheda di un'integrazione con le entita' mute porta il riavvio
+    accanto a `mute_da`, dalla finestra che l'add-on ha visto. Fino al
+    23/10/2026 qui usciva `avvio_home_assistant` da `sensor.uptime`, e solo
+    qui.
+
+    Mutazione ESEGUITA: `view` che restituisce il ramo senza
+    `restart_alongside` -- rossa (KeyError su `riavvio_home_assistant`)."""
     house, states, since = _two_silent_hydrawise_entities(
-        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
-    states = dict(states, **{"sensor.uptime": "2026-09-02T17:54:44+00:00"})
-    detail = view(House(house, Mirror(state=states, since=since)), [], [], "integrazione",
-                  "hydrawise")
-    assert "mute_da" in detail
-    assert detail["avvio_home_assistant"] == "2026-09-02T17:54:44+00:00"
-
-
-def test_without_the_uptime_sensor_the_key_is_absent():
-    """L'integrazione Uptime e' facoltativa. Dove non c'e', la chiave non
-    esce: l'assenza e' assenza, non un valore inventato.
-
-    Mutazione: emettere `None` invece di omettere la chiave -- il test torna
-    rosso su `assert "avvio_home_assistant" not in detail` (la chiave
-    comparirebbe con valore `None`)."""
-    house, states, since = _two_silent_hydrawise_entities(
-        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
-    detail = view(House(house, Mirror(state=states, since=since)), [], [], "integrazione",
-                  "hydrawise")
+        "2026-08-29T10:41:30.001+00:00", "2026-08-29T10:41:30.004+00:00")
+    detail = view(House(house, Mirror(state=states, since=since), restart=_RESTART),
+                  [], [], "integrazione", "hydrawise")
     assert "mute_da" in detail
     assert "avvio_home_assistant" not in detail
+    assert detail["riavvio_home_assistant"]["da"] == "2026-08-29T10:40:00+00:00"
+    assert detail["riavvio_home_assistant"]["a"] == "2026-08-29T10:41:30+00:00"
+    assert "history" in detail["riavvio_home_assistant"]["nota"]
 
 
-def test_an_unavailable_uptime_sensor_is_not_an_instant():
-    """`unavailable`/`unknown` sono STRINGHE PIENE, non `None` ne' vuote. La
-    stessa funzione le usa gia' come sentinelle per classificare le entita'
-    mute (`mute`/`unknown`, poche righe sopra): ignorarle qui, per lo stesso
-    sensore, spaccerebbe una parola per un istante.
+def test_without_a_seen_restart_the_uptime_sensor_speaks():
+    """Senza una finestra vista dall'add-on (la prima connessione non ne
+    apre), la fonte e' `sensor.uptime`, con la fonte detta.
 
-    Mutazione: togliere `and instant_epoch(ha_start) is not None` dalla
-    guardia (tornare alla sola truthiness) -- il test torna rosso su
-    `assert "avvio_home_assistant" not in detail` (la chiave comparirebbe
-    con valore `"unavailable"`)."""
+    Mutazione ESEGUITA: `House.restart` senza il ripiego su `sensor.uptime`
+    -- rossa."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
+    states = dict(states, **{"sensor.uptime": "2026-09-04T14:00:10+00:00"})
+    detail = view(House(house, Mirror(state=states, since=since)), [], [], "integrazione",
+                  "hydrawise")
+    assert detail["riavvio_home_assistant"]["avviato"] == "2026-09-04T14:00:10+00:00"
+    assert detail["riavvio_home_assistant"]["fonte"] == "sensor.uptime"
+
+
+def test_an_unavailable_uptime_sensor_is_not_a_restart():
+    """`unavailable` e `unknown` sono stringhe piene, non istanti: senza
+    un'altra fonte, il riavvio non esce. L'assenza e' assenza.
+
+    Mutazione ESEGUITA: la guardia di `House.restart` sulla sola verita' --
+    rossa (`restart()` torna `{"avviato": "unavailable", ...}`)."""
     house, states, since = _two_silent_hydrawise_entities(
         "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
     states = dict(states, **{"sensor.uptime": "unavailable"})
-    detail = view(House(house, Mirror(state=states, since=since)), [], [], "integrazione",
-                  "hydrawise")
-    assert "mute_da" in detail
-    assert "avvio_home_assistant" not in detail
+    casa = House(house, Mirror(state=states, since=since))
+    assert casa.restart() is None
+    assert "riavvio_home_assistant" not in view(casa, [], [], "integrazione", "hydrawise")
 
 
-def test_avvio_home_assistant_is_absent_without_mute_da_too():
-    """La congiunzione e' protetta da una prova dedicata, non solo verificata
-    a mano: con `sensor.uptime` presente ma le entita' mute FUORI dalla
-    finestra di sincronia (5 s, oltre i 2 s di `_SYNCHRONY_WINDOW_SECONDS`),
-    `mute_da` non esce -- e senza `mute_da` non c'e' nulla da affiancare,
-    quindi nemmeno `avvio_home_assistant` esce, anche se il sensore c'e' ed
-    e' un istante valido.
+def test_rows_changed_before_the_restart_carry_no_restart():
+    """Il riavvio esce solo quando almeno una riga e' cambiata da quando e'
+    cominciato: a righe tutte piu' vecchie non serve, e la risposta resta
+    snella. E' un confronto fra istanti dichiarati, non un margine.
 
-    Mutazione: togliere `if "mute_da" in detail:` (calcolare
-    `avvio_home_assistant` incondizionatamente) -- il test torna rosso su
-    `assert "avvio_home_assistant" not in detail` (la chiave comparirebbe
-    da sola, senza `mute_da` accanto)."""
+    Mutazione ESEGUITA: `restart_alongside` senza il confronto -- rossa."""
     house, states, since = _two_silent_hydrawise_entities(
-        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:22+00:00")
-    states = dict(states, **{"sensor.uptime": "2026-09-02T17:54:44+00:00"})
-    detail = view(House(house, Mirror(state=states, since=since)), [], [], "integrazione",
-                  "hydrawise")
-    assert "mute_da" not in detail
-    assert "avvio_home_assistant" not in detail
+        "2026-08-29T10:39:59+00:00", "2026-08-29T10:39:58+00:00")
+    detail = view(House(house, Mirror(state=states, since=since), restart=_RESTART),
+                  [], [], "integrazione", "hydrawise")
+    assert "riavvio_home_assistant" not in detail
+
+
+def test_search_and_view_carry_the_restart_in_the_same_form():
+    """Fondamenta 3: la stessa entita' cambiata dentro il riavvio porta lo
+    stesso riavvio da `search` e da `view`.
+
+    Mutazione ESEGUITA: `query_house` senza `restart_alongside` -- rossa."""
+    from hiris.app.home_space.house_query import HouseFilters, query_house
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-08-29T10:41:30.001+00:00", "2026-08-29T10:41:30.004+00:00")
+    casa = House(house, Mirror(state=states, since=since), restart=_RESTART)
+    found = query_house(casa, [], HouseFilters(state="unavailable"), detail=None)
+    seen = view(casa, [], [], "entita", "valve.giardino")
+    assert found["riavvio_home_assistant"] == seen["riavvio_home_assistant"]
+    assert found["riavvio_home_assistant"]["fonte"].startswith("l'add-on")
 
 
 # --- Task 3, «rifiutare e importare»: cio' che HA dichiara di questa casa --
@@ -1650,3 +1659,22 @@ def test_view_apre_ogni_genere_di_search_e_nessun_altro():
         assert view(house, [], [], kind, reference)["esiste"] is False, kind
     with pytest.raises(ValueError, match="scena"):
         view(house, [], [], "scena", "scene.serata")
+
+
+def test_the_home_space_keeps_only_a_declared_restart(tmp_path):
+    """L'anagrafe tiene la finestra che Home Assistant ha chiuso da riavviato
+    (`riavvio` vero) e la passa alla casa del turno (`House.read`); una
+    finestra chiusa da un nucleo gia' `RUNNING` (un guasto di rete, o un
+    riavvio finito prima del ritorno) non dice niente sull'avvio, e non
+    sostituisce quella tenuta.
+
+    Mutazioni ESEGUITE: `hold_restart` senza la guardia su `riavvio` -- rossa;
+    `House.read` che non passa `restart()` -- rossa."""
+    from hiris.app.home_space.reader import HomeSpace
+    store = HomeSpace(str(tmp_path))
+    assert store.restart() is None
+    store.hold_restart({"da": 1.0, "a": 2.0, "riavvio": True})
+    store.hold_restart({"da": 5.0, "a": 6.0, "riavvio": False})
+    assert store.restart() == {"da": 1.0, "a": 2.0}
+    restart = House.read(store, None).restart()
+    assert (restart["da"], restart["a"]) == (1.0, 2.0)
