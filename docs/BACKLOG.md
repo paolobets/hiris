@@ -108,20 +108,31 @@ chiede lo Sprint dal PC, in sola lettura.
 
 `origine: Paolo, 22/10/2026 13:28 («partiamo puliti, se devo riemettere giudizi vediamo se ora vanno meglio che prima, perché i risultati erano insufficienti»; si cancellano anche tutte le chat) e 13:31 (si cancellano anche i ricordi)` · piano: Fase P
 
-Non è codice: è un gesto da fare una volta sulla casa, dal PC, col sì di Paolo a ogni passo che
-cancella.
+**Cambiato il 23/10/2026: lo fa HIRIS, all'avvio** (`origine: Paolo, 23/10/2026 09:15, «ok con
+il consigliata»` · proposta `/mnt/project-files/piani/2026-10-23-pulizia-all-avvio-proposta.md`).
+Il piano diceva «nessun codice nel prodotto per un gesto da fare una volta», ma dal PC non si arriva
+a `/data` dell'add-on. Il codice è **a scadenza** (punto 6).
 
 1. Backup intero dell'add-on in Home Assistant, con la data nel nome: è ciò che rende la pulizia
    reversibile.
-2. Add-on fermo; si spostano da parte, non si cancellano finché il Brain nuovo non convince,
-   `osservazioni.db`, `sapere.db`, `chat_history.db` e `memoria.db`. Il modo esatto lo verifica
-   lo Sprint sulla documentazione del Supervisor prima di farlo.
+2. Paolo accende l'opzione dell'add-on `pulizia_totale` e riavvia. All'avvio, prima che un archivio
+   si apra, `conservazione.accantona_archivi` copia `osservazioni.db`, `sapere.db`,
+   `chat_history.db` e `memoria.db` (col loro diario WAL) in `/data/accantonati-2026-10-23/`,
+   verifica ogni copia (integrità, righe per tabella) e solo se tornano tutte toglie gli
+   originali; poi scrive `MANIFESTO.json`, che la ferma ai giri dopo. Se qualcosa non torna non
+   tocca niente, e lo dice nel registro.
 3. Add-on avviato: gli archivi rinascono vuoti, il seme del sapere si riscrive da sé,
    l'osservatore parte come al primo avvio. Paolo ridichiara l'obiettivo e i giudizi che gli
    servono.
 4. Restano: `promesse.db`, `costruzioni.db` (le automazioni costruite restano in HA),
    `consumi.db`, `azioni.db`, `servizi.db`, la configurazione dei modelli.
 5. Dopo qualche giorno di giri si rileggono gli stessi nove punti della Fase L: il «dopo».
+6. **Nella release dopo quella che la porta escono**: `accantona_archivi` e le sue costanti in
+   `conservazione.py`, la chiamata in `startup.py`, `tests/test_pulizia_totale.py`, l'opzione
+   `pulizia_totale` da `config.yaml` (options e schema), `run.sh` (`HIRIS_PULIZIA_TOTALE`), le due
+   traduzioni e le due ammissioni scritte in `tests/test_config_page.py`. La cartella
+   `accantonati-2026-10-23/` **resta** finché Paolo non dice che il Brain nuovo lo convince: allora
+   entra in `RESIDUI_DISMESSI`, o la cancella lui.
 
 **Cosa si perde, detto una volta:** l'obiettivo e la sua storia, le decisioni di Paolo su cosa
 guardare, le risposte alle proposte (il proponente è comunque spento), i giudizi corretti a mano,
