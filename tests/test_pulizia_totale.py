@@ -307,3 +307,26 @@ async def test_l_avvio_senza_l_opzione_non_tocca_niente(casa, ambiente):
         assert not (casa / CARTELLA_ACCANTONATI).exists()
         for nome, n in _RIGHE.items():
             assert _righe(casa / nome) == n, nome
+
+
+def test_un_archivio_che_mancava_e_rinasce_non_si_toglie(tmp_path, monkeypatch):
+    """R205-1, giro 205: `memoria.db` non c'era alla prima pulizia, quindi non
+    ha copia; rinasce con righe prima del completamento, e il completamento
+    non lo tocca. Mutazione ESEGUITA: `_togli_originali(data_dir,
+    ARCHIVI_ACCANTONATI)` in `_completa` -- rossa."""
+    conn = _archivio(tmp_path, "sapere.db", 3)
+    conn.close()
+
+    def niente_manifesto(*_argomenti):
+        raise OSError("disco")
+
+    monkeypatch.setattr(conservazione, "_scrivi_manifesto", niente_manifesto)
+    accantona_archivi(str(tmp_path), attiva=True)
+    monkeypatch.undo()
+    rinato = _archivio(tmp_path, "memoria.db", 2)
+    rinato.close()
+
+    accantona_archivi(str(tmp_path), attiva=True)
+
+    assert _righe(tmp_path / "memoria.db") == 2
+    assert (tmp_path / CARTELLA_ACCANTONATI / "MANIFESTO.json").exists()

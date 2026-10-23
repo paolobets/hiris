@@ -363,7 +363,8 @@ def _scrivi_manifesto(cartella: str, archivi: dict) -> None:
 
 def _completa(data_dir: str, cartella: str, archivi: dict) -> None:
     """Toglie gli originali e scrive il manifesto. **Toglie solo un originale
-    uguale alla sua copia**, righe per tabella (R204-1, giro 204): fra due
+    uguale alla sua copia** -- uguale vuol dire con gli stessi conteggi di
+    righe per tabella, non lo stesso contenuto (R204-1, giro 204): fra due
     avvii un archivio puo' essere rinato e aver ricevuto righe nuove, che non
     hanno copia. Se uno solo e' diverso non si toglie niente e il manifesto
     non si scrive: decide il proprietario. Un archivio che non ha copia (non
