@@ -31,6 +31,13 @@ contesto delle successive (`handlers_chat.compose_chat_context`, «Sessioni
 precedenti»). Le risposte restano nel file degli esiti; i token restano nel
 registro dei consumi, che la chat non tocca. Un filo che ha gia' conversazioni
 non parte: le cancella solo `--svuota-filo`, detto da chi lancia.
+
+**Un criterio puo' chiedere il suo valore alla casa** (`misura`, rimedio D,
+23/10/2026): `{"lettura": "conta_stato", "valore": "unavailable"}` legge da
+Home Assistant, un attimo prima della domanda, quante entita' sono in quello
+stato, e il numero prende il posto di `{misura}` nell'`atteso`. Negli esiti
+restano il criterio cosi' riempito e il valore con l'istante: il giudizio si
+da' contro la casa di quel momento. Le letture ammesse sono in `LETTURE`.
 """
 import argparse
 import json
@@ -46,6 +53,19 @@ from misure import intestazioni_firmate  # la firma e' una sola, fra gli script
 GIUDIZI = ("giusta", "incompleta", "sbagliata")
 PASSO_S = 0.5
 
+#: Le letture che un criterio puo' chiedere a Home Assistant un attimo prima
+#: della domanda (`misura`, rimedio D delle risposte sbagliate, 23/10/2026: i
+#: criteri 6 e 30 scritti a mano erano invecchiati con la casa). E' una lista
+#: di AMMISSIONE: il file del proprietario sceglie quale e con quale valore,
+#: una lettura nuova si ammette qui. Ognuna riceve gli stati di
+#: `GET /api/states` e il `valore` della domanda.
+LETTURE = {
+    "conta_stato": lambda stati, valore: sum(1 for s in stati if s.get("state") == valore),
+    "conta_dominio": lambda stati, valore: sum(
+        1 for s in stati if str(s.get("entity_id", "")).startswith(f"{valore}.")),
+}
+SEGNAPOSTO = "{misura}"
+
 
 def carica_domande(percorso: str) -> list[dict]:
     domande = json.loads(pathlib.Path(percorso).expanduser().read_text(encoding="utf-8"))
@@ -53,7 +73,39 @@ def carica_domande(percorso: str) -> list[dict]:
     if senza:
         raise SystemExit(f"domande senza criterio atteso: {senza}. Il criterio "
                          "si scrive PRIMA di chiedere.")
+    # Una misura che non si puo' leggere, o che il criterio non usa, si dice
+    # prima di cominciare: a meta' batteria costerebbe le domande gia' fatte.
+    storte = [d.get("n") for d in domande if d.get("misura") and (
+        (d["misura"].get("lettura") not in LETTURE) or SEGNAPOSTO not in d["atteso"])]
+    if storte:
+        raise SystemExit(f"domande con una misura storta: {storte}. Le letture ammesse "
+                         f"sono {', '.join(sorted(LETTURE))}, e l'atteso deve dire "
+                         f"dove va il valore con {SEGNAPOSTO}.")
     return domande
+
+
+def leggi_stati() -> list[dict]:
+    """Gli stati di adesso, da `scripts/casa.py`: la porta di sola lettura."""
+    from casa import ha_get
+    return json.loads(ha_get("/api/states"))
+
+
+def misura(domanda: dict, stati=leggi_stati) -> dict | None:
+    """Il valore che il criterio chiede alla casa adesso, con l'istante, o
+    `None` se la domanda non ne chiede. La lettura e' gia' ammessa
+    (`carica_domande`); una casa che non risponde solleva `SystemExit`
+    (`casa._fetch`)."""
+    chiesta = domanda.get("misura")
+    if not chiesta:
+        return None
+    lettura = LETTURE[chiesta["lettura"]]
+    return {"valore": lettura(stati(), chiesta.get("valore")), "ts": time.time()}
+
+
+def criterio(domanda: dict, letta: dict | None) -> str:
+    """Il criterio atteso con il valore letto al posto di `{misura}`."""
+    atteso = domanda["atteso"]
+    return atteso if letta is None else atteso.replace(SEGNAPOSTO, str(letta["valore"]))
 
 
 def domande_ammesse(domande: list[dict], *, conferme: bool) -> list[dict]:
@@ -188,10 +240,18 @@ def main() -> None:
                 f"\n#{d['n']} ha un effetto vero ({d['effetto']}): "
                 f"«{d['domanda']}». Procedo? [s/N] ").strip().lower() != "s":
             continue
+        try:
+            letta = misura(d)
+        except SystemExit as guasto:
+            # Senza il valore il criterio non si giudica: la domanda si salta,
+            # e lo si dice.
+            print(f"\n#{d['n']} saltata: la casa non ha risposto ({guasto})", flush=True)
+            continue
+        atteso = criterio(d, letta)
         secondi, stato, risposta, job = chiedi(s.url, chiave, d["domanda"])
         print(f"\n{d['n']:>2}. [{d['aspetto']}] {secondi:.1f}s [{stato}]", flush=True)
         print(f"    domanda: {d['domanda']}")
-        print(f"    atteso:  {d['atteso']}")
+        print(f"    atteso:  {atteso}")
         print(f"    risposta: {risposta[:600]}", flush=True)
         giudizio = None
         if conferme and stato == "ok" and d.get("giudice") == "hiris":
@@ -200,7 +260,8 @@ def main() -> None:
                         "s": "sbagliata"}.get(scelta.strip().lower())
         if d.get("effetto"):
             print(f"    RIMETTI A POSTO: {d['effetto']} creato da questa domanda.")
-        esiti.append({**d, "secondi": round(secondi, 2), "stato": stato,
+        esiti.append({**d, "atteso": atteso, "misura_letta": letta,
+                      "secondi": round(secondi, 2), "stato": stato,
                       "risposta": risposta, "giudizio": giudizio, "job_id": job,
                       "etichetta": s.etichetta, "ts": time.time(),
                       "domanda_isolata": s.domande_isolate})

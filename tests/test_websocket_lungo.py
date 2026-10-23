@@ -306,7 +306,7 @@ async def test_con_home_assistant_avviato_la_finestra_va_dalla_caduta_al_ritorno
     connection.drop()
     await _until(lambda: connection.listening == 2, "seconda connessione in ascolto")
     await _until(lambda: windows, "finestra chiusa")
-    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert windows == [{"da": 1_001.0, "a": 1_002.0, "riavvio": False}]
     await _stop(client)
 
 
@@ -334,7 +334,7 @@ async def test_con_home_assistant_in_avvio_la_finestra_si_chiude_a_homeassistant
     assert windows == [], "Home Assistant non si e' ancora dichiarato avviato"
     assert connection.push_event("homeassistant_started", {})
     await _until(lambda: windows, "finestra chiusa all'avvio dichiarato")
-    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert windows == [{"da": 1_001.0, "a": 1_002.0, "riavvio": True}]
     await _stop(client)
 
 
@@ -364,7 +364,7 @@ async def test_i_tentativi_falliti_e_le_ricadute_non_spostano_l_inizio_della_fin
     connection.core_state = "RUNNING"
     assert connection.push_event("homeassistant_started", {})
     await _until(lambda: windows, "finestra chiusa")
-    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert windows == [{"da": 1_001.0, "a": 1_002.0, "riavvio": True}]
     await _stop(client)
 
 
@@ -385,7 +385,7 @@ async def test_se_get_config_e_rifiutata_la_finestra_si_chiude_al_ritorno_e_lo_d
     connection.config_refusal = {"code": "unknown_error", "message": "rifiutata"}
     connection.drop()
     await _until(lambda: windows, "finestra chiusa al rifiuto")
-    assert windows == [{"da": 1_001.0, "a": 1_002.0}]
+    assert windows == [{"da": 1_001.0, "a": 1_002.0, "riavvio": False}]
     assert "get_config rifiutata" in caplog.text
     await _stop(client)
 

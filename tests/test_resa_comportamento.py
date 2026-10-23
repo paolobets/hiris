@@ -98,3 +98,76 @@ def test_con_lo_specchio_illeggibile_lo_stato_manca():
     casa = House(_CASA, Mirror({}, readable=False))
     for depth in ("corta", "media", "completa"):
         assert "stato" not in render_behavior(casa, _comportamento()[1], depth), depth
+
+
+# --- Cosa fa un'automazione (rimedio C delle risposte sbagliate, 23/10/2026):
+# la domanda 30 della batteria del 22/10 chiedeva cosa fanno le automazioni, e
+# `search` ne dava solo il nome e l'ultima esecuzione.
+
+#: Un corpo come Home Assistant lo restituisce in `raw_config`: la forma nuova
+#: (`triggers`, `actions`, `trigger`, `action`) letta nel sorgente di Core al
+#: tag 2026.9.4 (`components/automation/config.py`).
+_CORPO_NUOVO = {
+    "triggers": [{"trigger": "state", "entity_id": "binary_sensor.porta", "to": "on"},
+                 {"trigger": "time", "at": "07:00:00"}],
+    "actions": [{"action": "light.turn_on", "target": {"entity_id": ["light.ingresso"]}},
+                {"delay": "00:05:00"}],
+}
+
+#: La forma vecchia, ancora accettata e rinominata da Home Assistant
+#: (`cv.renamed`, `platform` per l'innesco, `service` per il passo).
+_CORPO_VECCHIO = {
+    "trigger": {"platform": "state", "entity_id": "binary_sensor.porta"},
+    "action": [{"service": "light.turn_on", "entity_id": "light.ingresso"}],
+}
+
+
+def _voce(corpo):
+    return {"id": "automation.luce", "tipo": "automazione", "nome": "Luce",
+            "corpo": corpo, "attiva": True}
+
+
+def test_la_voce_corta_dice_cosa_fa_dal_corpo():
+    """Senza `description`, la voce porta il riassunto: inneschi e passi,
+    ognuno col tipo di Home Assistant e le entita' che nomina. Le due forme
+    del corpo danno lo stesso riassunto.
+
+    Mutazioni ESEGUITE: `render_behavior` senza il riassunto -- rossa;
+    `behavior_summary` che legge solo `triggers` (non `trigger`) -- rossa
+    sulla forma vecchia; `_entities_of` senza il `target` -- rossa."""
+    casa = House(_CASA, _specchio())
+    nuovo = render_behavior(casa, _voce(_CORPO_NUOVO), "corta")["riassunto"]
+    assert nuovo == {
+        "inneschi": [{"tipo": "state", "entita": ["binary_sensor.porta"]}, {"tipo": "time"}],
+        "passi": [{"tipo": "light.turn_on", "entita": ["light.ingresso"]}, {"tipo": "delay"}],
+    }
+    vecchio = render_behavior(casa, _voce(_CORPO_VECCHIO), "corta")["riassunto"]
+    assert vecchio == {"inneschi": [{"tipo": "state", "entita": ["binary_sensor.porta"]}],
+                       "passi": [{"tipo": "light.turn_on", "entita": ["light.ingresso"]}]}
+
+
+def test_la_descrizione_di_home_assistant_vince_sul_riassunto():
+    """Con la `description` scritta dal proprietario, la voce porta lei e non
+    il riassunto: e' la sua parola, e costa meno.
+
+    Mutazione ESEGUITA: il riassunto scritto anche con la descrizione -- rossa."""
+    casa = House(_CASA, _specchio())
+    voce = render_behavior(casa, _voce({**_CORPO_NUOVO, "description": " Luce all'arrivo "}),
+                           "corta")
+    assert voce["descrizione"] == "Luce all'arrivo"
+    assert "riassunto" not in voce
+
+
+def test_un_blueprint_dice_il_suo_blueprint_e_le_profondita_si_contengono():
+    """Un'automazione da blueprint non ha inneschi nel corpo: dice da quale
+    blueprint viene. E il riassunto sta a ogni profondita' (corta ⊆ media ⊆
+    completa).
+
+    Mutazione ESEGUITA: il riassunto tolto dalla completa -- rossa."""
+    casa = House(_CASA, _specchio())
+    corpo = {"use_blueprint": {"path": "homeassistant/motion_light.yaml", "input": {}}}
+    corta, completa = (render_behavior(casa, _voce(corpo), d) for d in ("corta", "completa"))
+    assert corta["riassunto"] == {"blueprint": "homeassistant/motion_light.yaml"}
+    assert set(corta) < set(completa)
+    full = set(render_behavior(casa, _voce(_CORPO_NUOVO), "completa"))
+    assert {"riassunto", "corpo"} <= full

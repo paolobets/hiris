@@ -479,6 +479,8 @@ async def _on_startup(app: web.Application) -> None:
         mirror_reload_listener(ha_client, entity_cache, lambda: app.get(WATCHER_KEY)))
     ha_client.add_disconnection_listener(disconnection_recorder(lambda: app.get(WATCHER_KEY)))
     ha_client.add_disconnection_listener(forget_written(app))
+    # L'ultimo riavvio di Home Assistant, accanto a ogni `ultimo_cambio`.
+    ha_client.add_disconnection_listener(home_space_store.hold_restart)
     # Il comportamento: la stessa `watch_behavior` che l'avvio chiama piu'
     # sotto per la prima lettura, e che lo schedulatore rilegge a cadenza.
     ha_config_dir = home_assistant_folder()

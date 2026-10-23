@@ -2627,8 +2627,16 @@ class HAClient:
 
     def add_disconnection_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(finestra) quando si chiude una finestra in cui l'add-on e'
-        rimasto scollegato da Home Assistant: `{"da": epoch, "a": epoch}`,
-        una volta per finestra.
+        rimasto scollegato da Home Assistant: `{"da": epoch, "a": epoch,
+        "riavvio": bool}`, una volta per finestra.
+
+        `riavvio` e' vero quando la finestra l'ha chiusa `STARTED_EVENT`: al
+        ritorno del socket il nucleo NON era `RUNNING`, quindi Home Assistant
+        stava ripartendo, e lo ha dichiarato lui (`core.py`, `async_start`,
+        tag 2026.9.4: `starting`, poi `running` e l'evento). Falso quando al
+        ritorno era gia' `RUNNING`, o la domanda e' stata rifiutata: un guasto
+        di rete, o un riavvio finito prima che l'add-on tornasse -- da qui non
+        si distinguono, e il falso non afferma nessuna delle due.
 
         `da` e' l'istante in cui e' caduta una connessione che Home Assistant
         aveva autenticato. `a` e' l'istante in cui, a connessione tornata,
@@ -2645,11 +2653,12 @@ class HAClient:
         """
         self._disconnection_listeners.append(callback)
 
-    def _close_disconnection(self) -> None:
-        """Chiude la finestra aperta, se ce n'e' una, e la consegna."""
+    def _close_disconnection(self, *, restart: bool = False) -> None:
+        """Chiude la finestra aperta, se ce n'e' una, e la consegna.
+        `restart`: chiusa da `STARTED_EVENT` (vedi `add_disconnection_listener`)."""
         if self._dropped_at is None:
             return
-        window = {"da": self._dropped_at, "a": self._clock()}
+        window = {"da": self._dropped_at, "a": self._clock(), "riavvio": restart}
         self._dropped_at = None
         for cb in self._disconnection_listeners:
             try:
@@ -2915,7 +2924,7 @@ class HAClient:
                 except Exception:
                     logger.exception("plance_listener callback raised")
         elif event_type == STARTED_EVENT:
-            self._close_disconnection()
+            self._close_disconnection(restart=True)
         elif event_type == AUTOMATION_TRIGGERED_EVENT:
             # `event["data"]` porta almeno `entity_id` (vedi
             # AUTOMATION_TRIGGERED_EVENT): chi ascolta decide da solo cosa

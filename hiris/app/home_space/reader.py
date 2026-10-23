@@ -383,6 +383,8 @@ class HomeSpace:
         # domanda dopo ogni ricostruzione, non a ogni domanda.
         self._energy: dict | None = None
         self._energy_current = False
+        # L'ultimo riavvio di Home Assistant visto dall'add-on (`hold_restart`).
+        self._restart: dict | None = None
 
     def _read_reference_frame(self) -> dict:
         """La cornice, dal file suo. `{}` se non c'e' o non si legge: chi legge
@@ -660,6 +662,24 @@ class HomeSpace:
     def energy_current(self) -> bool:
         """Se la dashboard tenuta e' stata letta in questo giro dell'anagrafe."""
         return self._energy_current
+
+    # -- L'ultimo riavvio di Home Assistant (rimedio A delle risposte
+    # sbagliate, 23/10/2026): un fatto della casa, che accompagna ogni
+    # `ultimo_cambio` (`render.restart_alongside`).
+    def hold_restart(self, window: dict) -> None:
+        """Tiene la finestra di scollegamento (`HAClient.add_disconnection_listener`)
+        se Home Assistant l'ha dichiarata un riavvio (`riavvio` vero); le
+        altre non dicono niente sull'avvio, e non sostituiscono quella tenuta.
+
+        Si tiene in memoria e basta: dopo un riavvio dell'add-on la finestra
+        non c'e' (la prima connessione non ne apre una), e lo dice `restart`
+        tornando `None`."""
+        if isinstance(window, dict) and window.get("riavvio") is True:
+            self._restart = {"da": window.get("da"), "a": window.get("a")}
+
+    def restart(self) -> dict | None:
+        """`{"da": epoch, "a": epoch}` dell'ultimo riavvio visto, o `None`."""
+        return self._restart
 
 
 HOME_SPACE_KEY = web.AppKey("home_space_store", HomeSpace)
