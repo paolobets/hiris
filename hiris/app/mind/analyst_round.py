@@ -189,7 +189,8 @@ async def analyst_round(app) -> dict | None:
             tools=declared.catalog_for_turn() or None, dispatcher=dispatcher)
         esito = analyst_turn.apply_analysis(
             series, chain_answer(answer, turn), truncated=turn.truncated,
-            previous=previous, tool_calls=turn.tool_calls, presence=presence)
+            previous=previous, tool_calls=turn.tool_calls, presence=presence,
+            house=_analyst_house(app))
         if _was_refused(esito) and not turn.truncated:
             declare_refused(app.get(USAGE_KEY), turn.turn_id, esito["problemi"])
         write_analysis(app, store, today, esito)
@@ -207,12 +208,19 @@ def _was_refused(esito: dict) -> bool:
     return bool(esito.get("risposta")) and esito.get("analisi") is None
 
 
+def _analyst_house(app) -> House | None:
+    """La casa di adesso, o `None` senza anagrafe: quella su cui si
+    confrontano i `soggetti` di una risposta (rimedio B.1) e da cui nasce la
+    maschera dei nomi."""
+    casa = app.get(HOME_SPACE_KEY)
+    return House.read(casa, app.get(ENTITY_CACHE_KEY)) if casa is not None else None
+
+
 def _analyst_presence(app):
     """La maschera dei nomi sulla casa di adesso (decisione 12 estesa): quella
     che il raccoglitore rifa' per riportare i segnaposto agli id."""
-    casa = app.get(HOME_SPACE_KEY)
-    return (PresenceMask(House.read(casa, app.get(ENTITY_CACHE_KEY)))
-            if casa is not None else None)
+    house = _analyst_house(app)
+    return PresenceMask(house) if house is not None else None
 
 
 def _enqueue_analyst_turn(app, series: dict, day: str,
@@ -293,10 +301,13 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
                                       device_names=mind_view(app).device_names())
     # I segnaposto che il modello ha letto sul ponte tornano id dalla stessa
     # numerazione, sulla casa di adesso (come l'osservatore, decisione 12).
+    house = _analyst_house(app)
     esito = analyst_turn.apply_analysis(series, reply, previous=previous,
                                         tool_calls=calls,
                                         truncated=turn_truncated(turn),
-                                        presence=_analyst_presence(app))
+                                        presence=(PresenceMask(house)
+                                                  if house is not None else None),
+                                        house=house)
     if _was_refused(esito):
         # L'esito sulla riga del turno del ponte (D10): il runner l'ha messa
         # nella decisione. Il raccoglitore rilegge lo stesso turno finche' non

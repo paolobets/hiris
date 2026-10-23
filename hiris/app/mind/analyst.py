@@ -410,7 +410,7 @@ NOT_IN_HOUSE = "la casa non ha questa entita'"
 HOUSE_UNREAD = "la casa non si e' potuta leggere"
 
 
-def _house_readable(house) -> bool:
+def house_readable(house) -> bool:
     """Se la casa di adesso basta per dire che un'entita' non c'e'."""
     return bool(house.home_space) and house.mirror.readable
 
@@ -470,7 +470,7 @@ def bring_back(store, analysis: dict, house, *, when_ts: float | None = None) ->
         source = house.source(subject)
         if source is None:
             outcomes.append({**item, "esito": BACK_IN_REFUSED,
-                             "ragione": (NOT_IN_HOUSE if _house_readable(house)
+                             "ragione": (NOT_IN_HOUSE if house_readable(house)
                                          else HOUSE_UNREAD)})
         elif source["stato"] in ENDED_SOURCE_STATES:
             outcomes.append({**item, "esito": BACK_IN_REFUSED,

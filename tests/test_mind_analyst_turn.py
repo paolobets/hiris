@@ -39,6 +39,7 @@ def _risposta(osservazioni):
 def _osservazione(**extra):
     base = {"quale": 0,
             "innesco": 1, "cosa": "il prelievo dalla rete e' salito",
+            "soggetti": ["sensor.prelievo_rete"],
             "spiegato": None,
             "cosa_cambierebbe": "meno prelievo vuol dire meno spesa"}
     base.update(extra)
@@ -580,3 +581,115 @@ def test_la_domanda_dice_quali_giorni_sono_misurati_PRIMA_della_regola_del_dato_
     serie["regole"] = [{"dal": "2026-09-12", "al": "2026-09-14",
                         "regole": {"registro_operazioni": 3, "dato_fermo": 1}}]
     assert "prima della regola del dato fermo" not in at.build_question(serie)
+
+
+# ── i soggetti: di chi parla un'osservazione (rimedio B.1, 23/10/2026) ──────
+
+def _house_with(*voci):
+    """La casa di adesso, letta per intero, con le voci d'anagrafe date; nello
+    specchio solo quelle non spente."""
+    from hiris.app.home_space.house import House
+    from tests._anagrafe_finta import AnagrafeFinta
+    from tests._specchio_finto import SpecchioFinto, raw_state
+
+    anagrafe = AnagrafeFinta({"entita": list(voci), "dispositivi": [], "aree": []})
+    specchio = SpecchioFinto([raw_state(v["id"], "20.5") for v in voci
+                              if not v.get("disabilitata")])
+    return House.read(anagrafe, specchio)
+
+
+def test_i_SOGGETTI_si_archiviano_con_l_osservazione():
+    """Il 13/10/2026 l'analista ha scritto «i termometri delle stanze sono
+    disabilitati», una frase che non nominava nessuna entita', e la chat l'ha
+    ripetuta come un fatto di adesso. Un'osservazione porta gli `entity_id` di
+    cui parla, ognuno una volta, nell'ordine scritto.
+
+    Mutazione ESEGUITA (23/10/2026): non attaccare `soggetti` all'osservazione
+    arricchita -- rossa (KeyError)."""
+    casa = _house_with({"id": "climate.camera"}, {"id": "climate.sala"})
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["climate.camera", "climate.sala", "climate.camera"])]), house=casa)
+
+    assert esito["problemi"] == []
+    assert esito["analisi"]["osservazioni"][0]["soggetti"] == [
+        "climate.camera", "climate.sala"]
+
+
+def test_un_osservazione_SENZA_soggetti_si_rifiuta():
+    """Mutazione ESEGUITA (23/10/2026): accettare un elenco vuoto in
+    `_subjects` -- rossa sull'elenco vuoto."""
+    for soggetti in ([], None, "climate.camera"):
+        riga = _osservazione(soggetti=soggetti)
+        if soggetti is None:
+            del riga["soggetti"]
+        esito = at.apply_analysis(_serie(), _risposta([riga]))
+        assert esito["analisi"] is None, soggetti
+        assert any("soggetti" in p for p in esito["problemi"]), esito["problemi"]
+
+
+def test_un_soggetto_che_non_e_un_ENTITY_ID_si_rifiuta():
+    """«i termometri delle stanze» non e' un'entita'."""
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["i termometri delle stanze"])]))
+    assert esito["analisi"] is None
+    assert any("termometri" in p for p in esito["problemi"]), esito["problemi"]
+
+
+def test_un_soggetto_che_la_CASA_NON_HA_si_rifiuta_come_un_numero():
+    """Mutazione ESEGUITA (23/10/2026): togliere il confronto con
+    `House.source` -- rossa."""
+    from hiris.app.mind.analyst import NOT_IN_HOUSE
+
+    casa = _house_with({"id": "climate.camera"})
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["climate.camera", "climate.inventato"])]), house=casa)
+
+    assert esito["analisi"] is None
+    assert esito["problemi"] == [
+        f"l'osservazione 1 parla di climate.inventato: {NOT_IN_HOUSE}"]
+
+
+def test_un_soggetto_SPENTO_resta_un_soggetto():
+    """«e' spenta» e' proprio una delle cose che si possono dire di
+    un'entita': spenta dal proprietario e' nel registro, e la casa la
+    conosce."""
+    casa = _house_with({"id": "climate.camera", "disabilitata": True,
+                      "disabilitata_da": "user"})
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["climate.camera"])]), house=casa)
+    assert esito["problemi"] == []
+
+
+def test_con_la_casa_NON_LETTA_si_guarda_solo_la_forma():
+    """«Non c'e'» si dice solo di una casa letta (G74-1, come il rimetti):
+    con l'anagrafe mai letta ogni id sembrerebbe inventato.
+
+    Mutazione ESEGUITA (23/10/2026): togliere `house_readable` dal confronto
+    -- rossa."""
+    from hiris.app.home_space.house import House
+
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["climate.camera"])]), house=House.read(None, None))
+    assert esito["problemi"] == []
+
+
+def test_i_soggetti_tornano_ID_VERI_dai_segnaposto():
+    """L'analista legge i nomi delle persone coperti (decisione 12): un
+    soggetto scritto col segnaposto torna l'id vero prima del controllo."""
+    class _Maschera:
+        def unmask(self, value):
+            if isinstance(value, list):
+                return ["device_tracker.telefono" if v == "persona.n1" else v
+                        for v in value]
+            return value
+
+    casa = _house_with({"id": "device_tracker.telefono"})
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(
+        soggetti=["persona.n1"])]), house=casa, presence=_Maschera())
+    assert esito["problemi"] == []
+    assert esito["analisi"]["osservazioni"][0]["soggetti"] == ["device_tracker.telefono"]
+
+
+def test_il_contratto_CHIEDE_i_soggetti():
+    assert '"soggetti"' in at.ANSWER_CONTRACT
+    assert "search o related" in at.ANSWER_CONTRACT

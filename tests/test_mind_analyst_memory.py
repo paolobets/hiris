@@ -51,7 +51,7 @@ def _serie():
 
 def _riga(**extra):
     riga = {"quale": 0, "innesco": 1, "cosa": "il prelievo e' salito",
-            "spiegato": None, "cosa_cambierebbe": "meno spesa"}
+            "soggetti": ["sensor.prelievo"], "spiegato": None, "cosa_cambierebbe": "meno spesa"}
     riga.update(extra)
     return riga
 
@@ -140,7 +140,8 @@ def test_senza_memoria_ogni_osservazione_e_NUOVA():
 
 def _modello_ripetitore() -> RunnerFinto:
     return RunnerFinto(json.dumps({"osservazioni": [
-        {"quale": 0, "cosa": "di nuovo il prelievo", "spiegato": None}]}))
+        {"quale": 0, "cosa": "di nuovo il prelievo", "soggetti": ["sensor.prelievo"],
+         "spiegato": None}]}))
 
 
 def _resoconto(giorno, copertura=1.0):
