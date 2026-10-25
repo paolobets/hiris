@@ -1,5 +1,42 @@
 # HIRIS — Changelog
 
+## [3.82.0] — Una pulizia per ripartire, e risposte più giuste sulla casa (2026-10-25)
+
+### Perché
+
+Il Brain nuovo deve partire da archivi vuoti. Quelli vecchi però non si raggiungono dal PC: stanno in `/data` dell'add-on. Per questo la pulizia la fa HIRIS, una volta sola, quando gliela chiedi.
+
+La batteria di domande di prima ha mostrato anche quattro modi in cui la chat sbagliava sulla casa. Questa versione corregge quelli che toccano il prodotto.
+
+### Added
+
+- **La pulizia totale, una volta, con l'opzione `pulizia_totale`.** Nella pagina dell'add-on, alla voce «Avanzate · pulizia totale (una volta)», è spenta di fabbrica.
+  - Se la accendi e riavvii, HIRIS lavora prima di aprire qualunque archivio. Copia osservazioni, sapere, chat e ricordi (`osservazioni.db`, `sapere.db`, `chat_history.db`, `memoria.db`, con il loro diario) in `/data/accantonati-2026-10-23/`, poi verifica ogni copia: integrità e righe per tabella. Toglie gli originali solo se tutte le copie tornano, e riparte con quegli archivi vuoti.
+  - Se una copia non torna, HIRIS non tocca niente e lo scrive nel registro.
+  - Lo fa una volta sola. `MANIFESTO.json`, nella cartella, impedisce che si ripeta agli avvii dopo.
+  - Se la pulizia si ferma a metà, all'avvio dopo HIRIS la completa. Toglie un originale solo se ha ancora le stesse righe della sua copia: un archivio che nel frattempo ha ricevuto dati non si tocca.
+- **Le automazioni e gli script dicono cosa fanno.** Quando la chat li cerca, accanto al nome trova la `descrizione` scritta in Home Assistant. Se la descrizione manca, trova un `riassunto` degli inneschi e dei passi, letto dalla configurazione stessa (compresi gli inneschi annidati).
+- **Dopo un riavvio di Home Assistant, l'ora del riavvio.** Un'entità ricaricata al riavvio ha come «ultimo cambio» l'ora del riavvio, e la chat la scambiava per l'inizio di un guasto. Adesso, quando l'ultimo cambio cade dopo il riavvio, la risposta porta accanto `riavvio_home_assistant`, con la nota che l'inizio vero va chiesto allo storico. Se l'add-on non ha visto il riavvio, l'ora la prende da `sensor.uptime`.
+- **Le osservazioni dell'analista nominano le entità di cui parlano.** Ogni osservazione porta i suoi `soggetti`, gli entity_id che la frase riguarda. Se un soggetto manca o non esiste nella casa, la risposta dell'analista si rifiuta.
+- **Le analisi arrivano con il loro giorno e con lo stato di adesso.** La chat non ripete più un'analisi di giorni fa come se fosse di oggi: ogni osservazione porta il `giorno` in cui è stata scritta e, per ogni soggetto, lo stato di `adesso`.
+
+### Changed
+
+- `avvio_home_assistant` esce dalla vista di un'integrazione. L'ora del riavvio adesso ha un posto solo, `riavvio_home_assistant`.
+
+### Da sapere
+
+- **Prima di accendere `pulizia_totale` fai il backup dell'add-on.** La copia in `/data/accantonati-2026-10-23/` resta dopo la pulizia, e HIRIS non la cancella.
+- Dopo la pulizia la chat riparte senza conversazioni passate e senza ricordi, e il Brain riparte senza osservazioni né sapere.
+- L'opzione `pulizia_totale` e il codice che la fa esistono solo in questa versione: escono con la prossima.
+
+### Per chi sviluppa
+
+- Il cancello dei doppioni non ammette più un elenco di noti: escono `--noti` e `scripts/doppioni_noti.json`.
+- Il pre-push non chiede più di guardare i componenti quando il commit di versione è già su `master`.
+- `release.py` scrive la versione vera nei titoli del BACKLOG delle voci uscite.
+- La batteria delle misure ha `--domande-isolate`, che apre una conversazione nuova per ogni domanda. I criteri che cambiano con la casa ora si misurano al momento.
+
 ## [3.81.0] — Gli avvisi restano anche in Home Assistant (2026-10-22)
 
 ### Perché
