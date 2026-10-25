@@ -179,7 +179,9 @@ def _callers_of(nome: str) -> dict[str, set[str]]:
                         c.func.attr if isinstance(c.func, ast.Attribute) else ""
                         for c in ast.walk(funzione) if isinstance(c, ast.Call)}
             if nome in chiamati:
-                trovate[f"{percorso.relative_to(APP)}::{funzione.name}"] = chiamati
+                # `as_posix`: su Windows il percorso ha `\`, e le ammissioni
+                # scritte con `/` non lo riconoscevano (Sprint, 25/10/2026).
+                trovate[f"{percorso.relative_to(APP).as_posix()}::{funzione.name}"] = chiamati
     return trovate
 
 
