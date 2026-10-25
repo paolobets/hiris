@@ -477,12 +477,17 @@ def _pre_push(repo: Path, sha_remoto: str, *, remote: str = "origin") -> bool:
     assert hook.count(_HOOK_GATE_ANCHOR) == 1, "l'ancora del cancello non c'e' piu'"
     parte = hook[hook.index(_HOOK_GATE_ANCHOR):]
     locale = _git(repo, "rev-parse", "HEAD")
+    # La riga arriva in BYTE, come la manda git all'hook: in modo testo, su
+    # Windows, Python scrive `\r\n`, il `\r` resta attaccato a `sha_remoto`,
+    # `git rev-list` rifiuta l'intervallo in silenzio e il cancello tace.
+    # Misurato dallo Sprint sul PC di Paolo il 25/10/2026: due prove rosse.
     esito = subprocess.run(
         ["sh", "-c", parte, "pre-push", remote, "indirizzo"],
-        input=f"refs/heads/lavoro {locale} refs/heads/lavoro {sha_remoto}\n",
-        cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
+        input=f"refs/heads/lavoro {locale} refs/heads/lavoro {sha_remoto}\n".encode(),
+        cwd=repo, capture_output=True, check=False)
     scattato = (repo / "SCATTATO").exists()
-    assert esito.returncode == (1 if scattato else 0), esito.stderr
+    assert esito.returncode == (1 if scattato else 0), esito.stderr.decode(
+        "utf-8", "replace")
     return scattato
 
 
