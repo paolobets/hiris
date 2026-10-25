@@ -289,7 +289,8 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     │                   registry_follower.py) e i giri che la tengono allineata (rounds.py);
     │                   l'istantanea per turno (house.py) e la sua resa (render.py); il nucleo
     │                   (briefing.py); le domande (queries.py, house_query.py, house_history.py,
-    │                   counts.py); gli strumenti della chat (tools.py); il tempo (historian.py);
+    │                   counts.py); gli strumenti della chat (tools.py) e come si leggono le
+    │                   loro risposte (legend.py); il tempo (historian.py);
     │                   cio' che la casa fa da sola (behavior.py), gli impegni (appointments.py),
     │                   la dashboard Energia (energy.py), il registro di HA (log_source.py); i
     │                   tipi e le loro domande (type_judgments.py, type_vocabulary.py,
