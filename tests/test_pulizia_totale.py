@@ -13,6 +13,7 @@ dopo.
 """
 import json
 import logging
+import os
 import pathlib
 import sqlite3
 from collections import namedtuple
@@ -26,22 +27,30 @@ _RIGHE = {"osservazioni.db": 5, "sapere.db": 3, "chat_history.db": 7,
           "memoria.db": 2}
 
 
-def _archivio(cartella: pathlib.Path, nome: str, righe: int) -> sqlite3.Connection:
-    """Un archivio in WAL con le righe ancora nel diario: la connessione resta
-    APERTA e senza checkpoint, cosi' il `.db` da solo non le contiene."""
+def _archivio(cartella: pathlib.Path, nome: str, righe: int) -> None:
+    """Un archivio in WAL con le righe ancora nel diario: la connessione si
+    CHIUDE senza checkpoint (`SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE`), cosi' il
+    `.db` da solo non le contiene e nessun file resta aperto. Una connessione
+    lasciata aperta (com'era fino al 25/10/2026) su Windows impedisce di
+    togliere il file: `PermissionError` WinError 32, misurato dallo Sprint
+    sul PC di Paolo, sette prove rosse."""
     conn = sqlite3.connect(cartella / nome)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA wal_autocheckpoint=0")
-    conn.execute("CREATE TABLE voci (id INTEGER PRIMARY KEY, testo TEXT)")
-    conn.executemany("INSERT INTO voci (testo) VALUES (?)",
-                     [(f"{nome} {i}",) for i in range(righe)])
-    conn.commit()
-    return conn
+    try:
+        conn.setconfig(sqlite3.SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, True)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("CREATE TABLE voci (id INTEGER PRIMARY KEY, testo TEXT)")
+        conn.executemany("INSERT INTO voci (testo) VALUES (?)",
+                         [(f"{nome} {i}",) for i in range(righe)])
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @pytest.fixture
 def casa(tmp_path):
-    connessioni = [_archivio(tmp_path, nome, n) for nome, n in _RIGHE.items()]
+    for nome, n in _RIGHE.items():
+        _archivio(tmp_path, nome, n)
     estraneo = sqlite3.connect(tmp_path / "promesse.db")
     estraneo.execute("CREATE TABLE estranea (x)")
     estraneo.commit()
@@ -49,9 +58,27 @@ def casa(tmp_path):
     (tmp_path / "options.json").write_text('{"theme": "auto"}', encoding="utf-8")
     assert (tmp_path / "memoria.db-wal").stat().st_size > 0, (
         "la prova non mette righe nel diario: non guarderebbe il WAL")
-    yield tmp_path
-    for conn in connessioni:
-        conn.close()
+    assert not _aperti_in(tmp_path), (
+        "un archivio resta aperto: su Windows non si potrebbe togliere")
+    return tmp_path
+
+
+def _aperti_in(cartella: pathlib.Path) -> list[str]:
+    """I file di `cartella` che questo processo tiene aperti. Su Linux si
+    leggono in /proc/self/fd; dove /proc non c'e' (Windows) la domanda la
+    fa gia' il sistema, che non lascia togliere un file aperto."""
+    fd = pathlib.Path("/proc/self/fd")
+    if not fd.is_dir():
+        return []
+    aperti = []
+    for voce in fd.iterdir():
+        try:
+            bersaglio = os.readlink(voce)
+        except OSError:
+            continue
+        if bersaglio.startswith(str(cartella)):
+            aperti.append(bersaglio)
+    return aperti
 
 
 def _righe(percorso: pathlib.Path) -> int:
@@ -100,8 +127,7 @@ def test_fatta_una_volta_non_si_ripete(casa):
     rossa, il secondo avvio (con la cartella che c'e' gia') rifaceva la
     rimozione."""
     accantona_archivi(str(casa), attiva=True)
-    rinato = _archivio(casa, "memoria.db", 1)
-    rinato.close()
+    _archivio(casa, "memoria.db", 1)
 
     accantona_archivi(str(casa), attiva=True)
 
@@ -169,8 +195,7 @@ def test_un_avvio_interrotto_dopo_le_copie_si_completa(casa, monkeypatch):
 def test_un_archivio_che_non_c_e_non_ferma_gli_altri(tmp_path):
     """La casa di chi installa oggi: nessun archivio. La pulizia si segna fatta
     e non fa rumore di errore."""
-    conn = _archivio(tmp_path, "sapere.db", 3)
-    conn.close()
+    _archivio(tmp_path, "sapere.db", 3)
 
     accantona_archivi(str(tmp_path), attiva=True)
 
@@ -214,8 +239,7 @@ def test_un_archivio_riscritto_dopo_la_prima_pulizia_non_si_toglie(casa, monkeyp
     accantona_archivi(str(casa), attiva=True)
     monkeypatch.undo()
     assert not (casa / "chat_history.db").exists()
-    rinato = _archivio(casa, "chat_history.db", 4)
-    rinato.close()
+    _archivio(casa, "chat_history.db", 4)
 
     accantona_archivi(str(casa), attiva=True)
 
@@ -314,8 +338,7 @@ def test_un_archivio_che_mancava_e_rinasce_non_si_toglie(tmp_path, monkeypatch):
     ha copia; rinasce con righe prima del completamento, e il completamento
     non lo tocca. Mutazione ESEGUITA: `_togli_originali(data_dir,
     ARCHIVI_ACCANTONATI)` in `_completa` -- rossa."""
-    conn = _archivio(tmp_path, "sapere.db", 3)
-    conn.close()
+    _archivio(tmp_path, "sapere.db", 3)
 
     def niente_manifesto(*_argomenti):
         raise OSError("disco")
@@ -323,8 +346,7 @@ def test_un_archivio_che_mancava_e_rinasce_non_si_toglie(tmp_path, monkeypatch):
     monkeypatch.setattr(conservazione, "_scrivi_manifesto", niente_manifesto)
     accantona_archivi(str(tmp_path), attiva=True)
     monkeypatch.undo()
-    rinato = _archivio(tmp_path, "memoria.db", 2)
-    rinato.close()
+    _archivio(tmp_path, "memoria.db", 2)
 
     accantona_archivi(str(tmp_path), attiva=True)
 
