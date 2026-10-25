@@ -709,13 +709,17 @@ def test_la_pagina_e_il_resto_si_calcolano_in_un_punto_solo():
     Mutazione ESEGUITA: `salta: offset` invece di `offset + len(page)` --
     rossa."""
     righe = list(range(10))
-    assert hq.page_rows(righe, 0, 4) == ([0, 1, 2, 3], {"restano": 6, "salta": 4})
+    # Dal 25/10/2026 `oltre` porta anche il suggerimento di restringere, per
+    # `search` come per `history` (fondamenta 3): prima lo dava la sola storia.
+    resta = {"suggerimento": hq.NARROW_HINT}
+    assert hq.page_rows(righe, 0, 4) == ([0, 1, 2, 3], {"restano": 6, "salta": 4, **resta})
     assert hq.page_rows(righe, 8, 4) == ([8, 9], None)
-    assert hq.page_rows(righe, 4, 4) == ([4, 5, 6, 7], {"restano": 2, "salta": 8})
+    assert hq.page_rows(righe, 4, 4) == ([4, 5, 6, 7], {"restano": 2, "salta": 8, **resta})
     assert hq.page_rows(righe, 0, 0) == ([], None)
     grandi = list(range(hq.ROWS_MAX + 5))
     pagina, oltre = hq.page_rows(grandi, 0, hq.ROWS_MAX + 100)
-    assert len(pagina) == hq.ROWS_MAX and oltre == {"restano": 5, "salta": hq.ROWS_MAX}
+    assert len(pagina) == hq.ROWS_MAX and oltre == {"restano": 5, "salta": hq.ROWS_MAX,
+                                                   **resta}
 
 
 def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():

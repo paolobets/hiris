@@ -34,6 +34,7 @@ import pytest
 
 from hiris.app.agent import prompts
 from hiris.app.agent.prompts import _GUIDE_WITH_TOOLS, _GUIDE_WITHOUT_TOOLS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.steering import SPECIES, compose_base
 
 #: Cio' che riceve un turno di chat: identita' e regole di tutti i suoi
@@ -56,13 +57,27 @@ def _prompt_del_ponte() -> str:
     return system
 
 
-def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
-    """I due prompt, uno per percorso, di quando gli strumenti ci sono.
+#: La descrizione di `execute`, come la ricevono tutti e due i percorsi: la
+#: catena nel catalogo del turno, il ponte da `tools/list` di `/api/mcp`, che
+#: ri-forma la stessa tabella (`handlers_mcp`).
+EXECUTE_DESCRIPTION = next(t["description"] for t in KNOWLEDGE_TOOLS
+                           if t["name"] == "execute")
 
-    Un test che ne guardasse uno solo lascerebbe l'altro percorso libero di
+
+def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
+    """Cio' che il modello legge su ciascun percorso quando gli strumenti ci
+    sono: il prompt di sistema e la descrizione di `execute`.
+
+    Dal 25/10/2026 (Fase 2 dello sprint «Il giro snello») le regole
+    dell'azione vivono una volta, nella descrizione dello strumento: stavano
+    anche nella guida, e le due copie si contraddicevano sul `cambiato`
+    vuoto. Il soggetto di queste prove resta cio' che il modello legge.
+
+    Un test che guardasse un percorso solo lascerebbe l'altro libero di
     divergere in silenzio: e' esattamente la divergenza che la fetta
     «parita'» ha passato due task a chiudere."""
-    return {"sincrono": CHAT_BASE, "ponte": _prompt_del_ponte()}
+    return {"sincrono": CHAT_BASE + "\n" + EXECUTE_DESCRIPTION,
+            "ponte": _prompt_del_ponte() + "\n" + EXECUTE_DESCRIPTION}
 
 
 # -- 1. `execute` esiste -----------------------------------------------------
@@ -79,14 +94,18 @@ def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
     quello che oggi porta la chat vera, e la guida non la vede mai: senza
     questo test `execute` potrebbe esistere nel prompt di meta' prodotto.
 
-    Il nome si cerca COI BACKTICK, e non e' un vezzo: `"execute" in testo`
-    passava gia' prima di questo task, perche' entrambi i testi contengono
-    «non ho realmente eseguito» e «azioni mai eseguite». Un pin che non puo'
-    fallire non sorveglia niente -- verificato rimettendo il testo vecchio."""
-    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
-        assert "`execute`" in testo, (
-            f"il prompt del percorso {percorso} non nomina `execute`: il "
-            "modello riceve lo strumento e non sa di averlo")
+    Dal 25/10/2026 lo strumento si presenta da se': la sua definizione, con la
+    descrizione che porta tutte le sue regole, e' nel catalogo del turno della
+    catena e in `tools/list` del ponte (`handlers_mcp.mcp_catalog`, che
+    ri-forma la stessa tabella). La guida del ponte lo nomina anche col nome
+    prefissato (`test_la_guida_nomina_esegui`)."""
+    from hiris.app.api.handlers_mcp import mcp_catalog
+
+    assert "execute" in CHAT_TOOLS, "la chat non riceve piu' `execute`"
+    servite = {t["name"]: t["description"] for t in mcp_catalog()}
+    assert servite.get("execute") == EXECUTE_DESCRIPTION, (
+        "il ponte non riceve la stessa descrizione di `execute` della catena: "
+        "le regole dell'azione arriverebbero a meta' prodotto")
 
 
 def test_nessun_prompt_dichiara_piu_che_hiris_non_tocca_la_casa():
@@ -461,7 +480,9 @@ def test_l_eccezione_sta_dove_stanno_le_regole_dell_azione():
     stessa correzione al piano che il Task 6 aveva gia' dovuto fare per le
     quattro regole dell'azione."""
     from hiris.app.claude_runner import BASE_TOOL_RULES
-    assert "automation.turn_off" in BASE_TOOL_RULES
+    assert "automation.turn_off" in EXECUTE_DESCRIPTION
+    assert "automation.turn_off" not in BASE_TOOL_RULES, (
+        "l'eccezione e' tornata anche nella guida: una regola in due posti")
     assert "automation.turn_off" not in _GUIDE_WITHOUT_TOOLS, (
         "un percorso senza strumenti non deve ricevere una regola su come "
         "usarli: e' la meta' falsa che la fetta «parita'» ha tolto")
@@ -489,8 +510,12 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     # (`steering.compose_base`). La guida del ponte le ripeteva: due sorgenti
     # della stessa regola nello stesso prompt. Si guarda la sorgente, e che
     # il ponte la riceva una volta sola.
-    assert _prompt_del_ponte().lower().count("non raccogliere") == 1
-    for percorso, testo in {"regole": CHAT_BASE}.items():
+    #
+    # Dal 25/10/2026 la sorgente e' la descrizione di `execute` (Fase 2 dello
+    # sprint «Il giro snello»): la guida non la ripete piu'.
+    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
+        assert testo.lower().count("non raccogliere") == 1, percorso
+    for percorso, testo in {"execute": EXECUTE_DESCRIPTION}.items():
         basso = testo.lower()
         for parola in ("aree", "piani", "etichette", "dispositivi"):
             assert parola in basso, (
@@ -555,13 +580,18 @@ def test_il_prompt_dice_che_costruire_e_in_due_tempi():
 
 def test_le_regole_dicono_che_le_etichette_si_danno_per_id():
     """Tappa 5, Task 5: la frase stava solo nella guida del ponte, e la catena
-    non la riceveva; e' passata nelle regole di `execute`, che arrivano a
-    entrambi i percorsi. Nessuno strumento risolve un'etichetta dal nome: un
+    non la riceveva. Nessuno strumento risolve un'etichetta dal nome: un
     modello che non lo sa ne indovina l'id.
 
-    Mutazione ESEGUITA il 06/10/2026: tolta la frase da `TOOL_RULES` -- rossa
-    su entrambi i percorsi (revisione, giro 22)."""
-    for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
-        basso = testo.lower()
-        assert "si danno per id" in basso and "dal nome" in basso, percorso
-        assert basso.count("si danno per id") == 1, percorso
+    Dal 25/10/2026 vive una volta, nella descrizione del parametro
+    `etichette` di `execute`, dove il modello la legge mentre lo compila; la
+    guida la ripeteva (Fase 2 dello sprint «Il giro snello»). Si guarda la
+    definizione intera, cosi' come arriva ai due percorsi."""
+    import json
+
+    definizione = next(t for t in KNOWLEDGE_TOOLS if t["name"] == "execute")
+    etichette = (definizione["input_schema"]["properties"]["bersaglio"]
+                 ["properties"]["etichette"]["description"]).lower()
+    assert "si danno per id" in etichette and "dal nome" in etichette
+    tutto = (json.dumps(definizione, ensure_ascii=False) + CHAT_BASE).lower()
+    assert tutto.count("si danno per id") == 1, "la regola sta in due posti"

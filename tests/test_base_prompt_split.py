@@ -60,7 +60,8 @@ def test_base_regole_strumenti_tiene_gli_ordini_che_presuppongono_un_tool():
     ineseguibili devono stare tutte di la'. Se una scivolasse in
     `BASE_IDENTITY` il test qui sopra la prenderebbe; se sparisse del tutto,
     la prende questo."""
-    assert "Hai a disposizione strumenti" in BASE_TOOL_RULES
+    # «Hai a disposizione strumenti» era l'apertura delle regole di `execute`,
+    # uscite dalla guida il 25/10/2026: vivono nella descrizione dello strumento.
     assert "Usa SEMPRE gli strumenti" in BASE_TOOL_RULES
     assert "chiama remember subito" in BASE_TOOL_RULES
     assert "l'azione" in BASE_TOOL_RULES and "disclaimers" in BASE_TOOL_RULES

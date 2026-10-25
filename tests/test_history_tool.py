@@ -244,25 +244,28 @@ def test_la_storia_dichiara_i_filtri_di_search_e_nessuno_e_obbligatorio():
                                                       "errori"]
 
 
-def test_la_descrizione_dice_cosa_portano_i_dati_ed_e_piu_corta_delle_quattro():
+def test_le_chiavi_della_risposta_si_spiegano_nella_risposta_e_la_descrizione_e_corta():
     """Le chiavi nuove della risposta si dicono al modello (ruling del
     controllore, 30/09/2026), in meno dei 7.449 caratteri delle quattro
     descrizioni uscite.
 
-    Mutazione ESEGUITA: tolta la frase su `non_lette_in_tutto` -- rossa.
-    Mutazione ESEGUITA: tolta la frase su `grana: dettaglio` -- rossa.
-    Mutazione ESEGUITA: tolta la frase sui messaggi sigillati -- rossa.
-    Mutazione ESEGUITA: tolta la frase su `al` (la coda delle fasce orarie,
-    revisione finale) -- rossa."""
+    Dal 25/10/2026 (Fase 2 dello sprint «Il giro snello») non le dice piu' la
+    descrizione, che partiva a ogni giro: le dice la risposta, con la
+    `legenda` (`home_space/legend.py`) per le chiavi che non parlano da se'.
+    Le chiavi qui sotto sono quelle che la descrizione spiegava e il cui
+    valore non e' gia' una frase. Mutazioni sulla prova di prima ESEGUITE il
+    30/09; sulla legenda le esegue `tests/test_legenda.py`."""
+    from hiris.app.home_space.legend import READINGS
+
     testo = next(d for d in KNOWLEDGE_TOOLS if d["name"] == "history")["description"]
-    assert "`al`" in testo and "compilata" in testo
-    for chiave in ("salta", "oltre", "nota", "conti", "non_lette_in_tutto",
-                   "consumato_non_calcolato", "ore_senza_valore", "per_mano_di",
-                   "volte"):
-        assert f"`{chiave}" in testo, chiave
-    # Revisione del Task 7: le due grane per nome, e il sigillo del registro.
-    assert "`grana: dettaglio`" in testo and "`grana: oraria`" in testo
-    assert "sigillati" in testo and "`<secret nome>`" in testo
+    for chiave in ("al", "dal", "non_lette_in_tutto", "ore_senza_valore",
+                   "per_mano_di", "volte", "messaggio", "cambio", "a_fine_ora",
+                   "somma"):
+        assert chiave in READINGS, chiave
+    assert ("grana", "oraria") in READINGS and ("grana", "dettaglio") in READINGS
+    assert "`<secret nome>`" in READINGS["messaggio"]
+    # La legenda si dice da se' nella risposta: la descrizione non la nomina
+    # (`tests/test_contesto_fisso.py` vietava la stessa frase in search e qui).
     assert len(testo) < 7449 * 0.75
     assert "storia" not in testo.lower().replace("storico", "")
 
@@ -855,7 +858,9 @@ async def test_un_segreto_nelle_righe_prima_dell_ultima_si_butta_non_si_sigilla(
     spia = _SigilloSpia(SecretSeal.from_file(segreti))
     d._remembered_seal = spia
     esito = await d.dispatch("history", {"cosa": "errori"})
-    assert "Zq9-segreto-77" not in str(esito) and "<secret" not in str(esito)
+    # La `legenda` spiega il sigillo nominando `<secret nome>`: si guarda il resto.
+    dati = str({chiave: valore for chiave, valore in esito.items() if chiave != "legenda"})
+    assert "Zq9-segreto-77" not in str(esito) and "<secret" not in dati
     assert esito["voci"][0]["eccezione"] == "SynologyDSMLoginFailed: credenziali rifiutate"
     assert not any("login(user" in testo or "Traceback" in testo for testo in spia.visti)
     assert any("SynologyDSMLoginFailed" in testo for testo in spia.visti)

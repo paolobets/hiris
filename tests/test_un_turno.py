@@ -101,8 +101,12 @@ async def _sent_system(tools) -> str:
 
 def test_le_righe_delle_regole_si_trovano():
     """Derivazione: se le righe fossero poche, le prove qui sotto
-    guarderebbero il niente."""
-    assert len(_RULE_LINES) >= 20, _RULE_LINES
+    guarderebbero il niente. Almeno una riga per regola della tabella: il
+    numero si chiede a `TOOL_RULES`, non si scrive (era «20» fino al
+    25/10/2026, quando le regole di `execute` sono passate nello strumento)."""
+    from hiris.app.claude_runner import TOOL_RULES
+
+    assert len(_RULE_LINES) >= len(TOOL_RULES), _RULE_LINES
 
 
 @pytest.mark.asyncio
