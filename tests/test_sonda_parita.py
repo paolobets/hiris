@@ -116,7 +116,7 @@ def test_la_fonte_sulla_casa_sintetica_non_discorda(result):
     """Dal Task 8 le tre porte e la casa dicono la stessa causa."""
     verdict = result["fonte"]
     assert verdict["disaccordi"] == 0, verdict["casi"]
-    assert verdict["chieste"]["digesto"] == 12
+    assert verdict["chieste"]["visibili"] == 12
     assert verdict["chieste"]["casa"] >= 12
     # Col dominio universale la verifica si chiede anche sui `sensor`, e la
     # disabilitata della casa sintetica arriva davvero alla porta.
@@ -160,13 +160,13 @@ def test_la_fonte_vede_una_casa_che_dice_viva_di_una_disabilitata(monkeypatch):
                                          if case["porta"] == "casa"}
 
 
-def test_la_fonte_vede_il_digesto_che_tiene_dentro_un_entita_sparita():
+def test_la_fonte_vede_le_visibili_che_tengono_dentro_un_entita_sparita():
     inputs = synthetic_inputs()
     inputs["states"] = [row for row in inputs["states"]
                         if row["entity_id"] != "light.luce_uno"]
     outcome = sonda_parita.source(sonda_parita.build_inputs(inputs, clock=CLOCK))
     assert [(case["id"], case["porta"]) for case in outcome["casi"]
-            if case["porta"] == "digesto"] == [("light.luce_uno", "digesto")]
+            if case["porta"] == "visibili"] == [("light.luce_uno", "visibili")]
 
 
 def test_un_sensore_che_dichiara_lo_state_class_non_e_incolpato():

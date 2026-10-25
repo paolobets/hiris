@@ -270,7 +270,9 @@ def test_un_area_penzolante_ha_nome_e_id_nell_albero():
         {"id": "light.penzolante", "nome": "Penzolante", "area_id": "non_esiste",
          "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0}])
     testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, _STATO)
-    assert "Area sconosciuta (id: __area_sconosciuta__): 1 luce" in _sezione_casa(testo)
+    # Dal 25/10/2026 una pseudo-area dice il totale, non i conti per tipo
+    # (`test_nucleo_stabile.test_senza_area_dice_il_totale_e_come_chiederle`).
+    assert "Area sconosciuta (id: __area_sconosciuta__): 1 entità" in _sezione_casa(testo)
 
 
 # --- R1 "i riferimenti": l'albero porta gli id ------------------------------

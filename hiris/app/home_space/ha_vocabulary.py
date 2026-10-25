@@ -79,18 +79,13 @@ fatto, e il seme corregge solo le righe che nessuno ha toccato. E' la forma che
 la spec §8 chiede («il repo diventa il seme»).
 
 **Il pezzo che lo rende duraturo.** Il vocabolario porta scritto DA QUALE
-versione di Home Assistant viene (`VOCABULARY_HA_VERSION`), e
-`house_is_newer_than_vocabulary()` la confronta con `versione_ha` -- lo
-STESSO campo che gia' popola il sistema di riferimento della casa
-(`home_space.topology.reference_frame()`, distillato da `Config.as_dict()`
-chiave `"version"`) e che il nucleo dichiara in cima a ogni digesto
-(`briefing._reference_frame_lines`): non una seconda idea di "versione della
-casa", la stessa. Quando la casa supera la versione qui pinnata, la funzione
-lo DICE -- un fatto, non un'eccezione, esattamente come i `repairs`
-diagnosticati da HA restano avvisi e non eccezioni in
-`briefing._integrations_notice`: il vocabolario non si sa sbagliato, si sa
-vecchio, e la differenza e' cio' che invita a rileggere la documentazione
-invece di continuare a fidarsi in silenzio.
+versione di Home Assistant viene (`VOCABULARY_HA_VERSION`). Fino al 25/10/2026
+il nucleo lo confrontava con la versione della casa a ogni turno e lo diceva al
+modello; era una nota per chi sviluppa, e la dice ora
+`scripts/verifica_componenti.py` al rilascio, accanto agli altri componenti
+esterni da guardare: il vocabolario non si sa sbagliato, si sa vecchio, e la
+differenza e' cio' che invita a rileggere la documentazione invece di
+continuare a fidarsi in silenzio.
 """
 from __future__ import annotations
 
@@ -261,64 +256,6 @@ def imported_key_source(what: str, domain: str, tags) -> str:
     return (f"{IMPORTED_KEY_OUR_WORD} -- {what} di `{domain}`: home-assistant/core, "
             f"tag {' e '.join(tags)}, homeassistant/components/{domain}/ "
             "(const.py o __init__.py), mai `dev`; la parola italiana e' nostra")
-
-
-def _parsed_version(version: str) -> tuple[int, ...]:
-    """`"2026.9.1"` -> `(2026, 9, 1)`. Home Assistant usa una versione
-    calendariale (CalVer: anno.mese.patch), non semver -- confrontarla come
-    STRINGA metterebbe `"2026.10.0"` PRIMA di `"2026.9.1"`: lessicograficamente
-    il carattere `'1'` (di `"10"`) e' minore di `'9'`, quindi `"10" < "9"` come
-    stringhe anche se `10 > 9` come numeri. Ed e' il confine vero, non un
-    caso di scuola: `2026.10.0` e' la release successiva a quella pinnata da
-    `VOCABULARY_HA_VERSION` (`tests/test_ha_vocabulary.py` lo attraversa
-    apposta).
-
-    Una componente con un suffisso non numerico (`"2026.9.0b0"`, una beta) si
-    tronca al primo carattere non cifra, cosi' una beta non supera per
-    errore la release finale dello stesso numero -- e non solleva: una
-    versione che non si sa leggere del tutto diventa `0`, non un crash."""
-    parsed = []
-    for piece in version.split("."):
-        digits = ""
-        for char in piece:
-            if not char.isdigit():
-                break
-            digits += char
-        parsed.append(int(digits) if digits else 0)
-    return tuple(parsed)
-
-
-def house_is_newer_than_vocabulary(house_ha_version: str | None) -> dict:
-    """Confronta la versione VIVA della casa con `VOCABULARY_HA_VERSION`.
-
-    `house_ha_version` e' lo stesso `versione_ha` che
-    `home_space.topology.reference_frame()` distilla dalla config di Home
-    Assistant e che il nucleo dichiara in cima a ogni digesto -- non una
-    seconda lettura, la stessa: chi chiama passa il campo che gia' possiede.
-
-    Non solleva mai: un vocabolario invecchiato non e' un guasto, e' un
-    fatto -- lo stesso principio per cui i `repairs` diagnosticati da HA
-    restano AVVISI e non eccezioni in `briefing._integrations_notice`. Detto
-    una volta, in una chiave che chi compone la conoscenza puo' leggere
-    quando vorra' -- non gridato.
-
-    Senza una versione letta (`None` o vuota: la casa non ha ancora costruito
-    il proprio sistema di riferimento) non si dichiara "piu' vecchia": si
-    dichiara "non lo so", perche' affermare un confronto su un dato che non
-    c'e' sarebbe indovinare una casa piu' nuova che nessuno ha misurato.
-    """
-    if not house_ha_version:
-        return {
-            "vocabolario_piu_vecchio_della_casa": False,
-            "versione_vocabolario": VOCABULARY_HA_VERSION,
-            "versione_casa": None,
-        }
-    older = _parsed_version(house_ha_version) > _parsed_version(VOCABULARY_HA_VERSION)
-    return {
-        "vocabolario_piu_vecchio_della_casa": older,
-        "versione_vocabolario": VOCABULARY_HA_VERSION,
-        "versione_casa": house_ha_version,
-    }
 
 
 # --- cosa significa un `state_class` ---------------------------------------

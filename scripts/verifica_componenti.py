@@ -377,6 +377,57 @@ def interroga_i_registri(letti: dict) -> dict:
     return fuori
 
 
+# ── Il vocabolario delle classi: un avviso, non uno scarto ─────────────────
+# Fino al 25/10/2026 lo diceva il nucleo, a ogni turno, al modello: «il
+# vocabolario e' verificato fino alla X, questa casa e' alla Y, vale la pena
+# rileggere la documentazione». Era una nota per chi sviluppa, non per chi
+# risponde (Fase 2 dello sprint «Il giro snello», approvata da Paolo), e con
+# lei e' uscita dal prodotto `house_is_newer_than_vocabulary`, che ne era
+# l'unico lettore. Qui la legge chi deve: al rilascio, accanto agli altri componenti esterni. Non
+# ferma il push -- una casa piu' nuova del vocabolario non e' un componente
+# da aggiornare, e' una documentazione da rileggere -- e se la casa non
+# risponde lo dice, invece di tacere come se fosse tutto a posto.
+
+def avviso_vocabolario(versione_casa: str | None, motivo: str = "") -> str:
+    """La riga da stampare, o `""` se non c'e' niente da dire.
+
+    PURA, come `componi_scarti`: la versione la porta chi chiama. La versione
+    del vocabolario si chiede al prodotto, che la dichiara
+    (`ha_vocabulary.VOCABULARY_HA_VERSION`); il confronto e' `piu_vecchia`,
+    lo stesso degli altri componenti -- Home Assistant usa CalVer, e
+    `2026.10.0` viene dopo `2026.9.1` anche se come stringa sta prima.
+
+    Senza una versione letta non si dichiara niente di piu' nuovo: si dice
+    che non si e' potuto guardare.
+    """
+    if motivo or not versione_casa:
+        return ("vocabolario delle classi di Home Assistant: non ho potuto leggere "
+                f"la versione della casa ({motivo or 'nessuna versione'})")
+    sys.path.insert(0, str(RADICE))
+    from hiris.app.home_space.ha_vocabulary import VOCABULARY_HA_VERSION
+    if not piu_vecchia(VOCABULARY_HA_VERSION, versione_casa):
+        return ""
+    return ("vocabolario delle classi di Home Assistant: verificato fino alla "
+            f"{VOCABULARY_HA_VERSION}, la casa e' alla {versione_casa} -- rileggi la "
+            "documentazione (hiris/app/home_space/ha_vocabulary.py)")
+
+
+def leggi_versione_casa() -> tuple[str | None, str]:
+    """`(versione, "")`, oppure `(None, motivo)`. NON SOLLEVA MAI, per la
+    stessa ragione di `interroga_i_registri`: gira dentro `git push`.
+
+    Passa da `scripts/casa.py`, l'unica porta degli attrezzi verso la casa;
+    `casa` esce con `SystemExit` quando la casa non e' dichiarata o non
+    risponde, e qui quell'uscita diventa un motivo.
+    """
+    sys.path.insert(0, str(RADICE / "scripts"))
+    try:
+        import casa
+        return json.loads(casa.ha_get("/api/config"))["version"], ""
+    except (SystemExit, Exception) as exc:
+        return None, str(exc) or type(exc).__name__
+
+
 # ── Il cancello, e l'aggiornamento ─────────────────────────────────────────
 
 def risposta_accettata(valore) -> bool:
@@ -480,6 +531,9 @@ def main(argv=None) -> int:
         return 0
 
     scarti = componi_scarti(letti, registri)
+    avviso = avviso_vocabolario(*leggi_versione_casa())
+    if avviso:
+        print(f"Da guardare, non blocca: {avviso}")
     if not scarti:
         return 0
 

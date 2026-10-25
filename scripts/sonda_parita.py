@@ -89,7 +89,6 @@ import casa
 from hiris.app.action.registry import ServiceRegistry
 from hiris.app.action.verification import verification
 from hiris.app.home_space import (
-    briefing,
     ha_vocabulary,
     historian,
     house_query,
@@ -206,8 +205,11 @@ def source(inputs: dict) -> dict:
     registro, l'assenza dagli stati, `state_class` vivo, l'appartenenza a
     `statistic_ids`. Le porte si CHIAMANO:
 
-    - **il digesto** dice «dentro»: e' falso per un'entita' disabilitata o
-      che negli stati non c'e' (sparita);
+    - **le visibili** (`House.visible_entities`, cio' che un attore guarda di
+      suo) dicono «dentro»: e' falso per un'entita' disabilitata o che negli
+      stati non c'e' (sparita). Fino al 25/10/2026 questa porta era il
+      digesto del nucleo (`briefing.digest_visible_entity_ids`), uscito
+      senza chiamanti con la sezione delle capacita';
     - **la verifica di un comando** nominato dal modello: quando dice che
       l'entita' non esiste, e' falso per ogni entita' del registro (trovato 2
       del piano, S-27);
@@ -221,17 +223,17 @@ def source(inputs: dict) -> dict:
       una che negli stati c'e'.
 
     Le entita' che stanno negli stati e non nel registro si chiedono alla
-    verifica, alle ricette e alla casa; il digesto non le conosce.
+    verifica, alle ricette e alla casa; le visibili non le conoscono.
     """
     registry_rows = {row["entity_id"]: row for row in inputs["registries"]["entita"]
                      if row.get("entity_id")}
     states = {row["entity_id"]: row for row in inputs["raw_states"] if row.get("entity_id")}
     statistic = inputs["statistic_ids"]
-    visible = briefing.digest_visible_entity_ids(inputs["home_space"])
     verify = _verifier(inputs)
     house = _house(inputs)
+    visible = set(house.visible_entities())
     cases = []
-    asked = {"digesto": 0, "verification": 0, "ricette": 0, "casa": 0}
+    asked = {"visibili": 0, "verification": 0, "ricette": 0, "casa": 0}
     not_askable = 0
     for key in sorted(set(registry_rows) | set(states)):
         row, live = registry_rows.get(key), states.get(key)
@@ -242,9 +244,9 @@ def source(inputs: dict) -> dict:
                  "statistiche": key in statistic}
         silent_for_other_reasons = bool(facts["disabled_by"]) or not facts["negli_stati"]
         if row is not None:
-            asked["digesto"] += 1
+            asked["visibili"] += 1
             if key in visible and silent_for_other_reasons:
-                cases.append({"id": key, "porta": "digesto", "dice": "dentro",
+                cases.append({"id": key, "porta": "visibili", "dice": "dentro",
                               "fatti": facts})
         asked["casa"] += 1
         said = (house.source(key) or {}).get("stato")
@@ -273,7 +275,7 @@ def source(inputs: dict) -> dict:
                                                  or silent_for_other_reasons):
                 cases.append({"id": key, "porta": "ricette", "dice": reason,
                               "fatti": facts})
-    return _verdict(cases, ["briefing.digest_visible_entity_ids",
+    return _verdict(cases, ["House.visible_entities",
                             "verification.verification", "Recipe.run",
                             "House.source"],
                     {"chieste": asked, "non_interrogabili_dalla_verifica": not_askable,

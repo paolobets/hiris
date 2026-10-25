@@ -40,13 +40,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from ..proxy.entity_cache import CAPABILITIES
 from .behavior import without_body
 from .ha_vocabulary import (
     ENTRY_BROKEN,
     ENTRY_SWITCHED_OFF,
     domain_of,
-    house_is_newer_than_vocabulary,
 )
 from .historian import home_space_zone, instant_epoch
 from .house import House
@@ -57,8 +55,8 @@ from .topology import (
     HIDDEN,
     PROBLEM_SEVERITY,
     SERVICE,
-    VISIBLE,
     id_marker,
+    is_pseudo_area,
     name_with_id,
     visibility,
 )
@@ -424,41 +422,6 @@ def _kept_behavior_notice(kept: dict | None, frame: dict | None) -> str:
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label, reason)
 
 
-def _vocabulary_freshness_line(frame: dict | None) -> str:
-    """Il pezzo duraturo di `ha_vocabulary`: quando questa casa supera la
-    versione di Home Assistant su cui il vocabolario delle classi
-    (`device_class`/`state_class`) e' stato verificato, lo si dice -- QUI,
-    dove la versione viva della casa e' gia' dichiarata (la riga
-    "Riferimento:" appena sopra), non in una seconda idea di "versione della
-    casa": stesso campo (`frame["versione_ha"]`), stesso posto.
-
-    Non e' un avviso e non sta in "Cosa non va in casa": una casa piu' nuova
-    del vocabolario non e' rotta, e' un fatto misurabile che invita a
-    rileggere la documentazione -- lo stesso principio per cui i `repairs`
-    diagnosticati da HA restano avvisi e non eccezioni altrove in questo
-    modulo. Tace quando non c'e' niente da dire (vocabolario ancora
-    aggiornato, o versione della casa non letta): un fatto falso ripetuto a
-    ogni turno sarebbe esattamente il rumore che questo digesto esiste per
-    non produrre.
-    """
-    # Chiamata `freshness`, non `note`: dentro `home_space/` quest'ultimo
-    # identificatore e' riservato dal glossario (docs/GLOSSARIO.md) a un
-    # altro significato -- le entita' GIA' CONOSCIUTE dentro il confronto di
-    # `topology.compare_with_home_assistant` -- e un secondo uso qui
-    # collide (verificato con `scripts/rinomina.py`, che lo riscriverebbe in
-    # `known`, sbagliando il senso: questo non e' un dizionario di entita'
-    # conosciute).
-    freshness = house_is_newer_than_vocabulary((frame or {}).get("versione_ha"))
-    if not freshness["vocabolario_piu_vecchio_della_casa"]:
-        return ""
-    return (
-        f"(Il vocabolario delle classi di Home Assistant che HIRIS importa è "
-        f"verificato fino alla versione {freshness['versione_vocabolario']}; "
-        f"questa casa è alla {freshness['versione_casa']} -- vale la pena "
-        f"rileggere la documentazione, non è un errore.)"
-    )
-
-
 def _reference_frame_lines(frame: dict | None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
@@ -499,9 +462,9 @@ def _reference_frame_lines(frame: dict | None) -> list[str]:
         identity.append(f"Home Assistant {frame['versione_ha']}")
     if identity:
         lines.append("Riferimento: " + ", ".join(identity) + ".")
-    freshness_line = _vocabulary_freshness_line(frame)
-    if freshness_line:
-        lines.append(freshness_line)
+    # La riga sul vocabolario delle classi («verificato fino alla X, questa
+    # casa e' alla Y») stava qui fino al 25/10/2026: era una nota per chi
+    # sviluppa, e la dice ora `scripts/verifica_componenti.py` al rilascio.
     unit = frame.get("sistema_unita") or {}
     if isinstance(unit, dict):
         # Ordine dichiarato da `_MEASUREMENT_NAMES`, non quello del dizionario che
@@ -548,6 +511,16 @@ def _home_space_lines(floors: list[dict],
             lines.append("  - (nessuna area)")
             continue
         for area in floor["aree"]:
+            if is_pseudo_area(area["id"]):
+                # «Senza area» e le sorelle non sono la mappa: sono cio' che
+                # sta fuori. I conti per tipo li dicevano fino al 25/10/2026
+                # (Fase 2 dello sprint «Il giro snello»); ora il totale, e
+                # come chiederle -- `search` le ritrova per id.
+                n = len(area["entita"])
+                detail = (f"{n} entità, chiedile a `search` con area «{area['id']}»"
+                          if n else "nessuna entità")
+                lines.append(f"  - {_tree_area_name(area)}: {detail}")
+                continue
             counts = _count_per_domain(area["entita"])
             if counts:
                 detail = ", ".join(
@@ -564,9 +537,10 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
                         unavailable: tuple[str, ...] = ()) -> bool:
     """Distingue «ho guardato ed e' tutto tranquillo» da «non ho guardato»:
     sono due cose diverse, e il nucleo deve dirle diversamente (CRITICAL
-    ②) -- dal 29/09/2026 in due punti: la riga «Stato non letto» delle
-    capacita' (`_capability_lines`) e l'avviso fra cio' che HIRIS ignora
-    (`compose()`). Tre modi per finirci dentro:
+    ②) -- dal 25/10/2026 in un punto solo, l'avviso fra cio' che HIRIS
+    ignora (`compose()`): fino ad allora anche la riga «Stato non letto»
+    della sezione delle capacita', uscita dal nucleo. Tre modi per finirci
+    dentro:
 
     - il chiamante lo dichiara esplicitamente (`reliable_state=False`) --
       per esempio una lettura iniziata ma non ancora conclusa;
@@ -612,227 +586,6 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     return True
 
 
-def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
-    """Gli ID delle entita' che un DIGESTO -- una vista PRINCIPALE, quella che
-    HIRIS dice senza che tu l'abbia chiesta -- puo' contare da sola: presenti
-    in anagrafe, non disabilitate, non nascoste, non di servizio
-    (`categoria` = `config`/`diagnostic`).
-
-    **Nata dal rilievo R1** (revisione del tratto v3.23.0..HEAD, 08/09/2026):
-    la sezione «Notevole adesso» (uscita dal nucleo il 29/09/2026) applicava
-    gia' queste tre regole scrivendole a mano riga per riga, e
-    `_capability_lines` -- la sezione «Cosa si puo' chiedere alle cose di
-    casa», nata nello stesso tratto -- non le riceveva affatto:
-    iterava lo specchio INTERO della cache (`live_mirror`), quindi contava le
-    nascoste, le entita' di servizio, e perfino un'entita' presente in cache
-    ma assente dall'anagrafe (mai arrivata, o rimossa da Home Assistant). Sulla
-    casa del proprietario: quattro luci nascoste in piu' e 113 `config` + 66
-    `diagnostic` che «Notevole adesso» non contava, contate qui -- lo stesso
-    testo che dava due totali diversi per la stessa parola. Una funzione sola
-    era l'unico modo per cui le due sezioni non potessero tornare a divergere
-    in silenzio: e' la terza fondamenta, consistenza, dentro un'unica pagina.
-    Dal 29/09/2026 nel nucleo la legge solo `_capability_lines`; fuori, dal
-    04/10/2026 (Tappa 3, Task 12), l'osservatore e il suo giro chiedono la
-    stessa regola a `House.visible_entities` (`topology.visibility_classes`).
-
-    **Pubblica dall'11/09/2026**, e per la stessa ragione per cui lo divento'
-    `historian.home_space_zone`: l'osservatore (`mind/observer.py`) applica la
-    STESSA legge quando compone la casa da mandare al modello -- e' la
-    decisione del proprietario del 10/09, *«le entita' di servizio e le
-    nascoste non entrano di default»*. Un nome privato attraversato da fuori,
-    o ricopiato, e' esattamente il modo in cui questa regola tornerebbe a
-    esistere in due esemplari."""
-    return frozenset(
-        e["id"] for e in home_space.get("entita", [])
-        if e.get("id") and visibility(e)[0] == VISIBLE)
-
-
-# Quante voci un elenco di capacita' puo' portare per esteso prima di
-# diventare un conteggio, e quanto puo' essere lungo il testo che ne esce.
-# **I due limiti insieme, non uno solo**: cinque nomi corti (`off`, `heat`,
-# `cool`, `auto`) sono l’informazione stessa -- e' li' che si legge «questo
-# termostato sa raffrescare»; cinque `entity_id` interi sono 120 caratteri di
-# elenco in un nucleo che dichiara di contare e non elencare. Misurati sulla
-# casa vera l'08/09/2026 (841 entita'): con questi due numeri la sezione costa
-# **1.096 caratteri** per 19 firme; senza compressione nessuna ne costerebbe
-# 2.036, e coi valori numerici dentro 2.497.
-_MAX_CAPABILITY_LIST_ITEMS = 5
-_MAX_CAPABILITY_LIST_CHARS = 44
-
-# Il tetto della sola sezione delle capacita'. **Non e' un gusto: e' il
-# ginocchio di una curva misurata.**
-#
-# Il nucleo di questa casa pesa gia' 5.676 caratteri su 6.000 e tronca gia'
-# (nove elementi notevoli esclusi -- corretto R4, revisione del tratto
-# v3.23.0..HEAD, 08/09/2026: questo commento diceva "7", `DEFAULT_CAP`
-# qui sotto diceva "nove" per la STESSA misura, 5.676 caratteri sulla STESSA
-# casa. «Nove» e' quello verificato riga per riga contro il nucleo vivo del
-# 3.23.0 -- vedi `.superpowers/sdd/tipi-di-entita/fetta-censore-report.md`
-# §A.2-A.3, che riconciliava una ricostruzione con la risposta reale della
-# casa PRIMA che la sezione capacita' esistesse, quando "GET /api/briefing"
-# stesso era ancora quella misura -- e "7" era rimasto scritto qui senza
-# essere aggiornato quando la misura piu' accurata l'ha corretto),
-# quindi qualunque aggiunta si paga con qualcos'altro: la domanda non e'
-# «quanto ci sta» ma «quanto vale cio' che entra, contro cio' che esce».
-# Le firme sono ordinate da quella che spiega piu' entita' alla piu' rara, e
-# le ultime costano quanto le prime spiegando quaranta volte di meno:
-#
-#     tetto   firme   entita' coperte (su 205)   caratteri
-#       400      8          180  (88%)               472
-#       600     12          196  (96%)               671
-#       800     16          201  (98%)               875
-#     1.100     19          205 (100%)             1.095
-#
-# **600**: il 96% delle entita' per il 61% del costo. Le sette firme che
-# restano fuori riguardano una o due entita' a testa -- un lettore
-# multimediale con due sorgenti, un selettore con sei opzioni -- e per quelle
-# `search` risponde meglio di quanto una riga aggregata possa fare. Il rinvio a
-# `search` e' scritto DENTRO la sezione: un elenco accorciato in silenzio
-# sarebbe un HIRIS che crede di sapere.
-#
-# Senza un tetto suo, una casa con molte firme rare mangerebbe tutto lo spazio
-# di «cio' che la casa fa gia' da sola» per elencare capacita' che riguardano
-# UNA entita' a testa -- il contrario di cio' per cui questa sezione esiste,
-# che e' la MAPPA.
-_CAPABILITY_SECTION_BUDGET = 600
-
-
-def _capability_value(value) -> str | None:
-    """Come si scrive il valore di una capacita' nel nucleo, o `None` quando
-    non si scrive affatto.
-
-    **Le enumerazioni si scrivono, i numeri no**, e la regola viene dalla spec
-    (§15.1): una firma aggregata e' MAPPA, non dettaglio. «Questa luce sa fare
-    colore» e «questa luce arriva a 9000 K» sono due frasi diverse -- la prima
-    e' cio' che il modello deve sapere di poter chiedere, la seconda e' cio'
-    che `search` gli dice quando guarda quella luce. Scrivere `9000` qui
-    costerebbe il doppio (2.497 caratteri contro 1.096, misurati) per
-    un’informazione che ha gia' una porta sua.
-
-    Il NOME del limite resta comunque nella riga: `min_temp` senza il suo
-    valore dice «di questo termostato si puo' cambiare il minimo», che e'
-    esattamente la mappa.
-    """
-    if not isinstance(value, (list, tuple)):
-        return None
-    items = [str(item) for item in value]
-    joined = ", ".join(items)
-    if len(items) <= _MAX_CAPABILITY_LIST_ITEMS and len(joined) <= _MAX_CAPABILITY_LIST_CHARS:
-        return f"[{joined}]"
-    return f"{len(items)} voci"
-
-
-def _capability_signature(capabilities: dict) -> tuple[tuple[str, str | None], ...]:
-    """La firma di un campo di manovra: i nomi in ordine, coi soli valori che
-    si scrivono.
-
-    **Ordinata per nome, sempre.** Due entita' identiche che consegnano gli
-    attributi in ordine diverso devono produrre la STESSA firma, o la sezione
-    cambierebbe testo senza che la casa sia cambiata -- e questa e' la parte
-    del contesto che il modello rilegge dalla cache a ogni turno (5,6 milioni
-    di token riletti contro 662 freschi su 105 turni, misurato). Un testo che
-    balla a ogni composizione butterebbe quel rapporto.
-    """
-    return tuple(sorted((name, _capability_value(value))
-                        for name, value in capabilities.items()
-                        if isinstance(name, str)))
-
-
-def _capability_lines(attributes: dict[str, dict],
-                      unreliable_state: bool,
-                      visible_entity_ids: frozenset[str]) -> tuple[list[str], list[int], bool]:
-    """Cosa si puo' CHIEDERE alle cose di questa casa, aggregato per firma.
-
-    Restituisce `(righe, pesi, aggregabile)`. I pesi sono paralleli alle righe:
-    quante entita' ogni riga rappresenta -- serve al taglio, che dichiara
-    ENTITA' escluse e non righe (stessa disciplina dei conteggi della casa).
-    L'ultimo e' falso quando la sezione porta una DICHIARAZIONE invece delle
-    capacita' (lo stato non e' stato letto, oppure nessuna entita' ne
-    dichiara), e allora non entra nell'ordine di taglio: tagliare la frase
-    «non ho guardato» ricrea esattamente il silenzio che quella frase esiste
-    per rompere. Fino al 14/10/2026 c'era un secondo caso, `attributes`
-    `None` («il chiamante non ha guardato»): gli attributi vengono dallo
-    specchio della casa del turno (N158-2), che e' sempre un dizionario.
-
-    **Perche' questa sezione esiste.** Dalla 3.23.0 HIRIS sa dire che
-    l’Alberello fa colore fra 1500 e 9000 K -- ma solo se il modello guarda
-    quella entita'. Il nucleo non portava niente delle capacita', quindi il
-    modello sapeva rispondere e non sapeva **di poter chiedere**. Una firma
-    aggregata e' la mappa che glielo dice: cinque righe raccontano tutte e
-    cinquanta le luci della casa.
-
-    **Perche' aggregata e non per entita'.** Le capacita' sono CONDIVISE, i
-    valori no: 841 entita' collassano in 19 firme (misurato). I valori
-    correnti non collasserebbero -- `current_temperature` e' diverso per ogni
-    termostato per definizione -- e infatti restano fuori dal nucleo, dove
-    sono sempre stati.
-
-    `visible_entity_ids`: senza, la funzione itererebbe `attributes` -- lo
-    specchio INTERO della cache -- e conterebbe nascoste, entita' di servizio
-    (`categoria`) e perfino entita' presenti in cache ma assenti
-    dall'anagrafe. Vedi `digest_visible_entity_ids`, l'unica fonte di questa
-    regola."""
-    if unreliable_state:
-        return ([
-            ("Stato non letto (o dichiarato non attendibile): non si può dire cosa "
-            "le cose di questa casa sanno fare -- non è lo stesso di 'non sanno "
-            "fare nientè.")
-        ], [1], False)
-    counted: dict[tuple[str, tuple], int] = {}
-    for entity_id, baskets in attributes.items():
-        if entity_id not in visible_entity_ids:
-            continue
-        if not isinstance(baskets, dict):
-            continue
-        capabilities = baskets.get(CAPABILITIES)
-        if not isinstance(capabilities, dict) or not capabilities:
-            continue
-        key = (domain_of(entity_id), _capability_signature(capabilities))
-        counted[key] = counted.get(key, 0) + 1
-    if not counted:
-        return (["Nessuna entità dichiara un campo di manovra."], [1], False)
-    lines: list[str] = []
-    weights: list[int] = []
-    spent = 0
-    left_out = 0
-    # Prima le firme che spiegano PIU' entita': con un tetto che morde, cio'
-    # che sopravvive dev'essere cio' che copre di piu'. A parita' di
-    # conteggio l’ordine e' quello del nome, non quello dell’hash: due
-    # composizioni della stessa casa devono dare lo stesso testo.
-    for (domain, signature), count in sorted(
-            counted.items(), key=lambda item: (-item[1], item[0][0], item[0][1])):
-        described = ", ".join(name if value is None else f"{name}={value}"
-                              for name, value in signature)
-        line = f"- {count} {_domain_name(domain, count)}: {described}"
-        if spent + len(line) + 1 > _CAPABILITY_SECTION_BUDGET:
-            left_out += count
-            continue
-        spent += len(line) + 1
-        lines.append(line)
-        weights.append(count)
-    if left_out:
-        # Il taglio della sezione si dichiara DENTRO la sezione, come il
-        # taglio del nucleo si dichiara dentro il nucleo: un elenco accorciato
-        # in silenzio e' un HIRIS che crede di sapere.
-        #
-        # **Il peso e' `left_out`, non zero** (R2, revisione del tratto
-        # v3.23.0..HEAD, 08/09/2026). Questa riga sta in CODA, e `compose()`
-        # taglia il pool "capacita'" dalla coda (`_pop`, "l'ultima voce e' la
-        # meno prioritaria"): se il tetto morde ANCHE questa sezione, questa
-        # riga e' la prima a cadere. Con peso zero cadeva senza che
-        # `excluded_per_pool["capacita"]` salisse di niente -- le `left_out`
-        # entita' che dichiarava sparivano da OGNI conteggio, testo e avviso
-        # insieme: misurato, con 60 firme rare e un tetto stretto l'avviso
-        # diceva "7 entita'" quando erano davvero 53. Col peso vero, se questa
-        # riga cade il taglio la conta come le firme vere che cadono con lei:
-        # l'avviso in fondo al nucleo (`_cut_notice`) resta giusto in
-        # ENTRAMBI i casi, che il rinvio sopravviva o no.
-        lines.append(f"- (altre {left_out} entità con capacità rare non elencate qui: "
-                     "chiedile con `search`.)")
-        weights.append(left_out)
-    return (lines, weights, True)
-
-
 def _behavior_lines(behavior: list[dict],
                     unknown: set[str] = frozenset()) -> tuple[list[str], list[int]]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
@@ -842,7 +595,7 @@ def _behavior_lines(behavior: list[dict],
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga.
 
-    Restituisce `(righe, pesi)` come `_capability_lines`, e il peso lo decide
+    Restituisce `(righe, pesi)`, e il peso lo decide
     QUI perche' e' qui che si sa cosa una riga rappresenta (audit delle
     fondamenta, rilievo 4). Fino all'08/09/2026 i pesi si costruivano dal
     di fuori con `[1] * len(righe)`: una regola scritta lontano da chi la
@@ -1454,6 +1207,13 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
 #: chiede a `search`), e il comportamento si taglia DOPO le capacita', cioe'
 #: esce intero finche' c'e' spazio.
 #:
+#: **Dal 25/10/2026 le capacita' non ci sono piu'** (Fase 2 dello sprint «Il
+#: giro snello», decisione di Paolo): misurato quel giorno sulla casa vera, il
+#: nucleo pesava 6.613 caratteri, troncato, con la sezione ridotta alla sola
+#: intestazione (57 entita' tagliate su 57) e 11 voci di comportamento fuori.
+#: Le capacita' di un'entita' le da' `search` nel dettaglio (`comandi`,
+#: `capacita`, `limiti`); il posto che liberano va al comportamento.
+#:
 #: **Cosa NON risolve, e va detto qui perche' non si scopra fra sei mesi**: un
 #: tetto fisso non impedisce che una casa con piu' automazioni, o la PROSSIMA
 #: sezione aggiunta, torni a tagliare il comportamento. Non c'e' una riserva
@@ -1481,11 +1241,12 @@ def compose(behavior: list[dict], memories: list[dict],
     puo' mentire su cio' che il testo non contiene, perche' e' costruito
     dagli stessi tagli che il testo dichiara -- vedi `test_briefing.py`.
 
-    L'ordine, deciso e fisso: 1) la casa (conteggi), 2) cosa si puo' chiedere
-    alle cose di casa, 3) cio' che la casa fa gia' da sola, 4) cio' che le
-    persone hanno detto, 5) cio' che HIRIS ignora (incluso l'eventuale
-    taglio). Fra la casa e le capacita', quando ci sono, i guasti che Home
-    Assistant ha diagnosticato.
+    L'ordine, deciso e fisso: 1) la casa (conteggi), 2) cio' che la casa fa
+    gia' da sola, 3) cio' che le persone hanno detto, 4) cio' che HIRIS
+    ignora (incluso l'eventuale taglio). Fra la casa e il resto, quando ci
+    sono, i guasti che Home Assistant ha diagnosticato. Fino al 25/10/2026
+    dopo la casa c'era «cosa si puo' chiedere alle cose di casa»: e' uscita
+    (vedi `DEFAULT_CAP`).
 
     **Il nucleo porta cio' che e' STABILE, non lo stato del momento** (spec
     «una porta sola per la casa» §5): una fotografia di cio' che e' acceso o
@@ -1494,13 +1255,7 @@ def compose(behavior: list[dict], memories: list[dict],
 
     **Dalla casa del turno** (`house`, N158-2, Chiusura, 14/10/2026: fino ad
     allora arrivavano anche come argomenti, accanto alla casa da cui il
-    chiamante li prendeva) vengono l'anagrafe, i registri caduti, lo stato e
-    gli attributi:
-
-    gli attributi (`house.mirror.attributes`) sono le ceste degli attributi
-    vivi, entita' per entita'. Servono a una cosa sola qui dentro: la sezione
-    «cosa si puo' chiedere», che aggrega le CAPACITA' (mai i valori correnti
-    -- vedi `_capability_lines`).
+    chiamante li prendeva) vengono l'anagrafe, i registri caduti e lo stato.
 
     I registri caduti (`house.unavailable`) sono quelli dell'anagrafe che non
     hanno risposto all'ultima lettura (`HomeSpace.unavailable()`). Senza, ne' "La
@@ -1558,15 +1313,15 @@ def compose(behavior: list[dict], memories: list[dict],
     sostituito il comportamento, il nucleo lo dice con la data della replica
     che porta, invece di presentarla come fresca. Vedi `_kept_behavior_notice`.
 
-    Quando serve tagliare per stare sotto `cap`, si tagliano prima le
-    capacita', poi cio' che la casa fa da sola, poi -- fino a una riserva
+    Quando serve tagliare per stare sotto `cap`, si taglia prima cio' che la
+    casa fa da sola, poi -- fino a una riserva
     minima che non si tocca mai (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT
     ⑥) -- i conteggi della casa, e per ultimi i ricordi. Il PERCHE' di quest'ordine e' nel
     docstring del modulo: non e' "cosa e' recuperabile" (lo e' tutto), e'
     "cosa il modello perde la possibilita' di sapere che esiste".
     """
     home_space, unavailable = house.home_space, house.unavailable
-    state, attributes = house.mirror.state, house.mirror.attributes
+    state = house.mirror.state
     notices: list[str] = []
 
     # DUE ELENCHI, non uno, e la differenza e' quella che ha fatto sbagliare
@@ -1622,7 +1377,7 @@ def compose(behavior: list[dict], memories: list[dict],
     # Le NASCOSTE: fuori dalle gestioni, dentro la conoscenza.
     #
     # Un'entita' nascosta in Home Assistant non entra nei conteggi di «La
-    # casa» ne' nelle capacita' (`digest_visible_entity_ids`): e' una scelta
+    # casa»: e' una scelta
     # esplicita dell'utente e il digesto la rispetta. (Fino al 29/09/2026 il
     # posto da cui restava fuori era soprattutto «Notevole adesso», uscita
     # dal nucleo quel giorno.) Ma «non la annuncio» e «non so che
@@ -1643,15 +1398,16 @@ def compose(behavior: list[dict], memories: list[dict],
             "riporta se gliele chiedi (`includi_nascoste`).")
 
     # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
-    # legge delle nascoste due righe sopra, per lo stesso dato che
-    # `digest_visible_entity_ids` gia' filtra (`e.get("categoria")`, "config"
-    # o "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
+    # legge delle nascoste due righe sopra, per lo stesso dato che la regola
+    # del fuori (`topology.visibility`) gia' filtra (`categoria` "config" o
+    # "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
     # digesto le escludeva in silenzio, e alla domanda «quante sono le
     # entita' di servizio?» HIRIS non aveva un numero -- solo il dettaglio
     # di un'entita' (che porta `categoria`, `render.py::render_entity`)
     # poteva dirlo, una per una. A differenza delle nascoste, «La casa» le
-    # CONTA (`hierarchy()` non guarda `categoria`): restano fuori dalle
-    # capacita', e da `search` finche' non le si chiede.
+    # CONTA (`hierarchy()` non guarda `categoria`): restano fuori da
+    # `search` finche' non le si chiede. Fino al 25/10/2026 restavano fuori
+    # anche dalle capacita', una sezione uscita quel giorno.
     #
     # `nascoste` e `entita' di servizio` si contano per CLASSE
     # (`topology.visibility`, D7 del 03/10/2026): una disabilitata e nascosta
@@ -1669,9 +1425,8 @@ def compose(behavior: list[dict], memories: list[dict],
         # un giro a vuoto che nasconde perche' non serve).
         notices.append(
             f"{n} entità di servizio (config/diagnostic) in Home Assistant: "
-            "fuori dalle capacità del nucleo "
-            "perché l’integrazione le marca così, ma esistono e `search` le "
-            "riporta se gliele chiedi (`includi_servizio`).")
+            "l’integrazione le marca così, e `search` le riporta solo se "
+            "gliele chiedi (`includi_servizio`).")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
     # nucleo applica a trecento entita' (vedi il docstring del modulo),
@@ -1744,9 +1499,8 @@ def compose(behavior: list[dict], memories: list[dict],
     home_space_lines = reference_frame_lines + _home_space_lines(floors, device_name_lookup)
 
     # Lo stato NON entra nel nucleo (dal 29/09/2026), ma resta vero che uno
-    # stato non letto non e' uno stato tranquillo (CRITICAL ②): lo dicono la
-    # riga «Stato non letto» delle capacita' e questo avviso, entrambi fuori
-    # dal taglio. Senza, chi legge «Cosa non va in casa» vuota
+    # stato non letto non e' uno stato tranquillo (CRITICAL ②): lo dice
+    # questo avviso, fuori dal taglio. Senza, chi legge «Cosa non va in casa» vuota
     # concluderebbe «va tutto bene» proprio quando nessuno ha guardato.
     unreliable = _unreliable_state(home_space, state, reliable_state, unavailable)
     if unreliable:
@@ -1754,8 +1508,6 @@ def compose(behavior: list[dict], memories: list[dict],
             "lo stato delle entità non è stato letto, o è stato dichiarato non "
             "attendibile: il nucleo non dice che va tutto bene, dice che non si "
             "è potuto guardare.")
-    capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
-        attributes, unreliable, digest_visible_entity_ids(home_space))
     behavior_lines, behavior_weights = _behavior_lines(behavior, unknown)
     memory_lines = _memory_lines(memories)
 
@@ -1773,55 +1525,31 @@ def compose(behavior: list[dict], memories: list[dict],
     # L'ordine di STAMPA e' fisso (vedi docstring); l'ordine di TAGLIO e'
     # diverso e definito piu' sotto (`cut_order`).
     home_space_section = ("## La casa", home_space_lines)
-    # DOVE va, e perche' qui: subito dopo la casa (e i suoi guasti) e prima di
-    # «cosa fa da sola». L'ordine di lettura e': com'e' fatta -> cosa e' rotto
-    # -> **cosa le si puo' chiedere** -> cosa fa gia' da sola. Le ultime due
-    # sono la stessa domanda vista dalle due parti (cosa puo' fare qualcuno,
-    # cosa fa gia' nessuno), e chi legge le trova accanto. Piu' in alto
-    # avrebbe spinto giu' la mappa delle stanze, che e' la chiave di lettura
-    # di tutti i nomi che vengono dopo.
-    capability_section = ("## Cosa si può chiedere alle cose di casa", capability_lines)
     behavior_section = ("## Ciò che la casa fa già da sola", behavior_lines)
     memory_section = ("## Ciò che le persone hanno detto", memory_lines)
 
-    print_order = [home_space_section]
-    # Zero righe significa «il chiamante non ha guardato gli attributi», e
-    # allora la sezione non esiste: l'intestazione da sola direbbe «ho
-    # guardato e non c'e' niente», che e' l'altro fatto.
-    if capability_lines:
-        print_order.append(capability_section)
-    print_order += [behavior_section, memory_section]
+    print_order = [home_space_section, behavior_section, memory_section]
 
     # (chiave, righe, pesi, riserva minima) -- l'ordine qui e' l'ordine di
-    # taglio: dal meno utile al piu' prezioso. Prima le capacita', poi cio'
-    # che la casa fa da sola, poi -- fino alla riserva minima, MAI oltre
+    # taglio: dal meno utile al piu' prezioso. Prima cio' che la casa fa da
+    # sola, poi -- fino alla riserva minima, MAI oltre
     # (`_MIN_HOME_SPACE_LINES_RESERVE`, IMPORTANT ⑥) -- i conteggi della casa:
     # e' la mappa che costa meno per riga e serve di piu' per orientarsi. I
     # ricordi restano gli ultimi in assoluto (vedi il docstring del modulo
     # sul perche' non e' "recuperabilita'").
     #
-    # **Le capacita' PRIMA del comportamento** (29/09/2026; fino ad allora
-    # l'ordine era l'inverso). La ragione di allora era la densita': una riga
-    # di capacita' spiega da 4 a 73 entita' (19 firme per 841, misurato
-    # l'08/09), una voce di comportamento UNA automazione. Ma la densita' non
-    # misura quanto costa perdere la riga: la capacita' tagliata e' una mappa
-    # -- chi la vuole la chiede a `search` sull'entita', e la sezione lo dice
-    # gia' da se' per le firme rare --, la voce di comportamento tagliata e'
-    # un'automazione che il modello non sa che esiste, ed era il caso misurato
-    # il 29/09: 12 voci su 17, cinque automazioni fuori, al tetto vero.
-    # Entrambi i tagli si dichiarano, quindi nessuno dei due sparisce in
-    # silenzio.
+    # Fino al 25/10/2026 prima del comportamento si tagliavano le capacita'
+    # (dal 29/09/2026): una voce di comportamento tagliata e' un'automazione
+    # che il modello non sa che esiste. Quel giorno la sezione e' uscita (vedi
+    # `DEFAULT_CAP`), e il posto che occupava va al comportamento.
     #
     # **Prima della casa, sempre**: la mappa delle stanze e' la sezione piu'
     # economica per riga e la sola da cui il modello sappia quali stanze
-    # esistono. Un nucleo che guadagna le capacita' e perde un'area e' un
+    # esistono. Un nucleo che guadagna un'automazione e perde un'area e' un
     # peggioramento, e questo posto nell'ordine e' cio' che lo rende
-    # impossibile: capacita' e comportamento si esauriscono per intero prima
-    # che una riga di conteggio venga toccata.
-    cut_order: list[tuple[str, list[str], list[int], int]] = []
-    if capabilities_are_countable:
-        cut_order.append(("capacita", capability_lines, capability_weights, 0))
-    cut_order += [
+    # impossibile: il comportamento si esaurisce per intero prima che una
+    # riga di conteggio venga toccata.
+    cut_order: list[tuple[str, list[str], list[int], int]] = [
         ("comportamento", behavior_lines, behavior_weights, 0),
         ("casa", home_space_lines, home_space_weights, home_space_reserve),
         ("ricordi", memory_lines, memory_weights, 0),
@@ -1834,8 +1562,6 @@ def compose(behavior: list[dict], memories: list[dict],
     # («5 voci non incluse» -- e quali? come?). `search` le elenca per genere,
     # automazioni e script separati (`home_space/tools.py`, filtro `genere`).
     cut_labels = [
-        ("capacita", "entità di cui il nucleo non dice cosa sa fare",
-                      "entità di cui il nucleo non dice cosa sanno fare"),
         ("comportamento",
          ("voce di comportamento non inclusa (le elencano "
           "`search(genere=\"automazione\")` e `search(genere=\"script\")`)"),
@@ -1852,10 +1578,9 @@ def compose(behavior: list[dict], memories: list[dict],
 
     def _pop(pool_name: str, pool_lines: list[str], pool_weights: list[int], reserve: int) -> None:
         # IMPORTANT ⑤: si conta il PESO (quante entita'/elementi la riga
-        # rappresenta davvero -- per una firma di capacita' puo' essere
-        # molto piu' di 1), non la riga. Sottostimare l'escluso di nove
-        # volte e' peggio di non dichiararlo affatto: sembra onesto e non
-        # lo e'.
+        # rappresenta davvero, che puo' essere piu' di 1), non la riga.
+        # Sottostimare l'escluso di nove volte e' peggio di non dichiararlo
+        # affatto: sembra onesto e non lo e'.
         nonlocal truncated
         pool_lines.pop()  # dalla coda: l'ultima voce e' la meno prioritaria
         weight = pool_weights.pop()
@@ -1872,7 +1597,7 @@ def compose(behavior: list[dict], memories: list[dict],
                 pool_lines.pop()
                 pool_weights.pop()
 
-    # IMPORTANT ④: il budget per casa/capacita'/comportamento/ricordi non e'
+    # IMPORTANT ④: il budget per casa/comportamento/ricordi non e'
     # `tetto - _GAP_SECTION_RESERVE` alla cieca. Se le lacune GIA' note
     # (registri caduti, corpi mancanti, problemi di comportamento, stato
     # inaffidabile...) pesano gia' piu' della riserva stimata, il budget per
@@ -1932,13 +1657,8 @@ def compose(behavior: list[dict], memories: list[dict],
     # dichiarato in piu'. Si scende fino alla riserva minima della mappa;
     # oltre quella, mai (IMPORTANT ⑥): sforare il tetto in modo dichiarato
     # e' meno grave che svuotare anche la mappa in silenzio.
-    #
-    # Le capacita' prima del comportamento anche qui, per la stessa ragione
-    # scritta sopra `cut_order`.
-    safety_pools = [("ricordi", memory_lines, memory_weights, 0)]
-    if capabilities_are_countable:
-        safety_pools.append(("capacita", capability_lines, capability_weights, 0))
-    safety_pools += [
+    safety_pools = [
+        ("ricordi", memory_lines, memory_weights, 0),
         ("comportamento", behavior_lines, behavior_weights, 0),
         ("casa", home_space_lines, home_space_weights, home_space_reserve),
     ]

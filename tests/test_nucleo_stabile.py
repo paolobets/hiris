@@ -32,16 +32,15 @@ def test_il_comportamento_esce_intero_quando_c_e_spazio():
     assert all(f"automation.a{i}" in testo for i in range(17))
 
 
-def test_quando_il_tetto_morde_cadono_le_capacita_non_le_automazioni():
-    """La forma che il tetto ha sulla casa vera: una mappa delle capacita'
-    piena (150 firme, il tetto proprio della sezione a 600 caratteri) e
-    diciassette automazioni dai nomi lunghi. Misurato: senza tetto il nucleo
-    pesa 6.881 caratteri, al tetto di 6.800 il taglio morde -- e morde le
-    capacita' (145 entita' senza), non una sola automazione.
+def test_il_nucleo_non_dice_piu_cosa_si_puo_chiedere_alle_cose():
+    """«Cosa si può chiedere alle cose di casa» e' uscita il 25/10/2026 (Fase
+    2 dello sprint «Il giro snello», decisione di Paolo): sulla casa vera il
+    taglio la riduceva gia' alla sola intestazione, e le capacita' di
+    un'entita' le da' `search` nel dettaglio. Con lei e' uscito dal taglio il
+    suo avviso («cosa sanno fare»).
 
-    Mutazione ESEGUITA: in `compose()`, rimettere `("comportamento", ...)`
-    PRIMA di `("capacita", ...)` in `cut_order` (col `DEFAULT_CAP` a
-    4.000, la forma dichiarata dal piano) -- rossa."""
+    Mutazione ESEGUITA: rimessa in `print_order` una sezione
+    `("## Cosa si può chiedere alle cose di casa", ["- 150 luci"])` -- rossa."""
     from hiris.app.proxy.entity_cache import CAPABILITIES
 
     luci = [{"id": f"light.l{n}", "nome": f"L{n}", "area_id": "sala",
@@ -50,12 +49,24 @@ def test_quando_il_tetto_morde_cadono_le_capacita_non_le_automazioni():
     casa = dict(_CASA, entita=_CASA["entita"] + luci)
     attributi = {f"light.l{n}": {CAPABILITIES: {"effect_list": [f"effetto{n}"]}}
                  for n in range(150)}
-    comportamento = [{"id": f"automation.a{i}", "tipo": "automazione",
-                      "nome": f"Automazione {i} " + "n" * 250} for i in range(17)]
-    testo, riepilogo = compose(casa, comportamento, _RICORDI, _STATO, attributes=attributi)
-    assert riepilogo["truncated"] is True, "la prova presuppone che il tetto morda"
-    assert all(f"automation.a{i})" in testo for i in range(17))
-    assert "cosa sanno fare" in " ".join(riepilogo["notices"])
+    testo, riepilogo = compose(casa, _COMPORTAMENTO, _RICORDI, _STATO,
+                               attributes=attributi, cap=100_000)
+    assert "Cosa si può chiedere" not in testo
+    assert "cosa sanno fare" not in " ".join(riepilogo["notices"])
+
+
+def test_il_tetto_di_default_e_quello_che_compose_usa_davvero():
+    """Un default dichiarato in una costante e non usato nella firma sarebbe
+    una decisione scritta due volte. Portata qui il 25/10/2026 da
+    `test_briefing_capabilities.py`, uscito con la sezione.
+
+    Mutazione ESEGUITA: `cap: int = 6000` nella firma di `compose()` -- rossa."""
+    import inspect
+
+    from hiris.app.home_space import briefing
+
+    assert (inspect.signature(briefing.compose).parameters["cap"].default
+            == briefing.DEFAULT_CAP)
 
 
 def test_la_riga_del_comportamento_non_ripete_il_genere():
@@ -88,3 +99,45 @@ def test_gaps_mention_search():
     testi che nominavano `view`; la prova tiene la porta chiusa.)"""
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
     assert "`view`" not in testo
+
+
+def test_senza_area_dice_il_totale_e_come_chiederle():
+    """«Senza area» non e' la mappa, e' cio' che sta fuori: dal 25/10/2026 il
+    nucleo ne dice il totale e come ritrovarle (`search` con l'id della
+    pseudo-area, che `_place_matches` riconosce), non i conti per tipo.
+
+    Mutazione ESEGUITA: tolto il ramo `is_pseudo_area` in `_home_space_lines`
+    -- rossa (tornano «2 luci, 1 sensore»)."""
+    fuori = [{"id": f"light.fuori{n}", "nome": f"F{n}", "area_id": None,
+              "dispositivo_id": None, "classe": None, "unita": None,
+              "disabilitata": 0} for n in range(2)]
+    fuori.append({"id": "sensor.fuori", "nome": "S", "area_id": None,
+                  "dispositivo_id": None, "classe": None, "unita": None,
+                  "disabilitata": 0})
+    casa = dict(_CASA, entita=_CASA["entita"] + fuori)
+    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, _STATO)
+    riga = next(r for r in testo.splitlines() if "Senza area" in r)
+    assert "3 entità" in riga and "«__senza_area__»" in riga, riga
+    assert "luci" not in riga and "sensor" not in riga, riga
+
+
+def test_l_id_che_il_nucleo_suggerisce_search_lo_ritrova():
+    """Il suggerimento della riga qui sopra e' vero solo se la selezione di
+    `search` lo capisce: si chiede alla casa, non si suppone. Ritrova le tre
+    di «Senza area» e nessun'altra.
+
+    Mutazione ESEGUITA: in `_place_matches` confrontato solo il nome
+    dell'area (non l'id) -- rossa, zero righe."""
+    from hiris.app.home_space.house import House
+    from hiris.app.home_space.house_query import HouseFilters
+    from hiris.app.home_space.topology import Mirror
+
+    fuori = [{"id": f"light.fuori{n}", "nome": f"F{n}", "area_id": None,
+              "dispositivo_id": None, "classe": None, "unita": None,
+              "disabilitata": 0} for n in range(3)]
+    casa = dict(_CASA, entita=_CASA["entita"] + fuori)
+    house = House(casa, Mirror(state=_STATO, attributes={}), ())
+    scelte = house.select(HouseFilters(area="__senza_area__"), ("entita",), None,
+                          now=0.0).entities
+    assert sorted(entry["id"] for entry, _a, _w in scelte) == [
+        "light.fuori0", "light.fuori1", "light.fuori2"]

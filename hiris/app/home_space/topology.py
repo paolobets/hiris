@@ -984,7 +984,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 
     Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
     lo stesso `area["entita"]`, non conta le nascoste nei conteggi per
-    dominio. La stessa regola vale in `briefing.digest_visible_entity_ids`.
+    dominio. La stessa regola vale in `House.visible_entities`.
     """
     device_loaded = "dispositivi" not in unavailable
     device_area = device_areas(home_space.get("dispositivi"))
