@@ -23,4 +23,4 @@ pytest-aiohttp>=1.1.1,<2.0.0
 # toccato una riga. Il tetto sale solo dopo la misura: la 0.17.0 l'ha avuta il
 # 13/10/2026 (Chiusura, F5b; il cambio del default e' scritto in
 # `pyproject.toml`, accanto a `extend-select`).
-ruff>=0.17.0,<0.18.0
+ruff>=0.17.2,<0.18.0
