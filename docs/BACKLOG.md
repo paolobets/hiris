@@ -3749,7 +3749,7 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 
 ## Usciti
 
-### ~~`release.py` scrive la versione sulle voci uscite prima del loro rilascio~~ — **USCITA col prossimo rilascio** — aperta il 15/10/2026
+### ~~`release.py` scrive la versione sulle voci uscite prima del loro rilascio~~ — **USCITA con la v3.82.0** — aperta il 15/10/2026
 
 `fatta il 22/10/2026 (Fase 0.4 dello sprint «Il giro snello e il Brain leggibile»): al passo 5b, dopo il registro, `release.py` chiede a `registro.release_backlog` di riscrivere nei soli titoli (`###` e `####`) «USCITA col prossimo rilascio» in «USCITA con la vX.Y.Z», lo dice nell'output (in prova nomina le voci senza scrivere) e mette `docs/BACKLOG.md` nel commit del rilascio. Tre prove in `tests/test_release_script.py` con un BACKLOG finto, quattro mutazioni eseguite; un BACKLOG finto per tutte le prove del file, perche' una prova che patchava solo il registro ha scritto il BACKLOG vero`
 
@@ -3770,7 +3770,7 @@ la cita nel testo, e il titolo non porta la parola «USCITA» apposta, perche' `
 leggerebbe come chiusa. Una prova con un BACKLOG
 finto ne difende il comportamento, con la mutazione eseguita. Nessun documento.
 
-### ~~Il pre-push scatta sul bump di una versione già rilasciata~~ — **USCITA col prossimo rilascio** — aperta il 21/10/2026
+### ~~Il pre-push scatta sul bump di una versione già rilasciata~~ — **USCITA con la v3.82.0** — aperta il 21/10/2026
 
 `fatta il 22/10/2026 (Fase 0.3 dello sprint «Il giro snello e il Brain leggibile»): `.githooks/pre-push` guarda commit per commit, con `git rev-list` e l'esclusione `^refs/remotes/<remote>/master`; senza quel ref non esclude niente. Tre prove in `tests/test_verifica_componenti.py` con un repo e un remote finti: la prima e' rossa sull'hook di master @ 46039704, e due mutazioni eseguite`
 
