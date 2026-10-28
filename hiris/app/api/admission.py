@@ -192,7 +192,6 @@ ADMISSION: tuple[Route, ...] = (
     Route("GET", "/api/mind/watching", "leggere"),
     Route("GET", "/api/mind/report", "leggere"),
     Route("GET", "/api/mind/analysis", "leggere"),
-    Route("GET", "/api/mind/knowledge", "leggere"),
     # Configurare HIRIS: le impostazioni, i modelli, la memoria corretta a
     # mano, i consumi azzerati, l'obiettivo del cervello.
     Route("PUT", "/api/chat-settings", "amministrare"),
@@ -201,7 +200,13 @@ ADMISSION: tuple[Route, ...] = (
     Route("DELETE", "/api/memories/{id}", "amministrare"),
     Route("POST", "/api/usage/reset", "amministrare"),
     Route("POST", "/api/mind/objective", "amministrare"),
-    # Il sapere corretto a mano (spec 2026-09-26 §3, decisione 6).
+    # Il sapere corretto a mano (spec 2026-09-26 §3, decisione 6), e la sua
+    # lettura (S.7 dello sprint «il giro snello», decisione del proprietario
+    # del 28/10/2026): la pagina che lo legge e' la stessa che lo corregge, e
+    # un servizio firmato che puo' solo leggere non vedeva il modulo ma
+    # leggeva tutto cio' che il proprietario aveva corretto. Riservata come la
+    # scrittura, come le letture di Costruzioni e Proposte.
+    Route("GET", "/api/mind/knowledge", "amministrare"),
     Route("POST", "/api/mind/judgment", "amministrare"),
     Route("POST", "/api/mind/scope", "amministrare"),
     # La pagina Costruzioni e le Proposte, letture comprese (spec 2026-09-26

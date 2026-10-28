@@ -167,38 +167,45 @@ window.HirisWatcherLavoro = (function () {
       'padding:8px;border-radius:8px;font:inherit;overflow-wrap:anywhere';
     body.appendChild(campo);
 
-    var esito = el('p', 'sc-desc');
+    var esito = S.outcomeSlot();
+    if (obiettivoSalvato) {
+      /* Il salvataggio ricarica la scheda, e l'esito lo dice la scheda
+         nuova: senza, il «Salvo…» spariva nel nulla (ux-ui-specialist). */
+      obiettivoSalvato = false;
+      S.sayOutcome(esito, 'Obiettivo salvato.');
+    }
     var salva = el('button', 'btn btn-sm', 'Salva l’obiettivo');
     salva.type = 'button';
     salva.addEventListener('click', function () {
       salva.disabled = true;
-      esito.textContent = 'Salvo…';
+      S.sayOutcome(esito, 'Salvo…');
       write('api/mind/objective', { testo: campo.value }).then(function (occurrence) {
         salva.disabled = false;
         if (occurrence.status === 400) {
           /* **Il campo NON si svuota e la scheda non si ricarica.** Il
              proprietario ha appena scritto una frase: perderla sarebbe il
              danno peggiore dei due. */
-          esito.textContent = (occurrence.corpo && occurrence.corpo.error)
-            || 'Questo obiettivo non si può scrivere.';
+          S.sayNotSaved(esito, closeSentence((occurrence.corpo && occurrence.corpo.error)
+            || 'questo obiettivo non si può scrivere'));
           return;
         }
         if (!occurrence.ok) {
-          esito.textContent = 'Non è stato possibile salvare. Riprova.';
+          S.sayNotSaved(esito, 'la risposta è un errore. Riprova.');
           return;
         }
         if (occurrence.corpo && occurrence.corpo.scritto === false) {
           /* `scritto: false` vuol dire «c'era già», non «non ha funzionato»:
              dirlo come un guasto insegnerebbe a diffidare dei guasti veri. */
-          esito.textContent = 'L’obiettivo era già questo: non è cambiato niente.';
+          S.sayOutcome(esito, 'L’obiettivo era già questo: non è cambiato niente.');
           return;
         }
         /* Scritto: la scheda si rilegge intera, perche' l'obiettivo nuovo
            cambia anche «da quando» e la riconsiderazione. */
+        obiettivoSalvato = true;
         carica(body);
       }, function () {
         salva.disabled = false;
-        esito.textContent = 'Non è stato possibile salvare. Riprova.';
+        S.sayNotSaved(esito, 'HIRIS non ha risposto. Riprova.');
       });
     });
     body.appendChild(salva);
@@ -325,6 +332,7 @@ window.HirisWatcherLavoro = (function () {
      distrugge la riga da cui si e' partiti, e senza questo la riga
      sparirebbe senza dire dove e' andata. Si consuma alla prima resa. */
   var esitoInSospeso = null;
+  var obiettivoSalvato = false;
 
   function scriviScope(v, dentro, motivo) {
     return write('api/mind/scope', { soggetto: v.soggetto, dentro: dentro, motivo: motivo || null });
@@ -674,6 +682,29 @@ window.HirisWatcherLavoro = (function () {
      funzionando?» pesano uguale: tutte e due sono un `guasto`. Qui resta
      solo il colore, le stesse pastiglie degli stati (`STATE_BADGE`,
      common.js). */
+  /* Cosa dice un tentativo, composto dalla pagina (Fase B, 28/10/2026). Fino
+     a quel giorno l'osservatore scriveva una frase intera, «7 decisioni su 28
+     entita' guardate [ponte]», e la pagina la stampava: plurale, apostrofo ed
+     etichetta tecnica non si potevano piu' correggere (fotografia della Fase
+     L, frase (c)). Ora i numeri (`decise`, `candidate`), la strada a parole
+     (`porta_parole`, dal server: il nome del piano e' della tabella dei
+     provider) e il ripiego sono campi; `dettaglio` resta per cio' che e'
+     davvero una frase -- l'errore, il motivo di una domanda -- e per le righe
+     scritte prima, che la portano intera. */
+  function testoTentativo(t, vuoto) {
+    var parti = [];
+    if (t.decise != null && t.candidate != null) {
+      parti.push(fmtCount(t.decise) + (t.decise === 1 ? ' decisione' : ' decisioni') +
+        ' su ' + fmtCount(t.candidate) +
+        (t.candidate === 1 ? ' entità guardata' : ' entità guardate'));
+    }
+    if (t.dettaglio) parti.push(t.dettaglio);
+    var porta = t.porta_parole || t.porta;
+    if (porta) parti.push(porta + (t.ripiego ? ' (ripiego: ' + t.ripiego + ')' : ''));
+    if (!parti.length) return vuoto === undefined ? 'senza dettagli' : vuoto;
+    return parti.join(' · ');
+  }
+
   function attemptBadge(t) {
     if (t.guasto) return 'badge-err';
     if (t.riuscito) return 'badge-on';
@@ -742,13 +773,13 @@ window.HirisWatcherLavoro = (function () {
       line(body, 'In corso da ' + fmtDuration(secondsSince(last.quando_ts)) +
         ', ma i ' + run + ' tentativi di fila non sono riusciti' +
         _sinceWhen(tentativi, inizio, run) + '. L’ultimo fallito: ' +
-        (tentativi[inizio].dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+        testoTentativo(tentativi[inizio]) + '.', TONE_PROBLEM);
     } else if (last.riuscito) {
       line(body, 'L’ultimo tentativo è riuscito, ' + fmtAgo(last.quando_ts) + ': ' +
-        (last.dettaglio || 'senza dettagli') + '.', TONE_CALM);
+        testoTentativo(last) + '.', TONE_CALM);
     } else if (run === 1) {
       line(body, 'L’ultimo tentativo non è riuscito, ' + fmtAgo(last.quando_ts) + ': ' +
-        (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+        testoTentativo(last) + '.', TONE_PROBLEM);
     } else if (run > 1) {
       var troncato = inizio + run === tentativi.length;
       var almeno = troncato ? 'almeno ' : '';
@@ -756,7 +787,7 @@ window.HirisWatcherLavoro = (function () {
         fmtDuration(secondsSince(tentativi[inizio + run - 1].quando_ts)) +
         ': ' + almeno + run + ' tentativi di fila non sono riusciti' +
         (troncato ? ' — più indietro di così non si vede' : '') + '. L’ultimo, ' +
-        fmtAgo(last.quando_ts) + ': ' + (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+        fmtAgo(last.quando_ts) + ': ' + testoTentativo(last) + '.', TONE_PROBLEM);
     } else {
       // **Un esito che questa pagina non conosce non la fa esplodere.** Prima
       // di questa guardia si finiva nel ramo della serie con `run` a zero,
@@ -766,7 +797,7 @@ window.HirisWatcherLavoro = (function () {
       // con quella stessa fetta.
       line(body, 'L’ultimo tentativo, ' + fmtAgo(last.quando_ts) + ': ' +
         (last.esito_leggibile || last.esito) + ' — ' +
-        (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+        testoTentativo(last) + '.', TONE_PROBLEM);
     }
 
     body.appendChild(createDisclosure(
@@ -782,7 +813,7 @@ window.HirisWatcherLavoro = (function () {
             t.esito_leggibile || t.esito));
           item.appendChild(el('span', 'field-hint',
             fmtInstant(t.quando_ts, clock)));
-          item.appendChild(el('span', null, t.dettaglio || ''));
+          item.appendChild(el('span', null, testoTentativo(t, '')));
           list.appendChild(item);
         });
         panel.appendChild(list);

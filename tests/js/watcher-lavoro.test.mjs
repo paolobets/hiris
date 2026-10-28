@@ -617,10 +617,35 @@ test("seam _rendiScope: un giro riuscito dice quanto ha deciso NELLA FRASE, non 
   // ESEGUITA l'11/09/2026 (`line(...)` senza `last.dettaglio`): verde.
   // Riscritta per legare le due meta' in UNA frase, la stessa mutazione la
   // fa arrossire. E' il difetto n.1 di questo progetto, trovato su se stesso.
+  // Dalla Fase B (28/10/2026) i numeri sono campi, e la frase la compone la pagina.
   const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo(esito('ATTEMPT_DONE'), 7200, "31 decisioni su 381 entita' guardate")] }));
-  assert.match(corpo.textContent, /L’ultimo tentativo è riuscito, 2 ore fa: 31 decisioni su 381/,
+    tentativi: [Object.assign(tentativo(esito('ATTEMPT_DONE'), 7200), { decise: 31, candidate: 381 })] }));
+  assert.match(corpo.textContent, /L’ultimo tentativo è riuscito, 2 ore fa: 31 decisioni su 381 entità guardate/,
     "a colpo d'occhio si deve leggere quanto ha deciso, senza aprire niente");
+});
+
+test('seam _rendiScope: un tentativo si compone dai suoi CAMPI, col plurale giusto e la strada a parole', () => {
+  /* Fase B (28/10/2026), frase (c) della fotografia della Fase L: «7
+     decisioni su 28 entita' guardate [ponte]». Mutazioni ESEGUITE il
+     28/10/2026: il plurale sempre al plurale -- rossa su «1 decisione»;
+     `porta_parole` ignorata -- rossa su «Piano». Ripristinate, `git status`
+     pulito. La riga di prima, con la sua frase intera, resta com'era. */
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [
+      Object.assign(tentativo(esito('ATTEMPT_DONE'), 60), {
+        decise: 1, candidate: 1, porta: 'ponte', porta_parole: 'Piano Claude Max' }),
+      Object.assign(tentativo(esito('ATTEMPT_FAILED'), 700, 'il modello non ha risposto'), {
+        porta: 'catena', porta_parole: 'la catena dei modelli', ripiego: 'scadenza' }),
+      tentativo(esito('ATTEMPT_DONE'), 1300, "7 decisioni su 28 entita' guardate [ponte]"),
+    ] }));
+  assert.match(corpo.textContent,
+    /L’ultimo tentativo è riuscito, 1 minuto fa: 1 decisione su 1 entità guardata · Piano Claude Max\./);
+  apriIn(corpo, 'Vedi gli ultimi tentativi');
+  const righe = [...corpo.querySelectorAll('li')].map((li) => li.textContent);
+  assert.ok(righe.some((r) => r.indexOf('il modello non ha risposto · la catena dei modelli (ripiego: scadenza)') >= 0), righe);
+  assert.ok(righe.some((r) => r.indexOf("7 decisioni su 28 entita' guardate [ponte]") >= 0),
+    'una riga scritta prima della Fase B tiene la sua frase');
+  assert.doesNotMatch(corpo.textContent, /\[ponte\][^\n]*Piano|\] ·/);
 });
 
 test('seam _rendiScope: una serie di fallimenti si vede, e dice DA QUANTO', () => {
@@ -785,6 +810,29 @@ test('mount: un obiettivo rifiutato DICE perché, e non svuota il campo', async 
     /sola manopola/);
   assert.equal(ctx.document.querySelector('textarea').value, '   ',
     'il campo resta com’era: la frase appena scritta non si butta');
+});
+
+test('mount: un obiettivo salvato lo dice la scheda riletta; un guasto dice «Non salvato»', async () => {
+  // Fase B, 28/10/2026 (ux-ui-specialist): il «Salvo…» spariva con la
+  // ricarica e un guasto aveva il grigio di un avanzamento.
+  // Mutazione ESEGUITA il 28/10/2026: `sayNotSaved` che scrive come
+  // `sayOutcome` -- rossa qui. Ripristinata.
+  const ctx = montaConServer();
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  bottone(ctx.document, 'Salva l’obiettivo').click();
+  await tick(20);
+  assert.match(ctx.document.getElementById('route-outlet').textContent, /Obiettivo salvato\./);
+
+  const rotto = montaConServer({ obiettivoStatus: 500, obiettivo: {} });
+  rotto.window.HirisWatcherRoute.mount('lavoro');
+  await tick(20);
+  bottone(rotto.document, 'Salva l’obiettivo').click();
+  await tick(20);
+  const esito = [...rotto.document.querySelectorAll('[role="status"]')]
+    .filter((n) => /Non salvato:/.test(n.textContent))[0];
+  assert.ok(esito, 'il guasto comincia con «Non salvato:»');
+  assert.match(esito.style.cssText, /err-ink/, 'e ha il colore del problema');
 });
 
 test('mount: riscrivere lo STESSO obiettivo non è un errore, e lo dice', async () => {
@@ -965,10 +1013,11 @@ test('mount: «Togli» manda la decisione col motivo scritto, rilegge la scheda 
     motivo: 'è il sensore del vicino' }]);
   assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0).length, 2,
     'dopo la scrittura la scheda si rilegge intera');
-  const stato = ctx.document.querySelector('[role="status"]');
-  assert.ok(stato, 'l’esito sta in un’area di stato');
+  // Dalla Fase B (28/10/2026) anche l'esito dell'obiettivo e' un'area di
+  // stato: quella del perimetro si trova dal fuoco, che ci va per prima cosa.
+  const stato = ctx.document.activeElement;
+  assert.equal(stato.getAttribute('role'), 'status', 'il fuoco va sull’esito, la riga non c’è più');
   assert.match(stato.textContent, /tolto da ciò che guardo.*Lasciato fuori/);
-  assert.equal(ctx.document.activeElement, stato, 'il fuoco va sull’esito, la riga non c’è più');
   assert.ok(bottone(stato, 'Rimetti dentro'), 'e l’annullamento è a portata di mano');
 });
 
@@ -1050,6 +1099,6 @@ test('mount: «Rimetti dentro» su una cosa esclusa dall’osservatore la rende 
   await tick(20);
 
   assert.deepEqual(corpiScope(ctx), [{ soggetto: 'sensor.pioggia', dentro: true, motivo: null }]);
-  assert.match(ctx.document.querySelector('[role="status"]').textContent,
+  assert.match(ctx.document.activeElement.textContent,
     /tua decisione: l’osservatore non lo toglierà più/);
 });

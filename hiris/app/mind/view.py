@@ -35,8 +35,9 @@ from ..home_space.render import render_entity
 from ..home_space.topology import read_mirror
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from . import proposer_turn
-from .analyst import TRIGGER_WORDS, observation_key
+from .analyst import NOVELTY_WORDS, TRIGGER_WORDS, observation_key
 from .judgments import TYPE_JUDGMENTS_KEY
+from .operations import CAUSE_WORDS
 from .report import ANALYST_EVERY_MINUTES, NIGHTLY_HOUR, NIGHTLY_MINUTE, as_page
 from .store import OBSERVATIONS_KEY, attempt_out
 from .watcher import WATCHER_KEY, scope_row
@@ -200,7 +201,7 @@ class MindView:
         names = self.device_names()
         return self._in_house_hour(
             [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
-              "misure": _named(names, r.get("misure"))}
+              "misure": _cause_worded(_named(names, r.get("misure")))}
              for r in self.store.reports(limit=RECENT_DAYS)])
 
     def report(self, day: str) -> dict | None:
@@ -219,7 +220,7 @@ class MindView:
             return None
         names = self.device_names()
         found = {**found,
-                 "misure": _named(names, found.get("misure")),
+                 "misure": _cause_worded(_named(names, found.get("misure"))),
                  "forme": _named(names, found.get("forme"))}
         return self._in_house_hour(as_page(found, judgments=self._judgments,
                                            manifest=self.manifest(),
@@ -406,9 +407,26 @@ def _worded(lines: list) -> list:
     """Le osservazioni con **l'innesco anche a parole** (`innesco_parole`,
     da `analyst.TRIGGER_WORDS`), accanto al numero: chi legge, la pagina o il
     modello, non deve sapere altrove cosa vuol dire «2» (C-11). `None` per
-    un innesco che il vocabolario non conosce."""
-    return [{**line, "innesco_parole": TRIGGER_WORDS.get(line.get("innesco"))}
+    un innesco che il vocabolario non conosce.
+
+    E la **novita' a parole** (`novita_parole`, da `analyst.NOVELTY_WORDS`,
+    Fase B del 28/10/2026), solo dove la riga porta una `novita`: le analisi
+    scritte prima non guadagnano un campo vuoto."""
+    return [{**line, "innesco_parole": TRIGGER_WORDS.get(line.get("innesco")),
+             **({"novita_parole": NOVELTY_WORDS.get(line["novita"])}
+                if line.get("novita") else {})}
             if isinstance(line, dict) else line for line in lines]
+
+
+def _cause_worded(lines: list) -> list:
+    """Le misure che non si calcolano con **la causa anche a parole**
+    (`causa_parole`, da `operations.CAUSE_WORDS`), accanto alla parola del
+    vocabolario: chi legge raggruppa per `causa` e dice il gruppo con queste
+    parole, senza tenerne una copia (Fase B, 28/10/2026). Solo le righe che
+    portano una `causa`: una misura calcolata non guadagna un campo vuoto."""
+    return [{**line, "causa_parole": CAUSE_WORDS.get(line["causa"])}
+            if isinstance(line, dict) and line.get("causa") else line
+            for line in lines]
 
 
 def _with_outcomes(analysis: dict) -> dict:

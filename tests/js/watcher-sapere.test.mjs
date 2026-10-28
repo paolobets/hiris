@@ -427,7 +427,7 @@ test('mount: senza tipo/entità il modulo di aggiunta non manda niente -- lo fer
   // E il messaggio della guardia JS NON compare: prova che l'invio si è
   // fermato PRIMA del gestore 'submit', cioè nella validazione nativa. È
   // questo che separa le due prove.
-  assert.doesNotMatch(card4.textContent, /Scegli se è un tipo o un’entità/);
+  assert.doesNotMatch(card4.textContent, /scegli se è un tipo o un’entità/i);
 });
 
 /* La GUARDIA JS -- quella che ferma un `submit` che la validazione nativa non
@@ -652,12 +652,59 @@ test('seam _rendiSapere: il select del genere porta ESATTAMENTE le 4 opzioni app
   assert.deepEqual(valori, ['funzionamento', 'presenza', 'sicurezza', 'nessuno']);
 });
 
-test('seam _rendiSapere: «Correggi» non compare su una riga che non è di campo «genere»', () => {
-  const g = giudizio({ campo: 'da_sapere_subito', da: 'seme', soggetto: 'switch.no_correggi' });
+test('seam _rendiSapere: «Correggi» non compare su una riga di un campo in sola lettura', () => {
+  // Fino al 28/10/2026 il campo di questa prova era `da_sapere_subito`, che
+  // dalla Fase B si corregge dalla pagina: ora e' `lavoro`, che resta in sola lettura.
+  const g = giudizio({ campo: 'lavoro', da: 'seme', soggetto: 'switch.no_correggi' });
   const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
   const riga = trovaRigaGiudizio(corpo, g.soggetto);
   assert.ok(riga, 'la riga esiste');
   assert.equal(bottone(document, 'Correggi', riga), undefined, 'niente editor per un campo che la v1 non tocca');
+});
+
+test('mount: `da_sapere_subito` si corregge dalla pagina, anche come ELENCO di stati', async () => {
+  /* Fase B (28/10/2026), voce del BACKLOG del 18/09/2026: fino ad allora la
+     scrittura passava solo dalla rotta. Mutazioni ESEGUITE il 28/10/2026:
+     `da_sapere_subito` tolto da `EDITABLE_JUDGMENT_FIELDS` -- rossa (nessun
+     «Correggi»); il valore mandato come testo e non come JSON -- rossa sul
+     corpo inviato. Ripristinate, `git status` pulito. */
+  const g = giudizio({ da: 'seme', campo: 'da_sapere_subito', soggetto_genere: 'tipo',
+    soggetto: 'lock', valore: '["jammed"]' });
+  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
+  ctx.window.HirisWatcherRoute.mount('sapere');
+  await tick(20);
+  const card = ctx.document.getElementById('watcher-panel-sapere');
+  // Le righe del seme si costruiscono al clic (spec §6), come le apre chi legge.
+  for (const b of [...card.querySelectorAll('button')].filter((x) => /Vedi tutti/.test(x.textContent))) {
+    if (!trovaRigaGiudizio(card, 'lock')) b.click();
+  }
+  const riga = trovaRigaGiudizio(card, 'lock');
+  assert.ok(riga, 'la riga del seme c’è');
+  bottone(ctx.document, 'Correggi', riga).click();
+  const sel = riga.querySelector('select');
+  const campo = riga.querySelector('input[type="text"]');
+  assert.equal(sel.value, 'stati', 'una riga a elenco apre l’editor sulla terza forma');
+  assert.equal(campo.value, 'jammed');
+  campo.value = 'jammed, unlocked ,';
+  bottone(ctx.document, 'Scrivi', riga).click();
+  await tick(20);
+  const mandato = JSON.parse(ctx.corpiInviati[ctx.corpiInviati.length - 1]);
+  assert.equal(mandato.campo, 'da_sapere_subito');
+  assert.equal(mandato.valore, '["jammed","unlocked"]');
+});
+
+test('seam _rendiSapere: con «Sì» o «No» il campo degli stati si nasconde, e si manda la parola', () => {
+  const g = giudizio({ da: 'correzione', campo: 'da_sapere_subito', soggetto_genere: 'tipo',
+    soggetto: 'siren', valore: 'si' });
+  const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
+  const riga = trovaRigaGiudizio(corpo, 'siren');
+  bottone(document, 'Correggi', riga).click();
+  const sel = riga.querySelector('select');
+  assert.equal(sel.value, 'si');
+  assert.equal(riga.querySelector('input[type="text"]').parentNode.hidden, true);
+  sel.value = 'stati';
+  sel.dispatchEvent(new document.defaultView.Event('change'));
+  assert.equal(riga.querySelector('input[type="text"]').parentNode.hidden, false);
 });
 
 test('mount: un 503 sulla scrittura di un giudizio lo dice (il sapere non è collegato), e riabilita il bottone', async () => {
@@ -688,7 +735,7 @@ test('mount: un guasto di RETE sulla scrittura di un giudizio lo dice, e riabili
   scrivi.click();
   await tick(20);
 
-  assert.match(riga.textContent, /Non è stato possibile scrivere/);
+  assert.match(riga.textContent, /Non salvato: la scrittura non è arrivata/);
   assert.equal(scrivi.disabled, false, 'il bottone si riabilita dopo il guasto di rete');
 });
 
@@ -734,7 +781,7 @@ test('mount: il modulo di aggiunta come <form> NON manda niente se si invia senz
   await tick(20);
 
   assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0).length, 0);
-  assert.match(form.textContent, /Scegli se è un tipo o un’entità/);
+  assert.match(form.textContent, /Non salvato: scegli se è un tipo o un’entità/);
 });
 
 /* Giro di correzioni 1, punto 8: il 503 sulla scrittura ha DUE ragioni. */

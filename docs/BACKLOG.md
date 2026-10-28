@@ -79,7 +79,9 @@ basso»), la porta dei modelli, i lavori «partial» nel log e il giro del matti
 «Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px» la Fase B prende
 solo la pagina del Brain, quindi la voce resta «In attesa».
 
-### La pagina «L'osservatore» si chiama Brain — aperta il 22/10/2026
+### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA col prossimo rilascio** — aperta il 22/10/2026
+
+`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavora» (scelta di Paolo del 28/10; ux-ui-specialist proponeva «Come lavoro», in prima persona). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
 
 `origine: Paolo, 22/10/2026 13:28 («la pagina L'osservatore si chiama Brain»)` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`, Fase B.1
 
@@ -103,6 +105,22 @@ cui arrivano in pagina, e il testo che il modello riceve si cambia solo dopo la 
 rimetti, correggi un giudizio, Rifalla), cosa dice la pagina mentre aspetta e quando qualcosa
 fallisce. Prove comportamentali JS per le schede toccate. Il parere di `ux-ui-specialist` lo
 chiede lo Sprint dal PC, in sola lettura.
+
+**Fatta in parte il 28/10/2026 (Fase B)** — proposta in
+`/mnt/project-files/piani/2026-10-28-fase-b-brain-leggibile-proposta.md`. Uscito: le cause delle
+misure non calcolate a parole (`operations.CAUSE_WORDS`, `causa_parole`) e raggruppate in «Il
+giorno»; la novita' a parole (`analyst.NOVELTY_WORDS`, `novita_parole`); in «Cosa fare» la
+domanda («Perché l'ho guardata») e la risposta («Si spiega con», «Non so ancora spiegarlo») su
+righe proprie, la prima frase della spiegazione e il resto dietro «Tutta la spiegazione», lo
+stato di adesso con l'ora della lettura; in «Come lavora» il tentativo dice quante decisioni su
+quante entita' e da quale porta (colonne nuove di `scope_attempt`, migrazione 16); le frasi delle
+ricette con gli accenti veri; l'esito dei comandi (obiettivo, giudizi) in un posto solo,
+`HirisWatcherShared.outcomeSlot`, con «Non salvato:» e il colore del problema; bersagli da 44 px
+sui dispositivi a tocco. **Resta**: il testo che l'analista riceve (deciso da Paolo il 28/10:
+invariato fino alla misura di dopo); un tempo massimo per le scritture (`write` non ne ha, e
+sceglierne uno e' una soglia nostra: va misurato prima); l'aggiornamento in riga invece della
+ricarica della scheda dopo «Togli» e «Correggi»; il «Rifalla» non e' stato toccato; C-25 e C-27
+restano nella voce «La pagina dell'osservatore si riprogetta».
 
 ### Si riparte puliti: Brain, sapere, chat e ricordi — aperta il 22/10/2026
 
@@ -377,7 +395,9 @@ Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si tr
 il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
 i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
 
-### Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta
+### ~~Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta~~ — **USCITA col prossimo rilascio**
+
+`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): l'editor in riga della scheda «Sapere» tocca anche `da_sapere_subito`, con le tre forme del valore: sì, no, oppure un elenco di stati scritti separati da virgola (`watcher-sapere.js`, `EDITABLE_JUDGMENT_FIELDS`, `statesInput`). La validazione resta della rotta, che rifiuta con la sua ragione`
 
 `origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
 
@@ -516,7 +536,9 @@ mostra.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
-### `GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata
+### ~~`GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata~~ — **USCITA col prossimo rilascio**
+
+`fatta il 28/10/2026 (Fase B, punto S.7, scelto da Paolo il 28/10): in `api/admission.py` la rotta passa al gesto «amministrare», come la scrittura del giudizio. Una persona che non amministra era gia' fuori (la riga non aveva `open_reason`): chi passava era un servizio firmato col ruolo `utente`, che adesso riceve 403. Lo difende `tests/test_admission.py::test_il_sapere_corretto_a_mano_NON_si_legge_da_un_servizio_utente`, con la mutazione eseguita`
 
 `origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
 

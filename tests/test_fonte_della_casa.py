@@ -270,10 +270,10 @@ _IN_PIU = ([_entity("sensor.ricreato"), _entity("sensor.senza_classe")],
 @pytest.mark.parametrize("entity_id, causa, frase", [
     ("light.del_proprietario", "spenta_dal_proprietario", "spenta dal proprietario"),
     ("sensor.mai_attivata", "spenta_da_home_assistant", "disabled_by: integration"),
-    ("light.di_istanza_che_ritenta", "integrazione_ferma", "non e' caricata"),
+    ("light.di_istanza_che_ritenta", "integrazione_ferma", "non è caricata"),
     ("light.sparita", "sparita", "non ha uno stato"),
     ("sensor.ricreato", "non_disponibile", "restored"),
-    ("light.inventata", "assente", "ne' nel registro ne' negli stati"),
+    ("light.inventata", "assente", "né nel registro né negli stati"),
     ("light.viva", "senza_statistiche", "solo per i `sensor`"),
     ("sensor.senza_classe", "senza_statistiche", "non dichiara uno `state_class`"),
 ])

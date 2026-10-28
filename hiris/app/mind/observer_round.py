@@ -110,8 +110,9 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         restano = _to_judge(store, candidates, last)
         in_corso = last is not None and bool(restano)
         if in_corso:
-            why = (f"la campagna prosegue: restano {len(restano)} soggetti "
-                   "da giudicare")
+            quanti = ("resta 1 soggetto" if len(restano) == 1
+                      else f"restano {len(restano)} soggetti")
+            why = f"la campagna prosegue: {quanti} da giudicare"
         else:
             why = reason_to_reconsider(
                 last=last,
@@ -152,9 +153,8 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             # indipendente, 11/09/2026).
             store.record_attempt(
                 outcome=mind_store.ATTEMPT_FAILED,
-                detail=f"non c'era nessun modello a cui chiedere ({downgrade})"
-                if downgrade else "non c'era nessun modello a cui chiedere",
-                version=read_version())
+                detail="non c’era nessun modello a cui chiedere",
+                route=route, downgrade=downgrade, version=read_version())
             return None
 
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
@@ -224,16 +224,18 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
     # la pagina non puo' distinguere un giro servito dal piano da uno pagato a
     # consumo, e il prelievo resta invisibile (rilievo della review
     # indipendente, 11/09/2026; regola del proprietario del 13/08/2026).
-    porta = f" [{route}{', ripiego: ' + downgrade if downgrade else ''}]"
+    # **Fatti, non una frase** (Fase B, 28/10/2026, `_migration_16`): la strada,
+    # il ripiego e i numeri hanno le loro colonne, e la pagina li compone.
     error = outcome.get("errore")
     if error:
-        store.record_attempt(outcome=mind_store.ATTEMPT_FAILED, detail=error + porta,
+        store.record_attempt(outcome=mind_store.ATTEMPT_FAILED, detail=error,
+                             route=route, downgrade=downgrade,
                              version=read_version())
     else:
-        # Il riassunto di un giro riuscito, nella lingua della pagina.
-        summary = (f"{outcome.get('decise', 0)} decisioni su "
-                   f"{outcome.get('candidate', 0)} entita' guardate")
-        store.record_attempt(outcome=mind_store.ATTEMPT_DONE, detail=summary + porta,
+        store.record_attempt(outcome=mind_store.ATTEMPT_DONE,
+                             decided=outcome.get("decise", 0),
+                             candidates=outcome.get("candidate", 0),
+                             route=route, downgrade=downgrade,
                              version=read_version())
 
 
@@ -425,7 +427,7 @@ def _enqueue_scope_turn(app, store, house: House, *, reason: str,
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
     # questa fetta nasce.
     store.record_attempt(when_ts=now, outcome=mind_store.ATTEMPT_QUEUED,
-                         detail=f"chiesto al piano: {reason}",
+                         detail=reason, route="ponte",
                          version=read_version())
     logger.info("osservatore: turno accodato al piano (scadenza %d min) -- %s",
                 deadline_min, reason)

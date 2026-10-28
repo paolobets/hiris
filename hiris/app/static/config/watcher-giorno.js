@@ -277,6 +277,54 @@ window.HirisWatcherGiorno = (function () {
      resoconto arrivano nell'ora della casa, e «oggi» e «ieri» li dice lui. */
   var clock = null;
 
+  /* «Cosa non si sa», **una riga per causa** (Fase B dello sprint «il giro
+     snello», 28/10/2026). Misurato nella fotografia della Fase L (22/10):
+     sette righe uguali, ognuna con l'id e `disabled_by: config_entry`, cioe'
+     lo stesso fatto ripetuto (C-27) con le parole di Home Assistant. La
+     `causa` e' una parola di un vocabolario chiuso (`mind/operations.CAUSES`)
+     e le sue parole per chi legge arrivano dalla rotta (`causa_parole`,
+     `CAUSE_WORDS`): la pagina raggruppa e disegna, non traduce.
+
+     Una misura senza `causa` (un resoconto archiviato prima che la portasse)
+     fa gruppo da sola e si dice con la sua frase: non si inventa una causa
+     che il dato non porta. L'ordine e' quello in cui le cause compaiono. */
+  function gruppiPerCausa(ignote) {
+    var gruppi = [];
+    var perCausa = {};
+    ignote.forEach(function (m) {
+      if (!m.causa) { gruppi.push({ causa: null, voci: [m] }); return; }
+      if (!perCausa[m.causa]) {
+        perCausa[m.causa] = { causa: m.causa, parole: m.causa_parole, voci: [] };
+        gruppi.push(perCausa[m.causa]);
+      }
+      perCausa[m.causa].voci.push(m);
+    });
+    return gruppi;
+  }
+
+  function rigaCausa(g) {
+    var riga = el('div', 'sc-row');
+    if (!g.causa) {
+      var m = g.voci[0];
+      riga.appendChild(el('div', 'sc-row-title', (m.nome || m.soggetto) + ' · ' + m.misura));
+      riga.appendChild(el('div', 'sc-row-why', m.non_calcolabile || ''));
+      return riga;
+    }
+    var quante = fmtCount(g.voci.length) + (g.voci.length === 1 ? ' misura' : ' misure');
+    riga.appendChild(el('div', 'sc-row-title', quante + ': ' + (g.parole || g.causa)));
+    /* I nomi e la frase di ognuna dietro un bottone: la frase intera e' scritta
+       per una misura sola, e serve a chi vuole sapere quale e perche'. */
+    riga.appendChild(S.createDisclosure('Dettaglio', 'Chiudi', function (panel) {
+      g.voci.forEach(function (v) {
+        var voce = el('div', 'sc-row');
+        voce.appendChild(el('div', 'sc-row-title', (v.nome || v.soggetto) + ' · ' + v.misura));
+        if (v.non_calcolabile) voce.appendChild(el('div', 'field-hint', v.non_calcolabile));
+        panel.appendChild(voce);
+      });
+    }));
+    return riga;
+  }
+
   /* Un intervallo: «ieri alle 03:12 → 03:19», con la data una volta sola
      quando la fine cade lo stesso giorno; «→ in corso» senza fine. */
   function fmtSpan(from, to) {
@@ -304,12 +352,7 @@ window.HirisWatcherGiorno = (function () {
 
     if (ignote.length) {
       subheading(body, 'Cosa non si sa');
-      ignote.forEach(function (m) {
-        var riga = el('div', 'sc-row');
-        riga.appendChild(el('div', 'sc-row-title', (m.nome || m.soggetto) + ' · ' + m.misura));
-        riga.appendChild(el('div', 'sc-row-why', m.non_calcolabile || ''));
-        body.appendChild(riga);
-      });
+      gruppiPerCausa(ignote).forEach(function (g) { body.appendChild(rigaCausa(g)); });
     }
 
     subheading(body, 'Le misure');

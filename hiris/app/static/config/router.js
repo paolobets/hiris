@@ -52,7 +52,16 @@
     '#/memoria': '#/memory',
     '#/promesse': '#/agenda',
     '#/costruzioni': '#/constructions',
-    '#/osservatore': '#/watcher',
+    '#/osservatore': '#/brain',
+    /* Fase B dello sprint «il giro snello» (28/10/2026): «L'osservatore» si
+       chiama Brain. La tabella confronta l'hash INTERO, quindi ogni scheda
+       di prima ha la sua riga: l'elenco e' il fatto (gli indirizzi che
+       esistevano), non la copia di un altro elenco. */
+    '#/watcher': '#/brain',
+    '#/watcher/giorno': '#/brain/giorno',
+    '#/watcher/cosa-fare': '#/brain/cosa-fare',
+    '#/watcher/sapere': '#/brain/sapere',
+    '#/watcher/lavoro': '#/brain/lavoro',
     '#/impostazioni': '#/settings',
   };
 

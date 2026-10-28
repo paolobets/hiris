@@ -85,7 +85,7 @@ test('seam _rendiAnalisi: l’innesco si dice a parole, quelle che manda la rott
     osservazione({ innesco: 2, misura: 'batteria', innesco_parole: 'PAROLA DUE DAL SERVER' }),
   ]));
   const testo = corpo.textContent;
-  assert.match(testo, /Perché lo dice: PAROLA UNO DAL SERVER\./);
+  assert.match(testo, /Perché l’ho guardata: PAROLA UNO DAL SERVER\./);
   assert.match(testo, /PAROLA DUE DAL SERVER/);
   assert.doesNotMatch(testo, /è cambiato|stabile e costa/);
   assert.doesNotMatch(testo, /innesco 1/);
@@ -98,6 +98,60 @@ test('seam _rendiAnalisi: ciò che è SPIEGATO si distingue da ciò che non lo �
     osservazione({ spiegato: 'coerente con il prelievo dello stesso giorno' }),
   ]));
   assert.match(corpo.textContent, /coerente con il prelievo/);
+});
+
+test('seam _rendiAnalisi: la domanda e la risposta stanno su righe DIVERSE, e il «non lo so» si dice', () => {
+  /* Fase B (28/10/2026), frase (b) della fotografia della Fase L: «è
+     cambiato, e non è spiegato. È spiegato: …» in una riga sola, e «..».
+     Mutazioni ESEGUITE il 28/10/2026: innesco e spiegazione di nuovo nella
+     stessa riga -- rossa sul conto delle righe; `closeSentence` sostituito
+     da `+ '.'` -- rossa su «..». Ripristinate, `git status` pulito. */
+  const spiegata = rendiAnalisi(analisi([osservazione({
+    innesco_parole: 'è cambiato rispetto al solito',
+    spiegato: 'il forno è rimasto acceso.',
+  })])).corpo;
+  const righe = [...spiegata.querySelectorAll('.sc-row-why')].map((r) => r.textContent);
+  assert.ok(righe.includes('Perché l’ho guardata: è cambiato rispetto al solito.'), righe);
+  assert.ok(righe.includes('Si spiega con: il forno è rimasto acceso.'), righe);
+  assert.doesNotMatch(spiegata.textContent, /\.\./, 'nessun punto raddoppiato');
+
+  const ignota = rendiAnalisi(analisi([osservazione({ spiegato: null })])).corpo;
+  assert.match(ignota.textContent, /Non so ancora spiegarlo\./);
+  assert.doesNotMatch(ignota.textContent, /Si spiega con/);
+});
+
+test('seam _rendiAnalisi: accanto all’osservazione c’è la casa di ADESSO, dai `soggetti`', () => {
+  /* Rimedio B.2 (23/10/2026): la rotta manda `adesso`, la pagina lo mostra
+     dalla Fase B. Mutazione ESEGUITA il 28/10/2026: `rigaAdesso` che non
+     disegna niente -- rossa. Ripristinata, `git status` pulito. */
+  const { corpo } = rendiAnalisi(analisi([
+    osservazione({ adesso: [
+      { id: 'climate.cucina', nome: 'Termostato cucina', stato: 'heat', stato_leggibile: 'riscalda' },
+      { id: 'sensor.t', nome: 'Temperatura', stato: '20.5', unita: '°C' },
+    ] }),
+    osservazione({ misura: 'vecchia' }),
+  ]));
+  const adesso = [...corpo.querySelectorAll('.field-hint')]
+    .map((r) => r.textContent).filter((t) => t.indexOf('Adesso:') === 0);
+  assert.deepEqual(adesso, ['Adesso: Termostato cucina · riscalda', 'Adesso: Temperatura · 20.5 °C'],
+    'una riga per soggetto, e niente per l’osservazione scritta prima dei soggetti');
+});
+
+test('seam _rendiAnalisi: la novità si dice con la parola del server', () => {
+  const { corpo } = rendiAnalisi(analisi([
+    osservazione({ novita: 'nuova', novita_parole: 'nuova' }),
+    osservazione({ misura: 'b', novita: 'prova cambiata', novita_parole: 'già detta, ma la prova è cambiata' }),
+    osservazione({ misura: 'c' }),
+  ]));
+  // Le parole sono del server (`analyst.NOVELTY_WORDS`): la pagina non ne
+  // tiene una tabella, e una riga senza `novita_parole` non dice niente.
+  // Mutazione ESEGUITA il 28/10/2026: la riga tolta da `renderAnalysis` --
+  // rossa qui. Ripristinata.
+  const righe = [...corpo.querySelectorAll('.sc-row')].map((r) =>
+    [...r.querySelectorAll('.field-hint')].map((h) => h.textContent));
+  assert.ok(righe[0].includes('Nuova.'), righe[0]);
+  assert.ok(righe[1].includes('Già detta, ma la prova è cambiata.'), righe[1]);
+  assert.ok(!righe[2].some((t) => /nuova|già detta/i.test(t)), righe[2]);
 });
 
 test('seam _rendiAnalisi: lo scostamento si dice col suo numero e con la base', () => {

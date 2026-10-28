@@ -84,6 +84,35 @@ function stateLabel(phrase) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/* Lo stato di un'entita' da scrivere accanto al nome (una riga `corta` di
+   `render_entity`, la stessa forma da ogni porta). Fino al 28/10/2026 viveva
+   in config/tree-route.js; dalla Fase B lo legge anche la riga «Adesso» del
+   Brain, quindi sta qui, una volta sola: le parole di Home Assistant
+   (`stato_leggibile`) quando ci sono, altrimenti il valore grezzo con la
+   sua unita'. Le parole di `unavailable`/`unknown` non arrivano dal comando
+   che HIRIS legge (`frontend/get_translations`, vedi
+   `proxy/state_translations.state_translation`): Home Assistant le tiene
+   nel pacchetto di traduzioni del suo frontend (misurato dallo Sprint
+   l'11/10/2026). Restano grezze, come nella chat. Senza stato non si
+   scrive niente. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/tree-route.js e config/watcher-cosa-fare.js
+function entityStateText(e) {
+  if (e.stato_leggibile) return e.stato_leggibile;
+  if (e.stato == null) return '';
+  return e.unita ? e.stato + ' ' + e.unita : String(e.stato);
+}
+
+/* Una frase chiusa da un punto, **senza raddoppiarlo**: un testo che arriva
+   dalla rotta (scritto dal modello) puo' finire gia' col suo punto, e
+   aggiungerne un altro scriveva «..» sulla pagina del Brain (fotografia della
+   Fase L, 22/10/2026). Un testo vuoto resta vuoto. */
+// eslint-disable-next-line no-unused-vars -- global bare, letta da config/watcher-cosa-fare.js
+function closeSentence(text) {
+  var t = text == null ? '' : String(text).trim();
+  if (!t) return '';
+  return /[.!?…]$/.test(t) ? t : t + '.';
+}
+
 /* Il colore del badge di uno stato, uno per tutte le code (promesse,
    costruzioni): le parole sono del vocabolario unico (`hiris/app/states.py`),
    e lo stesso stato ha la stessa faccia in ogni pagina. Fino all'08/10/2026

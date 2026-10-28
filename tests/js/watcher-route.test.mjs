@@ -127,7 +127,7 @@ test("la guardia NON grida sull’elisione vera né sui troncamenti dell’itali
 });
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
-  // La frase vive nella scheda «L'osservatore», e dal 18/09/2026 una scheda si
+  // La frase vive nella scheda «Come lavora» (fino al 28/10/2026 «L’osservatore»), e dal 18/09/2026 una scheda si
   // legge solo se la si apre: il nome non e' un ornamento, senza quello questa
   // prova guarderebbe un pannello mai caricato.
   const { window, document } = monta();
@@ -270,7 +270,7 @@ test('la cornice: quattro schede con la semantica tablist, e nessun contatore ne
   assert.ok(tablist, 'manca il tablist');
   const tab = Array.from(ctx.document.querySelectorAll('[role="tab"]'));
   assert.deepEqual(tab.map((t) => t.textContent),
-    ['Il giorno', 'Cosa fare', 'Cosa ho capito', 'L’osservatore']);
+    ['Il giorno', 'Cosa fare', 'Cosa ho capito', 'Come lavora']);
   /* **Etichette nude** (spec §2): un contatore obbligherebbe a caricare tutte
      e quattro le schede all'avvio, contro la decisione 7. La prova e' che
      nessuna etichetta contenga una cifra. */
@@ -295,7 +295,7 @@ test('la cornice: le frecce destra/sinistra passano da una scheda all’altra, e
   assert.equal(tab[0].tabIndex, 0, 'la scheda attiva e’ l’unica nella sequenza di tabulazione');
   assert.equal(tab[1].tabIndex, -1, 'le altre si raggiungono con le frecce, non col tabulatore');
   tab[0].dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-  assert.equal(ctx.window.location.hash, '#/watcher/cosa-fare',
+  assert.equal(ctx.window.location.hash, '#/brain/cosa-fare',
     'la freccia destra non ha portato alla scheda successiva');
   assert.equal(ctx.document.activeElement, tab[1],
     'il focus resta sulla scheda di prima: chi naviga da tastiera perde il posto');
@@ -305,7 +305,7 @@ test('la cornice: le frecce destra/sinistra passano da una scheda all’altra, e
      il comportamento giusto per lo stato che avrebbe davanti, non un difetto. */
   ctx.window.HirisWatcherRoute.mount('cosa-fare');
   tab[1].dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-  assert.equal(ctx.window.location.hash, '#/watcher/giorno', 'la freccia sinistra non torna indietro');
+  assert.equal(ctx.window.location.hash, '#/brain/giorno', 'la freccia sinistra non torna indietro');
 });
 
 test('CSS: il bersaglio di una scheda è alto almeno 44 px (la soglia del tocco, spec §2)', () => {
@@ -406,13 +406,13 @@ test('la cornice: un pannello nascosto non porta aria-live (spec §2)', async ()
     'una riga in un pannello nascosto sarebbe letta per una scheda che nessuno guarda');
 });
 
-test('la cornice: «#/watcher» nudo si riscrive su «giorno» SENZA aggiungere una voce di cronologia', async () => {
+test('la cornice: «#/brain» nudo si riscrive su «giorno» SENZA aggiungere una voce di cronologia', async () => {
   const ctx = monta();
   const chiamate = [];
   ctx.window.history.replaceState = (a, b, url) => chiamate.push(url);
   ctx.window.HirisWatcherRoute.mount(undefined);
   await tick(0);
-  assert.deepEqual(chiamate, ['#/watcher/giorno']);
+  assert.deepEqual(chiamate, ['#/brain/giorno']);
 });
 
 test('la cornice: un errore in una scheda resta dentro la sua scheda', async () => {

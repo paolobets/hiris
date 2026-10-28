@@ -116,7 +116,9 @@ _RESIDUI_NOTI: frozenset[str] = frozenset({
     # nomi, e l'uguaglianza esatta lo dira'. `dashboard` («la dashboard
     # Energia») e `watcher` («consegnato al watcher») sono inglese tecnico,
     # come `logger` e `runner`.
-    "annota", "dashboard", "fondamento", "letto", "lotto", "porta", "scritta",
+    # `porta` e' uscita il 28/10/2026 (Fase B): la variabile `porta` di
+    # `observer_round._record_attempt` e' diventata le colonne del tentativo.
+    "annota", "dashboard", "fondamento", "letto", "lotto", "scritta",
     "versione", "watcher",
     # Lo stesso per i resoconti del giorno, arrivati col passo 3.
     "adesso", "archivio", "ferme", "finestra", "ricette",

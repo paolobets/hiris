@@ -32,6 +32,28 @@ window.HirisWatcherShared = (function () {
     });
   }
 
+  /* **L'esito di un comando, in un posto solo** (Fase B, 28/10/2026, dal
+     parere di ux-ui-specialist). Le tre scritture della pagina -- obiettivo,
+     giudizi, perimetro -- dicevano il guasto ognuna a modo suo, nello stesso
+     grigio del «Salvo…»: un rifiuto si leggeva come un avanzamento. Qui la
+     forma e' una: l'area annuncia da se' (`role=status`), un guasto comincia
+     con «Non salvato:» e ha il colore del problema, il resto torna neutro. */
+  function outcomeSlot() {
+    var slot = el('p', 'sc-desc');
+    slot.setAttribute('role', 'status');
+    return slot;
+  }
+
+  function sayOutcome(slot, text) {
+    slot.style.cssText = '';
+    slot.textContent = text;
+  }
+
+  function sayNotSaved(slot, reason) {
+    slot.style.cssText = TONE_PROBLEM;
+    slot.textContent = 'Non salvato: ' + reason;
+  }
+
   function read(path) {
     return fetch(path).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
@@ -341,6 +363,11 @@ window.HirisWatcherShared = (function () {
 
     var ancora = el('button', 'btn btn-ghost long-list-btn', '');
     ancora.type = 'button';
+    /* **Nascosto dalla nascita** (misura dello Sprint col parere UX, Fase B,
+       28/10/2026): finche' l'elenco non si apriva il bottone era vuoto ma
+       visibile, 27x44 e nella sequenza di tabulazione senza un nome -- dodici
+       nella sola scheda «L'osservatore». */
+    ancora.hidden = true;
     function aggiornaAncora() {
       var restano = tutti.length - disegnate;
       ancora.hidden = restano <= 0;
@@ -517,6 +544,7 @@ window.HirisWatcherShared = (function () {
     SUBJECT_IS_ID: SUBJECT_IS_ID, SUBJECT_IS_ID_PLURAL: SUBJECT_IS_ID_PLURAL,
     subheading: subheading,
     read: read, write: write, retryButton: retryButton,
+    outcomeSlot: outcomeSlot, sayOutcome: sayOutcome, sayNotSaved: sayNotSaved,
     createDisclosure: createDisclosure, intestazioneFresca: intestazioneFresca,
     elencoLungo: elencoLungo,
     describeWatchedSubject: describeWatchedSubject, parseSubjectPrefix: parseSubjectPrefix,

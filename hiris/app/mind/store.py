@@ -39,6 +39,7 @@ import uuid
 
 from aiohttp import web
 
+from ..providers import SUBSCRIPTION
 from ..states import (
     AUTOMATED,
     CANCELLED,
@@ -678,7 +679,14 @@ CREATE TABLE IF NOT EXISTS scope_attempt (
     outcome TEXT NOT NULL CHECK(outcome IN
         ('accodata', 'riuscito', 'non_riuscito', 'scaduta')),
     detail TEXT,
-    version TEXT
+    version TEXT,
+    -- I fatti del tentativo, non una frase (Fase B, 28/10/2026, `_migration_16`):
+    -- da quale strada (`route`, «ponte» o «catena»), se per ripiego
+    -- (`downgrade`), e quante decisioni su quante entita' guardate.
+    route TEXT,
+    downgrade TEXT,
+    decided INTEGER,
+    candidates INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_scope_attempt_tried ON scope_attempt(tried_ts);
 
@@ -714,6 +722,29 @@ def _migration_6(conn) -> None:
     adesso.
     """
     add_missing_columns(conn, "scope_attempt", {"version": "TEXT"})
+
+
+def _migration_16(conn) -> None:
+    """v15 -> v16 (Fase B dello sprint «il giro snello», 28/10/2026): i fatti
+    di un tentativo in colonne -- `route`, `downgrade`, `decided`,
+    `candidates` -- invece che dentro `detail`.
+
+    **Perche'.** Fino a quel giorno l'osservatore scriveva in `detail` una
+    frase intera, «7 decisioni su 28 entita' guardate [ponte]»: numeri,
+    plurale, apostrofo e nome della strada chiusi in un testo che la pagina
+    non poteva piu' correggere (fotografia della Fase L, frase (c);
+    fondamenta 1). Ora `detail` resta per cio' che e' davvero una frase -- il
+    testo di un errore, il motivo di una domanda -- e la pagina compone il
+    resto.
+
+    Le righe scritte prima rileggono `None` nelle colonne nuove e tengono la
+    loro frase in `detail`: e' vero, quei fatti non li hanno mai portati
+    separati, e ricavarli oggi dalla frase attribuirebbe a ieri una lettura di
+    adesso.
+    """
+    add_missing_columns(conn, "scope_attempt", {
+        "route": "TEXT", "downgrade": "TEXT",
+        "decided": "INTEGER", "candidates": "INTEGER"})
 
 
 def _migration_11(conn) -> None:
@@ -1108,7 +1139,7 @@ def _migration_15(conn) -> None:
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -1169,17 +1200,32 @@ _ATTEMPT_WORDS = {
 }
 
 
+#: La strada di un tentativo in parole (Fase B, 28/10/2026): `[ponte]` sulla
+#: pagina era un'etichetta tecnica. Il nome del piano e' quello della tabella
+#: dei provider (`providers.SUBSCRIPTION.name`), lo stesso della pagina
+#: Modelli; una strada che il vocabolario non conosce esce senza parole, e la
+#: pagina scrive la sua parola grezza.
+def _route_words(route: str | None) -> str | None:
+    if route == "ponte":
+        return SUBSCRIPTION.name
+    if route == "catena":
+        return "la catena dei modelli"
+    return None
+
+
 def attempt_out(attempt: dict) -> dict:
     """Un tentativo con la sua lettura: `esito_leggibile`, `in_attesa`,
-    `riuscito`, `guasto`. Un esito che non si conosce esce col suo nome
-    grezzo e nessuno dei tre segni: la pagina lo dice senza esplodere.
+    `riuscito`, `guasto`, e la strada a parole (`porta_parole`). Un esito che
+    non si conosce esce col suo nome grezzo e nessuno dei tre segni: la
+    pagina lo dice senza esplodere.
 
     Vive accanto agli esiti, e la applica `MindView.scope`: la rotta e lo
     strumento `mind` ricevono i tentativi gia' letti (N155-1, giro 155: fino
     al 13/10/2026 la applicava solo la rotta)."""
     word, kind = _ATTEMPT_WORDS.get(attempt.get("esito"), (attempt.get("esito"), None))
     return {**attempt, "esito_leggibile": word, "in_attesa": kind == "attesa",
-            "riuscito": kind == "riuscito", "guasto": kind == "guasto"}
+            "riuscito": kind == "riuscito", "guasto": kind == "guasto",
+            "porta_parole": _route_words(attempt.get("porta"))}
 
 
 #: Le chiavi dentro un'analisi o un filo del «Rifalla» che `reseal` non
@@ -1246,7 +1292,8 @@ class ObservationsStore:
                                 9: _migration_9,
                                 10: _migration_10, 11: _migration_11,
                                 12: _migration_12, 13: _migration_13,
-                                14: _migration_14, 15: _migration_15})
+                                14: _migration_14, 15: _migration_15,
+                                16: _migration_16})
 
     def close(self) -> None:
         with self._lock:
@@ -1843,24 +1890,35 @@ class ObservationsStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT tried_ts, outcome, detail, version FROM scope_attempt "
+                "SELECT tried_ts, outcome, detail, version, route, downgrade, "
+                "decided, candidates FROM scope_attempt "
                 "ORDER BY tried_ts DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
         return [{"quando_ts": r["tried_ts"], "esito": r["outcome"],
-                 "dettaglio": r["detail"], "versione": r["version"]}
+                 "dettaglio": r["detail"], "versione": r["version"],
+                 "porta": r["route"], "ripiego": r["downgrade"],
+                 "decise": r["decided"], "candidate": r["candidates"]}
                 for r in rows]
 
     def record_attempt(self, *, when_ts: float | None = None, outcome: str,
                        detail: str | None = None,
-                       version: str | None = None) -> None:
+                       version: str | None = None,
+                       route: str | None = None, downgrade: str | None = None,
+                       decided: int | None = None,
+                       candidates: int | None = None) -> None:
         """Annota un tentativo. Si ACCODA, come le riconsiderazioni: tre
         fallimenti di fila e uno solo sono due storie diverse, e una riga sola
-        non le distinguerebbe."""
+        non le distinguerebbe.
+
+        `detail` e' per una frase vera (l'errore, il motivo della domanda); i
+        numeri e la strada hanno le loro colonne (`_migration_16`)."""
         with self._lock:
             self._conn.execute(
-                "INSERT INTO scope_attempt (tried_ts, outcome, detail, version) "
-                "VALUES (?,?,?,?)",
+                "INSERT INTO scope_attempt (tried_ts, outcome, detail, version, "
+                "route, downgrade, decided, candidates) VALUES (?,?,?,?,?,?,?,?)",
                 (float(when_ts if when_ts is not None else _time.time()),
-                 outcome, detail, version))
+                 outcome, detail, version, route, downgrade or None,
+                 None if decided is None else int(decided),
+                 None if candidates is None else int(candidates)))
             self._conn.commit()
 
     # -- L'avviso delle integrazioni ferme -------------------------------

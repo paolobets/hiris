@@ -734,6 +734,52 @@ def test_migrazione_6_aggiunge_la_versione_a_un_archivio_gia_scritto(tmp_path):
         archivio.close()
 
 
+def test_migrazione_16_porta_i_fatti_del_tentativo_in_colonne(tmp_path):
+    """Fase B (28/10/2026): la strada, il ripiego e i numeri di un tentativo
+    hanno le loro colonne. Un archivio della 3.82.0 non le ha: senza
+    migrazione il primo `record_attempt` dopo l'aggiornamento fallirebbe, e
+    l'osservatore smetterebbe di annotare i suoi tentativi. La riga di prima
+    resta leggibile, con la sua frase e `None` nei campi nuovi.
+
+    Mutazione ESEGUITA il 28/10/2026: il corpo di `_migration_16` svuotato
+    (un `return` in testa) -- rossa, `no such column: route` al primo
+    tentativo. Ripristinata, `git status` pulito.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE scope_attempt (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " tried_ts REAL NOT NULL, outcome TEXT NOT NULL, detail TEXT, version TEXT);"
+        "INSERT INTO scope_attempt(tried_ts,outcome,detail,version)"
+        " VALUES(900.0,'riuscito','7 decisioni su 28 entita'' guardate [ponte]','3.82.0');"
+        "PRAGMA user_version = 15;")
+    conn.commit()
+    conn.close()
+
+    archivio = ObservationsStore(path)
+    try:
+        archivio.record_attempt(when_ts=1000.0, outcome="riuscito", route="ponte",
+                                decided=1, candidates=3, version="3.83.0")
+        dopo, prima = archivio.recent_attempts()
+        assert (dopo["porta"], dopo["decise"], dopo["candidate"]) == ("ponte", 1, 3)
+        assert dopo["dettaglio"] is None and dopo["ripiego"] is None
+        assert prima["dettaglio"].startswith("7 decisioni")
+        assert (prima["porta"], prima["decise"], prima["candidate"]) == (None, None, None)
+    finally:
+        archivio.close()
+
+
+def test_la_strada_del_tentativo_si_dice_a_parole():
+    """`[ponte]` sulla pagina era un'etichetta tecnica: la lettura del
+    tentativo porta il nome del piano dalla tabella dei provider."""
+    from hiris.app.mind.store import attempt_out
+    from hiris.app.providers import SUBSCRIPTION
+
+    assert attempt_out({"esito": "riuscito", "porta": "ponte"})["porta_parole"] == SUBSCRIPTION.name
+    assert attempt_out({"esito": "riuscito", "porta": "catena"})["porta_parole"]
+    assert attempt_out({"esito": "riuscito"})["porta_parole"] is None
+
+
 def test_una_base_dati_VECCHIA_prende_la_colonna_degli_attributi(tmp_path):
     """**La migrazione v6 -> v7, provata su una base dati alla versione 6.**
 
