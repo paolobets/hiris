@@ -434,7 +434,8 @@ async def test_la_quattordici_e_una_chiamata_sola(tmp_path):
     finestra oltre le 24 ore -> fasce orarie, consumato dal `cambio`.
 
     Mutazione ESEGUITA: `value_surface` senza `state_class` dallo specchio
-    (sempre `None`) -- rossa (andrebbe sullo storico)."""
+    (sempre `None`) -- rossa (andrebbe sullo storico). Mutazione ESEGUITA il
+    25/10/2026: `read_history` senza `with_legend` -- rossa sulla legenda."""
     # La forma grezza di Home Assistant: `start`/`end` in millisecondi
     # (misurata, docstring di `_instant_from_ha`), `state`/`change` di un
     # contatore, nessun `min`/`max`/`mean`.
@@ -450,6 +451,9 @@ async def test_la_quattordici_e_una_chiamata_sola(tmp_path):
     assert esito["profondita"] == "completa" and esito["grana"] == "oraria"
     assert esito["voci"][0]["consumato"] == 0.9
     assert esito["voci"][0]["unita"] == "kWh"
+    # La grana si spiega nella risposta (R213-2): fasce, non istanti.
+    from hiris.app.home_space.legend import READINGS
+    assert esito["legenda"]["grana"] == READINGS[("grana", "oraria")]
 
 
 @pytest.mark.asyncio
