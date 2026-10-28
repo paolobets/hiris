@@ -217,15 +217,24 @@ tiene le 28 domande nello stesso filo, e la storia accumulata pesa circa il 20% 
 **Prima di toccare.** Misurare la qualità oltre ai token: i giudizi della batteria sono ancora
 tutti «da giudicare».
 
-### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
+**Fatto nella Fase 2** (Paolo, 25/10/2026: «ok procediamo» sulla proposta
+`/mnt/project-files/piani/2026-10-24-fase-2-giro-snello-proposta.md`; ramo
+`claude/project-thread-2xasfd`). Misurato sul ramo, senza la casa (le descrizioni e la guida non
+dipendono dalla casa):
+- le definizioni dei 12 strumenti da 29.121 a 27.757 caratteri, `compose_base` da 6.476 a 2.951;
+  gli strumenti dell'analista da 16.072 a 12.897;
+- i punti 1-3 sopra: le regole di `execute` stanno solo nella sua descrizione (le due copie si
+  contraddicevano sul `cambiato` vuoto); il paragrafo dei conti è uscito dalle descrizioni, e lo
+  dicono la `nota` delle escluse e il `suggerimento` di `oltre`, ora uguale da `search` e
+  `history`; come si legge una chiave lo dice la `legenda` della risposta, solo per le chiavi che
+  escono (`home_space/legend.py`);
+- il punto 4: dal nucleo escono «Cosa si può chiedere alle cose di casa» e l'avviso sul
+  vocabolario (lo dice `scripts/verifica_componenti.py` al rilascio, senza bloccare); «Senza
+  area» dice il totale e come chiederle;
+- un cancello nuovo, `tests/test_contesto_fisso.py`: nessuna frase del contesto fisso in due
+  posti.
 
-`origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
-
-La sezione «Chi ti sta parlando» sta **prima** del nucleo (spec §5). Sul ponte la cache della CLI
-riusa il prefisso del messaggio: due persone che si alternano non condividono piu' il prefisso del
-nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda con le misure d'uso
-(la cache del ponte per turno). Se pesa, la sezione si sposta **dopo** il nucleo in
-`compose_chat_context` — un punto solo, nessun altro chiamante la compone.
+Resta da misurare sulla casa: il nucleo prima e dopo, e la batteria (Fase 3 dello sprint).
 
 ### Il nucleo è statico, e il proprietario chiede se non sia povero
 
@@ -307,6 +316,11 @@ rifiutare.
    `da_quando` di due giorni prima erano tutti li'; niente, in cio' che il modello riceve, dice
    che una diagnostica non e' una misura o che uno stato fermo da giorni non puo' essere un
    valore istantaneo.
+   *Nota del 25/10/2026 (Fase 2 dello sprint «Il giro snello»):* lo strumento `view` non c'è più
+   (il dettaglio lo dà `search` dal 29/09/2026); le entità di servizio, diagnostiche comprese,
+   restano fuori da `search` finché non le si chiede (`includi_servizio`), e quando escono il
+   campo `fuori` dice perché, con la sua frase nella `legenda` della risposta. Lo stato fermo da
+   giorni resta aperto.
 
 Il quarto anello — il modello che inventa una persona che non esiste — e' il **sintomo** di
 questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
@@ -559,6 +573,21 @@ posto solo (arriva anche al guscio come `configure_refusal`).
 ---
 
 ## In attesa
+
+### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
+
+`origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
+
+La sezione «Chi ti sta parlando» sta **prima** del nucleo (spec §5). Sul ponte la cache della CLI
+riusa il prefisso del messaggio: due persone che si alternano non condividono piu' il prefisso del
+nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda con le misure d'uso
+(la cache del ponte per turno). Se pesa, la sezione si sposta **dopo** il nucleo in
+`compose_chat_context` — un punto solo, nessun altro chiamante la compone.
+
+**Fuori dalla Fase 2 dello sprint «Il giro snello»** (Paolo, 25/10/2026, sulla proposta del
+24/10): il ponte oggi è spento e risponde la catena, dove ogni persona ha il suo filo e la sua
+storia, quindi il prefisso condiviso varrebbe solo il nucleo del primo messaggio. Si riprende
+quando il ponte si riaccende, con la misura della cache per turno.
 
 ### ⚠️ Prima di accendere il proponente: `ENABLED = True` — aperta il 06/10/2026
 

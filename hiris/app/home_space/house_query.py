@@ -491,6 +491,13 @@ class Selection:
     excluded: dict[str, int]
 
 
+#: Il suggerimento di `oltre` quando restano righe, da `search` e da `history`
+#: (fondamenta 3): fino al 25/10/2026 lo dava solo la storia (`_NARROW`), e
+#: per `search` la frase stava nella descrizione dello strumento.
+NARROW_HINT = ("prima restringi -- un filtro, un'area, un nome, una finestra piu' corta --; "
+               "scorri con `salta` solo se ti servono davvero tutte: ogni pagina e' un giro")
+
+
 def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     """La pagina `[offset, offset+limit)` (limite tagliato a `ROWS_MAX`) e, se
     restano righe, `{"restano", "salta"}` per chiedere la successiva.
@@ -513,7 +520,8 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
             hint=(f"salta={offset} supera le {len(rows)} righe disponibili: "
                   "questa pagina e' vuota, le righe si leggono da salta=0"))
     left = len(rows) - offset - len(page)
-    beyond = rows_left(left, skip=offset + len(page)) if left > 0 and limit > 0 else None
+    beyond = (rows_left(left, skip=offset + len(page), hint=NARROW_HINT)
+              if left > 0 and limit > 0 else None)
     return page, beyond
 
 
@@ -684,7 +692,9 @@ def excluded_note(found: int, excluded: dict) -> str | None:
     # voci date sono meno, quindi la nota dice «trovate», mai «date».
     return (f"trovate conta cio' che corrisponde ai filtri, non le escluse: in tutto "
             f"sono {found + sum(excluded.values())} ({found} trovate, {', '.join(parts)}). "
-            "Se dai un numero, di' anche le escluse.")
+            "Se dai un numero, di' anche le escluse; se la domanda riguarda proprio "
+            "quelle, richiama con `includi_nascoste` o `includi_servizio` -- «nessuna "
+            "luce accesa» e' falso se le accese sono nascoste.")
 
 
 # (singolare, plurale) di ogni chiave di `escluse`, concordati col sostantivo.

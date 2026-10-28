@@ -112,15 +112,19 @@ def test_le_descrizioni_non_nominano_un_campo_tolto():
     assert not named, named
 
 
-def test_i_valori_della_fascia_si_spiegano_nella_descrizione_di_history():
+def test_i_valori_della_fascia_si_spiegano_nella_legenda():
     """C-36 (Tappa 9, F4): `somma` arrivava al modello nei punti orari senza
     una parola che dicesse cos'e', e un totale progressivo si legge come il
     consumo dell'ora. I campi della fascia si chiedono al vocabolario.
 
-    Mutazione ESEGUITA: tolta la frase su `somma` dalla descrizione di
-    `history` -- rossa."""
+    Dal 25/10/2026 la frase la porta la risposta, nella `legenda`
+    (`home_space/legend.py`), non piu' la descrizione di `history`.
+
+    Mutazione ESEGUITA (prova di prima): tolta la frase su `somma` dalla
+    descrizione di `history` -- rossa. Mutazione ESEGUITA il 25/10/2026: tolta
+    `somma` da `READINGS` -- rossa, col nome."""
+    from hiris.app.home_space.legend import READINGS
+
     band = sorted(name for name, field in FIELDS.items() if "fascia" in field.owners)
     assert band, "la derivazione dei campi della fascia si e' svuotata"
-    history = next(t for t in KNOWLEDGE_TOOLS if t["name"] == "history")
-    text = " ".join(_descriptions(history))
-    assert [name for name in band if f"`{name}`" not in text] == []
+    assert [name for name in band if name not in READINGS] == []

@@ -22,7 +22,6 @@ from hiris.app.home_space.ha_vocabulary import (
     STATE_CLASS_MEANING,
     VOCABULARY_HA_VERSION,
     entity_category_measure_rule,
-    house_is_newer_than_vocabulary,
 )
 
 # Le due frasi di `EntityCategory` (`homeassistant/const.py`, tag `2026.9.1`)
@@ -81,96 +80,10 @@ def test_the_vocabulary_says_which_version_it_came_from():
     assert VOCABULARY_HA_VERSION.split(".")[0].isdigit()
 
 
-def test_a_house_newer_than_the_vocabulary_is_a_fact_not_an_error():
-    """Non e' un guasto ed e' inutile gridarlo: e' un fatto misurabile,
-    detto una volta, che invita a rileggere la documentazione.
-
-    Mutazione: far sollevare `house_is_newer_than_vocabulary` invece di
-    dichiarare (per esempio `raise ValueError(...)` al posto del `return`) --
-    il test torna rosso perche' la chiamata solleva invece di restituire un
-    dizionario con `assert nota["vocabolario_piu_vecchio_della_casa"] is True`.
-    """
-    note = house_is_newer_than_vocabulary("2099.1.0")
-    assert note["vocabolario_piu_vecchio_della_casa"] is True
-
-
-def test_a_house_on_the_next_calendar_release_is_reported_as_newer():
-    """Il confine VERO, non un caso di scuola: Home Assistant usa CalVer
-    (anno.mese.patch), e la release dopo `2026.9.1` e' `2026.10.0` -- la
-    prossima in assoluto. Un confronto LESSICOGRAFICO (stringa contro
-    stringa) direbbe che `"2026.10.0"` e' PIU' VECCHIO di `"2026.9.1"`,
-    perche' `'1'` (il primo carattere di `"10"`) e' minore di `'9'` come
-    carattere: il primo giorno in cui questo meccanismo serve davvero (la
-    prima release dopo quella pinnata) sarebbe il primo giorno in cui si
-    romperebbe, in silenzio.
-
-    Mutazione: sostituire il confronto CalVer a tuple con uno lessicografico
-    a stringhe (`older = house_ha_version > VOCABULARY_HA_VERSION`) -- il
-    test torna rosso su `assert note["vocabolario_piu_vecchio_della_casa"]
-    is True` (con la mutazione, risulta `False`: `"2026.10.0" < "2026.9.1"`
-    come stringhe).
-    """
-    note = house_is_newer_than_vocabulary("2026.10.0")
-    assert note["vocabolario_piu_vecchio_della_casa"] is True
-
-
-def test_a_house_one_patch_ahead_is_reported_as_newer():
-    """Il TERZO campo di CalVer (anno.mese.PATCH, come promette il docstring
-    di `_parsed_version`) non e' un dettaglio: `2026.9.2` e' la release
-    successiva a `2026.9.1` senza cambiare ne' anno ne' mese. Un confronto
-    che si fermasse ai primi due campi (anno, mese) direbbe che le due
-    versioni sono "uguali" -- non "piu' vecchia", ma nemmeno "piu' nuova" --
-    e la casa sarebbe gia' avanti senza che nessuno lo sappia.
-
-    Mutazione: confrontare solo i primi due campi
-    (`_parsed_version(house_ha_version)[:2] > _parsed_version(VOCABULARY_HA_VERSION)[:2]`)
-    -- il test torna rosso su `assert note["vocabolario_piu_vecchio_della_casa"]
-    is True` (con la mutazione, risulta `False`: anno e mese sono identici,
-    il patch non viene mai guardato).
-    """
-    note = house_is_newer_than_vocabulary("2026.9.2")
-    assert note["vocabolario_piu_vecchio_della_casa"] is True
-
-
-def test_a_house_at_the_same_version_is_not_reported_as_newer():
-    """La casa che HA misurato il vocabolario (`VOCABULARY_HA_VERSION`
-    stesso) non e' "piu' vecchia di se stessa": il confronto deve essere
-    stretto, non largo.
-
-    Mutazione: cambiare il confronto da `>` a `>=` in
-    `house_is_newer_than_vocabulary` -- il test torna rosso su
-    `assert note["vocabolario_piu_vecchio_della_casa"] is False`.
-    """
-    note = house_is_newer_than_vocabulary(VOCABULARY_HA_VERSION)
-    assert note["vocabolario_piu_vecchio_della_casa"] is False
-
-
-def test_a_house_older_than_the_vocabulary_is_not_reported_as_newer():
-    """Il minimo dichiarato da `hiris/config.yaml` (`2024.7.0`) e' PIU'
-    VECCHIO del vocabolario (`2026.9.1`): una casa che parte da li' non deve
-    mai leggersi "piu' nuova".
-
-    Mutazione: invertire l'ordine del confronto (`_parsed_version(VOCABULARY_HA_VERSION)
-    > _parsed_version(house_ha_version)`, scambiando i due argomenti) -- il
-    test torna rosso su `assert note["vocabolario_piu_vecchio_della_casa"] is False`.
-    """
-    note = house_is_newer_than_vocabulary("2024.7.0")
-    assert note["vocabolario_piu_vecchio_della_casa"] is False
-
-
-def test_a_house_with_no_version_read_yet_is_not_reported_as_newer():
-    """Una casa il cui sistema di riferimento non e' mai stato letto
-    (`versione_ha` assente) non e' "piu' vecchia" ne' "piu' nuova": e' "non
-    lo so", e affermare un confronto su un dato mancante sarebbe indovinare.
-
-    Mutazione: togliere la guardia `if not house_ha_version` -- il test
-    torna rosso (l'assert sotto non vede piu' `False`, o la chiamata solleva
-    perche' `_parsed_version(None)` itera su un `None`).
-    """
-    note = house_is_newer_than_vocabulary(None)
-    assert note["vocabolario_piu_vecchio_della_casa"] is False
-    note_empty = house_is_newer_than_vocabulary("")
-    assert note_empty["vocabolario_piu_vecchio_della_casa"] is False
+# Il confronto con la versione della casa e' uscito dal prodotto il
+# 25/10/2026 insieme alla riga del nucleo che lo diceva: lo fa ora
+# `scripts/verifica_componenti.avviso_vocabolario`, e le sue prove stanno in
+# `tests/test_verifica_componenti.py`.
 
 
 def test_every_measured_device_class_pair_has_a_documented_meaning():

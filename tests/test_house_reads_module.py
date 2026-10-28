@@ -180,3 +180,23 @@ async def test_errors_do_not_read_the_house(tmp_path):
     answer = await dispatcher.dispatch("history", _DOMANDE["errori"])
     assert answer["trovate"] == 1
     assert cache.letture == 0 and dispatcher._house is None
+
+
+
+@pytest.mark.asyncio
+async def test_la_risposta_della_storia_porta_la_sua_legenda(tmp_path):
+    """Le frasi su come si legge una risposta di `history` sono uscite dalla
+    descrizione il 25/10/2026 (Fase 2 dello sprint «Il giro snello»): se la
+    legenda cade, il modello le perde in silenzio. La prova sopra non lo vede,
+    perche' la legenda cade per chat e attori insieme (R213-2, giro 213). La
+    gemella sulle fasce orarie e' `test_la_quattordici_e_una_chiamata_sola`.
+
+    Mutazione ESEGUITA (25/10/2026): `read_history` che torna la risposta di
+    `_read_history` senza `with_legend` -- rossa qui e la gemella."""
+    from hiris.app.home_space.legend import legend
+
+    answer, _calls = await _actor_reads(tmp_path, _DOMANDE["esecuzioni"])
+    assert "errore" not in answer, answer
+    expected = legend({k: v for k, v in answer.items() if k != "legenda"})
+    assert expected, "la risposta non ha chiavi da spiegare: la prova non guarda niente"
+    assert answer["legenda"] == expected

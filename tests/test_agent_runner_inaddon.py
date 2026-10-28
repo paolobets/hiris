@@ -686,7 +686,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # testo reale della meta' che il ponte non deve emettere
     # (`claude_runner.BASE_TOOL_RULES`), e applicate al `system`
     # COMPOSTO -- non alla costante.
-    for ordine in ("Hai a disposizione strumenti", "Usa SEMPRE gli strumenti",
+    for ordine in ("Non dichiarare azioni mai eseguite", "Usa SEMPRE gli strumenti",
                    "chiama remember subito"):
         assert ordine in BASE_TOOL_RULES, (
             f"{ordine!r} non e' piu' nel testo di BASE_TOOL_RULES: "
@@ -811,9 +811,13 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
             f"il prompt del ramo ATTIVO dice «{negazione}» mentre la CLI gli "
             "serve `mcp__hiris__execute`: il modello rifiutera' di agire")
     # cio' che NON diventa vero nemmeno qui: nessuna conferma esiste, e il
-    # prompt non deve prometterne una (ne' inventare azioni in sospeso).
-    assert "nessuna conferma" in system
-    assert "in attesa di conferma" not in system
+    # prompt non deve prometterne una (ne' inventare azioni in sospeso). Dal
+    # 25/10/2026 la frase vive nella descrizione di `execute` (Fase 2 dello
+    # sprint «Il giro snello»), che il ponte riceve da `tools/list`.
+    from hiris.app.api.handlers_mcp import mcp_catalog
+    execute = next(t["description"] for t in mcp_catalog() if t["name"] == "execute")
+    assert "nessuna conferma" in execute
+    assert "in attesa di conferma" not in system + execute
 
     # ── fix round 1, Important 1: IL CONTRORDINE.
     # `_CONTESTO_PRESENTE` esce su entrambi i rami ed e' l'ULTIMA cosa che il

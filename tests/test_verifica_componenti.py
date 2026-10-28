@@ -596,3 +596,70 @@ def test_un_registro_MUTO_si_dichiara_invece_di_passare():
 
     assert len(scarti) == 1
     assert scarti[0].motivo == "rete assente"
+
+
+# ── Il vocabolario delle classi: un avviso al rilascio ─────────────────────
+# Fino al 25/10/2026 lo diceva il nucleo al modello, a ogni turno, e il
+# confronto viveva nel prodotto (`ha_vocabulary.house_is_newer_than_vocabulary`).
+# Le prove qui sotto sono quelle di allora, portate sulla casa nuova.
+
+from hiris.app.home_space.ha_vocabulary import VOCABULARY_HA_VERSION
+
+
+@pytest.mark.parametrize("casa", ["2099.1.0", "2026.10.0", "2026.9.2"])
+def test_una_casa_piu_nuova_del_vocabolario_si_dice(casa):
+    """`2026.10.0` e' il confine vero: come stringa sta prima di `2026.9.1`,
+    come versione viene dopo. `2026.9.2` e' il terzo campo di CalVer.
+
+    Mutazione ESEGUITA (25/10/2026): `versione_casa > VOCABULARY_HA_VERSION`
+    al posto di `piu_vecchia` -- rossa su `2026.10.0`."""
+    assert VOCABULARY_HA_VERSION == "2026.9.1", "le versioni qui sopra contano su questa"
+    avviso = vc.avviso_vocabolario(casa)
+    assert casa in avviso and VOCABULARY_HA_VERSION in avviso
+
+
+@pytest.mark.parametrize("casa", ["2026.9.1", "2024.7.0"])
+def test_una_casa_alla_stessa_versione_o_piu_vecchia_tace(casa):
+    """Il confronto e' stretto: la casa su cui il vocabolario e' stato
+    verificato non e' «piu' nuova di se stessa».
+
+    Mutazione ESEGUITA (25/10/2026): `not piu_vecchia(...)` tolto (l'avviso
+    sempre) -- rossa su tutte e due."""
+    assert vc.avviso_vocabolario(casa) == ""
+
+
+@pytest.mark.parametrize("versione, motivo", [(None, "casa: Home Assistant non e' dichiarato"),
+                                              ("", ""), (None, "")])
+def test_senza_la_versione_della_casa_lo_dice_e_non_indovina(versione, motivo):
+    """«Se la casa non risponde lo dice»: un avviso che tace quando non ha
+    guardato direbbe «tutto a posto» senza saperlo.
+
+    Mutazione ESEGUITA (25/10/2026): `return ""` al posto della frase del
+    motivo -- rossa."""
+    avviso = vc.avviso_vocabolario(versione, motivo)
+    assert "non ho potuto leggere la versione della casa" in avviso
+    assert motivo in avviso
+
+
+def test_la_versione_della_casa_si_legge_da_casa_py_e_non_solleva(monkeypatch):
+    """Gira dentro `git push`: una casa non dichiarata (`SystemExit` di
+    `casa.py`) diventa un motivo, non un traceback."""
+    for nome in ("HIRIS_HOUSE_URL", "HIRIS_HOUSE_TOKEN", "HIRIS_HOUSE_TOKEN_FILE"):
+        monkeypatch.delenv(nome, raising=False)
+    versione, motivo = vc.leggi_versione_casa()
+    assert versione is None
+    assert "Home Assistant non e' dichiarato" in motivo
+
+
+def test_una_casa_che_risponde_male_e_un_motivo_non_un_traceback(monkeypatch):
+    """Non solo `SystemExit`: una risposta senza `version`, o un errore
+    qualunque della lettura, diventa un motivo (R213-3, giro 213).
+
+    Mutazione ESEGUITA: `except SystemExit` al posto di
+    `except (SystemExit, Exception)` -- rossa con la `KeyError`."""
+    sys.path.insert(0, str(Path(_SORGENTE).parent))
+    import casa
+
+    monkeypatch.setattr(casa, "ha_get", lambda path: b"{}")
+    versione, motivo = vc.leggi_versione_casa()
+    assert versione is None and motivo

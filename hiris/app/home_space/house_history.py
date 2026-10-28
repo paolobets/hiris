@@ -59,6 +59,7 @@ from .house_query import (
     page_rows,
     parse_filters,
 )
+from .legend import with_legend
 from .log_source import Manifest, integration_of, manifest_of
 from .privacy import MOVING_DOMAINS, redact_nested, redact_row, redact_state
 from .queries import ROWS_MAX
@@ -263,8 +264,6 @@ def parse_query(arguments: dict, *, now: float,
 #: non firma i cambi, l'unico aggancio e' entita' + istante vicino, ed e' per
 #: questo che l'abbinamento si dice «probabile».
 MATCH_TOLERANCE_S = 60
-_NARROW = ("prima restringi -- una finestra piu' corta, un'area, un nome --; "
-           "scorri con salta solo se ti servono davvero tutte")
 _NOTHING_CHOSEN = ("nessuna cosa di questa casa corrisponde a questi filtri: cerca "
                    "il nome con `search` e richiama `history` col suo `riferimento`")
 _JOURNAL_UNREAD = ("non ho potuto leggere la mia cronaca: un cambio senza "
@@ -488,14 +487,6 @@ def _declare_gaps(out: dict, idents: list[str], series: dict, *, truncated: bool
         out["finestra"]["troncata"] = _TRUNCATED
 
 
-def _oltre(beyond: dict) -> dict:
-    """`oltre` della storia: quello di `page_rows`, e il suggerimento di
-    restringere solo quando restano righe davvero (non oltre la fine, dove il
-    suggerimento e' gia' come tornare indietro). Era `consiglio` fino al
-    13/10/2026 (C-66): la stessa cosa con un altro nome."""
-    return {**beyond, "suggerimento": _NARROW} if beyond.get("restano") else beyond
-
-
 def _activity(tie: str, epoch: float | None) -> tuple:
     """L'ordine della corta: chi e' cambiato piu' di recente NELLA finestra
     prima, chi non e' cambiato mai in fondo, e a parita' `tie` (l'id; per il
@@ -560,7 +551,7 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         if acts is None:
             out["cronaca_non_letta"] = _JOURNAL_UNREAD
     if beyond:
-        out["oltre"] = _oltre(beyond)
+        out["oltre"] = beyond
     _declare_gaps(out, shown, series, truncated=truncated, query=query)
     return out
 
@@ -929,7 +920,7 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
     elif grains:
         out["grana"] = grains.pop()
     if beyond:
-        out["oltre"] = _oltre(beyond)
+        out["oltre"] = beyond
     _declare_gaps(out, shown, firsts, truncated=truncated, query=query)
     return out
 
@@ -996,7 +987,7 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
     Il contratto degli stati (revisione del Task 3, 30/09/2026): si leggono
     TUTTI i soggetti, si ordinano per l'ultima esecuzione NELLA finestra
     (`_activity`; chi non e' partita nella finestra in fondo, a parita' l'id),
-    e solo poi si impagina (`_page`, `_oltre`).
+    e solo poi si impagina (`_page`).
 
     Chi non si e' potuto leggere si nomina in `non_letti`, col suo motivo, e
     non e' una riga: un elenco vuoto si leggerebbe «mai partita» (Review
@@ -1085,7 +1076,7 @@ def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
     if since:
         out["conservate"] = _RUNS_KEPT
     if beyond:
-        out["oltre"] = _oltre(beyond)
+        out["oltre"] = beyond
     if unread_count:
         out["non_lette_in_tutto"] = unread_count
     if not_read:
@@ -1294,7 +1285,7 @@ def error_rows(query: HistoryQuery, entries: list, manifest: Manifest) -> dict:
     non si scarta: non si sa se e' fuori.
 
     L'ordine e la pagina sono quelli delle altre corte: dall'ultima volta piu'
-    recente (`_activity`, a parita' codice e messaggio), poi `_page` e `_oltre`.
+    recente (`_activity`, a parita' codice e messaggio), poi `_page`, che da' anche `oltre`.
 
     `entries`: le voci di `system_log/list` con `message` ed `exception` GIA'
     passati dal sigillo dei segreti dal gestore (reperto B-1): qui non si
@@ -1360,7 +1351,7 @@ def error_rows(query: HistoryQuery, entries: list, manifest: Manifest) -> dict:
     if query.who.platform:
         out["nota_integrazione"] = _LIBRARIES_UNFILTERED
     if beyond:
-        out["oltre"] = _oltre(beyond)
+        out["oltre"] = beyond
     return out
 
 
@@ -1639,11 +1630,14 @@ async def read_errors(ha, query: HistoryQuery, *, seal, manifest: Manifest) -> d
 
     `system_log/list` e' `require_admin` in Home Assistant (la fonte sta in
     `privacy.ADMIN_ONLY_HISTORY_KINDS`): chi lo chiama ha GIA' deciso che puo'
-    -- nella chat, `ToolDispatcher._history` col cancello di quell'insieme."""
+    -- nella chat, `ToolDispatcher._history` col cancello di quell'insieme.
+
+    La risposta porta la sua `legenda` (`home_space/legend.py`): e' la stessa
+    da qualunque porta la si chieda, la chat o un attore."""
     answer = await read_log(ha)
     if "errore" in answer:
         return answer
-    return error_rows(query, sealed_log(answer["voci"], seal), manifest)
+    return with_legend(error_rows(query, sealed_log(answer["voci"], seal), manifest))
 
 
 async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
@@ -1657,7 +1651,8 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     Task 7).
 
     Gli errori non guardano la casa (`read_errors`); chi non vuole
-    costruirne una per loro chiama `read_errors` da se'.
+    costruirne una per loro chiama `read_errors` da se'. La `legenda` la
+    aggiunge `_read_history` qui sotto, una volta per tutti i generi.
 
     **Il permesso non e' qui.** `esecuzioni` ed `errori` leggono cio' che Home
     Assistant mostra ai soli amministratori
@@ -1666,6 +1661,16 @@ async def read_history(ha, query: HistoryQuery, house: House, behavior, *, cache
     if query.kind == "errori":
         return await read_errors(ha, query, seal=seal,
                                  manifest=manifest_of(house.home_space))
+    return with_legend(await _read_history(ha, query, house, behavior, cache=cache,
+                                           seal=seal, journal=journal, now=now,
+                                           translations=translations,
+                                           judgments=judgments, deepest=deepest))
+
+
+async def _read_history(ha, query: HistoryQuery, house: House, behavior, *, cache, seal,
+                        journal, now: float, translations: dict | None,
+                        judgments: TypeJudgments, deepest: str) -> dict:
+    """Il corpo di `read_history` per ogni genere fuorche' gli errori."""
     mirror = house.mirror
     chosen = choose(query, house, behavior, now=now, deepest=deepest)
     if isinstance(chosen, dict):

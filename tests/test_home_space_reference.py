@@ -182,47 +182,21 @@ def test_il_nucleo_dice_le_unita_della_casa_lette_dalla_cornice():
     assert "Unità con cui ragiona la casa: temperatura C" in testo
 
 
-# --- il vocabolario invecchiato: "qualcuno lo dice" -------------------------
+# --- il vocabolario invecchiato: non lo dice piu' il nucleo ------------------
 #
-# Il pezzo che rende duraturo il tema "rifiutare e importare" §7②:
-# `ha_vocabulary.house_is_newer_than_vocabulary` esisteva gia' (con le sue
-# prove dirette in `tests/test_ha_vocabulary.py`), ma NESSUN chiamante lo
-# invocava fuori dalla propria prova -- il fatto non veniva detto da
-# nessuna parte, esattamente come prima che il modulo esistesse. Queste due
-# prove verificano il COLLEGAMENTO: che il nucleo lo dica quando serve, e
-# che TACCIA quando non serve (un fatto falso ripetuto a ogni turno sarebbe
-# il rumore che questo digesto esiste per non produrre).
+# Fino al 25/10/2026 il nucleo diceva, accanto a "Riferimento:", che la casa
+# aveva superato la versione su cui il vocabolario delle classi era stato
+# verificato. Era una nota per chi sviluppa, non per chi risponde (Fase 2
+# dello sprint «Il giro snello», decisione di Paolo): la dice
+# `scripts/verifica_componenti.py` al rilascio, con le sue prove.
 
-def test_the_nucleus_says_when_the_house_is_newer_than_the_vocabulary():
-    """«Quando la casa supera la versione del vocabolario, qualcuno lo
-    dice» -- qui, non gridato: una frase in piu' vicino a "Riferimento:",
-    non un avviso in "Cosa non va in casa" (una casa piu' nuova non e'
-    rotta).
-
-    Mutazione: in `briefing._reference_frame_lines`, non chiamare mai
-    `_vocabulary_freshness_line` (o farla sempre restituire `""`) -- il
-    test torna rosso su `assert "vale la pena rileggere" in text`.
-    """
-    newer_config = dict(_CONFIG, version="2026.10.0")
-    text = _nucleo(reference_frame(newer_config))
-    assert "2026.10.0" in text
-    assert "2026.9.1" in text, "la versione pinnata dal vocabolario deve comparire"
-    assert "vale la pena rileggere" in text
-
-
-def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
-    """Il gemello della prova sopra: `_CONFIG["version"]` (`2026.8.1`) e'
-    PIU' VECCHIA della versione pinnata dal vocabolario (`2026.9.1`) -- non
-    c'e' niente da dire, e dirlo comunque sarebbe un falso allarme ripetuto
-    a ogni digesto.
-
-    Mutazione: in `briefing._vocabulary_freshness_line`, togliere il
-    controllo `if not freshness["vocabolario_piu_vecchio_della_casa"]:
-    return ""` (dichiarare sempre) -- il test torna rosso su
-    `assert "vale la pena rileggere" not in text`.
-    """
-    text = _nucleo(reference_frame(_CONFIG))
-    assert "vale la pena rileggere" not in text
+def test_il_nucleo_non_parla_del_vocabolario_nemmeno_su_una_casa_piu_nuova():
+    """Mutazione ESEGUITA (25/10/2026): rimessa in `_reference_frame_lines`
+    la riga «(Il vocabolario delle classi ... vale la pena rileggere la
+    documentazione)» -- rossa."""
+    text = _nucleo(reference_frame(dict(_CONFIG, version="2026.10.0")))
+    assert "2026.10.0" in text, "la versione della casa resta nel riferimento"
+    assert "vocabolario" not in text
 
 
 def test_l_ora_della_casa_si_dichiara_nel_suo_fuso():

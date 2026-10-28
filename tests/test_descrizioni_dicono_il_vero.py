@@ -139,22 +139,28 @@ _HA_WORDS = {
     "action:": "la chiave YAML di Home Assistant dentro una voce di `azioni`",
     "entity_id": "la chiave di Home Assistant in una voce di `stati`",
     "fields": "la chiave di Home Assistant dei parametri di uno script",
+    "automation.turn_off": ("un servizio di Home Assistant: `execute` lo nomina per "
+                            "l'eccezione dello spegnere un'automazione (dal 25/10/2026, "
+                            "quando la regola e' venuta dalla guida alla descrizione)"),
+    "script.turn_off": "un servizio di Home Assistant, gemello di `automation.turn_off`",
 }
 
 #: Lista di AMMISSIONE: `{strumento: {parola: ragione}}`. Puo' solo scendere.
 ADMITTED: dict[str, dict[str, str]] = {
     "search": {word: _HA_WORDS[word] for word in ("home", "not_home", "sensor")},
     "related": {"!include": _HA_WORDS["!include"]},
-    "execute": {**{word: _HA_WORDS[word] for word in ("brightness_pct", "label_id")},
+    "execute": {**{word: _HA_WORDS[word]
+                   for word in ("brightness_pct", "label_id", "automation.turn_off",
+                                "script.turn_off")},
                 "comandi": "il campo della scheda di `search` che dice cosa un'entita' sa "
                            "fare; `execute` lo cita per dire dove leggerlo"},
     "propose": {**{word: _HA_WORDS[word]
                    for word in ("trigger:", "action:", "entity_id", "fields")},
                 "dati": "la chiave di una voce di `helper`, che lo schema dichiara "
                         "solo come oggetto"},
-    "history": {"home": _HA_WORDS["home"], "not_home": _HA_WORDS["not_home"],
-                "<secret nome>": "la forma del sigillo dentro un messaggio, non una "
-                                 "chiave: a freddo `secrets.yaml` non c'e'"},
+    # `<secret nome>` e' uscito il 25/10/2026 con la sua frase, che ora sta
+    # nella `legenda` della risposta (`home_space/legend.py`).
+    "history": {"home": _HA_WORDS["home"], "not_home": _HA_WORDS["not_home"]},
 }
 
 

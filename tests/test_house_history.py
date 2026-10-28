@@ -1297,22 +1297,22 @@ def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
                                   "a": "2026-09-29T18:40:00+02:00"}
 
 
-def test_descrizione_errori_nomina_campi_riga():
-    """Ogni campo che la descrizione di `history` cita fra backtick nella frase
-    sugli errori e' una chiave della riga d'errore: la descrizione la legge il
-    modello, e un nome che la riga non porta lo manda a cercare cio' che non
-    c'e'. I campi si chiedono alla riga vera, le parole alla descrizione vera.
+def test_la_legenda_degli_errori_nomina_campi_della_riga():
+    """Ogni campo della riga d'errore che la `legenda` spiega e' una chiave
+    della riga vera: un nome che la riga non porta manderebbe il modello a
+    cercare cio' che non c'e'. Fino al 25/10/2026 la frase stava nella
+    descrizione di `history` («Errori: ...»); ora la dice la risposta. I campi
+    si chiedono alla riga vera, le frasi alla risposta vera.
 
-    Mutazione ESEGUITA (05/10/2026): `count` rimesso nella descrizione -- rossa."""
-    import re
+    Mutazione ESEGUITA (05/10/2026), sulla prova di prima: `count` rimesso
+    nella descrizione -- rossa."""
+    from hiris.app.home_space.legend import legend
 
-    from hiris.app.home_space.tools import HISTORY_TOOL_DEF
-
-    riga = hh.error_rows(_q(cosa="errori"), _REGISTRO, Manifest())["voci"][1]
-    frase = HISTORY_TOOL_DEF["description"].split("Errori: ", 1)[1].split(". ", 1)[0]
-    citati = re.findall(r"`([^`]+)`", frase)
-    assert citati, "la frase sugli errori non cita piu' nessun campo"
-    assert [c for c in citati if c not in riga] == []
+    risposta = hh.error_rows(_q(cosa="errori"), _REGISTRO, Manifest())
+    riga = risposta["voci"][1]
+    spiegati = legend(risposta)
+    assert {"volte", "messaggio"} <= set(spiegati), sorted(spiegati)
+    assert [c for c in spiegati if c not in riga and c not in risposta] == []
 
 
 def test_gli_errori_si_filtrano_per_livello_e_integrazione():

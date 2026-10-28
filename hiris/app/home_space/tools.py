@@ -125,6 +125,7 @@ from .house_query import (
     parse_filters,
     query_house,
 )
+from .legend import with_legend
 from .log_source import manifest_of
 from .privacy import (
     ADMIN_ONLY_HISTORY_KINDS,
@@ -254,19 +255,12 @@ def _depth_rule(complete: str, medium: str, short: str) -> str:
             f"({medium}); oltre -> `corta` ({short}). ")
 
 
-# Come si leggono i conti e le pagine: la busta delle due porte e' una
-# (`house_query.envelope`, `page_rows`), e la frase che la spiega pure.
-_COUNT_RULE = (
-    "`trovate` conta cio' che corrisponde, `escluse` cio' che NON ti ho dato "
-    "(nascoste, servizio, disabilitate). **Un numero senza le escluse non e' "
-    "un totale**: se dai un conteggio e `escluse` non e' vuoto, di' anche "
-    "quelle (la `nota` ha il totale); se la domanda riguarda proprio quelle, "
-    "richiama con `includi_nascoste` -- «nessuna luce accesa» e' falso se le "
-    "accese sono nascoste. Con `oltre` ne restano: **prima restringi** con un "
-    "filtro, scorri col suo `salta` solo se ti servono tutte (ogni pagina e' "
-    "un giro); `disponibili` vuol dire che hai saltato oltre "
-    "l'ultima, e le voci ci sono. "
-)
+# Come si leggono i conti, le pagine e i campi non sta qui (Fase 2 dello
+# sprint «Il giro snello», 25/10/2026): la `nota` delle escluse e il
+# `suggerimento` di `oltre` lo dicono nella risposta (`house_query.envelope`,
+# `page_rows`), e la `legenda` dice il resto, solo per le chiavi che escono
+# (`home_space/legend.py`). Fino ad allora il paragrafo `_COUNT_RULE` stava in
+# tutte e due le descrizioni, e partiva due volte a ogni giro.
 
 
 SEARCH_TOOL_DEF = {
@@ -275,7 +269,8 @@ SEARCH_TOOL_DEF = {
     # casa.md` §2): dal 29/09/2026 fa anche il mestiere del dettaglio, che era
     # di un secondo strumento. Dal 06/10/2026 (Tappa 5, Task 5) la descrizione
     # non ripete cio' che dice lo schema: dice dove vale ogni filtro, la
-    # profondita', cosa leggere SEMPRE nella risposta e cosa non esce.
+    # profondita' e cosa non esce; come si legge la risposta lo dice la
+    # risposta (la `legenda`, dal 25/10/2026).
     "description": (
         "La porta che interroga la casa: per TROVARE, CONTARE, ELENCARE e "
         "FILTRARE le cose di casa, e per il DETTAGLIO di una cosa sola (con "
@@ -294,22 +289,15 @@ SEARCH_TOOL_DEF = {
             f"massimo {ROWS_MAX}, il resto nel suo `oltre`",
             "attributi e ultimo cambio",
             f"una riga per voce, al massimo {ROWS_MAX}")
-        + "\n" + _COUNT_RULE + "\n"
+        + "\n"
         "Guarda l'id prima di concludere: «luci» puo' essere un "
         "`sensor` che le CONTA invece che una luce. Se piu' voci hanno lo "
         "stesso nome (due «Bagno» su piani diversi) scegli guardando la "
         "conversazione o chiedi a chi ti sta parlando: non prendere la prima.\n"
-        "Una voce nascosta (`fuori`) esiste: la persona l'ha tolta dalle "
-        "proprie viste in Home Assistant, non cancellata. Non proporla di tua "
-        "iniziativa; se la domanda la riguarda, usala e dillo.\n"
         "Le posizioni di persone e dispositivi che si spostano non escono: di "
         "una persona sai solo se e' in casa (`home`) o fuori (`not_home`). "
         "Credenziali e indirizzi di rete non escono mai.\n"
-        "Una ricerca per `nome` senza nessuna voce porta `nulla_riconosciuto`: "
-        "nessun nome combacia, MAI «la cosa non esiste» -- segui il "
-        "`suggerimento`. `non_ho_potuto_guardare` dice cosa non si e' potuto "
-        "leggere; `stato_non_letto`, che gli stati non si sono potuti "
-        "leggere. Per sapere CHI tocca una cosa usa `related`."
+        "Per sapere CHI tocca una cosa usa `related`."
     ),
     "input_schema": {
         "type": "object",
@@ -527,18 +515,52 @@ REMEMBER_TOOL_DEF = {
     },
 }
 
+# `execute` porta TUTTE le sue regole (Fase 2 dello sprint «Il giro snello»,
+# 25/10/2026): fino ad allora meta' stavano anche nella guida
+# (`claude_runner.TOOL_RULES`), e le due copie si contraddicevano sul
+# `cambiato` vuoto. Cio' che serve PRIMA di chiamare e cio' che serve per
+# leggere l'esito stanno qui; le frasi dell'`avviso` le scrive la porta
+# (`action/actuator.py`).
+#
+# La regola del racconto e la diagnosi inventata (2.2.1). Sulla prima casa
+# vera HIRIS ha spento due abat-jour -- si sono spente -- e ha risposto:
+# «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
+# Vuoi che riprovi?». Il difetto di FONTE che gli faceva vedere lo stato di
+# prima e' chiuso in `action/actuator.py`; ma la seconda meta' della frase --
+# quella che ha mandato il proprietario a cercare un guasto inesistente -- e'
+# nata QUI, e sarebbe rimasta.
+#
+# La riga diceva: «Se `cambiato` e' vuoto la chiamata e' riuscita ma nulla e'
+# cambiato in casa». Affermava una proprieta' della CASA a partire da un dato
+# che parla solo di cio' che HIRIS ha potuto vedere -- lo stesso errore di
+# scala dei fix m11/Task 6 sulle guide del ponte, qui su un altro soggetto. E
+# un modello a cui si dice, con autorita', che l'utente ha chiesto di spegnere
+# e in casa non e' cambiato niente, ha una sola conclusione disponibile: il
+# dispositivo. La speculazione non era un capriccio del modello, era l'unica
+# uscita che il testo gli lasciava.
+#
+# Adesso la descrizione afferma solo il fatto misurato (Home Assistant non ha
+# riportato cambiamenti), e la frase dopo vieta esplicitamente la deduzione
+# sulla causa nominando le tre ragioni banali che la rendono inutile. E' la
+# stessa disciplina del «preso nota»: non dire di sapere cio' che non sai.
+#
 EXECUTE_TOOL_DEF = {
     "name": "execute",
     "description": (
         "Chiama un servizio di Home Assistant per far succedere qualcosa nella "
-        "casa: accendere, spegnere, impostare. Richiede `servizio` nella forma "
-        "«dominio.servizio» (per esempio «light.turn_off») e un `bersaglio`. "
-        "Il bersaglio si scrive in due modi, e il secondo e' quello giusto per "
-        "«tutto in cucina»: `entita` con gli id ESATTI, oppure `aree`, `piani`, "
-        "`etichette` o `dispositivi` con i loro id -- e in quel caso e' Home "
-        "Assistant a dire cosa contengono. NON risolvere un'area a mano con "
-        "`search` per poi elencarne le entita': se te ne sfugge una tocchi quasi "
-        "tutto e credi di aver toccato tutto. Puoi combinarli. "
+        "casa: accendere, spegnere, impostare. Non scrive automazioni, script o "
+        "scene -- per costruirli c'e' `propose` -- e non programma niente per "
+        "dopo: ogni sua azione nasce da una richiesta di questa conversazione. "
+        "Richiede `servizio` nella forma «dominio.servizio» (per esempio "
+        "«light.turn_off») e un `bersaglio`. "
+        "`entita` vuole gli id ESATTI, mai il nome con cui le persone le "
+        "chiamano: se hai solo un NOME chiama prima `search` e usa l'id che ti "
+        "risponde. Se la richiesta riguarda una STANZA, un piano, un'etichetta o "
+        "un dispositivo, passali cosi' come sono -- `aree`, `piani`, "
+        "`etichette`, `dispositivi`, coi loro id -- e NON raccogliere gli id a "
+        "mano con `search`: li risolve Home Assistant, che e' l'unico a saperli "
+        "tutti, e raccoglierli a mano significa spegnerne quattordici su "
+        "quindici e dire di averle spente tutte. Puoi combinarli. "
         "`dati` porta i parametri del servizio, se ne servono. "
         "La chiamata viene VERIFICATA contro questa installazione prima di "
         "partire: se il servizio non esiste, se l'entita' non esiste, se l'area "
@@ -552,15 +574,40 @@ EXECUTE_TOOL_DEF = {
         "ragione detta. Per non arrivarci, guarda l'entita' con `search` e il suo "
         "`riferimento`: sotto `comandi` c'e' cosa accetta davvero, coi limiti "
         "veri del dispositivo. "
-        "Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
-        "dice cosa conteneva (`risolte`), su cosa la chiamata e' partita "
-        "(`toccate`) e cosa e' rimasto fuori perche' di un altro dominio o "
-        "senza stato: se `toccate` e' piu' corto di `risolte`, dillo a chi ti sta parlando "
-        "invece di dichiarare che hai fatto tutto. "
-        "Dopo l'esecuzione lo stato viene RILETTO: `prima`, `dopo` e "
-        "`cambiato` dicono cosa e' successo per davvero. Se `cambiato` e' vuoto "
-        "arriva un `avviso`: la chiamata e' riuscita ma nulla e' cambiato, e "
-        "va detto a chi ti sta parlando invece di dichiarare un successo."
+        "Quando una richiesta ammette piu' letture -- «accendi il bagno», e in "
+        "bagno ci sono due luci, uno scaldasalviette e un aspiratore -- agisci "
+        "sulla lettura piu' naturale e di' cosa hai fatto: cio' che fai si "
+        "annulla dicendo il contrario, quindi sbagliare costa una frase mentre "
+        "domandare costerebbe a ogni richiesta. Non c'e' nessuna conferma da "
+        "chiedere e nessuna azione in attesa. Domanda solo quando una lettura "
+        "naturale non c'e': in quella stanza non c'e' niente del genere, oppure "
+        "i candidati sono cosi' diversi che nessuno e' ovvio. "
+        "«Si annulla dicendo il contrario» ha un'eccezione, ed e' cio' che non "
+        "si vede guardando la casa: **spegnere un'automazione o uno script** "
+        "(`automation.turn_off`, `script.turn_off`) non accende e non spegne "
+        "niente di visibile, e resta cosi' finche' qualcuno non lo riattiva. "
+        "Fallo se te lo chiedono; ma dillo per esteso -- quale automazione, e "
+        "che restera' spenta -- e non farlo mai come effetto collaterale di "
+        "un'altra richiesta. "
+        "Dopo, racconta cosa e' SUCCESSO, non cosa e' stato chiesto: l'esito "
+        "porta `prima`, `dopo` e `cambiato`, presi da cio' che Home Assistant "
+        "ha riportato durante la chiamata o annunciato un istante dopo (HIRIS "
+        "lo aspetta apposta, per un tempo breve e limitato). Se `cambiato` non "
+        "e' vuoto il comando ha avuto effetto: dillo, e di' da cosa a cosa. Se "
+        "e' vuoto, l'unica cosa vera e' che Home Assistant non ha riportato "
+        "nessun cambiamento: dillo cosi' -- non «non e' cambiato niente in "
+        "casa», che non puoi sapere -- e riferisci l'`avviso`. E NON dedurne "
+        "una causa: non dire che il dispositivo non risponde, che c'e' un "
+        "problema di comunicazione, che e' offline o guasto. Le ragioni vere "
+        "sono banali almeno quanto un guasto: era gia' cosi', il servizio non "
+        "cambia nessuno stato, oppure una tapparella o una valvola si sta "
+        "ancora muovendo. "
+        "Con un bersaglio risolto l'esito porta anche `bersaglio`: cosa "
+        "conteneva (`risolte`), su cosa la chiamata e' partita (`toccate`) e "
+        "cosa e' rimasto fuori perche' di un altro dominio o senza stato. Se "
+        "`toccate` e' piu' corto di `risolte`, dillo a chi ti sta parlando e "
+        "di' quali sono rimaste fuori e perche', invece di dichiarare che hai "
+        "fatto tutto."
     ),
     "input_schema": {
         "type": "object",
@@ -889,7 +936,11 @@ CONFIRM_TOOL_DEF = {
 # che dice anche «oltre la fine», `nota` col totale delle escluse, `conti`,
 # `ore_senza_valore`, `consumato_non_calcolato`, `non_lette_in_tutto`, `dal`,
 # `al` (la coda delle fasce orarie, revisione finale della fetta).
-# Una chiave che il modello non sa leggere e' una chiave che non esiste. Il
+# Una chiave che il modello non sa leggere e' una chiave che non esiste: dal
+# 25/10/2026 (Fase 2 dello sprint «Il giro snello») a dirgli come leggerla e'
+# la risposta, con la frase gia' nel valore (`troncata`, `conservate`,
+# `nessuna_registrazione`...) o nella `legenda` (`home_space/legend.py`), e
+# solo quando la chiave esce. Qui resta cio' che serve PRIMA di chiamare. Il
 # testo resta sotto i tre quarti delle quattro descrizioni uscite
 # (`tests/test_history_tool.py` lo misura). Al modello lo strumento si
 # chiama `history`, mai «storia».
@@ -897,9 +948,9 @@ HISTORY_TOOL_DEF = {
     "name": "history",
     # Tappa 5, Task 5 (06/10/2026): il parametro che sceglie la domanda si
     # chiama `cosa`, non piu' `genere` (D3, C-65): `genere` in `search` e' il
-    # genere di un oggetto, qui era tutt'altro. I filtri comuni, la
-    # profondita' e la lettura dei conti vengono da `_SUBJECT_FILTERS`,
-    # `_depth_rule` e `_COUNT_RULE`, come per `search`.
+    # genere di un oggetto, qui era tutt'altro. I filtri comuni e la
+    # profondita' vengono da `_SUBJECT_FILTERS` e `_depth_rule`, come per
+    # `search`; come si leggono conti e campi lo dice la risposta.
     "description": (
         "Cio' che e' successo in casa nel tempo: gli stati, i valori, le "
         "esecuzioni di automazioni e script, il registro degli errori di Home "
@@ -918,37 +969,10 @@ HISTORY_TOOL_DEF = {
             "una riga per soggetto")
         + f"Al massimo {ROWS_MAX} `voci`: `salta` scorre le righe nella "
         "completa e nella media, i soggetti nella corta. "
-        + _COUNT_RULE +
-        "`finestra` e' il periodo DAVVERO coperto: con `chiesta_da` e "
-        "`troncata` mancano i dati piu' vecchi -- dillo. `dal` su una riga: "
-        "quella serie, o le esecuzioni conservate, cominciano dopo l'inizio; "
-        "`al`: le sue fasce finiscono li', l'ora in corso non e' ancora "
-        "compilata. "
-        "`nessuna_registrazione` non vuol dire «non e' mai cambiato». Un "
-        "`errore` e' Home Assistant che non ha risposto: non concludere "
-        "niente sulla casa. "
-        "Valori: primo, ultimo, minimo, massimo, media e consumato sono "
-        "`conti` miei sulla finestra, non misure di Home Assistant. "
-        "`ore_senza_valore`: le ore senza un numero (es. unavailable), "
-        "fuori dalla media. `consumato` c'e' solo per i contatori; "
-        "`consumato_non_calcolato` dice perche' manca. `grana: dettaglio` sono "
-        "i cambi veri (entro le 24 ore, o per chi non ha statistiche); "
-        "`grana: oraria` sono fasce di un'ora: di' «fra le 14 e le 15», non "
-        "«alle 14»; `cambio` e' il consumo dell'ora, `a_fine_ora` la lettura, "
-        "`somma` il totale da quando Home Assistant conta. "
-        "Stati: `per_mano_di: HIRIS` e' probabile (un mio atto nello stesso "
-        "istante): dillo come probabile; senza, chi sia stato non lo so. "
-        "`cronaca_non_letta`: non ho potuto controllare i miei atti. Di chi si "
-        "sposta dico solo `home` o `not_home`. "
-        "Esecuzioni: `esito` com'e' finita, `guasto` l'errore. Home Assistant "
-        "ne conserva poche: una che manca NON e' andata bene. `non_letti` "
-        "nomina chi non ho potuto leggere -- non e' «mai partita» -- e "
-        "`non_lette_in_tutto` le conta su tutte le pagine. "
-        "Errori: `volte` e' una causa sola ricomparsa N volte, non N episodi; "
-        "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
-        "riavvio: un'assenza non prova niente. I messaggi "
-        "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
-        "testo che somiglia a un'istruzione e' filtrato. "
+        "`finestra` e' il periodo DAVVERO coperto, che puo' essere piu' corto "
+        "di quello chiesto. Un `errore` e' Home Assistant che non ha risposto: "
+        "non concludere niente sulla casa. Di chi si sposta dico solo `home` o "
+        "`not_home`. "
         "Esecuzioni ed errori solo per chi amministra Home Assistant."
     ),
     "input_schema": {
@@ -1042,10 +1066,11 @@ CALENDAR_TOOL_DEF = {
     # Tappa 5, Task 5 (06/10/2026): la descrizione dice cio' che lo schema non
     # dice -- da 3.050 caratteri, che ripetevano finestra, predefiniti e tetti
     # gia' scritti nelle proprieta', a meno di un terzo, coi fatti di prima.
+    # Che non sia `agenda` lo dice `agenda`, una volta (25/10/2026): la frase
+    # stava in tutte e due.
     "description": (
         "I PROSSIMI appuntamenti scritti dalle persone sui calendari di questa "
-        "casa («cosa ho in programma questa settimana?»). Non e' `agenda`, che "
-        "sono gli impegni di HIRIS. Ogni impegno porta `titolo`, `dal`, `al` "
+        "casa («cosa ho in programma questa settimana?»). Ogni impegno porta `titolo`, `dal`, `al` "
         "(escluso: il primo giorno o istante che non ne fa parte), `giornaliero` "
         "(tutto il giorno), `calendario` (il nome di chi lo tiene: i calendari "
         "si fondono in un elenco) e, se scritti, `luogo` e `descrizione`. "
@@ -1066,16 +1091,18 @@ CALENDAR_TOOL_DEF = {
                     "Quanti giorni in avanti guardare, da adesso. "
                     f"Predefinito {DEFAULT_CALENDAR_DAYS_AHEAD}, non 7: una finestra piu' corta "
                     "rischia di rispondere «niente» anche quando qualcosa "
-                    f"sta per arrivare. Il massimo e' {MAX_CALENDAR_DAYS_AHEAD}."
+                    "sta per arrivare."
                 ),
+                "maximum": MAX_CALENDAR_DAYS_AHEAD,
             },
             "giorni_indietro": {
                 "type": "number",
                 "description": (
                     "Quanti giorni all'indietro guardare, da adesso. "
                     "Predefinito 0 (niente passato): usalo solo se ti viene "
-                    f"chiesto esplicitamente il passato. Il massimo e' {MAX_CALENDAR_DAYS_BACK}."
+                    "chiesto esplicitamente il passato."
                 ),
+                "maximum": MAX_CALENDAR_DAYS_BACK,
             },
         },
         "required": [],
@@ -1732,7 +1759,7 @@ class ToolDispatcher:
             # caduto nessuna area ha un piano, e `trovate: 0` sarebbe un
             # silenzio non dichiarato (re-review della fetta, 30/09/2026).
             response["non_ho_potuto_guardare"] = [_fallen_stores_message(["piani"])]
-        return response
+        return with_legend(response)
 
     def _declare_name_gaps(self, response: dict, filters, house: House) -> None:
         """Cio' che una ricerca per NOME non ha potuto guardare, e il divieto
@@ -2541,11 +2568,11 @@ class ToolDispatcher:
         if missing is not None:
             return missing
         # UNA casa per tutta la chiamata, la stessa del turno.
-        return await read_history(self._ha, query, self._turn_house(),
-                                  self._home_space.behavior(), cache=self._cache,
-                                  seal=self._seal(), journal=self._journal, now=now,
-                                  translations=await self._read_translations(),
-                                  judgments=self._judgments, deepest=deepest)
+        return await read_history(
+            self._ha, query, self._turn_house(), self._home_space.behavior(),
+            cache=self._cache, seal=self._seal(), journal=self._journal, now=now,
+            translations=await self._read_translations(), judgments=self._judgments,
+            deepest=deepest)
 
     # -- i calendari ------------------------------------------------------
 

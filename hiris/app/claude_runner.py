@@ -242,28 +242,6 @@ BASE_IDENTITY = (
     " dillo, e riproponilo a chi riguarda.\n"
 )
 
-# La regola del racconto e la diagnosi inventata (2.2.1). Sulla prima casa
-# vera HIRIS ha spento due abat-jour -- si sono spente -- e ha risposto:
-# «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
-# Vuoi che riprovi?». Il difetto di FONTE che gli faceva vedere lo stato di
-# prima e' chiuso in `action/actuator.py`; ma la seconda meta' della frase --
-# quella che ha mandato il proprietario a cercare un guasto inesistente -- e'
-# nata QUI, e sarebbe rimasta.
-#
-# La riga diceva: «Se `cambiato` e' vuoto la chiamata e' riuscita ma nulla e'
-# cambiato in casa». Affermava una proprieta' della CASA a partire da un dato
-# che parla solo di cio' che HIRIS ha potuto vedere -- lo stesso errore di
-# scala dei fix m11/Task 6 sulle guide del ponte, qui su un altro soggetto. E
-# un modello a cui si dice, con autorita', che l'utente ha chiesto di spegnere
-# e in casa non e' cambiato niente, ha una sola conclusione disponibile: il
-# dispositivo. La speculazione non era un capriccio del modello, era l'unica
-# uscita che il testo gli lasciava.
-#
-# Adesso la riga afferma solo il fatto misurato (Home Assistant non ha
-# riportato cambiamenti), e la riga dopo vieta esplicitamente la deduzione
-# sulla causa nominando le tre ragioni banali che la rendono inutile. E' la
-# stessa disciplina del «preso nota»: non dire di sapere cio' che non sai.
-#
 # **Ogni regola dice di quali strumenti parla** (Tappa 6, Task 7; R18). Fino
 # al 06/10/2026 il blocco era uno, e andava intero a ogni turno della catena:
 # 6.044 caratteri all'analista, che non ha strumenti, e le regole di
@@ -272,27 +250,17 @@ BASE_IDENTITY = (
 # nessuno ed e' vera per chiunque ne abbia (`()`). Chi compone e'
 # `steering.compose_base`; i nomi stanno nella tabella degli strumenti, e
 # `tests/test_un_turno.py` li pretende da li'.
+#
+# **Le regole di `execute` non stanno piu' qui** (Fase 2 dello sprint «Il giro
+# snello», approvata da Paolo il 25/10/2026): stavano due volte, qui e nella
+# descrizione dello strumento, e si contraddicevano sul `cambiato` vuoto --
+# qui la frase giusta della 2.2.1, di la' ancora «nulla e' cambiato». Ora
+# vivono una volta, in `home_space/tools.EXECUTE_TOOL_DEF`, che arriva a ogni
+# turno che ha lo strumento, sulla catena e sul ponte.
 TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("execute",), (
-        "Hai a disposizione strumenti per cercare e guardare il dettaglio di una"
-        " cosa della casa, per salvare e richiamare ciò che ti viene detto e per"
-        " far succedere qualcosa: `execute` chiama un servizio di Home Assistant"
-        " su una o più entità — accendere, spegnere, impostare. La chiamata viene"
-        " verificata contro questa installazione prima di partire, e dopo ti arriva"
-        " ciò che Home Assistant ha visto cambiare: quello che ha riportato subito e"
-        " quello che ha annunciato un istante dopo, che HIRIS aspetta apposta per un"
-        " tempo breve e limitato."
-        " `execute` non scrive automazioni, script o scene — per costruirli usa"
-        " `propose` (vedi sotto) — e non programma niente per dopo:"
-        " ogni sua azione nasce da una richiesta di questa conversazione.\n\n"
-    )),
     ((), (
         "## Regole fondamentali\n"
         "- Usa SEMPRE gli strumenti per dati sulla casa — non inventare stati, valori o entità.\n"
-    )),
-    (("execute",), (
-        "- `execute` vuole gli id ESATTI delle entità, mai il nome con cui le persone le chiamano:"
-        " se hai solo un NOME chiama prima search e usa l'id che ti risponde.\n"
     )),
     (("search",), (
         "- Gli id fra parentesi che vedi nell'albero della casa"
@@ -309,51 +277,12 @@ TOOL_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
         "- Se devi fare più letture indipendenti — più search con riferimento, più related —"
         " chiamale IN PARALLELO nella stessa risposta, non una dopo l'altra.\n"
     )),
-    (("execute",), (
-        "- Se la richiesta riguarda una STANZA, un piano, un'etichetta o un dispositivo,"
-        " passali a `execute` cosi' come sono -- `aree`, `piani`, `etichette`,"
-        " `dispositivi` -- e NON raccogliere gli id a mano con search: li risolve Home"
-        " Assistant, che e' l'unico a saperli tutti. Raccoglierli a mano significa"
-        " spegnerne quattordici su quindici e dire di averle spente tutte. Le `etichette`"
-        " invece si danno per id, come le conosce Home Assistant: nessuno strumento le risolve"
-        " dal nome, quindi non indovinarne l'id.\n"
-        "- L'esito porta `bersaglio`: se `toccate` e' piu' corto di `risolte`, dillo"
-        " a chi ti sta parlando e di' quali sono rimaste fuori e perche'.\n"
-        "- Dopo aver eseguito racconta cosa è SUCCESSO, non cosa è stato chiesto: la risposta di"
-        " `execute` porta `prima`, `dopo` e `cambiato`, presi da ciò che Home Assistant ha"
-        " riportato durante la chiamata o annunciato subito dopo. Se `cambiato` non è vuoto"
-        " il comando ha avuto effetto: dillo, e di' da cosa a cosa.\n"
-        "- Se `cambiato` è vuoto, l'unica cosa vera è che Home Assistant non ha riportato nessun"
-        " cambiamento: dillo così — non «non è cambiato niente in casa», che è una cosa che non"
-        " puoi sapere — e riferisci l'`avviso` se c'è.\n"
-        "- E NON dedurne una causa. Non dire che il dispositivo non risponde, che c'è un problema"
-        " di comunicazione, che è offline o guasto: non hai nessun dato che lo dica, e mandare"
-        " qualcuno a cercare un guasto inesistente è peggio che dire «non lo so». Le ragioni vere"
-        " sono banali almeno quanto un guasto — era già così, il servizio non cambia nessuno"
-        " stato, oppure una tapparella o una valvola si sta ancora muovendo e finirà fra qualche"
-        " secondo.\n"
-    )),
     ((), (
         "- Non dichiarare azioni mai eseguite: se non hai"
         " chiamato il tool, non dire di averlo fatto.\n"
         "- Se hai chiamato uno strumento con successo, l'azione è reale:\n"
         "  non aggiungere disclaimers come "
         "'ho inventato', 'ho simulato' o 'non ho realmente eseguito'.\n"
-    )),
-    (("execute",), (
-        "- Quando una richiesta ammette più letture — «accendi il bagno», e in bagno ci sono due"
-        " luci, uno scaldasalviette e un aspiratore — agisci sulla lettura più naturale e di' cosa"
-        " hai fatto: ciò che fai si annulla dicendo il contrario, quindi sbagliare costa una frase"
-        " mentre domandare costerebbe a ogni richiesta. Non c'è nessuna conferma da chiedere e"
-        " nessuna azione in attesa. Domanda solo quando una lettura naturale non c'è: in quella"
-        " stanza non c'è niente del genere, oppure i candidati"
-        " sono così diversi che nessuno è ovvio.\n"
-        "- «Si annulla dicendo il contrario» ha un'eccezione, ed è ciò che non si vede guardando la"
-        " casa: **spegnere un'automazione o uno script** (`automation.turn_off`, `script.turn_off`)"
-        " non accende e non spegne niente di visibile, e resta così finché qualcuno non lo riattiva"
-        " — una regola della casa che smette di valere, e nessuno che sappia perché. Fallo se te lo"
-        " chiedono; ma dillo per esteso — quale automazione, e che resterà spenta — e non farlo mai"
-        " come effetto collaterale di un'altra richiesta.\n"
     )),
     (("remember",), (
         "- Se chi ti sta parlando ti corregge, proponi di ricordare la sua PREFERENZA GENERALE con"

@@ -119,7 +119,7 @@ from casa_finta import NOWHERE, CasaFinta
 from hiris.app import claude_runner, server, startup
 from hiris.app.agent import prompts as bridge_prompts
 from hiris.app.api import handlers_chat, handlers_home_space, soffitto
-from hiris.app.home_space import briefing, house_query, queries, topology
+from hiris.app.home_space import house_query, queries, topology
 from hiris.app.home_space.house import House
 from hiris.app.home_space.reader import HOME_SPACE_KEY
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
@@ -485,7 +485,7 @@ async def _ports(app, clock: float) -> dict:
                               "definizione": tool} for tool in KNOWLEDGE_TOOLS}
     return {
         "albero": topology.hierarchy(home_space),
-        "visibili": briefing.digest_visible_entity_ids(home_space),
+        "visibili": frozenset(House(home_space, mirror).visible_entities()),
         "nucleo": {"caratteri": len(text), "testo": text, "riepilogo": summary},
         "schede": _cards(home_space, entries, mirror),
         "selezioni": _selections(home_space, entries, mirror, clock),
