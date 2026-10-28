@@ -18,8 +18,12 @@ scritte qui perche' sono il cancello:
 - **le righe di uno stesso elenco si ripetono la forma, non la prosa**: nel
   catalogo di `compute` ogni riga dice «Ingressi: ...» perche' e' una
   tabella. Una frase che dopo la testa di una riga (`- nome: ...`) torna
-  nelle altre righe dello STESSO elenco e' una cella, non un doppione; fuori
-  da quell'elenco conta come ogni altra.
+  nelle altre righe della STESSA tabella -- lo stesso blocco di righe
+  `- nome: ...` consecutive dello stesso testo -- e' una cella, non un
+  doppione; fuori da quel blocco conta come ogni altra. Gli elenchi di regole
+  della guida (`- Usa SEMPRE...`) non sono tabelle: due loro righe che
+  finiscono con la stessa frase sono un doppione (R213-1, giro 213: con le
+  celle ammesse per POSTO passavano).
 
 Mutazioni ESEGUITE il 25/10/2026, senza toccare questa prova:
 - rimessa in `claude_runner.TOOL_RULES` una regola di `execute` presa dalla
@@ -29,7 +33,9 @@ Mutazioni ESEGUITE il 25/10/2026, senza toccare questa prova:
   «- ...», e la riga intera non combaciava con nessuna frase;
 - messa nella guida una cella del catalogo di `compute` («Ingressi: serie del
   periodo.») -- rossa: fuori dal suo elenco una cella e' una frase;
-- rimesso «Il massimo e' 365.» nei due parametri di `calendar` -- rossa.
+- rimesso «Il massimo e' 365.» nei due parametri di `calendar` -- rossa;
+- «Vale sempre.» in coda a due righe «- » delle regole fondamentali di
+  `TOOL_RULES` -- rossa (era verde prima di R213-1).
 """
 from __future__ import annotations
 
@@ -70,15 +76,31 @@ def _fixed_context() -> list[tuple[str, str]]:
     return texts
 
 
-def _sentences(text: str) -> list[tuple[str, bool]]:
-    """Le frasi di un testo, ognuna con «e' una cella»: una frase di una riga
-    d'elenco che non ne e' la testa."""
+#: La riga di una tabella: `- nome: ...`, come quelle del catalogo di `compute`.
+_TABLE_ROW = re.compile(r"^- [\w.`-]+: ")
+
+
+def _sentences(text: str, text_id: int) -> list[tuple[str, tuple[int, int] | None]]:
+    """Le frasi di un testo, ognuna col blocco di tabella di cui e' una cella
+    -- una frase di una riga `- nome: ...` che non ne e' la testa -- o
+    `None`. Il blocco e' `(testo, n)`: l'n-esima corsa di righe consecutive
+    di quel testo che sono TUTTE righe di tabella. Un elenco di regole (`- Usa
+    SEMPRE...`) non e' una tabella: le sue frasi contano come prosa."""
+    lines = [line.strip() for line in text.splitlines()]
+    runs: list[list[int]] = []
+    for index, line in enumerate(lines):
+        if line.startswith("- "):
+            if runs and runs[-1][-1] == index - 1:
+                runs[-1].append(index)
+            else:
+                runs.append([index])
+    table_of = {index: (text_id, n) for n, run in enumerate(runs)
+                if all(_TABLE_ROW.match(lines[i]) for i in run) for index in run}
     out = []
-    for line in text.splitlines():
-        line = line.strip()
-        row = line.startswith("- ")
+    for index, line in enumerate(lines):
         pieces = [s for s in re.split(r"(?<=[.!?])\s+", line.removeprefix("- ")) if s]
-        out += [(piece, row and n > 0) for n, piece in enumerate(pieces)]
+        out += [(piece, table_of.get(index) if n > 0 else None)
+                for n, piece in enumerate(pieces)]
     return out
 
 
@@ -93,17 +115,19 @@ def test_la_derivazione_guarda_davvero_il_contesto():
 
 
 def test_nessuna_frase_del_contesto_fisso_sta_in_due_posti():
-    where: dict[str, list[tuple[str, bool]]] = defaultdict(list)
-    for place, text in _fixed_context():
-        for sentence, cell in _sentences(text):
+    where: dict[str, list[tuple[str, tuple[int, int] | None]]] = defaultdict(list)
+    for text_id, (place, text) in enumerate(_fixed_context()):
+        for sentence, cell in _sentences(text, text_id):
             where[sentence].append((place, cell))
 
-    def allowed(seen: list[tuple[str, bool]]) -> bool:
+    def allowed(seen) -> bool:
         places = {place for place, _cell in seen}
         if len(places) > 1:
             return False
-        # Lo stesso parametro in due strumenti, o le celle di un elenco.
-        return next(iter(places)).startswith("parametro") or all(c for _p, c in seen)
+        if next(iter(places)).startswith("parametro"):
+            return True  # lo stesso parametro in due strumenti
+        blocks = {cell for _place, cell in seen}
+        return None not in blocks and len(blocks) == 1  # le celle di un elenco
 
     twice = {sentence: [place for place, _cell in seen]
              for sentence, seen in where.items() if len(seen) > 1 and not allowed(seen)}
