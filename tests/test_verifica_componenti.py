@@ -644,3 +644,17 @@ def test_la_versione_della_casa_si_legge_da_casa_py_e_non_solleva(monkeypatch):
     versione, motivo = vc.leggi_versione_casa()
     assert versione is None
     assert "Home Assistant non e' dichiarato" in motivo
+
+
+def test_una_casa_che_risponde_male_e_un_motivo_non_un_traceback(monkeypatch):
+    """Non solo `SystemExit`: una risposta senza `version`, o un errore
+    qualunque della lettura, diventa un motivo (R213-3, giro 213).
+
+    Mutazione ESEGUITA: `except SystemExit` al posto di
+    `except (SystemExit, Exception)` -- rossa con la `KeyError`."""
+    sys.path.insert(0, str(Path(_SORGENTE).parent))
+    import casa
+
+    monkeypatch.setattr(casa, "ha_get", lambda path: b"{}")
+    versione, motivo = vc.leggi_versione_casa()
+    assert versione is None and motivo

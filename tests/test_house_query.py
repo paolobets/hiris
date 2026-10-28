@@ -841,3 +841,13 @@ def test_oltre_ha_una_forma_sola():
     assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 0
     _, oltre = hq.page_rows(list(range(10)), 0, 4)
     assert set(oltre) <= BEYOND_KEYS and oltre["restano"] == 6
+
+
+def test_la_nota_delle_escluse_dice_come_chiederle():
+    """Dal 25/10/2026 la nota dice anche come richiamare le escluse: fino ad
+    allora lo diceva la descrizione di `search` a ogni giro (R213-3).
+
+    Mutazione ESEGUITA: tolta la frase su `includi_nascoste` /
+    `includi_servizio` da `excluded_note` -- rossa."""
+    nota = hq.excluded_note(3, {"nascoste": 2, "servizio": 1, "disabilitate": 0})
+    assert "`includi_nascoste`" in nota and "`includi_servizio`" in nota

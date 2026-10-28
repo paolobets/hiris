@@ -92,3 +92,11 @@ async def test_search_porta_la_legenda_dal_dispatcher(dispatcher):
     esito = await dispatcher.dispatch("search", {"nome": "xyzzy qwerty"})
     assert esito.get("nulla_riconosciuto") is True, esito
     assert esito["legenda"]["nulla_riconosciuto"] == READINGS["nulla_riconosciuto"]
+
+
+def test_le_chiavi_del_soggetto_si_spiegano():
+    """La storia di un soggetto solo porta le sue chiavi in `soggetto`
+    (R213-3, giro 213).
+
+    Mutazione ESEGUITA: `_keys` che non guarda `soggetto` -- rossa."""
+    assert legend({"soggetto": {"id": "sensor.x", "dal": "..."}}) == {"dal": READINGS["dal"]}
