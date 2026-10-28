@@ -637,14 +637,21 @@ async def test_il_giro_annota_da_quale_PORTA_e_passato(archivio):
     provider a pagamento si scopre a fine mese»* (proprietario, 13/08/2026,
     citato nel docstring di `steering.py`).
 
-    Mutazione che la uccide: scrivere il dettaglio senza la porta.
+    Dalla Fase B (28/10/2026, `_migration_16`) la porta e i numeri sono
+    campi del tentativo, non pezzi di una frase in `dettaglio`.
+
+    Mutazione ESEGUITA il 28/10/2026: `route=route` tolto dal tentativo
+    riuscito -- rossa su `porta`. Ripristinata, `git status` pulito.
     """
     modello = _modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
 
     await reconsideration_round(
         _app(archivio, _anagrafe([_entita("climate.x")]), modello), _house())
 
-    assert "catena" in archivio.recent_attempts()[0]["dettaglio"]
+    ultimo = archivio.recent_attempts()[0]
+    assert ultimo["porta"] == "catena"
+    assert (ultimo["decise"], ultimo["candidate"]) == (1, 1)
+    assert ultimo["dettaglio"] is None, "i numeri non tornano dentro una frase"
 
 
 @pytest.mark.asyncio

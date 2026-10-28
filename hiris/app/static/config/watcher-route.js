@@ -1,4 +1,5 @@
-/* HIRIS · Configurazione · «L'osservatore» — il guscio delle quattro schede.
+/* HIRIS · Configurazione · «Brain» (fino al 28/10/2026 «L'osservatore») —
+   il guscio delle quattro schede.
 
    Spec `docs/design/2026-09-18-la-pagina-dell-osservatore.md` §2. Nasce da una
    richiesta del proprietario: «e' troppo lunga, densa di informazioni non
@@ -35,12 +36,12 @@ window.HirisWatcherRoute = (function () {
     { nome: 'giorno', etichetta: 'Il giorno', modulo: 'HirisWatcherGiorno' },
     { nome: 'cosa-fare', etichetta: 'Cosa fare', modulo: 'HirisWatcherCosaFare' },
     { nome: 'sapere', etichetta: 'Cosa ho capito', modulo: 'HirisWatcherSapere' },
-    { nome: 'lavoro', etichetta: 'L’osservatore', modulo: 'HirisWatcherLavoro' }
+    { nome: 'lavoro', etichetta: 'Come lavora', modulo: 'HirisWatcherLavoro' }
   ];
 
   var stato = null;
 
-  function indirizzoDi(nome) { return '#/watcher/' + nome; }
+  function indirizzoDi(nome) { return '#/brain/' + nome; }
 
   function nomeValido(nome) {
     for (var i = 0; i < SCHEDE.length; i++) if (SCHEDE[i].nome === nome) return nome;
@@ -129,14 +130,14 @@ window.HirisWatcherRoute = (function () {
 
   function costruisci(outlet) {
     clearEl(outlet);
-    outlet.appendChild(el('h1', 'page-title', 'L’osservatore'));
+    outlet.appendChild(el('h1', 'page-title', 'Brain'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Guarda la casa, ne ricava misure, e dice cosa si potrebbe fare. ' +
-      'Non tocca niente: decidi tu.'));
+      'Non tocca la casa senza il tuo sì.'));
 
     var tablist = el('div', 'watcher-tabs');
     tablist.setAttribute('role', 'tablist');
-    tablist.setAttribute('aria-label', 'Le quattro schede dell’osservatore');
+    tablist.setAttribute('aria-label', 'Le quattro schede del Brain');
     tablist.addEventListener('keydown', frecce);
     outlet.appendChild(tablist);
 

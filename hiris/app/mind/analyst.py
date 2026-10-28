@@ -47,8 +47,15 @@ MINIMUM_HISTORY = 3
 #: 13/10/2026 la pagina ne teneva una copia sua (C-11). Il prompt
 #: dell'analista (`analyst_turn`) dice la stessa idea al modello, con le sue
 #: parole.
+#:
+#: **L'innesco e' la DOMANDA, non la risposta** (Fase B, 28/10/2026). Fino a
+#: quel giorno l'1 diceva «è cambiato, e non è spiegato», e accanto la pagina
+#: scriveva la risposta dell'analista, «È spiegato: …»: due frasi che si
+#: contraddicevano (fotografia della Fase L, frase (b)). Che sia spiegato o no
+#: lo dice `spiegato` (una frase, o `null`): ripeterlo qui era un doppione, e
+#: il doppione mentiva proprio quando l'analista trovava la spiegazione.
 TRIGGER_WORDS = {
-    1: "è cambiato, e non è spiegato",
+    1: "è cambiato rispetto al solito",
     2: "è stabile e costa",
     3: "non c’è più",
 }
@@ -313,6 +320,14 @@ def trigger_facts(row: dict, days: list[str]) -> list[dict]:
 #: sarebbe ricopiare un fatto che possiamo leggere (giro 12 del revisore,
 #: G12-2; la lezione del 22/09, «il NUMERO, non il nome»).
 NOVELTY = ("nuova", "prova cambiata")
+
+#: La novita' **a parole**, per chi legge (Fase B, 28/10/2026): «prova
+#: cambiata» da sola non dice che la cosa era gia' stata detta. Le attacca
+#: `mind/view`, accanto alla parola del vocabolario, come `TRIGGER_WORDS`.
+NOVELTY_WORDS = {
+    NOVELTY[0]: "nuova",
+    NOVELTY[1]: "già detta, ma la prova è cambiata",
+}
 
 
 def previous_observations(analyses, proposals, *, today: str,

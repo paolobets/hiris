@@ -556,7 +556,7 @@ both ways, with the routes the panel's router actually registers:
 | `#/memory` | **Memory** — the remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
 | `#/agenda` | **Commitments** — what you asked HIRIS to do or check later, pending and history — cancel what has not fired yet |
 | `#/constructions` | **Proposals** — what HIRIS proposes to create, modify or delete in this home (an automation, a script or a scene): approve, reject, or restore a previous version |
-| `#/watcher` | **The observer** — what HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — four tabs: the day, what to do, what HIRIS understood, how the observer is working. It observes, measures and proposes; it does not act on the house |
+| `#/brain` | **Brain** — what HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — four tabs: the day, what to do, what HIRIS understood, how it is working (the old `#/watcher` addresses still land here). It observes, measures and proposes; it does not act on the house |
 | `#/settings` | **Chat settings** — seven of them (name, system prompt, answer shape, reasoning budget, turn cap, retention days, home restriction). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
 | `#/models` | **Models** — active providers, the automatic chain and the default model per provider |
 | `#/usage` | **Usage** — tokens and cost, or the reason why they cannot be measured |

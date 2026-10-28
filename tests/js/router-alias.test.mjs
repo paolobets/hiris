@@ -49,12 +49,16 @@ const SCRIPTS = ['common.js', 'config/state.js', 'config/router.js', 'config/mai
 
 /* Il segnaposto che ogni bersaglio deve rendere -- è così che si prova di
    essere ATTERRATI sulla pagina, invece di guardare solo la barra. */
+/* Un bersaglio puo' portare la scheda (`#/brain/giorno`): il segnaposto e'
+   quello della pagina, quindi si cerca per la radice dell'hash. */
+function segnapostoDi(hash) { return SEGNAPOSTO[hash.replace(/^(#\/[^/]+).*$/, '$1')]; }
+
 const SEGNAPOSTO = {
   '#/tree': 'Albero della casa',
   '#/memory': 'Memoria',
   '#/agenda': 'Impegni',
   '#/constructions': 'Proposte',
-  '#/watcher': 'L’osservatore',
+  '#/brain': 'Brain',
   '#/settings': 'Impostazioni chat',
 };
 
@@ -76,10 +80,10 @@ test('ogni hash italiano di prima porta sulla pagina di oggi, e la barra dice il
     assert.equal(window.location.hash, adesso,
       `un segnalibro su ${prima} deve finire su ${adesso}, non restare dov'era`);
     assert.match(document.getElementById('route-outlet').textContent,
-      new RegExp(SEGNAPOSTO[adesso]),
+      new RegExp(segnapostoDi(adesso)),
       `${prima} deve MONTARE la pagina di ${adesso}, non solo cambiare la barra`);
     assert.equal(document.getElementById('chrome-here').textContent,
-      SEGNAPOSTO[adesso],
+      segnapostoDi(adesso),
       `la briciola dopo ${prima} deve dire dove si è finiti`);
   }
 });

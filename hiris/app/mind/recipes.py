@@ -114,35 +114,35 @@ def silence(entity_id: str, source: dict | None,
     dominio, che non compila statistiche qualunque sia lo stato; poi una
     fonte non disponibile; infine la regola di Home Assistant sullo
     `state_class`. Dove la causa e' della fonte, e' la parola della fonte."""
-    never = "nessuna serie, non oggi e non un altro giorno finche' resta cosi'"
+    never = "nessuna serie, non oggi e non un altro giorno finché resta così"
     if source is None:
         return NotComputable(
-            f"{entity_id} non c'e' in Home Assistant, ne' nel registro ne' "
+            f"{entity_id} non c'è in Home Assistant, né nel registro né "
             f"negli stati: {never}", cause=UNKNOWN_SOURCE)
     state = source.get("stato")
     cause = source.get("causa")
     if state == "spenta_dal_proprietario":
         return NotComputable(
-            f"{entity_id} e' disabilitata in Home Assistant, spenta dal "
+            f"{entity_id} è disabilitata in Home Assistant, spenta dal "
             f"proprietario (disabled_by: {cause}): non registra niente, {never}",
             cause=state)
     if state == "spenta_da_home_assistant":
         return NotComputable(
-            f"{entity_id} e' disabilitata da Home Assistant o "
+            f"{entity_id} è disabilitata da Home Assistant o "
             f"dall'integrazione (disabled_by: {cause}): non registra niente, {never}",
             cause=state)
     if state == "integrazione_ferma":
         return NotComputable(
-            f"l'integrazione di {entity_id} non e' caricata (stato "
+            f"l'integrazione di {entity_id} non è caricata (stato "
             f"dell'istanza: {cause}): {never}", cause=state)
     if state == "sparita":
         return NotComputable(
-            f"{entity_id} e' nel registro di Home Assistant ma non ha uno "
+            f"{entity_id} è nel registro di Home Assistant ma non ha uno "
             f"stato: {never}", cause=state)
     if domain_of(entity_id) != STATISTICS_DOMAIN:
         return NotComputable(
             f"{entity_id} non ha statistiche in Home Assistant: le compila "
-            f"solo per i `{STATISTICS_DOMAIN}`, e questa e' "
+            f"solo per i `{STATISTICS_DOMAIN}`, e questa è "
             f"«{domain_of(entity_id)}» -- {never}", cause=NO_STATISTICS)
     if state == "non_disponibile":
         # I due fatti, senza dire quale spieghi l'altro: `restored` vuol dire
@@ -153,8 +153,8 @@ def silence(entity_id: str, source: dict | None,
                "ricreata con un altro id" if cause == RESTORED_ATTRIBUTE
                else str(cause))
         return NotComputable(
-            f"{entity_id} non e' disponibile in Home Assistant ({why}) e non e' "
-            f"fra le entita' di cui tiene statistiche: {never}", cause=state)
+            f"{entity_id} non è disponibile in Home Assistant ({why}) e non è "
+            f"fra le entità di cui tiene statistiche: {never}", cause=state)
     if not state_class:
         return NotComputable(
             f"{entity_id} non ha statistiche in Home Assistant: non dichiara "

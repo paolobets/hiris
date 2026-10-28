@@ -187,7 +187,7 @@ function sectionLabels(doc) {
   return [...doc.querySelectorAll('#side-nav .nav-section-label')];
 }
 
-const CONFIGURE_ROUTES = ['knowledge', 'tree', 'watcher', 'settings', 'models', 'services', 'usage'];
+const CONFIGURE_ROUTES = ['knowledge', 'tree', 'brain', 'settings', 'models', 'services', 'usage'];
 
 test('PIN /config: un amministratore trova tutte le voci e atterra su «Cosa HIRIS sa»', async (t) => {
   const { document, calls } = await bootConfig(t, { canConfigure: true });
@@ -310,7 +310,7 @@ test('/config: chi non configura trova solo Chat, Impegni e Memoria, e atterra s
 });
 
 const BY_ADDRESS = [
-  ['#/tree', 'Albero della casa'], ['#/watcher', 'L’osservatore'], ['#/watcher/sapere', 'L’osservatore'],
+  ['#/tree', 'Albero della casa'], ['#/brain', 'Brain'], ['#/brain/sapere', 'Brain'],
   ['#/settings', 'Impostazioni chat'], ['#/models', 'Modelli'], ['#/services', 'Servizi'],
   ['#/usage', 'Consumi'],
 ];

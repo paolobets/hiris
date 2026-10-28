@@ -293,6 +293,33 @@ MEASURE_CAUSES = MappingProxyType({
 CAUSES = frozenset({state for state in SOURCE_STATES if state != SOURCE_LIVE}
                    | set(MEASURE_CAUSES))
 
+#: **Le cause a parole, per chi legge** (Fase B dello sprint «il giro snello»,
+#: 28/10/2026). La frase `non_calcolabile` e' scritta per una misura sola, con
+#: l'id e la parola di Home Assistant (`disabled_by: config_entry`): sulla
+#: pagina del Brain sette misure con la stessa causa erano sette righe uguali
+#: illeggibili (fotografia della Fase L, frase (a)). La pagina le raggruppa
+#: per `causa` e mette in testa al gruppo queste parole, che la rotta manda
+#: accanto alla causa (`causa_parole`, come `innesco_parole`): la pagina non
+#: ne tiene una copia. Una causa per riga, e ogni causa di `CAUSES` ne ha una:
+#: lo chiede `tests/test_parole_delle_cause.py` al vocabolario, non a un
+#: elenco ricopiato.
+CAUSE_WORDS = MappingProxyType({
+    "spenta_dal_proprietario": "l’entità è disabilitata in Home Assistant, da te",
+    "spenta_da_home_assistant": (
+        "l’entità è disabilitata da Home Assistant o dalla sua integrazione"),
+    "integrazione_ferma": "l’integrazione dell’entità non è caricata",
+    "non_disponibile": "l’entità non è disponibile",
+    "senza_valore": "l’entità è raggiungibile ma non ha un valore",
+    "sparita": "l’entità è nel registro di Home Assistant ma non ha uno stato",
+    NO_STATISTICS: "Home Assistant non tiene statistiche per questa entità",
+    UNKNOWN_SOURCE: "Home Assistant non conosce questa entità",
+    STATISTICS_UNREAD: "le statistiche non si sono potute leggere",
+    COVERAGE_LOW: "i dati del periodo sono troppo pochi per un numero",
+    RECIPE_BROKEN: "la ricetta della misura non si può eseguire",
+    FROZEN: "la fonte manda un valore che non si muove",
+    NO_ANSWER: "i dati ci sono, ma la domanda non ha risposta",
+})
+
 
 class NotComputable(Result):
     """Un rifiuto **con la sua ragione e la sua causa**, e nessuna delle due

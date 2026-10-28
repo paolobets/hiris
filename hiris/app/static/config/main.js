@@ -82,7 +82,7 @@
         (route === 'memory' && hash.indexOf('#/memory') === 0) ||
         (route === 'agenda' && hash.indexOf('#/agenda') === 0) ||
         (route === 'constructions' && hash.indexOf('#/constructions') === 0) ||
-        (route === 'watcher' && hash.indexOf('#/watcher') === 0) ||
+        (route === 'brain' && hash.indexOf('#/brain') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         (route === 'services' && hash.indexOf('#/services') === 0) ||
@@ -221,19 +221,21 @@
     }
   });
   /* fetta «la pagina dell'osservatore» (18/09/2026): quattro schede, quattro
-     indirizzi. `#/watcher` nudo resta valido -- un segnalibro vecchio non
+     indirizzi. `#/brain` nudo resta valido -- un segnalibro vecchio non
      trova «Pagina non trovata» -- e il guscio lo riscrive su «giorno» senza
-     aggiungere una voce di cronologia. `updateNavActive` non cambia: guarda
-     gia' `hash.indexOf('#/watcher') === 0`, quindi tutte e quattro le schede
+     aggiungere una voce di cronologia. Dal 28/10/2026 (Fase B dello sprint
+     «il giro snello») la pagina si chiama Brain: `#/watcher` e le sue schede
+     sono indirizzi di prima (`config/router.js`). `updateNavActive` guarda
+     `hash.indexOf('#/brain') === 0`, quindi tutte e quattro le schede
      accendono la stessa voce di menu (una voce, schede: decisione 2).
      `mount(scheda)` legge da solo `#route-outlet`: stesso pattern di
      tree-route.js e memory-route.js, non quello di constructions-route.js
      (che porta l'outlet come parametro). */
-  HirisRouter.register(/^#\/watcher(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/, configureOnlyRoute('L’osservatore', function(m) {
+  HirisRouter.register(/^#\/brain(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/, configureOnlyRoute('Brain', function(m) {
     if (window.HirisWatcherRoute) {
       HirisWatcherRoute.mount(m && m[1]);
     } else {
-      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">L’osservatore</h1>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Brain</h1>';
     }
   }));
   HirisRouter.register(/^#\/usage\/?$/, configureOnlyRoute('Consumi', function() {

@@ -570,6 +570,27 @@ async def test_la_TABELLA_delle_regole(aiohttp_client, tmp_path, chi, accesa, am
 
 
 @pytest.mark.asyncio
+async def test_il_sapere_corretto_a_mano_NON_si_legge_da_un_servizio_utente(casa):
+    """S.7 dello sprint «il giro snello» (decisione del proprietario del
+    28/10/2026): la lettura del sapere e' riservata come la sua scrittura.
+    Una persona che non amministra era gia' fuori (la riga non ha
+    `open_reason`); chi passava era un servizio firmato col ruolo `utente`,
+    che col gesto `leggere` riceveva tutto cio' che il proprietario aveva
+    corretto a mano.
+
+    Mutazione ESEGUITA il 28/10/2026: la voce di `ADMISSION` riportata a
+    «leggere» -- rossa qui (503 invece di 403: il servizio passa il
+    cancello e arriva alla rotta). Ripristinata."""
+    path = "/api/mind/knowledge"
+    privata, pubblica = servizio_approvato(casa.app, "utente")
+    headers = {**firma(privata, pubblica, "GET", path, b""), "X-Requested-With": "fetch"}
+
+    status, corpo = await _risposta(casa, "GET", path, headers)
+
+    assert (status, corpo) == (403, _rifiuto_json(NOT_ADMITTED))
+
+
+@pytest.mark.asyncio
 async def test_ogni_rotta_NON_in_lista_e_chiusa_a_chi_non_amministra(aperta):
     """**Il cancello, derivato dal router vivo** (2.27): per ogni rotta che la
     lista non nomina -- HEAD, statico e rotte future compresi -- una persona

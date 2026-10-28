@@ -853,8 +853,10 @@ def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
 # `observer_round.py`, e questa prova esiste per vederlo.
 _RESIDUI_EX_SERVER = {
     ("mind", "analyst_round.py"): {("casa", "home_space"), ("esito", "occurrence")},
+    # `porta` e' uscita da `observer_round.py` il 28/10/2026 (Fase B): la
+    # strada del giro e' una colonna del tentativo, non piu' una variabile.
     ("mind", "observer_round.py"): {("annota", "record"), ("letto", "loaded"),
-                                    ("porta", "actuator"), ("versione", "version")},
+                                    ("versione", "version")},
     ("mind", "recipe_round.py"): {("campo", "field"), ("esito", "occurrence")},
     ("mind", "day_report.py"): {
         ("adesso", "now"), ("archivio", "store"), ("casa", "home_space"),

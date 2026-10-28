@@ -93,11 +93,10 @@ window.HirisWatcherSapere = (function () {
      29/09 nessuna domanda lo consultava, e la pagina lo mostrava come un
      giudizio che conta. Fix round 1, IMPORTANT 2: `da_sapere_subito`
      (Task 1, spec 2026-09-18-da-sapere-subito.md §2) era un settimo campo nel
-     sapere senza il suo settimo qui -- non compariva mai nella pagina. Resta
-     fuori da `EDITABLE_JUDGMENT_FIELDS` (sotto): la spec §5 dichiara fuori da
-     quella fetta la SCRITTURA di un valore nuovo dalla pagina -- il ritorno al
-     seme, invece, la pagina lo fa gia' per qualunque riga corretta di
-     qualunque campo (`revertToSeedControl`). */
+     sapere senza il suo settimo qui -- non compariva mai nella pagina. Dal
+     28/10/2026 e' anche in `EDITABLE_JUDGMENT_FIELDS` (sotto): la spec §5
+     metteva fuori da quella fetta la SCRITTURA di un valore nuovo dalla
+     pagina, e la Fase B dello sprint «il giro snello» l'ha portata. */
   var JUDGMENT_FIELD_GROUPS = [
     { campo: 'genere', etichetta: 'Genere' },
     { campo: 'riposo', etichetta: 'Riposo' },
@@ -115,12 +114,25 @@ window.HirisWatcherSapere = (function () {
      e' esattamente cio' che la fetta dichiarava di evitare.
 
      Una mappa e non due funzioni: l'editor e' lo stesso, cambiano le opzioni
-     del menu. Gli altri cinque campi restano in sola lettura. */
+     del menu. Gli altri quattro campi restano in sola lettura.
+
+     `da_sapere_subito` e' entrato il 28/10/2026 (Fase B dello sprint «il giro
+     snello», voce del BACKLOG del 18/09/2026): fino ad allora si scriveva
+     solo dalla rotta, a mano. Il suo valore ha TRE forme (`si`, `no`, o
+     l'elenco degli stati che contano, `type_judgments._parse_da_sapere_subito`):
+     la terza voce del menu non e' un valore, apre il campo degli stati, e
+     l'elenco si manda come JSON. Che lo stato esista lo decide il server. */
+  var STATES_CHOICE = 'stati';
   var EDITABLE_JUDGMENT_FIELDS = {
     genere: null,  // le sue opzioni sono `JUDGMENT_GENRE_OPTIONS`, qui sotto
     impalcatura: [
       { valore: 'si', etichetta: 'Sì: è Home Assistant che parla di sé' },
       { valore: 'no', etichetta: 'No: riguarda la casa' }
+    ],
+    da_sapere_subito: [
+      { valore: 'si', etichetta: 'Sì: va in cima al giorno' },
+      { valore: 'no', etichetta: 'No: può aspettare il resoconto' },
+      { valore: STATES_CHOICE, etichetta: 'Solo in certi stati' }
     ]
   };
 
@@ -243,9 +255,9 @@ window.HirisWatcherSapere = (function () {
   function judgmentWriteErrorText(status, corpo) {
     if (corpo && corpo.error) return corpo.error;
     if (status === 503) {
-      return 'Il sapere non è collegato in questo momento. Non è vuoto — è che non si può leggere.';
+      return 'il sapere non è collegato in questo momento. Non è vuoto — è che non si può leggere.';
     }
-    return 'Non è stato possibile scrivere. Riprova più tardi.';
+    return 'la scrittura non è arrivata. Riprova più tardi.';
   }
 
   /* La scrittura, condivisa dall'editor del genere, da «Torna al seme» e dal
@@ -254,7 +266,7 @@ window.HirisWatcherSapere = (function () {
      modo suo (fondamenta: nessun doppione). */
   function submitJudgment(payload, ui) {
     ui.button.disabled = true;
-    ui.esito.textContent = 'Scrivo…';
+    S.sayOutcome(ui.esito, 'Scrivo…');
     return write('api/mind/judgment', payload).then(function (occurrence) {
       if (occurrence.ok) {
         /* 200: la scheda si ricarica intera -- la riga riappare in
@@ -267,8 +279,8 @@ window.HirisWatcherSapere = (function () {
       }
       ui.button.disabled = false;
       if (occurrence.status === 400) {
-        ui.esito.textContent = (occurrence.corpo && occurrence.corpo.error) ||
-          'Questa correzione non si può scrivere.';
+        S.sayNotSaved(ui.esito, closeSentence((occurrence.corpo && occurrence.corpo.error) ||
+          'questa correzione non si può scrivere'));
         return;
       }
       if (occurrence.status === 409) {
@@ -276,17 +288,43 @@ window.HirisWatcherSapere = (function () {
         // Fix round 1, MINOR 4: senza un punto dopo `motivo` la frase
         // successiva si leggeva attaccata («…seme non ce l'ha Il sapere
         // legge…»). Non se ne aggiunge uno se `motivo` lo porta già
-        // (niente «..»).
-        var motivoPuntato = motivo && !/[.!?]$/.test(motivo) ? motivo + '.' : motivo;
+        // (niente «..»): dal 28/10/2026 e' `closeSentence`, una per la pagina.
+        var motivoPuntato = closeSentence(motivo);
         carica(ui.outerBody, 'La correzione è scritta ma non è in vigore: ' + motivoPuntato +
           ' Il sapere legge solo il seme.', true);
         return;
       }
-      ui.esito.textContent = judgmentWriteErrorText(occurrence.status, occurrence.corpo);
+      S.sayNotSaved(ui.esito, judgmentWriteErrorText(occurrence.status, occurrence.corpo));
     }, function () {
       ui.button.disabled = false;
-      ui.esito.textContent = judgmentWriteErrorText(null);
+      S.sayNotSaved(ui.esito, judgmentWriteErrorText(null));
     });
+  }
+
+  /* Il campo degli stati di `da_sapere_subito`: compare solo quando il menu
+     dice «Solo in certi stati», e gia' riempito se la riga e' un elenco.
+     Restituisce chi sa dire il valore da mandare, o `null` per un campo che
+     non ha la terza forma. Gli stati si scrivono separati da virgole, con le
+     parole di Home Assistant (`jammed`): sono le chiavi che il sapere
+     confronta con lo stato vero. */
+  function statesInput(g, sel, panel) {
+    if (!fieldOptions(g.campo).some(function (o) { return o.valore === STATES_CHOICE; })) return null;
+    var campo = el('input');
+    campo.type = 'text';
+    var gia = judgmentStateList(g.valore);
+    if (gia) { sel.value = STATES_CHOICE; campo.value = gia.join(', '); }
+    var gruppo = judgmentField('Gli stati, separati da virgole (es. jammed)', campo);
+    function aggiorna() { gruppo.hidden = sel.value !== STATES_CHOICE; }
+    sel.addEventListener('change', aggiorna);
+    aggiorna();
+    panel.appendChild(gruppo);
+    return {
+      valore: function () {
+        if (sel.value !== STATES_CHOICE) return sel.value;
+        return JSON.stringify(campo.value.split(',').map(function (x) { return x.trim(); })
+          .filter(Boolean));
+      }
+    };
   }
 
   /* «Correggi» sul posto il campo di questa riga (uno di
@@ -308,6 +346,7 @@ window.HirisWatcherSapere = (function () {
       var sel = genreSelect(g.campo);
       if (fieldOptions(g.campo).some(function (o) { return o.valore === g.valore; })) sel.value = g.valore;
       panel.appendChild(judgmentField(judgmentFieldLabel(g.campo), sel));
+      var stati = statesInput(g, sel, panel);
       /* **Il costo si dice solo per i campi che lo hanno.** `impalcatura` non
          entra nell'impronta: si legge quando la pagina legge, e cambiarla non
          fa rifare nessun giorno. Un avviso falso insegna a ignorare quelli
@@ -316,13 +355,13 @@ window.HirisWatcherSapere = (function () {
         panel.appendChild(el('p', 'field-hint',
           'Cambiare ' + judgmentFieldLabel(g.campo).toLowerCase() + ' ' + chronicleCostPhrase() + '.'));
       }
-      var esito = el('p', 'sc-desc', '');
+      var esito = S.outcomeSlot();
       var scrivi = el('button', 'btn btn-ghost', 'Scrivi');
       scrivi.type = 'button';
       scrivi.addEventListener('click', function () {
         submitJudgment({
           soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: g.campo,
-          valore: sel.value
+          valore: stati ? stati.valore() : sel.value
         }, { button: scrivi, esito: esito, outerBody: outerBody });
       });
       panel.appendChild(scrivi);
@@ -360,7 +399,7 @@ window.HirisWatcherSapere = (function () {
     yes.type = 'button';
     var cancel = el('button', 'btn btn-ghost', 'Annulla');
     cancel.type = 'button';
-    var esito = el('p', 'sc-desc', '');
+    var esito = S.outcomeSlot();
 
     /* Fix round 1, IMPORTANT 3: nascondere il bottone che ha il focus lo fa
        cadere su `<body>` (il browser non lo sposta da solo) -- chi naviga da
@@ -553,8 +592,10 @@ window.HirisWatcherSapere = (function () {
     var radioWrap = el('div');
     radioWrap.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap';
     function radioOption(value, testo) {
-      var label = el('label');
-      label.style.cssText = 'display:flex;align-items:center;gap:6px;min-height:28px';
+      /* La forma sta in `.jr-radio` (hiris-config.css), non in linea: uno
+         stile in linea batteva la regola del dito (44 px col puntatore
+         grosso, Fase B, 28/10/2026). */
+      var label = el('label', 'jr-radio');
       var input = el('input');
       input.type = 'radio'; input.name = radioName; input.value = value; input.required = true;
       label.appendChild(input);
@@ -571,14 +612,14 @@ window.HirisWatcherSapere = (function () {
     var sel = genreSelect();
     wrap.appendChild(judgmentField('Genere', sel));
 
-    var esito = el('p', 'sc-desc', '');
+    var esito = S.outcomeSlot();
     var scrivi = el('button', 'btn btn-ghost', 'Scrivi');
     scrivi.type = 'submit';
     wrap.addEventListener('submit', function (ev) {
       ev.preventDefault();
       var scelto = radioTipo.checked ? 'tipo' : (radioEntita.checked ? 'entita' : null);
       if (!scelto) {
-        esito.textContent = 'Scegli se è un tipo o un’entità.';
+        S.sayNotSaved(esito, 'scegli se è un tipo o un’entità.');
         return;
       }
       submitJudgment({

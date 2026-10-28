@@ -150,7 +150,10 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 62
+    # 64 dal 28/10/2026 (Fase B): `entityStateText`, spostato da
+    # `config/tree-route.js` perche' lo legge anche il Brain, e `closeSentence`.
+    assert {"entityStateText", "closeSentence"} <= globali
+    assert len(globali) == 64
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

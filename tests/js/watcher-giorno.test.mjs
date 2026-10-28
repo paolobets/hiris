@@ -109,6 +109,34 @@ test('seam _rendiResoconto: «cosa non si sa» viene PRIMA delle misure', () => 
   assert.match(testo, /copertura 8%/);
 });
 
+test('seam _rendiResoconto: «cosa non si sa» fa UNA riga per causa, con le parole della rotta', () => {
+  /* Fase B (28/10/2026): nella fotografia della Fase L sette misure con la
+     stessa causa erano sette righe uguali. Mutazione ESEGUITA il 28/10/2026:
+     `gruppiPerCausa` che fa un gruppo per misura -- rossa sul conto delle
+     righe. Ripristinata, `git status` pulito. */
+  const spenta = (nome, soggetto) => Object.assign(nonCalcolabile(nome,
+    'sensor.x è disabilitata in Home Assistant (disabled_by: user)'), {
+    soggetto, nome: soggetto, causa: 'spenta_dal_proprietario',
+    causa_parole: 'l’entità è disabilitata in Home Assistant, da te',
+  });
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura(), spenta('consumo', 'Forno'), spenta('consumo', 'Frigo'),
+      Object.assign(nonCalcolabile('autosufficienza', 'copertura 8%'),
+        { causa: 'copertura_bassa', causa_parole: 'i dati del periodo sono troppo pochi per un numero' })],
+  }));
+
+  const titoli = [...corpo.querySelectorAll('.sc-row-title')].map((t) => t.textContent);
+  assert.ok(titoli.includes('2 misure: l’entità è disabilitata in Home Assistant, da te'), titoli);
+  assert.ok(titoli.includes('1 misura: i dati del periodo sono troppo pochi per un numero'), titoli);
+  const quali = [...corpo.querySelectorAll('button')].filter((b) => b.textContent === 'Dettaglio');
+  assert.equal(quali.length, 2, 'un rivelatore per gruppo, non uno per misura');
+  // I nomi e la frase intera restano, dietro il bottone.
+  assert.equal(quali[0].getAttribute('aria-expanded'), 'false');
+  quali[0].click();
+  assert.match(corpo.textContent, /Forno · consumo/);
+  assert.match(corpo.textContent, /disabled_by: user/);
+});
+
 test('seam _rendiResoconto: la copertura si dice solo quando NON e\' piena', () => {
   // Mutazione che la uccide: togliere `&& m.copertura < 1` dalla guardia.
   const piena = rendiResoconto(resoconto({ misure: [misura()] }));

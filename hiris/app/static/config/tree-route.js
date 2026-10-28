@@ -155,20 +155,6 @@ window.HirisTreeRoute = (function () {
 
   /* --------------------------------------------------------------------- entità */
 
-  /* Lo stato da scrivere accanto al nome: le parole di Home Assistant
-     (`stato_leggibile`) quando ci sono, altrimenti il valore grezzo con la
-     sua unita'. Le parole di `unavailable`/`unknown` non arrivano dal comando
-     che HIRIS legge (`frontend/get_translations`, vedi
-     `proxy/state_translations.state_translation`): Home Assistant le tiene
-     nel pacchetto di traduzioni del suo frontend (misurato dallo Sprint
-     l'11/10/2026). Restano grezze, come nella chat. Senza stato non si
-     scrive niente. */
-  function stateText(e) {
-    if (e.stato_leggibile) return e.stato_leggibile;
-    if (e.stato == null) return '';
-    return e.unita ? e.stato + ' ' + e.unita : String(e.stato);
-  }
-
   /* Il segno di un'entita' fuori dai visibili (`fuori.classe`, la regola di
      `topology.visibility_classes`). Le parole le manda il server
      (`segni_fuori` di `GET /api/home-space`, C-10): fino al 14/10/2026
@@ -185,7 +171,7 @@ window.HirisTreeRoute = (function () {
     head.style.fontWeight = '500';
     li.appendChild(head);
 
-    var state = stateText(e);
+    var state = entityStateText(e);
     if (state) {
       var st = el('span', null, '· ' + state + ' ');
       st.style.cssText = 'font-size:var(--fs-13);color:var(--text-2)';

@@ -2083,6 +2083,24 @@
   }
 }
 
+/* **I bersagli del Brain, col dito** (Fase B, 28/10/2026). Misurati dallo
+   Sprint a 375x812 con il parere di ux-ui-specialist: i `btn-sm` della pagina
+   alti 27 px («Aggiorna», «Dettaglio», «Vedi tutti», «Togli», «Rimetti
+   dentro», «Salva l'obiettivo»), il giorno (39), i campi del modulo di
+   aggiunta (35-37) e i radio tipo/entita' (13). `min-height` e non
+   `padding`: il padding dei campi e' gia' deciso, con `!important`, da
+   hiris-config-override.css. */
+@media (pointer: coarse) {
+  .watcher-panel .btn,
+  .watcher-panel input[type=text],
+  .watcher-panel input[type=date],
+  .watcher-panel select {
+    min-height: 44px;
+  }
+  .watcher-panel .jr-radio { min-height: 44px; }
+}
+.jr-radio { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+
 /* ────────────────────────────────────────────────────────────
    «L'osservatore»: quattro schede (spec 2026-09-18 §2)
    ──────────────────────────────────────────────────────────── */

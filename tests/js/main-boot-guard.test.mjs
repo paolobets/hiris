@@ -63,8 +63,8 @@ const ROUTE = [
   // di scrivere in Home Assistant, leggere il prima/dopo, tornare indietro.
   ['#/constructions', 'Proposte'],
   // fetta «l'osservatore» Task 7: guarda la casa e ne ricava oggetti -- non
-  // conclude, non parla, non tocca niente.
-  ['#/watcher', 'L’osservatore'],
+  // conclude, non parla, non tocca niente. Dal 28/10/2026 si chiama Brain.
+  ['#/brain', 'Brain'],
   ['#/usage', 'Consumi'],
   ['#/models', 'Modelli'],
   // fetta «esce il documentale»: qui c'era ['#/history', 'Storicizzazione'].
