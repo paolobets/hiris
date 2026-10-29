@@ -669,7 +669,7 @@ async def test_il_giro_annota_il_RIPIEGO_dal_piano_alla_catena(archivio, coda, m
     Mutazione ESEGUITA il 28/10/2026 (R218-1, P1): `downgrade` tolto dal
     tentativo riuscito -- rossa su `ripiego`. Ripristinata.
     """
-    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.providers import SUBSCRIPTION, SUBSCRIPTION_TOKEN_VAR
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
     modello = _modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
 
@@ -677,8 +677,10 @@ async def test_il_giro_annota_il_RIPIEGO_dal_piano_alla_catena(archivio, coda, m
         _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]), modello, coda),
         _house())
 
+    # La frase si chiede a chi la dice (I-0, nota del giro 220), non si ricopia.
+    assert SUBSCRIPTION.missing_reason, "la derivazione non guarda piu' niente"
     ultimo = archivio.recent_attempts()[0]
-    assert (ultimo["porta"], ultimo["ripiego"]) == ("catena", "manca il token")
+    assert (ultimo["porta"], ultimo["ripiego"]) == ("catena", SUBSCRIPTION.missing_reason)
 
 
 @pytest.mark.asyncio
