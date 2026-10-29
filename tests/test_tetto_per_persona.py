@@ -18,7 +18,7 @@ from hiris.app.api.handlers_settings import Rejection, validate
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread, new_subject
-from hiris.app.home_space.historian import day_boundaries
+from hiris.app.home_space.historian import day_boundaries, local_date
 from hiris.app.keeper import exchange
 from hiris.app.steering import daily_turns_refusal
 from hiris.app.usage.store import USAGE_KEY, UsageStore
@@ -56,11 +56,17 @@ def _app(usage, tetto):
 
 
 def test_si_contano_i_turni_di_chi_li_ha_aperti_nel_giorno(usage):
+    """Il giorno della casa ha due bordi: il primo istante dentro, quello di
+    domani fuori. Mutazione ESEGUITA (R224-4): la condizione `ts < ?` tolta
+    dalla query di `count_turns` -- rossa, si contano anche i turni di
+    domani."""
     since, until = day_boundaries("2026-10-29", None)
     _turno(usage, MARTA, ADESSO)
     _turno(usage, MARTA, ADESSO + 60, specie="promessa")
     _turno(usage, PAOLO, ADESSO)
     _turno(usage, MARTA, since - 1)
+    _turno(usage, MARTA, until)
+    _turno(usage, MARTA, until + 3600)
     assert usage.count_turns(MARTA, since=since, until=until) == 2
     assert usage.count_turns(PAOLO, since=since, until=until) == 1
 
@@ -160,3 +166,29 @@ async def test_la_chat_non_ferma_chi_amministra(casa):
     risposta = await casa.post("/api/chat", json={"message": "ciao"},
                                headers=_persona("u-admin"))
     assert risposta.status != 429
+
+
+@pytest.mark.asyncio
+async def test_il_turno_di_una_promessa_sulla_catena_si_conta_per_chi_l_ha_chiesta(usage):
+    """Il tetto conta le promesse sulla catena solo se il turno porta chi l'ha
+    chiesta fino all'archivio dei consumi. Mutazione ESEGUITA (R224-4):
+    `chain_turn(..., soggetto=None)` in `interpreta_promise` -- rossa, il
+    turno finisce sotto `nessuno:-` e Marta non ne ha aperto nessuno."""
+    from hiris.app.llm_router import LLM_ROUTER_KEY
+    from hiris.app.startup import live_values
+    from tests._runner_finto import RunnerFinto
+
+    async def _concludi(_runner, **kwargs):
+        await kwargs["dispatcher"].dispatch(
+            "conclude", {"avvisare": False, "testo": "tutto a posto"})
+
+    app = {**live_values(), LLM_ROUTER_KEY: RunnerFinto(turno=_concludi),
+           USAGE_KEY: usage}
+    promessa = {"id": "p1", "frase": "fra un'ora guarda la caldaia",
+                "domanda": "e' accesa?", "istantanea": [],
+                "thread": ChatThread("persona:u-marta", "pannello")}
+    esito = await exchange.interpreta_promise(app, promessa)
+    assert esito == {"avvisare": False, "testo": "tutto a posto"}, esito
+    import time
+    since, until = day_boundaries(local_date(time.time(), None).isoformat(), None)
+    assert usage.count_turns(MARTA, since=since, until=until) == 1

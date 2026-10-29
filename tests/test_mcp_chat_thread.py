@@ -42,7 +42,7 @@ from hiris.app.api.handlers_config import THEME_KEY
 from hiris.app.api.middleware_internal_auth import INGRESS_CIDRS_KEY
 from hiris.app.api.soffitto import _SOLO_AMMINISTRATORI
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY, ChatSettings
-from hiris.app.chat_thread import thread_for
+from hiris.app.chat_thread import new_subject, thread_for
 from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY, ReasoningQueue
@@ -239,7 +239,7 @@ async def test_senza_intestazione_il_turno_non_ha_NESSUN_gesto(
     assert casa_ha.salvate == []
     soffitto = dispatcher_visti[-1].get("soffitto")
     assert soffitto is not None and not any(soffitto[g] for g in GESTI), soffitto
-    assert dispatcher_visti[-1].get("soggetto") is None
+    assert dispatcher_visti[-1].get("soggetto") == new_subject("nessuno")
     assert "X-HIRIS-Chat" not in caplog.text
 
 

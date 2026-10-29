@@ -91,6 +91,7 @@ from dataclasses import dataclass
 
 from aiohttp import web
 
+from ..chat_thread import new_subject
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
 from ..keeper.outcome import ALREADY_CLOSED, UNKNOWN, keep_concluded
@@ -558,7 +559,12 @@ async def _build_dispatcher(request: web.Request, exchange_id: str | None,
     Home Assistant riserva agli amministratori -- si rifiuta col suo perche'.
     Fino al 07/10/2026 riceveva il soffitto `None`, cioe' tutto. I mestieri di
     sfondo si fanno riconoscere con `X-HIRIS-Lavoro` e passano dal loro
-    guardiano, che porta il soffitto dichiarato (`Species.ceiling`)."""
+    guardiano, che porta il soffitto dichiarato (`Species.ceiling`).
+
+    **E nessun ricordo** (Fase S, R224-3, 29/10/2026): il suo soggetto e'
+    `nessuno`, senza id. Col soggetto `None` l'archivio della memoria lo
+    avrebbe preso per un turno di sfondo, e gli avrebbe dato i ricordi di
+    tutti (`MemoryStore.fetch_for`)."""
     if chat_job is not None:
         ctx = chat_job.get("context") or {}
         soggetto = ctx.get("soggetto")
@@ -585,6 +591,7 @@ async def _build_dispatcher(request: web.Request, exchange_id: str | None,
         return create_tool_dispatcher(request.app, exchange=exchange_id,
                                       soffitto=ceiling, soggetto=subject)
     return create_tool_dispatcher(request.app, exchange=exchange_id,
+                                  soggetto=new_subject("nessuno"),
                                   soffitto=nothing_granted(_UNKNOWN_TURN))
 
 

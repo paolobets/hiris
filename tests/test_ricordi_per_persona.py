@@ -139,3 +139,76 @@ async def test_il_contesto_della_chat_porta_i_ricordi_di_chi_parla(tmp_path):
             soggetto=MARTA, ruolo="utente")
         assert "caldaia" in contesto
         assert "regalo" not in contesto
+
+
+class _Richiesta(dict):
+    """Una richiesta come la vedono le rotte dopo il confine: `app` e cio'
+    che il confine vi ha scritto (`soggetto`)."""
+
+    def __init__(self, app, **valori):
+        super().__init__(valori)
+        self.app = app
+
+
+@pytest.mark.asyncio
+async def test_la_rotta_del_nucleo_porta_i_ricordi_di_chi_la_chiede(tmp_path):
+    """`GET /api/briefing` mostra il nucleo che riceverebbe la chat di chi
+    chiede. Mutazione ESEGUITA (R224-2, Q5): `handle_get_briefing` con
+    `subject=None` -- rossa, il regalo entra nel nucleo di Marta."""
+    import json
+
+    from hiris.app.api.handlers_home_space import handle_get_briefing
+
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        _dice(app[MEMORY_STORE_KEY], PAOLO, "Il regalo per Marta sta nell'armadio")
+        _dice(app[MEMORY_STORE_KEY], MARTA, "La caldaia va spenta a maggio")
+        risposta = await handle_get_briefing(_Richiesta(app, soggetto=MARTA))
+        testo = json.loads(risposta.text)["text"]
+        assert "caldaia" in testo
+        assert "regalo" not in testo
+
+
+@pytest.mark.asyncio
+async def test_il_nucleo_di_una_promessa_sul_ponte_porta_i_ricordi_di_chi_l_ha_chiesta(
+        tmp_path):
+    """Il job del ponte porta il nucleo gia' composto (`contesto`): e' l'unico
+    che il ponte vedra'. Mutazione ESEGUITA (R224-2, Q6): `_enqueue_to_bridge`
+    con `compose_briefing(app, subject=None)` -- rossa, il regalo entra nel
+    nucleo della promessa di Marta."""
+    import json
+
+    from hiris.app.keeper.exchange import _enqueue_to_bridge
+    from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
+
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        _dice(app[MEMORY_STORE_KEY], PAOLO, "Il regalo per Marta sta nell'armadio")
+        _dice(app[MEMORY_STORE_KEY], MARTA, "La caldaia va spenta a maggio")
+        promessa = {"id": "p1", "frase": "fra un'ora guarda la caldaia",
+                    "domanda": "e' accesa?", "istantanea": [],
+                    "thread": ChatThread("persona:u-marta", "pannello")}
+        _enqueue_to_bridge(app, promessa)
+        coda = app[REASONING_QUEUE_KEY]
+        job = coda.latest("promessa")
+        riga = coda._conn.execute(
+            "SELECT context_json FROM reasoning_jobs WHERE job_id=?",
+            (job["job_id"],)).fetchone()
+        contesto = json.loads(riga[0])["contesto"]
+        assert "caldaia" in contesto
+        assert "regalo" not in contesto
+
+
+@pytest.mark.asyncio
+async def test_un_turno_del_ponte_che_non_dice_chi_e_non_legge_nessun_ricordo(tmp_path):
+    """Il terzo ramo di `handlers_mcp._build_dispatcher`: ne' chat, ne'
+    promessa, ne' mestiere. Il suo soggetto `None` per l'archivio sarebbe un
+    turno di sfondo, con i ricordi di tutti. Mutazione ESEGUITA (R224-3): il
+    ramo senza `soggetto=new_subject("nessuno")` -- rossa, la ricerca trova
+    tutti e due i ricordi."""
+    from hiris.app.api.handlers_mcp import _build_dispatcher
+
+    async with fotografia_porte.mounted(synthetic_inputs(), str(tmp_path)) as app:
+        _dice(app[MEMORY_STORE_KEY], PAOLO, "Il regalo per Marta sta nell'armadio")
+        _dice(app[MEMORY_STORE_KEY], MARTA, "La caldaia va spenta a maggio")
+        sconosciuto = await _build_dispatcher(_Richiesta(app), "scambio", None, None)
+        trovati = await sconosciuto.dispatch("search", {"genere": "ricordo"})
+        assert trovati.get("voci", []) == [], trovati

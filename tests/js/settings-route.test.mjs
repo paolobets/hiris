@@ -137,7 +137,7 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi dei campi del contrat
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
   assert.deepEqual(Object.keys(corpo).sort(), [
-    'max_chat_turns', 'name', 'daily_turn_cap', 'response_mode',
+    'daily_turn_cap', 'max_chat_turns', 'name', 'response_mode',
     'restrict_to_home', 'retention_days', 'system_prompt', 'thinking_budget',
   ]);
   assert.equal(corpo.daily_turn_cap, 25, 'Fase S, S.2: il tetto per persona');
