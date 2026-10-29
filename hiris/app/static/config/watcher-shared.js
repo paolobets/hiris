@@ -33,11 +33,14 @@ window.HirisWatcherShared = (function () {
   }
 
   /* **L'esito di un comando, in un posto solo** (Fase B, 28/10/2026, dal
-     parere di ux-ui-specialist). Le tre scritture della pagina -- obiettivo,
-     giudizi, perimetro -- dicevano il guasto ognuna a modo suo, nello stesso
-     grigio del «Salvo…»: un rifiuto si leggeva come un avanzamento. Qui la
-     forma e' una: l'area annuncia da se' (`role=status`), un guasto comincia
-     con «Non salvato:» e ha il colore del problema, il resto torna neutro. */
+     parere di ux-ui-specialist). L'obiettivo e i giudizi dicevano il guasto
+     nello stesso grigio del «Salvo…»: un rifiuto si leggeva come un
+     avanzamento. Qui la forma e' una: l'area annuncia da se'
+     (`role=status`), un guasto comincia con «Non salvato:» e ha il colore
+     del problema, il resto torna neutro. «Togli» e «Rimetti dentro» del
+     perimetro hanno ancora la loro area e le loro frasi (`comandoScope`,
+     `renderEsito` in watcher-lavoro.js): passarli di qui e' nel «Resta»
+     della voce del BACKLOG. */
   function outcomeSlot() {
     var slot = el('p', 'sc-desc');
     slot.setAttribute('role', 'status');

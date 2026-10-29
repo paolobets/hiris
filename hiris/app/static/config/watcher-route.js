@@ -48,7 +48,7 @@ window.HirisWatcherRoute = (function () {
     return SCHEDE[0].nome;
   }
 
-  /* `#/watcher` nudo -> `#/watcher/giorno` SENZA una voce di cronologia in
+  /* `#/brain` nudo -> `#/brain/giorno` SENZA una voce di cronologia in
      piu': `replaceState`, lo stesso meccanismo e la stessa ragione di
      `correggiHashDiPrima` (config/router.js) -- assegnare l'hash aggiungerebbe
      una voce, e «indietro» rimanderebbe avanti, cioe' nessuno potrebbe piu'

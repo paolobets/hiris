@@ -63,6 +63,24 @@ async def test_la_causa_arriva_a_parole_dalla_rotta_e_dallo_strumento(tmp_path):
         assert "causa_parole" not in calcolata, "una misura calcolata non ha una causa"
 
 
+@pytest.mark.asyncio
+async def test_la_causa_arriva_a_parole_anche_dall_ELENCO_dei_giorni(tmp_path):
+    """Senza `day` la rotta e lo strumento danno le misure degli ultimi
+    giorni (`MindView.reports`): la stessa misura ha la stessa forma da
+    tutte le porte (fondamenta 3).
+
+    Mutazione ESEGUITA il 28/10/2026 (R218-3, P5): `_cause_worded` tolto da
+    `MindView.reports` -- rossa (`KeyError: 'causa_parole'`). Ripristinata."""
+    app = _app(tmp_path)
+    rotta = json.loads((await handle_report(_Richiesta(app, {}))).body)
+    dispatcher = create_tool_dispatcher(app, soffitto=_AMMINISTRATORE)
+    strumento = await dispatcher.dispatch("mind", {"cosa": "resoconti"})
+    for risposta in (rotta, strumento):
+        calcolata, ignota = risposta["resoconti"][0]["misure"]
+        assert ignota["causa_parole"] == CAUSE_WORDS[COVERAGE_LOW]
+        assert "causa_parole" not in calcolata
+
+
 def test_ogni_novita_ha_le_sue_parole():
     """`novita` e' un vocabolario chiuso (`analyst.NOVELTY`): ogni parola ne
     ha una per chi legge, chiesta al vocabolario."""
