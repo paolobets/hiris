@@ -119,6 +119,11 @@ class ChatSettings:
     response_mode: str = "auto"
     thinking_budget: int = 0
     max_chat_turns: int = 0
+    #: I turni al giorno di ciascuna persona che non amministra (Fase S, S.2,
+    #: scelta del proprietario del 29/10/2026): un valore solo per tutte, e
+    #: `0` = nessun tetto, come `max_chat_turns`. Di fabbrica spento: il
+    #: numero lo decide chi paga, non il codice.
+    daily_turn_cap: int = 0
     restrict_to_home: bool = False
     retention_days: int = DEFAULT_RETENTION_DAYS
 
@@ -198,6 +203,9 @@ class ChatSettings:
             max_chat_turns=number("max_chat_turns",
                                   raw.get("max_chat_turns", 0) or 0,
                                   default.max_chat_turns),
+            daily_turn_cap=number("daily_turn_cap",
+                                         raw.get("daily_turn_cap", 0) or 0,
+                                         default.daily_turn_cap),
             restrict_to_home=bool(raw.get("restrict_to_home", default.restrict_to_home)),
             retention_days=retention_days,
         )
@@ -220,6 +228,7 @@ class ChatSettings:
             "response_mode": self.response_mode,
             "thinking_budget": self.thinking_budget,
             "max_chat_turns": self.max_chat_turns,
+            "daily_turn_cap": self.daily_turn_cap,
             "restrict_to_home": self.restrict_to_home,
             "giorni_conservazione": self.retention_days,
         })

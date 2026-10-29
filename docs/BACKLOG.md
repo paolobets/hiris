@@ -415,7 +415,9 @@ al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
 dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
 dipende.
 
-### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
+### ~~Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS~~ — **USCITA col prossimo rilascio**
+
+`fatta il 29/10/2026 (Fase S, S.1; D8 del 03/10 e scelta del proprietario del 29/10: «ognuno vede i suoi», anche quando il ricordo riguarda la casa): la regola vive una volta in `memory/store.py` (`_reader_clause`, `fetch_for`, `count_for`) e la chiedono il nucleo (`compose_briefing`, col soggetto obbligatorio), gli strumenti (`ToolDispatcher._all_memories`), la pagina Memoria e le due strade delle promesse (`keeper/exchange.promise_subject`). Un turno di sfondo, senza soggetto, li legge tutti; un soggetto senza id nessuno. Lo difende `tests/test_ricordi_per_persona.py`, con le mutazioni eseguite`
 
 `origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
 
@@ -430,7 +432,9 @@ iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09
 ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
 pagina Memoria.
 
-### Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona — aperta il 27/09/2026
+### ~~Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona~~ — **USCITA col prossimo rilascio**
+
+`fatta il 29/10/2026 (Fase S, S.2; scelta del proprietario del 29/10: turni al giorno, un valore solo per chi non amministra, spento di fabbrica): `ChatSettings.daily_turn_cap`, nella pagina Impostazioni della chat; il conto si chiede all'archivio dei consumi (`UsageStore.count_turns`, chat e promesse insieme, giorno della casa); il rifiuto in `steering.daily_turns_refusal`, chiesto dalla chat (429 `daily_turns_reached`) e da una promessa `chiedi` prima di ogni strada. I turni delle promesse portano ora chi le ha chieste nel registro, su catena e ponte. Lo difende `tests/test_tetto_per_persona.py`, con le mutazioni eseguite`
 
 `origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
 
@@ -442,7 +446,9 @@ il freno.
 
 **Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
 
-### Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS — aperta il 27/09/2026
+### ~~Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS~~ — **USCITA col prossimo rilascio**
+
+`fatta: la scrittura il 07/10/2026 (Tappa 7, F-01 e F-17: il cancello chiede il gesto della rotta a chiunque entri), la lettura il 29/10/2026 (Fase S, S.3): `soffitto.restricted_person` chiede il gesto «amministrare» al soffitto della richiesta invece di guardare la porta, quindi un servizio `utente` riceve da `GET /api/memories` i suoi ricordi e da `GET /api/chat-settings` i soli `CHAT_PAGE_FIELDS`. Una richiesta che non dice chi e' riceve la lettura ristretta. Lo difendono `tests/test_le_sue_memorie.py::test_un_servizio_firmato_legge_i_ricordi_come_una_persona_del_suo_ruolo` e `::test_un_servizio_utente_riceve_le_impostazioni_ridotte`, con la mutazione eseguita`
 
 `origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
 
@@ -531,6 +537,11 @@ Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` f
 un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
 mostra.
 
+**Strada scelta il 29/10/2026** (Fase S, S.6, per questa voce e per quella sopra sul ricordo di
+`can_configure`): il server scrive i permessi dentro il guscio quando lo serve, e il ricordo in
+`localStorage`, l'attesa di `ROUTER_WAIT_MS` e il rimontaggio tardivo escono. Seconda fetta della
+Fase S.
+
 > **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
 > lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
 > parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
@@ -593,6 +604,9 @@ Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX h
 a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
 la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
 posto solo (arriva anche al guscio come `configure_refusal`).
+
+**Decisa il 29/10/2026** (Fase S, domanda 4): «Questa parte di HIRIS è riservata a chi gestisce la
+casa in Home Assistant.». Entra con la seconda fetta della Fase S (S.6 e S.9).
 
 ---
 

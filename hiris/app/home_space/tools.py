@@ -1527,12 +1527,15 @@ class ToolDispatcher:
         self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
     def _all_memories(self) -> list[dict] | None:
-        """Tutti i ricordi, non solo gli ultimi venti (il default di
-        `fetch()`); `None` senza archivio. Li chiedono la ricerca e il
-        dettaglio (giro 133: la lettura era scritta due volte)."""
+        """Tutti i ricordi che il soggetto del turno legge, non solo gli
+        ultimi venti (il default di `fetch()`); `None` senza archivio. Li
+        chiedono la ricerca e il dettaglio (giro 133: la lettura era scritta
+        due volte). **Ognuno i suoi** (Fase S, 29/10/2026): la regola e'
+        dell'archivio (`MemoryStore.fetch_for`), qui si passa solo chi legge
+        -- un turno di sfondo non ha soggetto, e li legge tutti."""
         if self._memory is None:
             return None
-        return self._memory.fetch(limit=self._memory.count())
+        return self._memory.fetch_for(self._subject)
 
     def _unavailable(self, name: str, resources: tuple[str, ...]) -> dict | None:
         """L'`errore` di uno strumento a cui manca un archivio, o `None`. La

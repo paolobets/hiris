@@ -42,6 +42,13 @@
   var LIMIT_TEXT = 'Hai raggiunto il limite di messaggi per questa conversazione. '
     + 'Avviane una nuova dalla barra laterale.';
 
+  /* Il tetto per persona (Fase S, S.2, 29/10/2026): il server risponde 429
+     `daily_turns_reached` a chi non amministra e ha gia' aperto oggi i turni
+     che il tetto concede. Non e' la conversazione a essere finita, e' la
+     giornata: la frase dice quando si riparte e a chi chiedere. */
+  var DAILY_LIMIT_TEXT = 'Per oggi hai usato tutti i messaggi a tua disposizione. '
+    + 'Si riparte domani; se ti serve prima, chiedi a chi gestisce la casa in Home Assistant.';
+
   function checkTurnLimit() {
     var max = state.maxChatTurns || 0;
     var sessionMsg = document.getElementById('session-ended-msg');
@@ -214,5 +221,6 @@
     loadSettings: loadSettings,
     restore: restore,
     LIMIT_TEXT: LIMIT_TEXT,
+    DAILY_LIMIT_TEXT: DAILY_LIMIT_TEXT,
   };
 })();

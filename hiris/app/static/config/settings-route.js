@@ -139,6 +139,15 @@ window.HirisSettingsRoute = (function () {
       input('number', data.max_chat_turns));
     exchange.min = '0';
 
+    /* Fase S, S.2 (29/10/2026): il tetto per persona, scelto dal proprietario
+       come un valore solo per chi non amministra, spento di fabbrica. */
+    var daily = field(body, 'Turni al giorno per chi non amministra',
+      '0 significa nessun tetto. Conta i messaggi in chat e le promesse di ogni ' +
+      'persona che in Home Assistant non è amministratore. Chi amministra non ' +
+      'ha tetto. Si riparte a mezzanotte, nell\'ora della casa.',
+      input('number', data.daily_turn_cap));
+    daily.min = '0';
+
     /* fetta "Modelli" (2.0), Task 12: arrivato da `history_retention_days`
        (l'opzione dell'add-on) -- non e' aspetto, non e' una chiave, non e' rete:
        e' una decisione sulla conversazione, come gli altri campi di questa
@@ -187,13 +196,14 @@ window.HirisSettingsRoute = (function () {
         name: name.value,
         system_prompt: prompt.value,
         response_mode: modeSelect.value,
-        /* I tre interi passano da parseInt: un campo number svuotato produce
+        /* I quattro interi passano da parseInt: un campo number svuotato produce
            '' e Number('') sarebbe 0 -- per retention_days "non cancella
-           mai niente", non solo per i due tetti -- senza che l'utente lo
+           mai niente", non solo per i tre tetti -- senza che l'utente lo
            abbia chiesto. Con NaN si manda il valore corrente, che il PUT
            conserva. */
         thinking_budget: numero(thinking.value, data.thinking_budget),
         max_chat_turns: numero(exchange.value, data.max_chat_turns),
+        daily_turn_cap: numero(daily.value, data.daily_turn_cap),
         restrict_to_home: !!home_space.checked,
         retention_days: numero(conservazione.value, data.retention_days)
       };
@@ -216,6 +226,7 @@ window.HirisSettingsRoute = (function () {
             modeSelect.value = data.response_mode || 'auto';
             thinking.value = String(data.thinking_budget);
             exchange.value = String(data.max_chat_turns);
+            daily.value = String(data.daily_turn_cap);
             home_space.checked = !!data.restrict_to_home;
             conservazione.value = String(data.retention_days);
             showStatus('Salvato. Vale dal prossimo messaggio.');

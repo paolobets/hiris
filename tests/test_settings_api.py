@@ -147,6 +147,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
         "response_mode": "compact",
         "thinking_budget": 1024,
         "max_chat_turns": 5,
+        "daily_turn_cap": 0,
         "restrict_to_home": True,
         "giorni_conservazione": 30,
     }
@@ -172,13 +173,13 @@ async def test_put_scrive_in_modo_atomico_e_non_lascia_il_temporaneo(client):
     await client.put(ROTTA, json={"name": "Atomico"})
     assert os.path.exists(_file(client))
     assert not os.path.exists(_file(client) + ".tmp")
-    # Rileggibile come JSON completo: tutti e sette i campi, mai un troncone.
+    # Rileggibile come JSON completo: tutti e otto i campi, mai un troncone.
     # I nomi sono quelli del FILE, non quelli di `FIELDS` (che e' l'elenco dei
     # campi ACCETTATI DA HTTP): due contratti, due elenchi -- vedi la nota in
     # `test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria`.
     assert sorted(_su_disco(client)) == sorted([
         "nome", "system_prompt", "response_mode", "thinking_budget",
-        "max_chat_turns", "restrict_to_home", "giorni_conservazione",
+        "max_chat_turns", "daily_turn_cap", "restrict_to_home", "giorni_conservazione",
     ])
 
 
@@ -456,7 +457,7 @@ def test_model_non_e_piu_un_campo_ammesso():
     assert "model" not in FIELDS
     assert FIELDS == (
         "name", "system_prompt", "response_mode",
-        "thinking_budget", "max_chat_turns", "restrict_to_home",
+        "thinking_budget", "max_chat_turns", "daily_turn_cap", "restrict_to_home",
         "retention_days",
     )
 

@@ -39,6 +39,7 @@ from hiris.app.home_space.topology import Mirror
 from hiris.app.memory.store import MEMORY_STORE_KEY
 from hiris.app.proxy.entity_cache import ENTITY_CACHE_KEY
 from tests._casa_sintetica import synthetic_inputs
+from tests._chi_entra import AMMINISTRATORE
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import fotografia_porte
@@ -149,5 +150,7 @@ async def _route(app, path: str) -> dict:
     handler = next(route.handler for route in app.router.routes()
                    if route.method == "GET" and route.resource is not None
                    and route.resource.canonical == path)
-    response = await handler(make_mocked_request("GET", path, app=app))
+    request = make_mocked_request("GET", path, app=app)
+    request.update(AMMINISTRATORE)
+    response = await handler(request)
     return json.loads(response.body)

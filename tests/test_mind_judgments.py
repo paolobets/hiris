@@ -31,6 +31,7 @@ from hiris.app.mind.knowledge import _SCHEMA_VERSION, Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
 from hiris.app.startup import live_values
 from tests._casa_sintetica import synthetic_inputs
+from tests._chi_entra import AMMINISTRATORE
 
 #: Chi scrive i giudizi di queste prove: il nome e la chiave che la rotta
 #: ricava dal soggetto. Dal 26/09/2026 `write_judgment` registra l'autore
@@ -548,9 +549,11 @@ async def test_salute_espone_stato_ISTANTANEA():
     Mutazione: togliere la chiave `istantanea` da `handle_health` -- rossa."""
     _, stato = build_judgments(None)
     # `get`: una richiesta vera ce l'ha, e la salute la usa per sapere da che
-    # strada arriva (spec 2026-09-27, R-2.23). Nessuna strada: come lo sviluppo.
+    # strada arriva (spec 2026-09-27, R-2.23). Chi amministra vede la salute
+    # intera; dal 29/10/2026 una richiesta senza strada non piu' (Fase S, S.3).
     request = SimpleNamespace(app={**live_values(),
-                                   TYPE_JUDGMENTS_STATUS_KEY: LiveValue(stato)}, get={}.get)
+                                   TYPE_JUDGMENTS_STATUS_KEY: LiveValue(stato)},
+                              get=AMMINISTRATORE.get)
     response = await handle_health(request)
     assert json.loads(response.body)["istantanea"] == stato
 
@@ -585,7 +588,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
         stato = app[TYPE_JUDGMENTS_STATUS_KEY].value
         assert set(stato) == {"stato", "perche", "impronta"}
 
-        response = await handle_health(SimpleNamespace(app=app, get={}.get))
+        response = await handle_health(SimpleNamespace(app=app, get=AMMINISTRATORE.get))
         salute = json.loads(response.body)
         assert salute["istantanea"] == stato
         assert "giudizi" not in salute, "`giudizi` e' l'elenco delle righe, non uno stato"

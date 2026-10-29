@@ -242,7 +242,7 @@ def test_il_turno_VERO_porta_l_orologio_e_il_nucleo_no(archivio):
 
     ora = house_hour({HOME_SPACE_KEY: archivio})
     assert ora.startswith("Adesso sono le") and ora.endswith("(fuso Europe/Rome).")
-    testo, _ = compose_briefing({HOME_SPACE_KEY: archivio})
+    testo, _ = compose_briefing({HOME_SPACE_KEY: archivio}, subject=None)
     assert "Adesso sono le" not in testo, "l'ora e' tornata nel nucleo"
 
 

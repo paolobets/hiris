@@ -32,7 +32,7 @@ def _app_guasta() -> dict:
 def test_il_compositore_dichiara_il_guasto_invece_di_sollevare():
     """Mutazione ESEGUITA il 13/10/2026: `compose_briefing` senza la sua rete
     -- rossa qui (RuntimeError) e sulla rotta."""
-    testo, riepilogo = compose_briefing(_app_guasta())
+    testo, riepilogo = compose_briefing(_app_guasta(), subject=None)
     assert testo == BRIEFING_FAILED
     assert "un guasto" in testo
     # Il riepilogo non mente su cio' che il testo non contiene: niente

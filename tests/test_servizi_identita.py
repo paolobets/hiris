@@ -27,7 +27,7 @@ from hiris.app.api.servizi import (
     service_thread_renames,
 )
 from hiris.app.chat_store import close_all_stores
-from hiris.app.chat_thread import ChatThread, subject_key_for, thread_for
+from hiris.app.chat_thread import ChatThread, subject_from_key, subject_key_for, thread_for
 from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
 from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
 from hiris.app.mind.knowledge import KNOWLEDGE_KEY, Fact, KnowledgeStore
@@ -227,10 +227,10 @@ def test_i_ricordi_del_servizio_passano_all_IMPRONTA(tmp_path, caplog):
     with caplog.at_level(logging.INFO, logger="hiris.app.api.servizi"):
         moved = migrate_service_threads(app)
 
-    [suo] = memoria.fetch(limit=10, said_by=nuova)
+    [suo] = memoria.fetch_for(subject_from_key(nuova), limit=10)
     assert (suo["testo"], suo["detto_da"]) == ("la cucina ha due finestre", "cucina")
-    assert memoria.count(said_by="luogo:cucina") == 0
-    assert memoria.count(said_by="persona:u-paolo") == 1
+    assert memoria.count_for(subject_from_key("luogo:cucina")) == 0
+    assert memoria.count_for(subject_from_key("persona:u-paolo")) == 1
     assert moved["ricordi"] == 1
     assert "1 ricordi" in caplog.text
     assert migrate_service_threads(app)["ricordi"] == 0

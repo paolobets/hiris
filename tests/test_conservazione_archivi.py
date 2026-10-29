@@ -27,6 +27,7 @@ from hiris.app.live_value import LiveValue
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY
 from tests._avvio import scheduled_job, started_app  # noqa: F401
+from tests._chi_entra import AMMINISTRATORE
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "hiris" / "app"
@@ -172,7 +173,7 @@ async def test_la_salute_dice_per_quanto_HIRIS_ricorda(started_app):
 
     Mutazione ESEGUITA (08/10/2026): tolta la chiave `conservazione` da
     `handle_health` -- rossa (`KeyError`)."""
-    response = await handle_health(SimpleNamespace(app=started_app, get={}.get))
+    response = await handle_health(SimpleNamespace(app=started_app, get=AMMINISTRATORE.get))
     rows = json.loads(response.body)["conservazione"]
     assert rows == conservazione.declarations(started_app)
     by_place = {(row["archivio"], row["tabella"]): row for row in rows}

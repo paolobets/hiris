@@ -60,6 +60,7 @@ from ..reasoning.queue import JOB_DECIDED, JOB_EXPIRED, JOB_FAILED, JOB_WAITING,
 from ..steering import (
     bridge_in_play,
     chain_turn,
+    daily_turns_refusal,
     enqueue_turn,
     house_hour,
     start,
@@ -70,7 +71,13 @@ from ..usage.store import USAGE_KEY
 from .boundary import error_body, error_response, house_clock_of, json_object
 from .canali import SERVICE_SPECIES
 from .handlers_home_space import compose_briefing, house_of
-from .soffitto import PERSONA_IGNOTA, ceiling_for, request_ceiling, ruolo_letto
+from .soffitto import (
+    PERSONA_IGNOTA,
+    ceiling_for,
+    request_ceiling,
+    restricted_person,
+    ruolo_letto,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -470,8 +477,9 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
     # il nucleo non le contiene e non deve contenerle.
     # Fetta «le chat divise»: le sessioni precedenti DI QUESTO FILO -- i
-    # riassunti di Paolo non entrano nel contesto di Marta. La casa (il
-    # nucleo, qui sotto) resta una sola per tutti.
+    # riassunti di Paolo non entrano nel contesto di Marta. La casa del
+    # nucleo, qui sotto, e' una sola per tutti; i ricordi no, ognuno i suoi
+    # (Fase S, 29/10/2026).
     past = get_past_summaries(data_dir, thread=thread)
     past_str = ""
     if past:
@@ -498,7 +506,7 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     # tace: lo dichiara nel testo stesso. E se un archivio e' guasto lo
     # dichiara `compose_briefing`, che non solleva (D-64): la stessa frase per
     # la chat, la promessa e GET /api/briefing.
-    briefing_text, _briefing_summary = compose_briefing(app, house)
+    briefing_text, _briefing_summary = compose_briefing(app, house, subject=soggetto)
     # La sezione «Chi ti sta parlando» va PRIMA di tutto (spec §5): il
     # modello deve sapere chi ha scritto prima ancora di leggere la casa.
     context_parts: list[str] = [
@@ -1004,6 +1012,16 @@ async def handle_chat(request: web.Request) -> web.Response:
             # frase: la pagina lo riconosce (`chat/send.js`) e scrive la sua.
             return error_response(409, "max_turns_reached",
                                   turns=turn_count, limit=max_turns)
+
+    # **Il tetto per persona** (Fase S, S.2): chi non amministra apre al
+    # massimo N turni al giorno. Come il tetto qui sopra, prima di qualunque
+    # scrittura e di ogni strada (ponte o catena). 429 e non 409: e' la quota
+    # di oggi, non lo stato di questa conversazione -- domani riparte da se'.
+    # `error` e' un codice, e la frase la scrive la pagina (`chat/send.js`).
+    full = daily_turns_refusal(request.app, request.get("soggetto"),
+                               administers=not restricted_person(request))
+    if full is not None:
+        return error_response(429, "daily_turns_reached", **full)
 
     # Slice 4b (chat via abbonamento): with the bridge in play the turn goes
     # to the async queue instead of a local runner -- subscription mode may

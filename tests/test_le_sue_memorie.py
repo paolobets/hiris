@@ -29,7 +29,7 @@ from hiris.app.api.servizi import SERVICES_KEY
 from hiris.app.api.soffitto import ROLES_KEY
 from hiris.app.chat_settings import CHAT_SETTINGS_KEY, MESSAGE_CAP, ChatSettings
 from hiris.app.chat_store import close_all_stores
-from hiris.app.chat_thread import subject_key_for
+from hiris.app.chat_thread import subject_from_key, subject_key_for
 from hiris.app.keeper.store import AGENDA_KEY, AgendaStore
 from hiris.app.memory.store import MEMORY_STORE_KEY, MemoryStore
 from hiris.app.proxy.ha_client import HA_CLIENT_KEY
@@ -108,20 +108,27 @@ async def test_PIN_oltre_il_taglio_l_amministratore_vede_il_TOTALE_vero(casa):
     assert corpo["memories"][0]["testo"] == "nuovo 249"
 
 
+@pytest.mark.parametrize("ruolo, attesi", [("utente", []), ("amministratore", _TUTTI)])
 @pytest.mark.asyncio
-async def test_PIN_un_servizio_firmato_vede_ogni_ricordo(casa):
-    """I servizi firmati non passano dal cancello: la lettura resta quella di
-    prima, qualunque ruolo abbiano (il rischio del servizio `utente` e'
-    dichiarato, security-constraints 5.9)."""
+async def test_un_servizio_firmato_legge_i_ricordi_come_una_persona_del_suo_ruolo(
+        casa, ruolo, attesi):
+    """Fase S, S.3 (29/10/2026): decide il ruolo, non la porta. Fino ad allora
+    un servizio firmato col ruolo `utente` riceveva tutti i ricordi, che a una
+    persona con lo stesso ruolo sono negati (era un PIN di quel comportamento).
+    Adesso riceve i suoi -- nessuno, qui -- e un servizio amministratore li
+    vede tutti, come una persona che amministra.
+
+    Mutazione ESEGUITA: `restricted_person` di prima (solo `auth_via ==
+    "ingress"`) -- rossa sul ruolo `utente`, quattro ricordi invece di zero."""
     _semina(casa.app[MEMORY_STORE_KEY])
-    privata, pubblica = servizio_approvato(casa.app, "utente")
+    privata, pubblica = servizio_approvato(casa.app, ruolo)
 
     risposta = await casa.get("/api/memories",
                               headers=firma(privata, pubblica, "GET", "/api/memories"))
     corpo = await risposta.json()
 
-    assert sorted(m["testo"] for m in corpo["memories"]) == _TUTTI
-    assert corpo["total"] == 4
+    assert sorted(m["testo"] for m in corpo["memories"]) == attesi
+    assert corpo["total"] == len(attesi)
 
 
 @pytest.mark.asyncio
@@ -152,7 +159,7 @@ async def test_PIN_le_impostazioni_dell_amministratore_sono_TUTTE(casa):
 
     assert corpo == _payload(SETTINGS)
     assert set(corpo) == {"name", "system_prompt", "response_mode", "thinking_budget",
-                          "max_chat_turns", "restrict_to_home", "retention_days",
+                          "max_chat_turns", "daily_turn_cap", "restrict_to_home", "retention_days",
                           "response_modes", "default_system_prompt", "max_message_chars",
                           "thinking_budget_min"}
 
@@ -197,8 +204,8 @@ async def test_il_filtro_sta_PRIMA_del_taglio_e_il_totale_e_il_suo(casa):
 
 
 def test_l_archivio_filtra_per_AUTORE_prima_del_limite(tmp_path):
-    """3.1 sull'archivio: `said_by` nel WHERE, il limite dopo; `count` conta
-    lo stesso insieme. Un autore che non ha scritto niente ha zero ricordi."""
+    """3.1 sull'archivio: `said_by` nel WHERE, il limite dopo; `count_for`
+    conta lo stesso insieme. Un autore che non ha scritto niente ha zero ricordi."""
     store = MemoryStore(str(tmp_path / "memoria.db"))
     try:
         for i in range(250):
@@ -209,13 +216,15 @@ def test_l_archivio_filtra_per_AUTORE_prima_del_limite(tmp_path):
         for i in range(250):
             store.remember(f"nuovo {i}", said_by="persona:u-admin")
 
-        suoi = store.fetch(limit=200, said_by="persona:u-marta")
+        marta = subject_from_key("persona:u-marta")
+        suoi = store.fetch_for(marta, limit=200)
 
         assert [r["testo"] for r in suoi] == [f"di Marta {i}" for i in range(4, -1, -1)]
-        assert store.count(said_by="persona:u-marta") == 5
-        assert store.fetch(limit=3, said_by="persona:u-marta")[-1]["testo"] == "di Marta 2"
-        assert store.fetch(said_by="persona:u-nessuno") == []
-        assert store.count(said_by="persona:u-nessuno") == 0
+        assert store.count_for(marta) == 5
+        assert store.fetch_for(marta, limit=3)[-1]["testo"] == "di Marta 2"
+        nessuno = subject_from_key("persona:u-nessuno")
+        assert store.fetch_for(nessuno) == []
+        assert store.count_for(nessuno) == 0
         assert store.count() == 506
     finally:
         store.close()
@@ -414,15 +423,20 @@ async def test_a_chi_non_amministra_solo_cio_che_la_CHAT_usa(casa, utente):
 
 
 @pytest.mark.asyncio
-async def test_un_servizio_firmato_riceve_le_impostazioni_come_prima(casa):
-    """Il cancello e la riduzione valgono per le persone dall'ingress: i
-    servizi hanno le loro regole (security-constraints 5.9, dichiarato)."""
+async def test_un_servizio_utente_riceve_le_impostazioni_ridotte(casa):
+    """Fase S, S.3 (29/10/2026): un servizio `utente` riceve cio' che riceve
+    una persona `utente` -- `CHAT_PAGE_FIELDS` -- e non piu' il prompt di
+    sistema. Mutazione ESEGUITA: `restricted_person` di prima -- rossa, il
+    corpo intero."""
+    from hiris.app.api.handlers_settings import CHAT_PAGE_FIELDS
+
     privata, pubblica = servizio_approvato(casa.app, "utente")
 
     risposta = await casa.get("/api/chat-settings",
                               headers=firma(privata, pubblica, "GET", "/api/chat-settings"))
 
-    assert await risposta.json() == _payload(SETTINGS)
+    intero = _payload(SETTINGS)
+    assert await risposta.json() == {campo: intero[campo] for campo in CHAT_PAGE_FIELDS}
 
 
 def test_la_riduzione_e_cio_che_la_CHAT_legge():

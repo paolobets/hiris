@@ -205,6 +205,12 @@
         autoResize();
         return;
       }
+      if (data.error === 'daily_turns_reached') {
+        /* Come il tetto della conversazione: nessuna risposta, nessun turno
+           contato. Il campo resta aperto -- domani si riparte da soli. */
+        window.HirisChatMessages.updateBubble(pending, window.HirisChatAgents.DAILY_LIMIT_TEXT);
+        return;
+      }
       if (data.error === 'max_turns_reached') {
         window.HirisChatMessages.updateBubble(pending, window.HirisChatAgents.LIMIT_TEXT);
         window.HirisChatAgents.checkTurnLimit();

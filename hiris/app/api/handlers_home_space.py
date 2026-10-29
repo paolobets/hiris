@@ -310,7 +310,8 @@ BRIEFING_FAILED = (
 )
 
 
-def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
+def compose_briefing(app, house: House | None = None, *,
+                     subject: dict | None) -> tuple[str, dict]:
     """Il nucleo composto dagli archivi vivi dell'app -- (testo, riepilogo).
 
     **Non solleva mai** (D-64, Chiusura, 13/10/2026): un archivio guasto o in
@@ -332,9 +333,14 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
     condivide con gli strumenti (R18): nucleo e `search` guardano la STESSA
     anagrafe e lo STESSO specchio, e la gerarchia si costruisce una volta.
     Senza, se ne legge una qui.
+
+    `subject` e' **chi legge** (Fase S, 29/10/2026): i ricordi del nucleo
+    sono i suoi (`MemoryStore.fetch_for`). Obbligatorio e senza default:
+    un chiamante che lo dimentica riceverebbe i ricordi di tutti, e il
+    difetto non si vedrebbe. `None` lo passa solo chi non legge per nessuno.
     """
     try:
-        return _compose_briefing(app, house)
+        return _compose_briefing(app, house, subject)
     except Exception as exc:
         logger.warning("composizione del nucleo fallita (%s: %s)",
                        type(exc).__name__, exc)
@@ -349,7 +355,7 @@ def compose_briefing(app, house: House | None = None) -> tuple[str, dict]:
         }
 
 
-def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
+def _compose_briefing(app, house: House | None, subject: dict | None) -> tuple[str, dict]:
     """La lettura degli archivi e la composizione: vedi `compose_briefing`."""
     if house is None:
         house = house_of(app)
@@ -383,15 +389,14 @@ def _compose_briefing(app, house: House | None) -> tuple[str, dict]:
         reference_frame = home_space_store.reference_frame()
 
     # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limit=20`.
-    # Con `count()` (scritto apposta per dichiarare questa differenza) si
-    # richiamano TUTTI i ricordi, e si lascia decidere al taglio di
-    # `compose()` -- che dichiara sempre, nel nucleo stesso, quanti ne
-    # restano fuori (`excluded_memories`). Prima di questo fix, i ricordi
-    # oltre il ventesimo sparivano PRIMA ancora di arrivare a `compose()`,
-    # e il riepilogo giurava "excluded_memories: 0" su una casa con 200
-    # ricordi veri e solo 20 nel nucleo.
+    # `fetch_for` senza `limit` richiama TUTTI i ricordi di chi legge, e
+    # lascia decidere al taglio di `compose()` -- che dichiara sempre, nel
+    # nucleo stesso, quanti ne restano fuori (`excluded_memories`). Prima di
+    # quel fix, i ricordi oltre il ventesimo sparivano PRIMA ancora di
+    # arrivare a `compose()`, e il riepilogo giurava "excluded_memories: 0"
+    # su una casa con 200 ricordi veri e solo 20 nel nucleo.
     if memory_store is not None:
-        memories = memory_store.fetch(limit=memory_store.count())
+        memories = memory_store.fetch_for(subject)
     else:
         memories = []
 
@@ -481,5 +486,6 @@ async def handle_get_briefing(request: web.Request) -> web.Response:
     sottile che la chiama e la serializza, cosi' i due punti non possono
     raccontare due nuclei diversi della stessa casa.
     """
-    text, summary = compose_briefing(request.app)
+    # Il nucleo di chi chiede: lo stesso che riceverebbe la sua chat.
+    text, summary = compose_briefing(request.app, subject=request.get("soggetto"))
     return web.json_response({"text": text, "summary": summary})

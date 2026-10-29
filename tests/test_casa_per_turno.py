@@ -145,7 +145,7 @@ async def _chat_turn(app) -> list[dict]:
     La casa del turno la legge chi apre il turno e la passa a nucleo e
     strumenti, come `handlers_chat.handle_chat`."""
     house = house_of(app)
-    compose_briefing(app, house)
+    compose_briefing(app, house, subject=None)
     dispatcher = create_tool_dispatcher(app, house=house, soffitto=_AMMINISTRATORE)
     return [
         await dispatcher.dispatch("search", {"nome": "Sensore"}),

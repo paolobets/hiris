@@ -460,7 +460,7 @@ def test_il_giro_porta_il_guasto_invece_di_inghiottirlo(tmp_path):
     asyncio.run(tree_comparison_round(app, house, count=2)())
     assert len(app[TREE_COMPARISON_KEY].value["guardate"]) == 2
     assert all(g["errore"] for g in app[TREE_COMPARISON_KEY].value["guardate"])
-    testo, _ = compose_briefing(app)
+    testo, _ = compose_briefing(app, subject=None)
     assert "non si sono potute controllare" in testo
 
 
@@ -487,13 +487,13 @@ def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
         {"area": "cucina", "nome": "Cucina", "mancanti": [], "in_piu": ["light.fantasma"],
          "assente_in_ha": False},
     ]})}
-    testo, _ = compose_briefing(app)
+    testo, _ = compose_briefing(app, subject=None)
     assert "light.fantasma" in testo
     assert "sulle 4 della casa" in testo
 
 
 def test_senza_la_chiave_il_nucleo_non_afferma_che_l_albero_e_verificato():
-    testo, _ = compose_briefing({})
+    testo, _ = compose_briefing({}, subject=None)
     assert "Confronto con Home Assistant" not in testo
 
 

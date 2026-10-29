@@ -1954,7 +1954,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_product_dataclasses_are_35_with_187_fields():
+def test_product_dataclasses_are_35_with_188_fields():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -2111,13 +2111,17 @@ def test_product_dataclasses_are_35_with_187_fields():
     **Trentacinque e 187 dal 15/10/2026**, Tappa 8, Task 11 (B25): il campo
     `resumes` di `StreamOccurrence` -- quante volte la CLI del ponte ha
     ripreso la risposta fermata al tetto di token.
+
+    **Trentacinque e 188 dal 29/10/2026**, Fase S, S.2: il campo
+    `daily_turn_cap` di `ChatSettings` -- i turni al giorno di chi non
+    amministra.
     """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (35, 187), (classi, campi)
+    assert (classi, campi) == (35, 188), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

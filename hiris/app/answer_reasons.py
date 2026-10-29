@@ -26,3 +26,12 @@ DEADLINE_REASON = "scadenza"
 
 #: Il ponte ha gia' risposto oggi tutti i turni che il suo tetto gli concede.
 DAILY_CAP_REASON = "tetto giornaliero"
+
+
+def daily_turns_reason(full: dict) -> str:
+    """Perche' un turno di chi non amministra non e' partito: il tetto per
+    persona (`steering.daily_turns_refusal`, Fase S) e' pieno. La frase dice
+    quanti, il tetto, e come se ne esce, senza mandare a cercare altrove."""
+    return (f"oggi chi l’ha chiesta ha già aperto {full['turns']} turni, e chi non "
+            f"amministra ne ha {full['limit']} al giorno: si riparte domani, oppure "
+            "chi amministra alza il tetto nelle impostazioni della chat")

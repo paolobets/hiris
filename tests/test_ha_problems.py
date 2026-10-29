@@ -336,13 +336,13 @@ def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
     app = {**live_values(), HA_PROBLEMS_KEY: LiveValue({"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
     ]})}
-    testo, _ = compose_briefing(app)
+    testo, _ = compose_briefing(app, subject=None)
     assert "caldaia" in testo
     assert "pressione" in testo
 
 
 def test_senza_la_chiave_il_nucleo_non_afferma_che_la_casa_e_sana():
-    testo, _ = compose_briefing({})
+    testo, _ = compose_briefing({}, subject=None)
     assert "Riparazioni" not in testo
 
 
@@ -378,7 +378,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
     asyncio.run(reread_ha_problems(app, house))
     assert app[HA_PROBLEMS_KEY].value == {"errore": "Home Assistant non ha risposto",
                                   "causa": "silenzio", "codice": None}
-    testo, _ = compose_briefing(app)
+    testo, _ = compose_briefing(app, subject=None)
     assert "non si è potuto guardare" in testo
     assert "Home Assistant non ha risposto" in testo
 
@@ -393,7 +393,7 @@ def test_rileggi_problemi_porta_anche_il_rifiuto_col_suo_motivo():
     asyncio.run(reread_ha_problems(app, house))
     assert app[HA_PROBLEMS_KEY].value == {"errore": "Unknown command.", "causa": "rifiuto",
                                   "codice": "unknown_command"}
-    testo, _ = compose_briefing(app)
+    testo, _ = compose_briefing(app, subject=None)
     assert "Unknown command." in testo
     assert "non si è potuto guardare" in testo
 

@@ -1324,6 +1324,20 @@ def _bare_tool_name(name: str) -> str:
     return name.removeprefix(mcp_name(""))
 
 
+def _turn_subject(job: dict | None) -> dict | None:
+    """Chi ha aperto il turno del ponte, per il registro dei consumi: la
+    persona di una chat, chi ha chiesto una promessa, nessuno per gli altri
+    mestieri."""
+    from ..chat_thread import subject_from_thread
+
+    job = job or {}
+    if job.get("kind") == "chat":
+        return (job.get("context") or {}).get("soggetto")
+    if job.get("kind") == PROMISE_SPECIES:
+        return subject_from_thread(job.get("thread"))
+    return None
+
+
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   occurrence: "StreamOccurrence | None",
                   outcome: str, exchange_id: str = "",
@@ -1402,11 +1416,12 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "tool_args": [c.get("input") or {} for c in (tools or [])
                           if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,
-            # Chi ha scritto, per un turno di chat: il soggetto viaggia nel
-            # job da quando la chat e' divisa per persona. Le altre specie
-            # non hanno una persona davanti, e la colonna resta vuota.
-            "subject": (((job or {}).get("context") or {}).get("soggetto")
-                        if (job or {}).get("kind") == "chat" else None),
+            # Chi ha aperto il turno: per la chat il soggetto viaggia nel job
+            # da quando la chat e' divisa per persona; per una promessa e'
+            # chi l'ha chiesta, dal filo della riga (Fase S, S.2: il tetto
+            # per persona conta anche i suoi turni). Le altre specie non hanno
+            # una persona davanti, e la colonna resta vuota.
+            "subject": _turn_subject(job),
             # Spec «le misure complete» §4: la riga porta cio' che serve alla
             # giunzione in `bridge_loads._registra_turno_ponte`, che ha l'app e
             # quindi cio' che /api/mcp ha annotato per questo turno.

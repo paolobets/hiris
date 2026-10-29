@@ -506,6 +506,18 @@ test('la frase del limite ha una casa sola: la stessa nella riga fissa e nella b
   assert.equal(bolle[bolle.length - 1].textContent, LIMITE);
 });
 
+test('il tetto di oggi ha la sua frase, e non chiude la conversazione (Fase S, S.2)', async (t) => {
+  /* Mutazione ESEGUITA: il ramo `daily_turns_reached` tolto da send.js --
+     rossa, la bolla scrive il codice nudo. */
+  const { window, document } = avviaChat(t);
+  server(window, { 'POST api/chat': { error: 'daily_turns_reached', turns: 3, limit: 3 } });
+  await window.HirisChatSend.send('ancora uno');
+  const bolle = document.querySelectorAll('.msg-row.assistant .bubble');
+  assert.equal(bolle[bolle.length - 1].textContent, window.HirisChatAgents.DAILY_LIMIT_TEXT);
+  assert.match(window.HirisChatAgents.DAILY_LIMIT_TEXT, /domani/);
+  assert.equal(document.getElementById('input').disabled, false);
+});
+
 /* ── Correzione 1 (review UX e sicurezza del Task 7) ─────────────────────── */
 
 test('dopo una cancellazione riuscita il fuoco va a #input, non al <body>', async (t) => {

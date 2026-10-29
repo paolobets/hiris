@@ -588,9 +588,10 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
 
 
 def is_admin_role(role: str | None) -> bool:
-    """**La regola dell'amministratore**, scritta una volta: il cancello al
-    confine (`admission.py`) e le pagine che si adattano a chi guarda
-    (`restricted_person`) la chiedono qui."""
+    """**La regola dell'amministratore**, scritta una volta: la chiede il
+    cancello al confine (`admission.py`). Le pagine che si adattano a chi
+    guarda (`restricted_person`) chiedono invece il gesto al soffitto, dal
+    29/10/2026, perche' valga anche per i servizi."""
     return role == "amministratore"
 
 
@@ -615,12 +616,18 @@ def request_ceiling(request) -> dict:
 
 
 def restricted_person(request) -> bool:
-    """Una persona dall'ingress che il cancello non ha letto come
-    amministratrice -- un ruolo ignoto compreso. E' a lei che le pagine
-    mostrano solo cio' che e' suo (spec 2026-09-27 §4). Servizi, ponte e
-    sviluppo hanno le loro regole e restano come prima."""
-    return (request.get("auth_via") == "ingress"
-            and not is_admin_role(request_role(request)))
+    """Chi fa questa richiesta non amministra -- un ruolo ignoto compreso. E' a
+    lui che le pagine mostrano solo cio' che e' suo (spec 2026-09-27 §4).
+
+    **Decide il ruolo, non la porta** (Fase S, S.3, 29/10/2026). Fino ad
+    allora valeva solo per chi arrivava dall'ingress: un servizio firmato col
+    ruolo `utente` riceveva da `GET /api/memories` tutti i ricordi e da
+    `GET /api/chat-settings` il prompt di sistema, che a una persona con lo
+    stesso ruolo sono negati. Adesso e' la domanda unica del soffitto
+    (`denies`, il gesto `amministrare`) sul soffitto di questa richiesta: la
+    stessa per una persona, un servizio e il ponte; lo sviluppo con
+    l'interruttore acceso non si restringe, come altrove."""
+    return denies(request_ceiling(request), "amministrare", request.get("soggetto"))
 
 
 def _route_pattern(request) -> str:

@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import logging
 
+from ..answer_reasons import daily_turns_reason
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 from ..providers import SUBSCRIPTION
 from ..steering import (
     PROMISE_SPECIES,
     chain_turn,
+    daily_turns_refusal,
     enqueue_turn,
     house_hour,
     refused_tool,
@@ -162,6 +164,16 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_chat import create_tool_dispatcher
     from ..api.handlers_home_space import compose_briefing
+    from ..api.soffitto import denies
+
+    # Chi l'ha chiesta e il suo soffitto ADESSO, prima di ogni strada: il tetto
+    # per persona (Fase S, S.2) vale sul ponte come sulla catena, e un turno
+    # che non parte non deve accodarsi.
+    subject, ceiling = await promise_ceiling(app, promise)
+    full = daily_turns_refusal(app, subject,
+                               administers=not denies(ceiling, "amministrare", subject))
+    if full is not None:
+        return {"errore": daily_turns_reason(full)}
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -182,13 +194,12 @@ async def interpreta_promise(app, promise: dict) -> dict:
     if runner is None:
         return {"errore": "non c’era nessun modello a cui chiedere."}
 
-    subject, ceiling = await promise_ceiling(app, promise)
     dispatcher = PromiseDispatcher(create_tool_dispatcher(
         app, soffitto=ceiling, soggetto=subject))
     # Lo STESSO nucleo della chat (`compose_briefing`), non una composizione
     # parallela: due contesti che descrivono la stessa casa sono due verita'
     # che divergono. Un archivio guasto lo dichiara lei (D-64).
-    briefing, _summary = compose_briefing(app)
+    briefing, _summary = compose_briefing(app, subject=subject)
 
     try:
         answer, turn = await chain_turn(
@@ -203,6 +214,9 @@ async def interpreta_promise(app, promise: dict) -> dict:
             thinking_budget=0,
             tools=promise_tools(),
             dispatcher=dispatcher,
+            # Chi l'ha chiesta, nel registro dei consumi: il tetto per persona
+            # (Fase S, S.2) conta anche i turni delle sue promesse.
+            soggetto=subject,
         )
     except Exception as error:
         logger.warning("turno della promessa %s fallito (%s: %s)",
@@ -253,7 +267,7 @@ def _downgrade_note(reason: str) -> str:
             "a consumo.")
 
 
-async def promise_ceiling(app, promise: dict | None) -> tuple[dict | None, dict]:
+async def promise_ceiling(app, promise: dict | None) -> tuple[dict, dict]:
     """Chi ha chiesto questa promessa, e il suo soffitto ADESSO.
 
     Un turno `chiedi` legge soltanto, ma legge col token di amministratore di
@@ -267,8 +281,23 @@ async def promise_ceiling(app, promise: dict | None) -> tuple[dict | None, dict]
     from ..api.soffitto import ceiling_at_wake
     from ..chat_thread import subject_from_thread
 
-    subject = subject_from_thread((promise or {}).get("thread"))
-    return subject, await ceiling_at_wake(app, subject)
+    asker = subject_from_thread((promise or {}).get("thread"))
+    return promise_subject(promise), await ceiling_at_wake(app, asker)
+
+
+def promise_subject(promise: dict | None) -> dict:
+    """Chi ha chiesto questa promessa, rifatto dal suo filo: il soggetto del
+    dispatcher e quello dei ricordi del nucleo, sulle due strade del turno.
+
+    **Mai `None`** (Fase S, 29/10/2026): per l'archivio della memoria un
+    turno senza soggetto e' un turno di sfondo, e legge i ricordi di tutti
+    (`MemoryStore.fetch_for`). Una promessa senza filo ha un padrone che non
+    si sa, non nessun padrone: e' il soggetto `nessuno`, senza id, che non ne
+    legge nessuno."""
+    from ..chat_thread import new_subject, subject_from_thread
+
+    return (subject_from_thread((promise or {}).get("thread"))
+            or new_subject("nessuno"))
 
 
 def _enqueue_to_bridge(app, promise: dict) -> dict:
@@ -292,7 +321,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     """
     from ..api.handlers_home_space import compose_briefing
 
-    briefing, _summary = compose_briefing(app)
+    briefing, _summary = compose_briefing(app, subject=promise_subject(promise))
 
     # La scadenza dall'ARCHIVIO, come fa `_enqueue_chat_job`: quella che
     # l'utente cambia dev'essere quella che il turno subisce. La leggono, col

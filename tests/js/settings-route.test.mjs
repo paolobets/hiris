@@ -27,6 +27,7 @@ const IMPOSTAZIONI = {
   response_mode: 'compact',
   thinking_budget: 2048,
   max_chat_turns: 4,
+  daily_turn_cap: 12,
   restrict_to_home: true,
   retention_days: 30,
   response_modes: ['auto', 'compact', 'minimal'],
@@ -124,6 +125,7 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi dei campi del contrat
 
   controllo(document, 'Nome').value = 'Casa';
   controllo(document, 'Tetto di turni per sessione').value = '9';
+  controllo(document, 'Turni al giorno per chi non amministra').value = '25';
   controllo(document, 'Giorni di conservazione').value = '7';
   bottone(document, 'Salva').dispatchEvent(new window.Event('click', { bubbles: true }));
   await tick(20);
@@ -135,9 +137,10 @@ test('«Salva» manda un PUT con X-Requested-With e i nomi dei campi del contrat
     'senza questo header csrf_middleware risponde 403');
   const corpo = JSON.parse(put.opts.body);
   assert.deepEqual(Object.keys(corpo).sort(), [
-    'max_chat_turns', 'name', 'response_mode', 'restrict_to_home',
-    'retention_days', 'system_prompt', 'thinking_budget',
+    'max_chat_turns', 'name', 'daily_turn_cap', 'response_mode',
+    'restrict_to_home', 'retention_days', 'system_prompt', 'thinking_budget',
   ]);
+  assert.equal(corpo.daily_turn_cap, 25, 'Fase S, S.2: il tetto per persona');
   assert.equal(corpo.name, 'Casa');
   assert.equal(corpo.max_chat_turns, 9);
   assert.equal(corpo.restrict_to_home, true);
@@ -241,7 +244,7 @@ test('il modello non si sceglie più qui, e la pagina dice dove', async () => {
   assert.deepEqual(titoli, [
     'Nome', 'Prompt di sistema', 'Forma della risposta',
     'Budget di ragionamento (token)', 'Tetto di turni per sessione',
-    'Giorni di conservazione',
+    'Turni al giorno per chi non amministra', 'Giorni di conservazione',
   ], 'nessun campo «Modello» nella pagina');
   assert.match(outlet.textContent, /si sceglie per provider, nella pagina Modelli/);
 });

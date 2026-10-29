@@ -37,7 +37,6 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..chat_thread import subject_key_for
 from ..home_space.historian import home_space_zone, house_clock
 from ..home_space.house import House
 from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
@@ -82,18 +81,15 @@ async def handle_get_memories(request: web.Request) -> web.Response:
     timezone = house_timezone_of(request.app)
     zone = home_space_zone(timezone)
 
-    # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
-    # che ha detto lei, con la chiave che scrive `remember` in chat e dal ponte
-    # (`subject_key_for`). Il filtro lo decide il ruolo, mai la richiesta; sta
-    # nell'archivio prima del taglio, e il `total` e' il suo. Una persona
-    # senza id non ha ricordi: `persona:-` e' la chiave di nessuno, e
-    # filtrarci le darebbe quelli di ogni altro soggetto senza id.
+    # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): gli stessi
+    # che legge la sua chat, dalla stessa regola dell'archivio
+    # (`MemoryStore.fetch_for`, Fase S). Il filtro lo decide il ruolo, mai la
+    # richiesta; sta nell'archivio prima del taglio, e il `total` e' il suo.
+    # Chi amministra li vede tutti, con l'autore: la pagina e' sua.
     if restricted_person(request):
         subject = request.get("soggetto") or {}
-        said_by = subject_key_for(subject) if subject.get("id") else None
-        memories = (store.fetch(limit=_MEMORIES_SHOWN_LIMIT, said_by=said_by)
-                    if said_by else [])
-        total = store.count(said_by=said_by) if said_by else 0
+        memories = store.fetch_for(subject, limit=_MEMORIES_SHOWN_LIMIT)
+        total = store.count_for(subject)
     else:
         memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
         total = store.count()

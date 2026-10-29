@@ -108,6 +108,37 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     return True, ""
 
 
+def daily_turns_refusal(app, subject: dict | None, *, administers: bool,
+                        now: float | None = None) -> dict | None:
+    """**Il tetto per persona** (Fase S, S.2, scelta del proprietario del
+    29/10/2026): chi non amministra apre al massimo
+    `ChatSettings.daily_turn_cap` turni al giorno, chat e promesse
+    insieme. `None` quando il turno puo' partire; altrimenti quanti ne ha
+    aperti oggi e il tetto, per chi deve dirlo.
+
+    Chi amministra non ha tetto: paga lui. `0` = nessun tetto, ed e' il
+    valore di fabbrica. Il giorno e' quello della casa, con gli stessi
+    confini del tetto del ponte (`historian.day_boundaries`); i turni si
+    contano nell'archivio dei consumi (`UsageStore.count_turns`), che sa gia'
+    chi ha aperto ognuno. Un archivio assente non ferma nessuno: senza
+    misura il tetto non si puo' dire pieno, e senza impostazioni vale il
+    valore di fabbrica, nessun tetto."""
+    from .chat_settings import CHAT_SETTINGS_KEY
+    from .home_space.historian import day_boundaries, local_date
+
+    settings, usage = app.get(CHAT_SETTINGS_KEY), app.get(USAGE_KEY)
+    if administers or settings is None or usage is None:
+        return None
+    limit = settings.value.daily_turn_cap
+    if limit <= 0:
+        return None
+    ts = _time.time() if now is None else now
+    timezone = house_timezone_of(app)
+    since, until = day_boundaries(local_date(ts, timezone).isoformat(), timezone)
+    turns = usage.count_turns(subject, since=since, until=until)
+    return {"turns": turns, "limit": limit} if turns >= limit else None
+
+
 #: Il tetto di giri di strumento. **Si importa, non si ricopia**: il numero
 #: vive in `claude_runner`, che e' chi lo fa rispettare, e una seconda
 #: costante qui direbbe «esaurito» a un turno che non lo e' il giorno in cui

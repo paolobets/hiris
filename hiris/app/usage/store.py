@@ -927,6 +927,19 @@ class UsageStore:
                               else json.loads(r["problems"]))}
                 for r in righe]
 
+    def count_turns(self, subject: dict | None, *, since: float, until: float) -> int:
+        """Quanti turni ha aperto `subject` fra `since` (compreso) e `until`
+        (escluso), di ogni specie: una chat e una promessa che chiede spendono
+        sugli stessi provider. E' la misura del tetto per persona (Fase S,
+        S.2): si chiede qui e non si tiene un contatore a parte, che sarebbe
+        un secondo conto degli stessi turni."""
+        with self._lock:
+            riga = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM turn "
+                "WHERE subject_key = ? AND ts >= ? AND ts < ?",
+                (subject_key_for(subject), since, until)).fetchone()
+        return riga["n"]
+
     def payloads(self, turn_id: str) -> list[dict]:
         """Il carico di un turno, giro per giro, in ordine."""
         with self._lock:

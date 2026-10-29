@@ -1,11 +1,12 @@
 """fetta E5 Task 2 ("il frontend"): le impostazioni della chat tornano ad
 avere una superficie.
 
-**Perche' questo file esiste.** I sette campi di `ChatSettings`
+**Perche' questo file esiste.** Gli otto campi di `ChatSettings`
 (`hiris/app/chat_settings.py`) governano l'unica conversazione che HIRIS
 sa avere -- il prompt di sistema, la forma della risposta, il budget di
 ragionamento, il tetto di turni, la restrizione alla casa, il nome e (dalla
-fetta "Modelli" (2.0), Task 12) i giorni di conservazione. Il modello NON e'
+fetta "Modelli" (2.0), Task 12) i giorni di conservazione e (dalla Fase S,
+29/10/2026) i turni al giorno di chi non amministra. Il modello NON e'
 fra loro: si sceglie per provider, nella pagina Modelli (fetta "la catena
 diventa l'unica verita'", Task 4 -- il campo `model` che stava qui scavalcava
 la catena e annullava il ripiego).
@@ -15,16 +16,16 @@ chiamante di produzione (due sole occorrenze in tutto il repo, entrambe in
 `tests/test_chat_settings.py`). Per chi installa l'add-on senza aprire una
 shell dentro il container, quei campi erano di fatto costanti.
 
-**Il contratto.** Il payload porta i sette campi del dataclass (`name`,
+**Il contratto.** Il payload porta gli otto campi del dataclass (`name`,
 `system_prompt`, `response_mode`, `thinking_budget`, `max_chat_turns`,
-`restrict_to_home`, `retention_days`).
+`daily_turn_cap`, `restrict_to_home`, `retention_days`).
 
 **Cosa si valida, e perche' non di piu'.** Un campo fuori intervallo, di tipo
 sbagliato o sconosciuto produce un **400 che dice quale campo e cosa non va**,
 mai un 500 e mai un salvataggio a meta': la validazione avviene per intero
 PRIMA di toccare il disco, e l'oggetto scritto e' sempre completo (i campi
 assenti conservano il valore corrente -- un client che manda meno campi non
-azzera gli altri). I tre interi hanno come solo limite `>= 0` perche' i limiti
+azzera gli altri). I quattro interi hanno come solo limite `>= 0` perche' i limiti
 veri stanno gia' a valle e dipendono dal modello (o, per `retention_days`,
 non esistono affatto -- vedi sotto):
 `claude_runner._build_thinking_param` disattiva un `thinking_budget` sotto
@@ -36,7 +37,7 @@ cambia.
 
 **`retention_days` (Task 12).** Arrivato da `history_retention_days`,
 l'opzione dell'add-on -- non e' aspetto, non e' una chiave, non e' rete: e'
-una decisione sulla conversazione, come le altre sei. Fa DUE lavori: la
+una decisione sulla conversazione, come le altre. Fa DUE lavori: la
 potatura notturna (`ChatStore.prune`, dal lavoro delle 3) e quanto HIRIS rilegge della
 conversazione in corso (`chat_store.load_history`, chiamato da
 `handlers_chat.py` con questo stesso valore). `0` non attiva mai nessuno dei
@@ -89,7 +90,7 @@ from .soffitto import restricted_person
 # Due salti, nessuno dei due nuovo: prima coincidevano per caso.
 logger = logging.getLogger(__name__)
 
-# I sette campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
+# Gli otto campi, nell'ordine in cui la pagina li mostra. E' anche l'elenco
 # delle chiavi ammesse nel corpo del PUT: tutto cio' che non e' qui dentro e'
 # un errore parlante, non un silenzio (una chiave scritta male -- `modello`
 # invece di `model` -- verrebbe altrimenti accettata e ignorata, e l'utente
@@ -100,6 +101,7 @@ FIELDS = (
     "response_mode",
     "thinking_budget",
     "max_chat_turns",
+    "daily_turn_cap",
     "restrict_to_home",
     "retention_days",
 )
@@ -239,6 +241,8 @@ def validate(current: ChatSettings, body) -> ChatSettings:
 
     thinking = _non_negative_integer(body, "thinking_budget", current.thinking_budget)
     turns = _non_negative_integer(body, "max_chat_turns", current.max_chat_turns)
+    daily = _non_negative_integer(body, "daily_turn_cap",
+                                  current.daily_turn_cap)
 
     if "restrict_to_home" in body:
         restriction = body["restrict_to_home"]
@@ -264,13 +268,14 @@ def validate(current: ChatSettings, body) -> ChatSettings:
         response_mode=mode,
         thinking_budget=thinking,
         max_chat_turns=turns,
+        daily_turn_cap=daily,
         restrict_to_home=restriction,
         retention_days=retention_days,
     )
 
 
 def _payload(settings: ChatSettings) -> dict:
-    """I sette campi, piu' due cose che la pagina non deve indovinare: i
+    """Gli otto campi, piu' due cose che la pagina non deve indovinare: i
     valori ammessi per `response_mode` e il prompt di default (per il
     "ripristina"), che vivono nel codice e cambierebbero sotto a una copia
     tenuta nel frontend."""
@@ -280,6 +285,7 @@ def _payload(settings: ChatSettings) -> dict:
         "response_mode": settings.response_mode,
         "thinking_budget": settings.thinking_budget,
         "max_chat_turns": settings.max_chat_turns,
+        "daily_turn_cap": settings.daily_turn_cap,
         "restrict_to_home": settings.restrict_to_home,
         "retention_days": settings.retention_days,
         "response_modes": list(RESPONSE_MODES),

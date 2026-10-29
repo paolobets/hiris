@@ -230,6 +230,9 @@ trovato:
   persona non amministratrice restituisce **solo i ricordi con `said_by` uguale alla sua chiave**;
   quelli senza autore non sono suoi. Correggere e cancellare non sono in lista. Per un amministratore
   niente cambia. La memoria usata in chat resta condivisa (decisione delle chat divise).
+  **Superato il 29/10/2026** (Fase S, S.1, dalla decisione D8 del 03/10 e dalla scelta del
+  proprietario del 29/10): in chat ognuno legge i suoi ricordi, dalla stessa regola della pagina
+  (`MemoryStore.fetch_for`); i turni di sfondo li leggono tutti.
 - **Pagine**: `GET /api/pending` porta, accanto a `can_build`, **`can_configure`** (vero solo per gli
   amministratori), con la stessa memoria locale del menu «Proposte» (il server resta il giudice). Con
   `can_configure` falso: nella chat spariscono il widget dei consumi e il link «Configurazione»; nel
@@ -298,11 +301,12 @@ Ogni punto è una voce di `docs/BACKLOG.md` (sezione «In attesa»), con il fatt
 e cosa lo chiuderebbe:
 
 - la memoria in chat resta condivisa: chi non amministra può farsi dire ciò che altri hanno detto
-  a HIRIS (rischio accettato dal proprietario);
-- nessun tetto di spesa per persona;
+  a HIRIS (rischio accettato dal proprietario) — chiusa il 29/10/2026, Fase S, S.1;
+- nessun tetto di spesa per persona — chiusa il 29/10/2026, Fase S, S.2;
 - i servizi firmati: con ruolo `utente` scrivono ancora sulle rotte di configurazione, e con
   `utente` o `lettore` leggono tutte le memorie e tutte le impostazioni della chat (la lista e i
-  filtri valgono solo per le persone dall'ingress);
+  filtri valgono solo per le persone dall'ingress) — la scrittura chiusa il 07/10/2026 (Tappa 7),
+  la lettura il 29/10/2026 (Fase S, S.3);
 - i servizi riservati agli amministratori di domini diversi da `homeassistant` con un bersaglio;
 - in sviluppo `can_configure` vero e `can_build` falso;
 - «ogni utente è fidato»: il cancello di HIRIS è l'unica protezione, e le porte degli altri

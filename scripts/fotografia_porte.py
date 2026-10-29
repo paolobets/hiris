@@ -472,7 +472,9 @@ async def _ports(app, clock: float) -> dict:
     store, cache = app[HOME_SPACE_KEY], app[ENTITY_CACHE_KEY]
     home_space, entries = store.read(), store.behavior()
     mirror = topology.live_mirror(cache.all_states())
-    text, summary = handlers_home_space.compose_briefing(app)
+    # Il nucleo di nessuno: la fotografia guarda la casa intera, ricordi di
+    # tutti compresi (`MemoryStore.fetch_for(None)`).
+    text, summary = handlers_home_space.compose_briefing(app, subject=None)
     # Lo scatto guarda ogni strumento, quindi col soffitto che non nega
     # niente: quello di chi amministra (il costruttore non accetta `None` dal
     # 07/10/2026, decisione 13).
