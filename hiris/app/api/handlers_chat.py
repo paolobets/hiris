@@ -9,6 +9,7 @@ from ..action.actuator import ACTUATOR_KEY
 from ..action.construction.workshop import WORKSHOP_KEY
 from ..action.journal import JOURNAL_KEY
 from ..action.registry import SERVICE_REGISTRY_KEY
+from ..answer_reasons import DEADLINE_REASON
 from ..chat_settings import CHAT_SETTINGS_KEY, MESSAGE_CAP
 from ..chat_store import (
     _is_toxic_assistant,
@@ -775,7 +776,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # La partenza del turno, da `steering.start` come ogni altro (D-06): il
     # motivo e' gia' noto (la scadenza), e la dichiarazione del ripiego --
     # registro e pagina dei consumi (reperto C-5) -- parte se c'e' un runner.
-    runner = start(request.app, "chat", downgrade="scadenza").runner
+    runner = start(request.app, "chat", downgrade=DEADLINE_REASON).runner
     contesto = job.get("context") or {}
     # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
     # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
@@ -840,7 +841,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         thinking_budget=0)
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
-    note = _who_answered_note(request, reason="scadenza")
+    note = _who_answered_note(request, reason=DEADLINE_REASON)
     # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
     # prodotto vive nel job, non nella richiesta che per caso lo ha raccolto.

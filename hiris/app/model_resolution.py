@@ -31,6 +31,7 @@ Chi le chiama porta i fatti già misurati.
 """
 from __future__ import annotations
 
+from .answer_reasons import DAILY_CAP_REASON, DEADLINE_REASON
 from .models_store import bridge_deadline_min as _bridge_deadline_min
 from .providers import (
     OLLAMA,
@@ -360,15 +361,16 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
 # della chat sarebbe una seconda voce che parla del prodotto, libera di
 # divergere dalla prima.
 
-# I tre fatti che il turno puo' aver osservato, e non uno di piu'. Sono le
-# STESSE tre parole che `steering._subscription_can_answer` restituisce e
-# che `_downgrade_to_chain` passa: la corrispondenza e' pinnata da un test,
-# perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
-# -- produrrebbe silenzio, che e' peggio.
+# I tre fatti che il turno puo' aver osservato, e non uno di piu'. Le chiavi
+# **si importano, non si ricopiano** (giro 222 del revisore): sono le stesse
+# costanti che `steering._subscription_can_answer` restituisce e che
+# `api/handlers_chat` passa alla partenza, perche' un motivo che non fosse fra
+# queste chiavi non produrrebbe un errore -- produrrebbe silenzio, che e'
+# peggio.
 _DOWNGRADE_REASONS: dict[str, str] = {
-    "scadenza": "non ha risposto in tempo",
+    DEADLINE_REASON: "non ha risposto in tempo",
     SUBSCRIPTION.missing_reason: "non ha un token con cui rispondere",
-    "tetto giornaliero": "ha raggiunto il suo tetto di messaggi per oggi",
+    DAILY_CAP_REASON: "ha raggiunto il suo tetto di messaggi per oggi",
 }
 
 

@@ -51,7 +51,7 @@ from typing import NamedTuple as _NamedTuple
 
 from aiohttp import web
 
-from .answer_reasons import NO_ANSWER_REASON
+from .answer_reasons import DAILY_CAP_REASON, NO_ANSWER_REASON
 from .claude_runner import CLAUDE_RUNNER_KEY
 from .home_space.reader import house_timezone_of
 from .live_value import LiveValue
@@ -104,7 +104,7 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
         logger.warning(
             "Tetto giornaliero del ponte raggiunto (%d turni): il turno passa "
             "alla catena.", cap)
-        return False, "tetto giornaliero"
+        return False, DAILY_CAP_REASON
     return True, ""
 
 

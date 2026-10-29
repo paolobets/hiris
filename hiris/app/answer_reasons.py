@@ -10,3 +10,19 @@ from __future__ import annotations
 
 #: Una risposta vuota non e' un silenzio: e' un modello che non ha risposto.
 NO_ANSWER_REASON = "il modello non ha risposto"
+
+# -- le parole del ripiego dal ponte alla catena -------------------------------
+#
+# Sono le chiavi di `model_resolution._DOWNGRADE_REASONS`, e vivono QUI perche'
+# chi le scrive (`steering`, `api/handlers_chat`) e chi le legge
+# (`model_resolution`) non possono importarsi a vicenda: `steering` passa da
+# `claude_runner`, che importa `model_resolution`. Fino al giro 222 del
+# revisore erano ricopiate nei due posti, e una parola cambiata da una parte
+# avrebbe spento la nota del ripiego senza errori. La terza, «manca il token»,
+# nasce con il provider: `providers.SUBSCRIPTION.missing_reason`.
+
+#: Il ponte c'era e non ha risposto entro il tempo concesso.
+DEADLINE_REASON = "scadenza"
+
+#: Il ponte ha gia' risposto oggi tutti i turni che il suo tetto gli concede.
+DAILY_CAP_REASON = "tetto giornaliero"

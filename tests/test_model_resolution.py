@@ -6,6 +6,7 @@ complesso.
 """
 import pytest
 
+from hiris.app.answer_reasons import DAILY_CAP_REASON, DEADLINE_REASON
 from hiris.app.model_resolution import compose_now
 from hiris.app.providers import SUBSCRIPTION, display_name, ids, nature
 
@@ -965,7 +966,7 @@ from hiris.app.model_resolution import downgrade_note
 
 
 def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():
-    assert downgrade_note(reason="scadenza", who_answered="openrouter") == (
+    assert downgrade_note(reason=DEADLINE_REASON, who_answered="openrouter") == (
         "Il Piano Claude Max non ha risposto in tempo: ha risposto OpenRouter, "
         "a consumo.")
 
@@ -976,12 +977,12 @@ def test_i_tre_motivi_sono_tre_fatti_diversi():
     assert "non ha un token" in downgrade_note(
         reason=SUBSCRIPTION.missing_reason, who_answered="claude")
     assert "tetto di messaggi per oggi" in downgrade_note(
-        reason="tetto giornaliero", who_answered="claude")
+        reason=DAILY_CAP_REASON, who_answered="claude")
     assert "non ha risposto in tempo" in downgrade_note(
-        reason="scadenza", who_answered="claude")
+        reason=DEADLINE_REASON, who_answered="claude")
 
 
-@pytest.mark.parametrize("motivo", ["scadenza", SUBSCRIPTION.missing_reason, "tetto giornaliero"])
+@pytest.mark.parametrize("motivo", [DEADLINE_REASON, SUBSCRIPTION.missing_reason, DAILY_CAP_REASON])
 def test_la_nota_non_diagnostica_e_non_allarma(motivo):
     """Stessa disciplina degli avvisi di `esegui` (`action/actuator.py`): un
     avviso e' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla
@@ -1000,7 +1001,7 @@ def test_la_natura_di_chi_risponde_e_sempre_dichiarata():
     cui la nota esiste."""
     for pid, attesa in (("openrouter", "a consumo"), ("ollama", "in casa"),
                         ("claude", "a consumo"), ("openai", "a consumo")):
-        assert attesa in downgrade_note(reason="scadenza", who_answered=pid), pid
+        assert attesa in downgrade_note(reason=DEADLINE_REASON, who_answered=pid), pid
 
 
 def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
@@ -1008,7 +1009,7 @@ def test_di_un_provider_che_non_si_conosce_non_si_dichiara_la_natura():
     meta' per cui esiste, e «ha risposto pinco, .» sarebbe una riga rotta che
     parla di soldi: meglio non scriverla. Stessa regola di
     `_who_answered_note` quando non sa chi ha risposto."""
-    assert downgrade_note(reason="scadenza", who_answered="pinco") == ""
+    assert downgrade_note(reason=DEADLINE_REASON, who_answered="pinco") == ""
 
 
 def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
@@ -1023,7 +1024,7 @@ def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
 def test_la_nota_nomina_il_piano_con_il_nome_che_ha_in_tutto_il_prodotto():
     """Un nome per provider, mai due (Task 5). La nota non se ne inventa uno
     suo: se il nome nella tabella dei provider cambiasse, cambierebbe anche qui."""
-    testo = downgrade_note(reason="scadenza", who_answered="openrouter")
+    testo = downgrade_note(reason=DEADLINE_REASON, who_answered="openrouter")
     assert testo.startswith("Il " + display_name("subscription") + " ")
     assert display_name("openrouter") in testo
 

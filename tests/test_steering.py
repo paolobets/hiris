@@ -23,6 +23,7 @@ scende alla catena:
 """
 import pytest
 
+from hiris.app.answer_reasons import DAILY_CAP_REASON
 from hiris.app.live_value import LiveValue
 from hiris.app.model_resolution import _DOWNGRADE_REASONS
 from hiris.app.models_store import MODELS_CONFIG_KEY
@@ -91,7 +92,7 @@ def test_senza_il_token_del_piano_e_un_ripiego_e_si_dichiara(senza_token):
 def test_a_tetto_pieno_e_un_ripiego_e_si_dichiara(col_token):
     via, motivo = who_answers(_app(coda=_CodaFinta(oggi=150)))
     assert via == "catena"
-    assert motivo == "tetto giornaliero"
+    assert motivo == DAILY_CAP_REASON
     assert motivo in _DOWNGRADE_REASONS
 
 

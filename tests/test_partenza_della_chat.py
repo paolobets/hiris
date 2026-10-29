@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
+from hiris.app.answer_reasons import DEADLINE_REASON
 from hiris.app.claude_runner import CLAUDE_RUNNER_KEY
 from hiris.app.live_value import LiveValue
 from hiris.app.llm_router import LLM_ROUTER_KEY
@@ -41,11 +42,11 @@ def test_un_motivo_gia_noto_non_chiede_a_who_answers():
     rispondere."""
     usage = MagicMock()
     app = {LLM_ROUTER_KEY: object(), USAGE_KEY: usage, BRIDGE_ACTIVE_KEY: LiveValue(True)}
-    route, downgrade, runner = start(app, "chat", downgrade="scadenza")
-    assert (route, downgrade) == ("catena", "scadenza")
+    route, downgrade, runner = start(app, "chat", downgrade=DEADLINE_REASON)
+    assert (route, downgrade) == ("catena", DEADLINE_REASON)
     assert runner is app[LLM_ROUTER_KEY]
     usage.log_fallback.assert_called_once()
-    assert usage.log_fallback.call_args.args[:2] == ("chat", "scadenza")
+    assert usage.log_fallback.call_args.args[:2] == ("chat", DEADLINE_REASON)
 
 
 @pytest.mark.asyncio

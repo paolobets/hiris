@@ -1275,6 +1275,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
+    from hiris.app.answer_reasons import DEADLINE_REASON
     from hiris.app.model_resolution import _DOWNGRADE_REASONS
     from hiris.app.steering import _subscription_can_answer
 
@@ -1294,7 +1295,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
     # `_subscription_can_answer`: la scrive `_downgrade_to_chain`.
-    assert "scadenza" in _DOWNGRADE_REASONS
+    assert DEADLINE_REASON in _DOWNGRADE_REASONS
 
 
 # ── L'annuncio: il ripiego si dichiara, ogni volta ─────────────────────────
