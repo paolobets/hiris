@@ -81,6 +81,19 @@ test('elencoLungo: il riassunto e il criterio dei pochi si leggono, sempre', () 
   assert.match(corpo.textContent, /le 5 più recenti/);
 });
 
+test('elencoLungo: prima del clic NESSUN bottone vuoto si vede', () => {
+  /* Fase B (28/10/2026), misura dello Sprint: il bottone «Altre» era vuoto
+     ma visibile prima dell'apertura, e nella tabulazione senza nome (R218-2
+     del revisore). Mutazione ESEGUITA il 28/10/2026: `ancora.hidden = true`
+     tolto dalla nascita -- rossa qui. Ripristinata. */
+  const { ctx, corpo } = monta();
+  elenco(ctx, corpo, { tutti: dati(150) });
+
+  const vuoti = [...corpo.querySelectorAll('button')]
+    .filter((b) => !b.hidden && b.textContent.trim() === '');
+  assert.equal(vuoti.length, 0);
+});
+
 test('elencoLungo: il bottone dice QUANTE sono in tutto', () => {
   // Mutazione che la uccide: un'etichetta senza numero («Vedi tutte»).
   const { ctx, corpo } = monta();

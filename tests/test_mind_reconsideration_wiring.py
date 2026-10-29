@@ -477,6 +477,10 @@ async def test_un_turno_accodato_al_piano_si_annota_come_IN_ATTESA(
     guasto.
 
     Mutazione che la uccide: annotare l'accodamento come riuscito.
+
+    Dalla Fase B (28/10/2026) dice anche la porta, il ponte. Mutazione
+    ESEGUITA il 28/10/2026 (R218-1, P3): `route="ponte"` tolto
+    dall'accodamento -- rossa su `porta`. Ripristinata.
     """
     app = _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]),
                             _modello(), coda)
@@ -484,6 +488,7 @@ async def test_un_turno_accodato_al_piano_si_annota_come_IN_ATTESA(
     await reconsideration_round(app, _house())
 
     assert archivio.recent_attempts()[0]["esito"] == "accodata"
+    assert archivio.recent_attempts()[0]["porta"] == "ponte"
 
 
 @pytest.mark.asyncio
@@ -655,12 +660,38 @@ async def test_il_giro_annota_da_quale_PORTA_e_passato(archivio):
 
 
 @pytest.mark.asyncio
+async def test_il_giro_annota_il_RIPIEGO_dal_piano_alla_catena(archivio, coda, monkeypatch):
+    """Il ripiego dal piano alla catena si annuncia ogni volta (proprietario,
+    13/08/2026): il tentativo lo porta accanto alla porta, perche' la pagina
+    dica «la catena (ripiego: …)». Il ripiego e' vero: il ponte e' acceso e
+    il token del piano non c'e'.
+
+    Mutazione ESEGUITA il 28/10/2026 (R218-1, P1): `downgrade` tolto dal
+    tentativo riuscito -- rossa su `ripiego`. Ripristinata.
+    """
+    from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
+    monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
+    modello = _modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
+
+    await reconsideration_round(
+        _app_ponte_acceso(archivio, _anagrafe([_entita("climate.x")]), modello, coda),
+        _house())
+
+    ultimo = archivio.recent_attempts()[0]
+    assert (ultimo["porta"], ultimo["ripiego"]) == ("catena", "manca il token")
+
+
+@pytest.mark.asyncio
 async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
     """Il silenzio annotato: senza token del piano e senza nessun provider in
     catena l'osservatore taceva per sempre, con la faccia di «nessuno ha ancora
     provato».
 
     Mutazione che la uccide: tornare `None` senza annotare.
+
+    Dalla Fase B (28/10/2026) dice anche la porta su cui non c'era nessuno.
+    Mutazione ESEGUITA il 28/10/2026 (R218-1, P2): `route` tolto dal
+    tentativo -- rossa su `porta`. Ripristinata.
     """
     app = {**live_values(), OBSERVATIONS_KEY: archivio,
            HOME_SPACE_KEY: _anagrafe([_entita("climate.x")])}
@@ -670,6 +701,7 @@ async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
     assert esito is None
     assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
     assert "nessun modello" in archivio.recent_attempts()[0]["dettaglio"]
+    assert archivio.recent_attempts()[0]["porta"] == "catena"
 
 
 @pytest.mark.asyncio
@@ -753,6 +785,29 @@ async def test_i_lotti_successivi_partono_SENZA_aspettare_la_cadenza(
     assert esito == {"accodata": True}
     chiesto = coda.latest("scope")["context"]["history"][0]["content"]
     assert len([r for r in chiesto.splitlines() if r.startswith("light.n")]) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_piu,frase", [
+    (1, "la campagna prosegue: resta 1 soggetto da giudicare"),
+    (3, "la campagna prosegue: restano 3 soggetti da giudicare"),
+])
+async def test_il_lotto_successivo_dice_QUANTI_ne_restano_al_singolare_e_al_plurale(
+        archivio, coda, piano_acceso, in_piu, frase):
+    """Fase B (28/10/2026): «restano 1 soggetti» finiva nella pagina come
+    perche' del tentativo.
+
+    Mutazione ESEGUITA il 28/10/2026 (R218-3, P4): il ramo del singolare
+    tolto -- rossa su `in_piu=1`. Ripristinata."""
+    from hiris.app.mind.observer_round import SCOPE_BATCH
+
+    anagrafe = _anagrafe(_entita_molte(SCOPE_BATCH + in_piu))
+    app = _app_ponte_acceso(archivio, anagrafe, _modello(), coda)
+    await _lotto_servito(app, coda, archivio)
+
+    await reconsideration_round(app, _house())
+
+    assert archivio.recent_attempts()[0]["dettaglio"] == frase
 
 
 @pytest.mark.asyncio

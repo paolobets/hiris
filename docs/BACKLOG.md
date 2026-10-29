@@ -119,7 +119,9 @@ ricette con gli accenti veri; l'esito dei comandi (obiettivo, giudizi) in un pos
 sui dispositivi a tocco. **Resta**: il testo che l'analista riceve (deciso da Paolo il 28/10:
 invariato fino alla misura di dopo); un tempo massimo per le scritture (`write` non ne ha, e
 sceglierne uno e' una soglia nostra: va misurato prima); l'aggiornamento in riga invece della
-ricarica della scheda dopo «Togli» e «Correggi»; il «Rifalla» non e' stato toccato; C-25 e C-27
+ricarica della scheda dopo «Togli» e «Correggi»; «Togli» e «Rimetti dentro» dicono il guasto con
+le loro frasi e non con `outcomeSlot`; la colonna `restano` della proposta non c'e' (il quanti
+restano vive ancora nella frase del perche' di un lotto, `scope_attempt.detail`); il «Rifalla» non e' stato toccato; C-25 e C-27
 restano nella voce «La pagina dell'osservatore si riprogetta».
 
 ### Si riparte puliti: Brain, sapere, chat e ricordi — aperta il 22/10/2026

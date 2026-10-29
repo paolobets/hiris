@@ -36,10 +36,10 @@ function montaConServer(opts = {}) {
   return ctx;
 }
 
-function rendiAnalisi(payload) {
+function rendiAnalisi(payload, orologio) {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisWatcherCosaFare._rendiAnalisi(corpo, payload.analisi);
+  window.HirisWatcherCosaFare._rendiAnalisi(corpo, payload.analisi, orologio);
   return { window, document, corpo };
 }
 
@@ -135,6 +135,45 @@ test('seam _rendiAnalisi: accanto all’osservazione c’è la casa di ADESSO, d
     .map((r) => r.textContent).filter((t) => t.indexOf('Adesso:') === 0);
   assert.deepEqual(adesso, ['Adesso: Termostato cucina · riscalda', 'Adesso: Temperatura · 20.5 °C'],
     'una riga per soggetto, e niente per l’osservazione scritta prima dei soggetti');
+});
+
+test('seam _rendiAnalisi: «adesso» porta l’ora della lettura, dice chi non ha stato, e oltre tre soggetti apre un bottone', () => {
+  /* Il disegno di ux-ui-specialist (Fase B, 28/10/2026), R218-2 del
+     revisore. Mutazioni ESEGUITE il 28/10/2026, ognuna rossa qui e
+     ripristinata: l'ora tolta da `testoAdesso`; il soggetto con `stato:
+     null` filtrato via; `ADESSO_SHOWN` portato a 99. */
+  const soggetti = [
+    { id: 'sensor.a', nome: 'A', stato: '1', unita: 'W' },
+    { id: 'sensor.b', nome: 'B', stato: null },
+    { id: 'sensor.c', nome: 'C', stato: '3', unita: 'W' },
+    { id: 'sensor.d', nome: 'D', stato: '4', unita: 'W' },
+    { id: 'sensor.e', nome: 'E', stato: '5', unita: 'W' },
+  ];
+  const { corpo } = rendiAnalisi(analisi([osservazione({ adesso: soggetti })]),
+    { adesso: '2026-10-28T21:05:00+01:00' });
+  // Il rivelatore tiene le righe nel DOM, nascoste: si contano le visibili.
+  const visibile = (n) => !n.closest('[hidden]');
+  const righe = () => [...corpo.querySelectorAll('.field-hint')].filter(visibile)
+    .map((r) => r.textContent).filter((t) => t.indexOf('Adesso') === 0);
+  assert.deepEqual(righe(), ['Adesso (21:05): A · 1 W',
+    'Adesso (21:05): B · senza stato in Home Assistant', 'Adesso (21:05): C · 3 W']);
+  const altri = [...corpo.querySelectorAll('button')].filter((b) => b.textContent === 'Gli altri 2')[0];
+  assert.ok(altri, 'oltre tre soggetti il resto sta dietro un bottone');
+  altri.click();
+  assert.equal(righe().length, 5);
+});
+
+test('seam _rendiAnalisi: della spiegazione si vede la PRIMA frase, il resto dietro «Tutta la spiegazione»', () => {
+  /* R218-2. Mutazione ESEGUITA il 28/10/2026: la spiegazione intera nella
+     riga «Si spiega con» -- rossa qui. Ripristinata. */
+  const { corpo } = rendiAnalisi(analisi([osservazione({
+    spiegato: 'il forno era acceso. Lo dice il consumo della cucina.' })]));
+  const righe = () => [...corpo.querySelectorAll('.sc-row-why')]
+    .filter((n) => !n.closest('[hidden]')).map((r) => r.textContent);
+  assert.ok(righe().includes('Si spiega con: il forno era acceso.'), righe());
+  assert.ok(!righe().includes('Lo dice il consumo della cucina.'), 'il resto è chiuso');
+  [...corpo.querySelectorAll('button')].filter((b) => b.textContent === 'Tutta la spiegazione')[0].click();
+  assert.ok(righe().includes('Lo dice il consumo della cucina.'), righe());
 });
 
 test('seam _rendiAnalisi: la novità si dice con la parola del server', () => {
