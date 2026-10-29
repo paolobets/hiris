@@ -26,7 +26,7 @@ import pytest
 from hiris.app.live_value import LiveValue
 from hiris.app.model_resolution import _DOWNGRADE_REASONS
 from hiris.app.models_store import MODELS_CONFIG_KEY
-from hiris.app.providers import SUBSCRIPTION_TOKEN_VAR
+from hiris.app.providers import SUBSCRIPTION, SUBSCRIPTION_TOKEN_VAR
 from hiris.app.reasoning.queue import REASONING_QUEUE_KEY
 from hiris.app.steering import BRIDGE_ACTIVE_KEY, who_answers
 
@@ -82,7 +82,7 @@ def test_senza_la_coda_cablata_si_scende_alla_catena_senza_ripiego(col_token):
 def test_senza_il_token_del_piano_e_un_ripiego_e_si_dichiara(senza_token):
     via, motivo = who_answers(_app())
     assert via == "catena"
-    assert motivo == "manca il token"
+    assert motivo == SUBSCRIPTION.missing_reason
     assert motivo in _DOWNGRADE_REASONS, (
         "un motivo fuori vocabolario non produce un errore: produce silenzio, "
         "cioe' un passaggio dal forfait al consumo che nessuno annuncia")

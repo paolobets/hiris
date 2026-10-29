@@ -7,7 +7,7 @@ complesso.
 import pytest
 
 from hiris.app.model_resolution import compose_now
-from hiris.app.providers import display_name, ids, nature
+from hiris.app.providers import SUBSCRIPTION, display_name, ids, nature
 
 
 def test_il_primo_della_catena_e_quello_che_risponde():
@@ -515,7 +515,7 @@ def test_quando_manca_la_credenziale_il_payload_dice_QUALE():
     _, fuori = compose_topology(chain_order=[], credentials=senza, models=MOD,
                                  bridge_active=False)
     per_id = {r["id"]: r for r in fuori}
-    assert per_id["subscription"]["manca"] == "manca il token"
+    assert per_id["subscription"]["manca"] == SUBSCRIPTION.missing_reason
     assert per_id["claude"]["manca"] == "manca la chiave"
     assert per_id["openrouter"]["manca"] == "manca la chiave"
     assert per_id["openai"]["manca"] == "manca la chiave"
@@ -974,14 +974,14 @@ def test_i_tre_motivi_sono_tre_fatti_diversi():
     """Tre fatti osservati, non una diagnosi: «non ha risposto in tempo» non e'
     «non ha un token», e chi legge fa due cose diverse."""
     assert "non ha un token" in downgrade_note(
-        reason="manca il token", who_answered="claude")
+        reason=SUBSCRIPTION.missing_reason, who_answered="claude")
     assert "tetto di messaggi per oggi" in downgrade_note(
         reason="tetto giornaliero", who_answered="claude")
     assert "non ha risposto in tempo" in downgrade_note(
         reason="scadenza", who_answered="claude")
 
 
-@pytest.mark.parametrize("motivo", ["scadenza", "manca il token", "tetto giornaliero"])
+@pytest.mark.parametrize("motivo", ["scadenza", SUBSCRIPTION.missing_reason, "tetto giornaliero"])
 def test_la_nota_non_diagnostica_e_non_allarma(motivo):
     """Stessa disciplina degli avvisi di `esegui` (`action/actuator.py`): un
     avviso e' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla

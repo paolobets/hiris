@@ -58,7 +58,7 @@ from .live_value import LiveValue
 from .llm_router import LLM_ROUTER_KEY
 from .models_store import _STORE_DEFAULTS, MODELS_CONFIG_KEY, bridge_deadline_min
 from .provider_occurrences import OCCURRENCES_KEY
-from .providers import subscription_has_token
+from .providers import SUBSCRIPTION, subscription_has_token
 from .reasoning.queue import JOB_WAITING, PRIORITY_BACKGROUND, PRIORITY_CHAT, REASONING_QUEUE_KEY
 from .usage.store import USAGE_KEY
 
@@ -94,7 +94,7 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
     lo cambia: quella che si cambia dev'essere quella che il turno subisce.
     """
     if not subscription_has_token():
-        return False, "manca il token"
+        return False, SUBSCRIPTION.missing_reason
     cap = int(
         app[MODELS_CONFIG_KEY].value
         .get("ponte", {})

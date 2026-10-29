@@ -367,7 +367,7 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
 # -- produrrebbe silenzio, che e' peggio.
 _DOWNGRADE_REASONS: dict[str, str] = {
     "scadenza": "non ha risposto in tempo",
-    "manca il token": "non ha un token con cui rispondere",
+    SUBSCRIPTION.missing_reason: "non ha un token con cui rispondere",
     "tetto giornaliero": "ha raggiunto il suo tetto di messaggi per oggi",
 }
 
