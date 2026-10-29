@@ -81,7 +81,7 @@ solo la pagina del Brain, quindi la voce resta «In attesa».
 
 ### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA col prossimo rilascio** — aperta il 22/10/2026
 
-`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavora» (scelta di Paolo del 28/10; ux-ui-specialist proponeva «Come lavoro», in prima persona). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
+`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavoro», in prima persona come la propone ux-ui-specialist (scelta di Paolo del 29/10; dal 28/10 era «Come lavora»). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
 
 `origine: Paolo, 22/10/2026 13:28 («la pagina L'osservatore si chiama Brain»)` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`, Fase B.1
 
@@ -112,7 +112,7 @@ misure non calcolate a parole (`operations.CAUSE_WORDS`, `causa_parole`) e raggr
 giorno»; la novita' a parole (`analyst.NOVELTY_WORDS`, `novita_parole`); in «Cosa fare» la
 domanda («Perché l'ho guardata») e la risposta («Si spiega con», «Non so ancora spiegarlo») su
 righe proprie, la prima frase della spiegazione e il resto dietro «Tutta la spiegazione», lo
-stato di adesso con l'ora della lettura; in «Come lavora» il tentativo dice quante decisioni su
+stato di adesso con l'ora della lettura; in «Come lavoro» il tentativo dice quante decisioni su
 quante entita' e da quale porta (colonne nuove di `scope_attempt`, migrazione 16); le frasi delle
 ricette con gli accenti veri; l'esito dei comandi (obiettivo, giudizi) in un posto solo,
 `HirisWatcherShared.outcomeSlot`, con «Non salvato:» e il colore del problema; bersagli da 44 px

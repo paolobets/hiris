@@ -127,7 +127,7 @@ test("la guardia NON grida sull’elisione vera né sui troncamenti dell’itali
 });
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
-  // La frase vive nella scheda «Come lavora» (fino al 28/10/2026 «L’osservatore»), e dal 18/09/2026 una scheda si
+  // La frase vive nella scheda «Come lavoro» (fino al 28/10/2026 «L’osservatore»), e dal 18/09/2026 una scheda si
   // legge solo se la si apre: il nome non e' un ornamento, senza quello questa
   // prova guarderebbe un pannello mai caricato.
   const { window, document } = monta();
@@ -270,7 +270,7 @@ test('la cornice: quattro schede con la semantica tablist, e nessun contatore ne
   assert.ok(tablist, 'manca il tablist');
   const tab = Array.from(ctx.document.querySelectorAll('[role="tab"]'));
   assert.deepEqual(tab.map((t) => t.textContent),
-    ['Il giorno', 'Cosa fare', 'Cosa ho capito', 'Come lavora']);
+    ['Il giorno', 'Cosa fare', 'Cosa ho capito', 'Come lavoro']);
   /* **Etichette nude** (spec §2): un contatore obbligherebbe a caricare tutte
      e quattro le schede all'avvio, contro la decisione 7. La prova e' che
      nessuna etichetta contenga una cifra. */

@@ -36,7 +36,7 @@ window.HirisWatcherRoute = (function () {
     { nome: 'giorno', etichetta: 'Il giorno', modulo: 'HirisWatcherGiorno' },
     { nome: 'cosa-fare', etichetta: 'Cosa fare', modulo: 'HirisWatcherCosaFare' },
     { nome: 'sapere', etichetta: 'Cosa ho capito', modulo: 'HirisWatcherSapere' },
-    { nome: 'lavoro', etichetta: 'Come lavora', modulo: 'HirisWatcherLavoro' }
+    { nome: 'lavoro', etichetta: 'Come lavoro', modulo: 'HirisWatcherLavoro' }
   ];
 
   var stato = null;
