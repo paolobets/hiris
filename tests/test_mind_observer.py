@@ -123,7 +123,9 @@ def test_la_regola_e_QUELLA_DELLA_CASA_non_una_seconda_uguale(monkeypatch):
     regola finta esclude cio' che il filtro vero terrebbe dentro: solo chi la
     chiama davvero puo' seguirla.
 
-    Mutazione che la uccide: ricopiare i tre controlli dentro `house_lines`.
+    Mutazione che la uccide: ricopiare i tre controlli dentro le righe
+    dell'osservatore (`observer._plain_lines`, oggi; `house_lines` fino al
+    30/10/2026).
     """
     monkeypatch.setattr(topology, "visibility_classes",
                         lambda e: () if e["id"] == "sensor.wifi_signal"

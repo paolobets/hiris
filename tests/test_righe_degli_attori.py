@@ -72,7 +72,8 @@ def test_l_osservatore_legge_la_casa_nell_ordine_dell_albero():
     fra un giro e l'altro, qualunque sia l'ordine dell'anagrafe.
 
     Rossa prima: le righe uscivano nell'ordine dell'anagrafe. Mutazione
-    ESEGUITA: `house_lines` senza l'ordine -- rossa."""
+    ESEGUITA: le righe senza l'ordine -- rossa (allora in `house_lines`,
+    dal 30/10/2026 in `observer._plain_lines`)."""
     ordine = [riga.split(" · ")[0] for riga in observer.question_parts("", _casa())[1]]
     assert ordine == ["light.studio", "sensor.z_cucina", "sensor.b_cucina",
                       "sensor.a_cucina", "sensor.senza_area"]

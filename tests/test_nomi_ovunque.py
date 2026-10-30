@@ -202,3 +202,26 @@ def test_la_domanda_dell_analista_spiega_il_segnaposto_quando_c_e():
     assert question.startswith(PLACEHOLDER_HINT)
     serie["serie"][0]["nome"] = "Forno"
     assert PLACEHOLDER_HINT not in at.build_question(serie, presence=presence)
+
+
+def test_un_soggetto_che_tace_e_porta_un_nome_nell_id_esce_coperto(archivio):
+    """I soggetti dentro che tacciono (`gone_lines`) portano l'id grezzo:
+    uno col nome di una persona nell'id lo porterebbe al modello (R230-2,
+    giro 230 della revisione).
+
+    Mutazione ESEGUITA: in `question_parts` i soggetti che tacciono fuori
+    dalla maschera -- rossa."""
+    rows = [_row("climate.camera_t", "Termostato Camera"),
+            _row("person.paolo", "Paolo"),
+            _row("automation.paolo_arriva", "Arrivo", disabilitata=1)]
+    house = House({"entita": rows, "aree": []},
+                  Mirror(state={"climate.camera_t": "heat", "person.paolo": "home"}))
+    assert archivio.decide_scope("automation.paolo_arriva", inside=True,
+                                 reason="dice chi arriva", author="observer",
+                                 when_ts=1000.0)
+    assert any("automation.paolo_arriva" in line
+               for line in observer.gone_lines(archivio, house)), "la premessa"
+
+    turn = observer.bridge_turn(archivio, house)
+
+    _without_names(turn["history"][0]["content"])
