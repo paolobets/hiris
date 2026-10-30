@@ -1640,7 +1640,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     elif job.get("kind") in _SELF_CONTAINED_KINDS:
         # **Un turno dell'osservatore non porta il nucleo, ed e' giusto cosi'.**
         # La casa e' gia' dentro la sua domanda, composta apposta per il
-        # giudizio (`mind/observer.house_lines`): aggiungere il nucleo sarebbe
+        # giudizio (`mind/observer.question_parts`): aggiungere il nucleo sarebbe
         # una seconda descrizione della stessa casa nello stesso prompt, cioe'
         # due verita' libere di divergere. Nessun log di degrado: non manca
         # niente (rilievo della review indipendente, 11/09/2026 -- questo ramo

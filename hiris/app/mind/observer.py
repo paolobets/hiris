@@ -29,7 +29,7 @@ import logging
 
 from ..home_space.ha_vocabulary import domain_of, is_entity_id
 from ..home_space.house import SOURCE_LIVE, House
-from ..home_space.privacy import MOVING_DOMAINS, PRESENCE_MARK, handles
+from ..home_space.privacy import MOVING_DOMAINS, PLACEHOLDER_HINT, PresenceMask
 from ..home_space.render import entity_line, tree_order
 from ..steering import OBSERVER_SPECIES, SPECIES, chain_answer, chain_turn, read_json
 from .scope import OBSERVER
@@ -98,7 +98,9 @@ def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
 #: nell'identificatore -- `person.paolo`, `device_tracker.iphone_di_paolo` --
 #: quindi la riga porta un SEGNAPOSTO al posto dell'id, e la risposta si
 #: riporta all'id vero qui dentro (`apply_answer`): il giudizio resta, il nome
-#: non esce.
+#: non esce. **Dal 30/10/2026 il nome non esce da nessuna riga** (Fase S,
+#: S.8): la domanda intera passa dalla maschera degli attori
+#: (`question_parts`, `privacy.PresenceMask`), non solo le righe delle presenze.
 #:
 #: Chi e' «persona» non si scrive qui: e' `privacy.MOVING_DOMAINS`, il genere
 #: «presenza» del vocabolario dei tipi -- le stesse due specie che Home
@@ -118,24 +120,8 @@ def watched_ids(house: House, only: set[str] | None = None) -> list[str]:
 #: come campo dell'obiettivo, non come lettura della prosa.
 
 
-def presence_handles(ids) -> dict[str, str]:
-    """`entity_id` -> segnaposto, per le sole presenze fra `ids`: la
-    numerazione e' quella di `privacy.handles`, sul lotto chiesto. E' cio' che
-    la rende ricostruibile quando la risposta torna -- sul ponte minuti dopo,
-    da un altro processo -- a partire dallo stesso insieme."""
-    return handles(i for i in ids if domain_of(i) in MOVING_DOMAINS)
-
-
-def masks_presences(house: House, only: set[str] | None = None) -> bool:
-    """Se le righe di questo turno portano un segnaposto: lo chiede agli id
-    (`presence_handles` sul lotto di `watched_ids`), non alla riga scritta per
-    il modello. Fino al 13/10/2026 `build_house_question` lo cercava spezzando
-    ogni riga sul separatore (D-54): un secondo lettore della forma della
-    riga, che si sarebbe sbagliato in silenzio il giorno che la resa cambia."""
-    return bool(presence_handles(watched_ids(house, only)))
-
-
-def house_lines(house: House, only: set[str] | None = None) -> list[str]:
+def _plain_lines(house: House, only: set[str] | None,
+                 presence: PresenceMask) -> list[str]:
     """Una riga per entita', **solo quelle che competono all'osservatore**
     (`watched_ids`).
 
@@ -161,10 +147,12 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     italiano e' rumore. Una pseudo-area non si mostra. Un nome che e' solo
     l'id ripetuto non si ripete.
 
-    **Una persona o un dispositivo che la segue** (`presence_handles`) ha il
-    segnaposto al posto dell'id, e niente nome ne' area -- il nome di
+    **Una persona o un dispositivo che la segue** ha il segnaposto al posto
+    dell'id (`PresenceMask.handles`), e niente nome ne' area -- il nome di
     un'area puo' essere quello di chi ci dorme. Restano classe, unita' e
     chiave di traduzione, che dichiara l'integrazione e non la persona.
+    **Queste righe sono ancora NUDE**: le copre `question_parts`, l'unica
+    strada da cui arrivano al modello (Fase S, S.8).
     **Una fonte che tace lo dice** (piano degli attori, Task 1.5; G-01):
     `fonte: <stato>` dal vocabolario di `House.source` quando lo stato non e'
     `viva` -- una sparita e' ancora nell'anagrafe, e quindi fra quelle da
@@ -172,9 +160,39 @@ def house_lines(house: House, only: set[str] | None = None) -> list[str]:
     potuto guardare, non costa una parola.
     """
     ids = watched_ids(house, only)
-    handles = presence_handles(ids)
-    return [entity_line(house, entity_id, "media", subject=handles.get(entity_id))
+    return [entity_line(house, entity_id, "media",
+                        subject=(presence.handles.get(entity_id)
+                                 if domain_of(entity_id) in MOVING_DOMAINS else None))
             for entity_id in tree_order(house, ids)]
+
+
+def question_parts(objective: str, house: House, only: set[str] | None = None,
+                   gone: list[str] = (), *,
+                   presence: PresenceMask | None = None) -> tuple:
+    """I pezzi della domanda sulla casa, **con i nomi delle persone coperti
+    ovunque compaiano** (Fase S, S.8, scelta del proprietario del
+    30/10/2026): `(obiettivo, righe, soggetti che tacciono, masked)`, da
+    montare con `build_question` (la catena) o `build_house_question` (il
+    ponte). E' la sola strada da cui i pezzi arrivano al modello.
+
+    La maschera e' quella degli altri attori (`privacy.PresenceMask`): una
+    persona e cio' che porta il suo nome nell'id, o un suo dispositivo, esce
+    col segnaposto; il nome di una persona, dentro il nome di un'entita', di
+    un dispositivo o di un'area, o nell'obiettivo, esce col segnaposto della
+    persona. Misurato dallo Sprint il 30/10/2026 sulla casa vera: fino a oggi
+    il segnaposto copriva solo le righe delle presenze, e la domanda che apre
+    la campagna portava il nome di una persona in 27 righe su 383.
+
+    `masked`: se nei pezzi c'e' un segnaposto, che la domanda spiega
+    (`PLACEHOLDER_HINT`)."""
+    presence = PresenceMask(house) if presence is None else presence
+    lines = _plain_lines(house, only, presence)
+    plain = [objective, *gone, *lines]
+    covered = presence.mask(plain)
+    masked = covered != plain or any(
+        domain_of(entity_id) in MOVING_DOMAINS and entity_id in presence.handles
+        for entity_id in watched_ids(house, only))
+    return covered[0], covered[1 + len(gone):], covered[1:1 + len(gone)], masked
 
 
 def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
@@ -191,9 +209,9 @@ def _silent_inside(store, house: House) -> list[tuple[str, dict | None]]:
 
     **Una presenza non c'e' mai** (decisione 12): questo blocco porta l'id
     grezzo, e per una persona o un dispositivo che la segue l'id e' il nome.
-    Il segnaposto delle righe (`presence_handles`) vale per il lotto chiesto,
-    non per questi soggetti: finche' non ne hanno uno loro restano fuori, e
-    dentro allo scope come sono. Trovato all'integrazione delle Tappe
+    La maschera dei nomi (`privacy.PresenceMask`) nasce dalla casa, e questi
+    soggetti la casa puo' non averli piu': finche' non ne hanno uno loro
+    restano fuori, e dentro allo scope come sono. Trovato all'integrazione delle Tappe
     4-6 con il Task 1.5, il 05/10/2026."""
     if not house.mirror.readable:
         return []
@@ -257,29 +275,22 @@ def build_question(objective: str, lines: list[str], gone: list[str] = (),
             + "\n" + ANSWER_CONTRACT)
 
 
-#: Cosa si dice al modello quando fra le righe ci sono segnaposti: senza,
-#: `person.#1` sembrerebbe un identificatore storto da correggere.
-PRESENCE_HINT = (
-    "Le persone e i dispositivi che le seguono hanno un segnaposto al posto "
-    f"dell'identificatore (per esempio person.{PRESENCE_MARK}1) e nessun nome: "
-    "giudicali per quello che sono, e nella risposta usa il segnaposto come id.\n")
-
-
 def build_house_question(objective: str, lines: list[str], gone: list[str] = (),
                          *, masked: bool = False) -> str:
     """L'obiettivo e la casa, **senza** il contratto di risposta.
 
     `gone` sono le righe di `gone_lines`: i soggetti che guardi e che tacciono
     fuori dalla casa che ti si mostra. Vengono dopo, a parte, solo se ci sono.
-    `masked` e' `masks_presences` sullo stesso lotto delle righe: se c'e' un
-    segnaposto, la domanda dice come leggerlo (`PRESENCE_HINT`)."""
+    `masked`: se fra le righe c'e' un segnaposto, la domanda dice come
+    leggerlo (`privacy.PLACEHOLDER_HINT`). Lo calcola `house_question`, che
+    copre i nomi; qui si monta soltanto."""
     question = (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Queste sono le {len(lines)} entita' che ti competono. Ogni riga e':\n"
         "identificatore · nome · classe · unita' · area · chiave di traduzione\n"
         "(i campi che mancano sono assenti, non vuoti; «fonte: ...» c'e' solo "
         "quando l'entita' non parla, e dice perche').\n"
-        + (PRESENCE_HINT if masked else "")
+        + (PLACEHOLDER_HINT if masked else "")
         + "\n"
         + "\n".join(lines)
         + "\n"
@@ -340,24 +351,25 @@ def bridge_turn(store, house: House, only: set[str] | None = None, *,
     per una promessa). Le due chiavi sono quelle che il turno del ponte legge
     davvero -- `agent/runner._reason_chat` -> `prompts.build_chat_messages`.
 
-    **La domanda non si ricompone qui.** Si chiamano `house_lines` e
-    `build_house_question`, le stesse che il giro sincrono usa dentro
-    `build_question`: due composizioni della stessa domanda sarebbero due
-    verita' libere di divergere, e la prima volta che qualcuno aggiunge un
-    campo alla riga della casa da una parte sola il ponte e la catena
-    giudicherebbero case diverse senza che nessuna pagina lo dica
+    **La domanda non si ricompone qui.** I pezzi vengono da
+    `question_parts` e si montano con `build_house_question`, le stesse che
+    il giro sincrono usa dentro `build_question`: due composizioni della
+    stessa domanda sarebbero due verita' libere di divergere, e la prima
+    volta che qualcuno aggiunge un campo alla riga della casa da una parte
+    sola il ponte e la catena giudicherebbero case diverse senza che nessuna pagina lo dica
     (fondamenta 2).
 
     `opening`: se questo turno apre la campagna (`annota` nella sveglia). Solo
     quello porta i soggetti che tacciono (`gone_lines`): una volta per
     campagna basta, e i lotti dopo non pagano quelle righe.
     """
+    objective, lines, gone, masked = question_parts(
+        store.objective()["testo"], house, only,
+        gone_lines(store, house) if opening else [])
     return {
         "history": [{"role": "user",
-                     "content": build_house_question(
-                         store.objective()["testo"], house_lines(house, only),
-                         gone_lines(store, house) if opening else [],
-                         masked=masks_presences(house, only))}],
+                     "content": build_house_question(objective, lines, gone,
+                                                     masked=masked)}],
         "system_prompt": SYSTEM,
         # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
         # che chiude ogni turno di chat dice «usa testo semplice: niente
@@ -415,11 +427,13 @@ def apply_answer(store, house: House, answer: str, *, reason: str = "",
     if failure is not None:
         logger.warning("osservatore: %s", failure)
         return {"errore": failure}
-    # **Il segnaposto torna id** (decisione 12): si ricostruisce dallo stesso
-    # insieme da cui e' nato la domanda -- il lotto, o cio' che la casa guarda.
-    handles = {handle: entity_id for entity_id, handle in presence_handles(
-        asked if asked is not None else known).items()}
-    decisions = [{**decision, "id": handles.get(decision["id"], decision["id"])}
+    # **Il segnaposto torna id** (decisione 12; S.8): la maschera si rifa'
+    # dalla casa di adesso, la stessa da cui e' nata la domanda -- sul ponte
+    # minuti prima. Una casa che nel frattempo ha cambiato chi porta il nome
+    # di una persona numera diversamente: l'id che ne esce resta pero' uno
+    # di quelli chiesti (`known`), o la decisione si ignora.
+    presence = PresenceMask(house)
+    decisions = [{**decision, "id": presence.unmask(decision["id"])}
                  for decision in decisions]
 
     decided = refused = ignored = 0
@@ -478,13 +492,12 @@ async def reconsider(runner, store, house: House, *, reason: str,
     chat e per le promesse; quando risponde «ponte», il giro passa da
     `bridge_turn` e questa funzione non viene chiamata affatto.
     """
-    lines = house_lines(house, only)
-    objective = store.objective()["testo"]
     # I soggetti che tacciono solo nella domanda che apre la campagna (quella
     # che annota la riconsiderazione): vedi `bridge_turn`.
-    question = build_question(objective, lines,
-                              gone_lines(store, house) if record else [],
-                              masked=masks_presences(house, only))
+    objective, lines, gone, masked = question_parts(
+        store.objective()["testo"], house, only,
+        gone_lines(store, house) if record else [])
+    question = build_question(objective, lines, gone, masked=masked)
     try:
         # `user_message=` per nome e non posizionale: `LLMRouter.chat` --
         # il runner vero, quello con la catena di ripiego -- prende `**kwargs`

@@ -243,6 +243,16 @@ ADMIN_ONLY_HISTORY_KINDS = frozenset({"esecuzioni", "errori"})
 #: letto il 05/10/2026). Viveva in `mind/observer.py` fino al 06/10/2026.
 PRESENCE_MARK = "#"
 
+#: Cosa si dice a un modello quando cio' che legge porta un segnaposto
+#: (`PresenceMask`): senza, `person.#1` sembrerebbe un identificatore storto da
+#: correggere. Una frase sola per gli attori che coprono una domanda intera
+#: (l'osservatore, le ricette, l'analista; Fase S, S.8).
+PLACEHOLDER_HINT = (
+    "Il nome di una persona non arriva fino a te: le persone, e cio' che "
+    "porta il loro nome, hanno un segnaposto al posto dell'identificatore o "
+    f"del nome (per esempio person.{PRESENCE_MARK}1). Giudicali per quello "
+    "che sono, e nella risposta usa il segnaposto cosi' come lo leggi.\n")
+
 
 def handles(ids) -> dict[str, str]:
     """`entity_id` -> segnaposto `<dominio>.#N`, numerato dominio per dominio

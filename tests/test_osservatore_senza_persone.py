@@ -27,7 +27,7 @@ import os
 import pytest
 
 from hiris.app.home_space.house import House
-from hiris.app.home_space.privacy import MOVING_DOMAINS
+from hiris.app.home_space.privacy import MOVING_DOMAINS, PLACEHOLDER_HINT, handles
 from hiris.app.home_space.topology import Mirror
 from hiris.app.mind import observer
 from hiris.app.mind.store import ObservationsStore
@@ -84,7 +84,7 @@ def test_la_lista_delle_presenze_e_quella_che_Home_Assistant_dichiara():
 
 
 def test_le_righe_non_portano_NE_nome_NE_identificatore_di_una_persona():
-    lines = observer.house_lines(_house())
+    lines = observer.question_parts("", _house())[1]
     _without_names("\n".join(lines))
     assert any(line.startswith("climate.camera_t · Termostato Camera")
                for line in lines), "le altre entita' restano come prima"
@@ -100,7 +100,7 @@ def test_il_segnaposto_non_puo_essere_un_entity_id_vero():
     vera."""
     import re
     object_id = re.compile(r"^(?!_)[\da-z_]+(?<!_)$")
-    for handle in observer.presence_handles(["person.paolo"]).values():
+    for handle in handles(["person.paolo"]).values():
         assert not object_id.match(handle.split(".", 1)[1])
 
 
@@ -135,35 +135,37 @@ def test_una_casa_SENZA_persone_ha_la_domanda_di_prima():
     """Pura sostituzione dove non ci sono persone: nessuna frase in piu'."""
     house = House({"entita": [_row("climate.camera_t", "Termostato Camera")],
                    "aree": []}, Mirror(state={"climate.camera_t": "heat"}))
-    lines = observer.house_lines(house)
+    lines = observer.question_parts("", house)[1]
     assert lines == ["climate.camera_t · Termostato Camera"]
-    assert observer.masks_presences(house) is False
+    objective, lines, gone, masked = observer.question_parts("x", house)
+    assert masked is False
     assert "segnaposto" not in observer.build_house_question(
-        "x", lines, masked=observer.masks_presences(house))
+        objective, lines, gone, masked=masked)
 
 
 def test_la_domanda_spiega_il_segnaposto_e_lo_chiede_agli_id_non_alla_riga(
         archivio, monkeypatch):
     """D-54 (13/10/2026): se fra le righe c'e' un segnaposto, la domanda lo
-    spiega -- sul ponte e sulla catena. Lo si chiede agli id del lotto
-    (`masks_presences`), non spezzando la riga scritta per il modello: si
-    cambia la resa e si guarda che la frase resti.
+    spiega -- sul ponte e sulla catena. Lo si chiede agli id del lotto e alla
+    maschera (`question_parts`), non spezzando la riga scritta per il
+    modello: si cambia la resa e si guarda che la frase resti.
 
     Mutazioni ESEGUITE il 13/10/2026, ripristino verificato con `git status`:
-    `masks_presences` che torna sempre `False` -- rossa (la frase manca sul
-    ponte); il vecchio `masked` che spezza la riga sul separatore, con una
-    resa che non comincia piu' dall'id -- rossa (la frase manca)."""
+    il segnaposto che non si dice mai -- rossa (la frase manca sul ponte); il
+    vecchio `masked` che spezza la riga sul separatore, con una resa che non
+    comincia piu' dall'id -- rossa (la frase manca)."""
     from hiris.app.home_space import render
     house = _house()
-    assert observer.masks_presences(house) is True
-    assert observer.masks_presences(house, only={"climate.camera_t"}) is False
+    assert observer.question_parts("x", house)[3] is True
+    assert observer.question_parts("x", house, only={"climate.camera_t"})[3] is False
     vera = render.entity_line
     monkeypatch.setattr(observer, "entity_line",
                         lambda *a, **kw: "riga · " + vera(*a, **kw))
     turn = observer.bridge_turn(archivio, house)
-    assert observer.PRESENCE_HINT in turn["history"][0]["content"]
-    assert observer.PRESENCE_HINT in observer.build_question(
-        "x", observer.house_lines(house), masked=observer.masks_presences(house))
+    assert PLACEHOLDER_HINT in turn["history"][0]["content"]
+    objective, lines, gone, masked = observer.question_parts("x", house)
+    assert PLACEHOLDER_HINT in observer.build_question(objective, lines, gone,
+                                                       masked=masked)
 
 
 def test_una_persona_che_tace_non_torna_col_suo_id_nella_domanda_che_apre(archivio):

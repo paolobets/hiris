@@ -334,7 +334,7 @@ def test_l_osservatore_riceve_il_nome_vivo_e_l_area_ereditata():
     """D1 «vivo» e D3 «si'»: `sensor.sensore_a_temperatura` non ha un'area
     propria (la eredita da `dev_a`, Stanza uno) e il registro la chiama
     «Temperatura» mentre Home Assistant la mostra «Sensore A Temperatura»."""
-    line = next(line for line in observer.house_lines(_house())
+    line = next(line for line in observer.question_parts("", _house())[1]
                 if line.startswith("sensor.sensore_a_temperatura "))
     assert line == ("sensor.sensore_a_temperatura · Sensore A Temperatura · "
                     "temperature · °C · Stanza uno")
