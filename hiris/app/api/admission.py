@@ -47,6 +47,7 @@ from .soffitto import (
     denies,
     is_admin_role,
     request_ceiling,
+    restricted_person,
 )
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
@@ -374,12 +375,13 @@ def request_permissions(request: web.Request) -> dict:
     condiviso chi veniva dopo un amministratore vedeva per un attimo il suo
     menu.
 
-    Il soffitto viene dal ruolo che il cancello ha GIA' letto
-    (`request_ceiling`): nessuna lettura in piu' dei ruoli. Le due chiavi
-    portano lo stesso fatto (F-01, F-03, Tappa 7) e restano due perche' il
-    guscio le legge entrambe. Nascondere una voce non e' la difesa: la difesa
+    La regola e' `soffitto.restricted_person`, la stessa delle pagine che
+    mostrano a chi non amministra solo cio' che e' suo (R226-1): il soffitto
+    viene dal ruolo che il cancello ha GIA' letto, nessuna lettura in piu'.
+    Le due chiavi portano lo stesso fatto (F-01, F-03, Tappa 7) e restano due
+    perche' il guscio le legge entrambe. Nascondere una voce non e' la difesa: la difesa
     e' il gesto della rotta, che il confine chiede prima del gestore."""
-    allowed = not denies(request_ceiling(request), "amministrare", request.get("soggetto"))
+    allowed = not restricted_person(request)
     answer = {"can_build": allowed, "can_configure": allowed}
     if not allowed:
         answer["configure_refusal"] = NOT_ADMITTED
