@@ -842,14 +842,17 @@ async def test_il_rifiuto_di_una_rotta_API_e_JSON_col_solo_testo(chiusa):
 
 
 def test_i_testi_dei_rifiuti_sono_quelli_DECISI():
-    """Decisione 7 del coordinatore e fix round 1 (punto 11): alla lettera."""
+    """Decisione 7 del coordinatore e fix round 1 (punto 11): alla lettera.
+    `NOT_ADMITTED` dalla scelta del proprietario del 29/10/2026 (Fase S,
+    domanda 4), la proposta della review UX."""
     assert UNKNOWN_PERSON == (
         "Home Assistant non mi ha detto chi sei: HIRIS risponde solo agli "
         "utenti di Home Assistant che riconosce. Se sei appena stato aggiunto, "
         "riprova tra un minuto.")
     assert OPTION_OFF == ("HIRIS in questa casa è riservato agli amministratori: "
                           "chiedi a chi lo gestisce di attivarlo per tutti.")
-    assert NOT_ADMITTED == "Questa parte di HIRIS è riservata agli amministratori."
+    assert NOT_ADMITTED == ("Questa parte di HIRIS è riservata a chi gestisce la "
+                            "casa in Home Assistant.")
     assert ROLES_UNREADABLE == ("Non ho potuto leggere i ruoli da Home Assistant: "
                                 "riprova tra poco.")
 

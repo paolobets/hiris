@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadScripts, tick, staticSnapshotDir, installaFogli, displayRisolto } from './helpers/dom.mjs';
+import { loadScripts, tick, staticSnapshotDir, installaFogli, displayRisolto, writePermissions } from './helpers/dom.mjs';
 import { fintoFetch, risposta, maiRisposta } from './helpers/fetch.mjs';
 
 /* Le pagine per chi non amministra (spec 2026-09-27 §4, Task 4).
@@ -33,6 +33,17 @@ function shellScripts(shell) {
 /* Un testo qualunque: la prova e' che la pagina scriva QUELLO che il server
    manda, non una frase sua. */
 const SERVER_REFUSAL = 'testo del rifiuto, dal server';
+
+/* I permessi che il server scrive nella pagina (Fase S, S.6): la stessa
+   forma di `api/pending`, senza i numeri (`admission.request_permissions`).
+   Il guscio vero li porta sempre: per difetto `inPage` dice quello che dice
+   `api/pending`, e una prova che li vuole diversi -- o assenti, senza
+   `canConfigure` -- lo scrive. */
+function pagePermissions(canConfigure) {
+  const body = { can_build: canConfigure, can_configure: canConfigure };
+  if (canConfigure === false) body.configure_refusal = SERVER_REFUSAL;
+  return body;
+}
 
 function pendingBody(canConfigure, extra = {}) {
   const body = { agenda_unread: 0, constructions_pending: 0, can_build: canConfigure, can_configure: canConfigure };
@@ -78,7 +89,7 @@ const CHAT_MAIN = join(STATIC, 'chat', 'main.js');
    fetch e timer gia' finti. Gli intervalli si CATTURANO invece di girare:
    `runIntervals()` fa scattare un giro di tutti quelli ancora vivi, ed e'
    cosi' che si vede se il giro dei consumi e' partito, o si e' fermato. */
-async function bootChat(t, { canConfigure, remembered, pending }) {
+async function bootChat(t, { canConfigure, inPage = canConfigure, pending, stored = {} }) {
   const scripts = shellScripts('index.html').filter((s) => s !== 'chat/main.js');
   const ctx = loadScripts(scripts, { html: read('index.html') });
   installaFogli(ctx.document, 'index.html');
@@ -86,7 +97,8 @@ async function bootChat(t, { canConfigure, remembered, pending }) {
     matches: false, media: '', addListener() {}, removeListener() {},
     addEventListener() {}, removeEventListener() {},
   });
-  if (remembered !== undefined) ctx.window.localStorage.setItem('hiris.can_configure', remembered);
+  if (inPage !== undefined) writePermissions(ctx.document, pagePermissions(inPage));
+  for (const [key, value] of Object.entries(stored)) ctx.window.localStorage.setItem(key, value);
   const calls = fintoFetch(ctx.window, {
     'api/pending': pending || risposta(pendingBody(canConfigure)),
     'api/usage': risposta({ total_requests: 3, input_tokens: 10, output_tokens: 5, cost_eur: 0.01, sections: [] }),
@@ -118,7 +130,7 @@ async function bootChat(t, { canConfigure, remembered, pending }) {
   (0, eval)(readFileSync(CHAT_MAIN, 'utf8'));
   await settle();
   const runIntervals = async () => {
-    /* Una copia: un giro che ne fa partire un altro (il ricordo smentito
+    /* Una copia: un giro che ne fa partire un altro (un permesso smentito
        rimette in moto i consumi) non deve scattare nello stesso giro. */
     const alive = Array.from(intervals.values());
     for (const fn of alive) fn();
@@ -146,11 +158,11 @@ test('PIN chat: un amministratore vede i consumi e «Configurazione», e il giro
 
 /* ── Il guscio /config ───────────────────────────────────────────────── */
 
-async function bootConfig(t, { canConfigure, hash = '', remembered, answers = {}, pending, without = [] }) {
+async function bootConfig(t, { canConfigure, hash = '', inPage = canConfigure, answers = {}, pending, without = [] }) {
   const scripts = shellScripts('config.html').filter((s) => !without.includes(s));
   const ctx = loadScripts(scripts, { html: read('config.html') });
   installaFogli(ctx.document, 'config.html');
-  if (remembered !== undefined) ctx.window.localStorage.setItem('hiris.can_configure', remembered);
+  if (inPage !== undefined) writePermissions(ctx.document, pagePermissions(inPage));
   if (hash) ctx.window.history.replaceState(null, '', hash);
   const calls = fintoFetch(ctx.window, {
     'api/pending': pending || risposta(pendingBody(canConfigure)),
@@ -214,7 +226,9 @@ function button(doc, label) {
   return [...doc.querySelectorAll('#route-outlet button')].find((b) => b.textContent.trim() === label);
 }
 
-const MEMORY_SUBTITLE_ADMIN = 'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere '
+/* Chi configura legge i ricordi di tutti: la frase non gli dice «hai detto»
+   (parere dell'ux-ui-specialist del 29/10/2026, Fase S). */
+const MEMORY_SUBTITLE_ADMIN = 'Ciò che le persone hanno detto a HIRIS, e cosa ne ha capito. Puoi correggere '
   + 'l’interpretazione — mai il testo — o cancellare un ricordo per sempre. I ricordi non scadono: '
   + 'restano finché non li togli tu, e non se ne vanno cancellando la conversazione.';
 const MEMORY_SUBTITLE_READER = 'Ciò che hai detto a HIRIS, e cosa ne ha capito. I ricordi non scadono '
@@ -235,6 +249,7 @@ test('PIN Memoria: un amministratore vede «Correggi» e «Dimentica»', async (
     }
   }
   assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_ADMIN);
+  assert.equal(document.querySelector('#route-outlet .page-title').textContent, 'Memoria');
 });
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -255,7 +270,17 @@ function assertNoAdminData(calls) {
   }
 }
 
-function rememberedConfigure(doc) { return doc.defaultView.localStorage.getItem('hiris.can_configure'); }
+for (const canConfigure of [true, false]) {
+  test(`chat: la Memoria sta nella barra subito dopo gli Impegni (configura: ${canConfigure})`, async (t) => {
+    /* Fase S, S.9: di tutti, come gli Impegni. Fino al 29/10 chi non
+       amministra la trovava solo passando dagli Impegni. */
+    const { document } = await bootChat(t, { canConfigure });
+
+    const voci = [...document.querySelectorAll('#sidebar-nav a')].filter(shown);
+    assert.deepEqual(voci.slice(0, 2).map((a) => a.textContent.trim()), ['Impegni', 'Memoria']);
+    assert.equal(voci[1].getAttribute('href'), 'config#/memory');
+  });
+}
 
 test('chat: chi non configura non vede consumi ne\' «Configurazione», e il giro dei consumi non parte', async (t) => {
   const { document, calls, runIntervals } = await bootChat(t, { canConfigure: false });
@@ -268,8 +293,8 @@ test('chat: chi non configura non vede consumi ne\' «Configurazione», e il gir
   assertNoAdminData(calls);
 });
 
-test('chat: un «configura» ricordato e poi smentito dal server ferma il giro dei consumi', async (t) => {
-  const { document, calls, runIntervals } = await bootChat(t, { canConfigure: false, remembered: '1' });
+test('chat: un «configura» nella pagina e poi smentito dal server ferma il giro dei consumi', async (t) => {
+  const { document, calls, runIntervals } = await bootChat(t, { canConfigure: false, inPage: true });
 
   assert.equal(shown(usageWidget(document)), false);
   assert.equal(shown(configureLink(document)), false);
@@ -277,10 +302,9 @@ test('chat: un «configura» ricordato e poi smentito dal server ferma il giro d
   await runIntervals();
   assert.equal(calls.filter((c) => c.url.includes('api/usage')).length, before,
     'dopo il «no» del server il giro non chiede piu\' api/usage');
-  assert.equal(rememberedConfigure(document), '0', 'e il ricordo diventa il «no» del server');
 });
 
-test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano spenti', async (t) => {
+test('chat: senza permessi nella pagina e senza risposta, consumi e «Configurazione» restano spenti', async (t) => {
   const { document, calls } = await bootChat(t, { pending: maiRisposta });
 
   assert.equal(shown(usageWidget(document)), false);
@@ -288,12 +312,23 @@ test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano
   assertNoAdminData(calls);
 });
 
-test('chat: un «configura» ricordato mostra i consumi SUBITO, prima della risposta', async (t) => {
-  const { document, calls } = await bootChat(t, { remembered: '1', pending: maiRisposta });
+test('chat: un «configura» nella pagina mostra i consumi SUBITO, prima della risposta', async (t) => {
+  const { document, calls } = await bootChat(t, { inPage: true, pending: maiRisposta });
 
   assert.ok(shown(usageWidget(document)));
   assert.ok(shown(configureLink(document)));
-  assert.ok(asked(calls, 'api/usage'), 'il giro dei consumi parte dal ricordo');
+  assert.ok(asked(calls, 'api/usage'), 'il giro dei consumi parte dalla pagina');
+});
+
+test('chat: un ricordo di prima nel browser non mostra piu\' i consumi', async (t) => {
+  /* Il buco di S.6: su un dispositivo condiviso il ricordo di un
+     amministratore apriva il menu a chi veniva dopo. */
+  const { document, calls } = await bootChat(t, {
+    inPage: false, pending: maiRisposta, stored: { 'hiris.can_configure': '1' },
+  });
+
+  assert.equal(shown(usageWidget(document)), false);
+  assertNoAdminData(calls);
 });
 
 test('/config: chi non configura trova solo Chat, Impegni e Memoria, e atterra sugli Impegni', async (t) => {
@@ -349,63 +384,63 @@ for (const [hash, title] of BY_ADDRESS) {
   });
 }
 
-test('/config: col «no» ricordato la pagina rifiutata non e\' mai vuota, e il testo arriva con la risposta', async (t) => {
-  let answer;
-  const late = () => new Promise((resolve) => { answer = () => resolve(risposta(pendingBody(false))); });
-  const { document } = await bootConfig(t, { remembered: '0', hash: '#/models', pending: late });
+test('/config: col «no» nella pagina la pagina rifiutata porta gia\' il testo del server, prima della risposta', async (t) => {
+  const { document } = await bootConfig(t, { inPage: false, hash: '#/models', pending: maiRisposta });
 
-  let seen = refusal(document);
+  const seen = refusal(document);
   assert.equal(seen.title, 'Modelli');
-  assert.equal(seen.exit, 'Vai agli Impegni', 'prima della risposta c\'e\' gia\' la strada per uscire');
-  answer();
-  await settle();
-
-  seen = refusal(document);
   assert.equal(seen.reason, SERVER_REFUSAL);
   assert.equal(seen.exit, 'Vai agli Impegni');
 });
 
-test('/config: con api/pending in errore e senza ricordo si atterra sugli Impegni, senza dati di configurazione', async (t) => {
+test('/config: con api/pending in errore e senza permessi nella pagina si atterra sugli Impegni, senza dati di configurazione', async (t) => {
   const { window, calls } = await bootConfig(t, { pending: risposta({ error: 'archivio non disponibile' }, 503) });
 
   assert.equal(window.location.hash, '#/agenda');
   assertNoAdminData(calls);
 });
 
-test('/config: con api/pending appesa il guscio parte lo stesso, allo scadere dell\'attesa', async (t) => {
-  const { window, document, calls } = await bootConfig(t, { pending: maiRisposta });
-  assert.equal(document.getElementById('chrome-here').textContent, '…', 'precondizione: si sta aspettando');
+test('/config: un amministratore atterra su «Cosa HIRIS sa» SUBITO, anche con api/pending appesa', async (t) => {
+  /* Fino al 29/10 il guscio aspettava la prima risposta fino a tre secondi
+     (`ROUTER_WAIT_MS`). Mutazione ESEGUITA: `mount` che ignora i permessi
+     della pagina -- rossa, si atterra sugli Impegni. */
+  const { window, document } = await bootConfig(t, { inPage: true, pending: maiRisposta });
 
-  await tick(3200);
-  await settle();
+  assert.equal(window.location.hash, '');
+  assert.equal(document.getElementById('chrome-here').textContent, 'Cosa HIRIS sa');
+});
+
+test('/config: senza permessi nella pagina e con api/pending appesa si parte subito chiusi', async (t) => {
+  const { window, document, calls } = await bootConfig(t, { pending: maiRisposta });
 
   assert.equal(window.location.hash, '#/agenda');
   assert.equal(document.getElementById('chrome-here').textContent, 'Impegni');
   assertNoAdminData(calls);
 });
 
-test('/config: la prima api/pending appesa, una successiva risponde -- il guscio parte da quella', async (t) => {
+test('/config: la prima api/pending appesa, una successiva risponde -- le voci si accendono da quella', async (t) => {
   let turn = 0;
   const pending = () => { turn += 1; return turn === 1 ? maiRisposta() : risposta(pendingBody(true)); };
   const { window, document } = await bootConfig(t, { pending });
+  assert.equal(shown(navItem(document, 'models')), false, 'precondizione: si parte chiusi');
 
   window.dispatchEvent(new window.Event('focus'));
   await settle();
 
-  assert.equal(document.getElementById('chrome-here').textContent, 'Cosa HIRIS sa');
+  assert.ok(shown(navItem(document, 'models')));
 });
 
-test('/config: un «configura» ricordato e smentito dal server riporta sugli Impegni', async (t) => {
-  const { window, document } = await bootConfig(t, { canConfigure: false, remembered: '1' });
+test('/config: un «configura» nella pagina e smentito dal server riporta sugli Impegni', async (t) => {
+  const { window, document } = await bootConfig(t, { canConfigure: false, inPage: true });
 
   assert.equal(window.location.hash, '#/agenda');
   assert.equal(document.getElementById('chrome-here').textContent, 'Impegni');
   assert.equal(shown(navItem(document, 'models')), false);
 });
 
-test('/config: un «non configura» ricordato e smentito dal server apre la pagina chiesta', async (t) => {
+test('/config: un «non configura» nella pagina e smentito dal server apre la pagina chiesta', async (t) => {
   const { document } = await bootConfig(t, {
-    canConfigure: true, remembered: '0', hash: '#/models',
+    canConfigure: true, inPage: false, hash: '#/models',
     answers: { 'api/models/config': risposta({}) },
   });
 
@@ -446,16 +481,18 @@ test('Memoria: chi non configura la legge senza «Correggi» ne\' «Dimentica»'
   assert.equal(button(document, 'Correggi'), undefined, '«Correggi» non si disegna');
   assert.equal(button(document, 'Dimentica'), undefined, '«Dimentica» non si disegna');
   assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_READER);
+  /* Fase S, S.1: chi non configura vede solo i suoi, e il titolo lo dice. */
+  assert.equal(document.querySelector('#route-outlet .page-title').textContent, 'I tuoi ricordi');
 });
 
-test('Memoria: i pulsanti disegnati con un ricordo vecchio escono alla risposta del server', async (t) => {
+test('Memoria: i pulsanti disegnati con permessi superati escono alla risposta del server', async (t) => {
   /* La risposta arriva DOPO le card, e la si lascia partire a mano: con un
      ritardo a tempo arrivava prima (misurato con 30 ms: l'avvio del guscio
      in jsdom se li mangia da solo). */
   let answer;
   const late = () => new Promise((resolve) => { answer = () => resolve(risposta(pendingBody(false))); });
-  const { document } = await bootConfig(t, { remembered: '1', hash: '#/memory', pending: late });
-  assert.ok(shown(button(document, 'Correggi')), 'precondizione: col ricordo i pulsanti nascono accesi');
+  const { document } = await bootConfig(t, { inPage: true, hash: '#/memory', pending: late });
+  assert.ok(shown(button(document, 'Correggi')), 'precondizione: coi permessi della pagina i pulsanti nascono accesi');
   answer();
   await settle();
 
@@ -464,10 +501,11 @@ test('Memoria: i pulsanti disegnati con un ricordo vecchio escono alla risposta 
   assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_READER);
 });
 
-test('pallino: `can_configure` si ricorda come `can_build`, e la risposta del server vince', async (t) => {
-  const { document } = await bootConfig(t, { canConfigure: true, remembered: '0' });
+test('pallino: nessun permesso si scrive nel browser', async (t) => {
+  const { document } = await bootConfig(t, { canConfigure: true, inPage: false });
 
-  assert.equal(rememberedConfigure(document), '1');
+  assert.equal(document.defaultView.localStorage.getItem('hiris.can_configure'), null);
+  assert.equal(document.defaultView.localStorage.getItem('hiris.can_build'), null);
 });
 
 test('pallino: `mark` marca un nodo nato dopo e lo tiene allineato alle risposte', async (t) => {

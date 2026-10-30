@@ -8,6 +8,8 @@ sopra (`os.path.dirname` due volte invece di una). Si calcola una volta sola,
 in `_STATIC_DIR`: la leggono le pagine, le impronte e `create_app` (N164-1).
 """
 import hashlib
+import html as _html
+import json
 import logging
 import os
 import re
@@ -15,6 +17,7 @@ import re
 from aiohttp import web
 
 from ..version import read_version
+from .admission import request_permissions
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
 #: stringa (X-32, Chiusura dello sprint).
@@ -151,7 +154,8 @@ def _compute_build_stamp(static_dir: str) -> str:
     return h.hexdigest()[:12]
 
 
-def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
+def _inject_version(html: str, version: str, build_stamp: str = "",
+                    permissions: dict | None = None) -> str:
     """Append a per-file content fingerprint (?v=HASH) to local static asset
     URLs so browsers bust cache whenever a file's content actually changes.
 
@@ -166,7 +170,14 @@ def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
     perche' `static/chat/main.js` (e ora anche il boot della configurazione)
     potessero confrontare "da quale build sono nato" con "quale build gira
     davvero" (GET api/health) invece di limitarsi a mostrarli affiancati senza
-    che nessuno li leggesse."""
+    che nessuno li leggesse.
+
+    Fase S, S.6 (29/10/2026): se `permissions` e' dato, la pagina porta anche
+    cosa mostra a chi l'ha chiesta -- una `<meta name="hiris-permessi">` col
+    JSON di `admission.request_permissions`, che `static/pending-badge.js`
+    legge al montaggio. Il guscio e' servito richiesta per richiesta e mai
+    tenuto in cache (`no-store`), quindi la pagina nasce gia' giusta per chi
+    la apre: niente ricordo nel browser, niente attesa della prima risposta."""
     def _repl(m: "re.Match[str]") -> str:
         attr, path = m.group(1), m.group(2)
         return f'{attr}="{path}?v={_asset_fingerprint(path, version)}"'
@@ -176,6 +187,13 @@ def _inject_version(html: str, version: str, build_stamp: str = "") -> str:
         html = html.replace(
             "</head>",
             f'  <meta name="hiris-build" content="{build_stamp}">\n</head>',
+            1,
+        )
+    if permissions is not None:
+        content = _html.escape(json.dumps(permissions, ensure_ascii=False), quote=True)
+        html = html.replace(
+            "</head>",
+            f'  <meta name="hiris-permessi" content="{content}">\n</head>',
             1,
         )
     return html
@@ -194,7 +212,8 @@ def _serve_shell(key: str):
         if not html:
             return web.Response(text="UI not yet available", status=503)
         return web.Response(
-            text=_inject_version(html, read_version(), request.app.get(BUILD_STAMP_KEY, "")),
+            text=_inject_version(html, read_version(), request.app.get(BUILD_STAMP_KEY, ""),
+                                 request_permissions(request)),
             content_type="text/html",
             headers=_NO_CACHE,
         )

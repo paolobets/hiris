@@ -231,6 +231,10 @@
     /* Touch devices: ≥44×44px tap target (WCAG 2.5.5) */
     @media (pointer: coarse) {
       #theme-toggle { width: 44px; height: 44px; }
+      /* Le voci della barra: con Impegni, Memoria e Proposte una sotto
+         l'altra, sul telefono il tocco deve trovare la sua (parere
+         dell'ux-ui-specialist del 29/10/2026, Fase S). */
+      .sb-nav-item { min-height: 44px; }
     }
 
     /* Etichetta statica nell'header: nome dell'assistente in uso (Task 2,

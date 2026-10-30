@@ -75,7 +75,7 @@
          e Memoria. Le altre voci, e l'etichetta «Configurazione», portano
          `data-configure-only` e nascono `hidden`: le mostra
          static/pending-badge.js quando `GET /api/pending` dice
-         `can_configure`, o ne ricorda l'ultima risposta -- lo stesso
+         `can_configure`, o lo dice gia' la pagina -- lo stesso
          meccanismo di «Proposte». Dietro ognuna c'e' una rotta che il
          cancello (api/admission.py) gli rifiuta comunque. -->
     <div class="nav-section-label">Da fare</div>
@@ -97,7 +97,7 @@
          restore, config/constructions-route.js). Icona chiave inglese:
          nessun'altra voce parla di "costruire" dentro la casa. Nasce
          `hidden`: la mostra static/pending-badge.js quando `GET /api/pending`
-         dice `can_build`, o ne ricorda l'ultima risposta (spec 2026-09-26 §3, la pagina e' di chi
+         dice `can_build`, o lo dice gia' la pagina (spec 2026-09-26 §3, la pagina e' di chi
          costruisce). -->
     <a class="nav-item" href="#/constructions" data-route="constructions" data-badge="constructions" data-builder-only title="Proposte" aria-label="Proposte" hidden>
       <span class="nav-icon">

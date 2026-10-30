@@ -210,16 +210,28 @@ export function loadScripts(paths, { html = '<!doctype html><body></body>' } = {
 
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
+/** I permessi che il server scrive nel guscio (`api/shell.py`, Fase S,
+ * S.6): la `<meta name="hiris-permessi">` che `pending-badge.js` legge al
+ * montaggio. Si scrive nel `<head>` del documento gia' caricato, prima del
+ * montaggio. */
+export function writePermissions(document, permissions) {
+  const meta = document.createElement('meta');
+  meta.setAttribute('name', 'hiris-permessi');
+  meta.setAttribute('content', JSON.stringify(permissions));
+  document.head.appendChild(meta);
+}
+
 /** Chi guarda e' un amministratore, per le prove che parlano di lui.
  *
  * Dal fix round 1 del Task 4 (spec 2026-09-27 §4) le pagine di
  * configurazione, i pulsanti della Memoria e la home del guscio sono di chi
  * configura, e senza saperlo si parte chiusi. Qui si usa il pallino VERO
- * (`pending-badge.js`, che il test deve aver caricato) col ricordo «configura»
- * e una `api/pending` che non risponde: lo stato e' quello del ricordo, e il
- * finto fetch del test, messo dopo, non vede la richiesta del pallino. */
+ * (`pending-badge.js`, che il test deve aver caricato) coi permessi che il
+ * server scrive nella pagina e una `api/pending` che non risponde: lo stato
+ * e' quello della pagina, e il finto fetch del test, messo dopo, non vede la
+ * richiesta del pallino. */
 export function asAdministrator(window) {
-  window.localStorage.setItem('hiris.can_configure', '1');
+  writePermissions(window.document, { can_build: true, can_configure: true });
   const fetchBefore = window.fetch;
   fintoFetch(window, { 'api/pending': maiRisposta });
   window.HirisPendingBadge.mount();

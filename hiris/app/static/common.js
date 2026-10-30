@@ -483,7 +483,7 @@ var SUBSCRIPTION_ONLY_COST_LABEL = 'In abbonamento';
 
 /* Chi guarda configura? Una regola sola, chiusa nel dubbio (spec
    2026-09-27 §4): decide `HirisPendingBadge.configures()` -- il `true` del
-   server o del ricordo -- e senza il pallino (script non caricato) no. Qui
+   server, scritto nella pagina o in una risposta -- e senza il pallino (script non caricato) no. Qui
    e non in ogni pagina: prima il guscio (config/main.js) e la Memoria
    (config/memory-route.js) ne avevano una copia ciascuno, e una regola di
    riservatezza scritta due volte e' un doppione che puo' divergere. */

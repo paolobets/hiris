@@ -69,8 +69,8 @@
      `true`: quelli possono passare, e il timer resta.
 
      **Il giro e' di chi configura** (spec 2026-09-27 §4): parte quando
-     `can_configure` diventa vero -- dal ricordo o dal server -- e si ferma
-     quando diventa falso, anche se era partito da un ricordo vecchio. Chi
+     `can_configure` diventa vero -- dalla pagina o da una risposta del
+     server -- e si ferma quando diventa falso. Chi
      non configura non chiede mai `api/usage`: il cancello gliela
      rifiuterebbe ogni mezzo minuto, per sempre (security-constraints 4.5). */
   var usageTimer = null;
@@ -135,8 +135,8 @@
     wireHeaderAndSidebarButtons();
     /* Le due voci esecutive stanno nella barra laterale, che qui e' statica
        in `index.html`: nessun montaggio da aspettare. L'iscrizione viene
-       PRIMA del montaggio, che applica gia' il ricordo: un amministratore
-       che lo ha vede i consumi subito, come prima. */
+       PRIMA del montaggio, che applica gia' i permessi scritti nella pagina:
+       un amministratore vede i consumi subito. */
     window.HirisPendingBadge.onChange(function (field, granted) {
       if (field !== 'can_configure') return;
       if (granted === true) startUsage();

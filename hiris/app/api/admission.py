@@ -249,7 +249,8 @@ _ADMITTED = frozenset((route.method, route.canonical) for route in ADMISSION
 #: non riconosce. Niente rotta, ruolo o soggetto nel testo.
 OPTION_OFF = ("HIRIS in questa casa è riservato agli amministratori: chiedi a "
               "chi lo gestisce di attivarlo per tutti.")
-NOT_ADMITTED = "Questa parte di HIRIS è riservata agli amministratori."
+NOT_ADMITTED = ("Questa parte di HIRIS è riservata a chi gestisce la casa in "
+                "Home Assistant.")
 ROLES_UNREADABLE = "Non ho potuto leggere i ruoli da Home Assistant: riprova tra poco."
 UNKNOWN_PERSON = ("Home Assistant non mi ha detto chi sei: HIRIS risponde solo "
                   "agli utenti di Home Assistant che riconosce. Se sei appena "
@@ -358,6 +359,31 @@ def gesture_refusal(request: web.Request) -> web.Response | None:
         _log_refusal(request, subject, f"gesto «{gesture}» negato al ruolo "
                                        f"«{ceiling.get('ruolo')}»")
     return _refusal(request, text)
+
+
+def request_permissions(request: web.Request) -> dict:
+    """**Cosa i gusci mostrano a chi fa questa richiesta**: `can_build`,
+    `can_configure` e, a chi non configura, il testo del rifiuto
+    (`configure_refusal`, la costante del cancello).
+
+    Una domanda sola per le due porte che la chiedono: il guscio HTML, che la
+    scrive nella pagina (`shell._serve_shell`, Fase S, S.6, 29/10/2026), e
+    `GET /api/pending`, che la ripete per la pagina gia' aperta. Fino al
+    29/10 la sapeva solo la rotta, e il browser la ricordava per conto suo
+    in `localStorage` -- per browser, non per persona: su un dispositivo
+    condiviso chi veniva dopo un amministratore vedeva per un attimo il suo
+    menu.
+
+    Il soffitto viene dal ruolo che il cancello ha GIA' letto
+    (`request_ceiling`): nessuna lettura in piu' dei ruoli. Le due chiavi
+    portano lo stesso fatto (F-01, F-03, Tappa 7) e restano due perche' il
+    guscio le legge entrambe. Nascondere una voce non e' la difesa: la difesa
+    e' il gesto della rotta, che il confine chiede prima del gestore."""
+    allowed = not denies(request_ceiling(request), "amministrare", request.get("soggetto"))
+    answer = {"can_build": allowed, "can_configure": allowed}
+    if not allowed:
+        answer["configure_refusal"] = NOT_ADMITTED
+    return answer
 
 
 async def admission_refusal(app, request: web.Request) -> web.Response | None:

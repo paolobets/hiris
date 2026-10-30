@@ -469,16 +469,22 @@ window.HirisMemoryRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     clearEl(outlet);
-    outlet.appendChild(el('h1', 'page-title', 'Memoria'));
-    /* Chi configura legge cosa puo' fare qui; chi legge soltanto, a chi
-       chiedere (testo rivisto con l'ux-ui-specialist, fix round 1 del
-       Task 4). */
-    outlet.appendChild(el('p', 'page-subtitle', 'Ciò che hai detto a HIRIS, e cosa ne ha capito. ' + (configures()
-      ? 'Puoi correggere l’interpretazione — mai il testo — o cancellare un ricordo per sempre. '
+    /* Chi configura legge i ricordi di tutti e cosa puo' farne; chi legge
+       soltanto, solo i SUOI (Fase S, S.1: «ognuno vede i suoi») e a chi
+       chiedere. Il titolo lo dice a chi vede solo i suoi, e la prima frase
+       non dice «hai detto» a chi legge anche cio' che hanno detto gli altri
+       (parere dell'ux-ui-specialist del 29/10/2026; i testi della fix round
+       1 del Task 4 restano per il resto). */
+    var all = configures();
+    outlet.appendChild(el('h1', 'page-title', all ? 'Memoria' : 'I tuoi ricordi'));
+    outlet.appendChild(el('p', 'page-subtitle', all
+      ? 'Ciò che le persone hanno detto a HIRIS, e cosa ne ha capito. '
+        + 'Puoi correggere l’interpretazione — mai il testo — o cancellare un ricordo per sempre. '
         + 'I ricordi non scadono: restano finché non li togli tu, '
         + 'e non se ne vanno cancellando la conversazione.'
-      : 'I ricordi non scadono e restano anche se cancelli la conversazione: per correggerne o '
-        + 'toglierne uno, chiedi a chi gestisce HIRIS.')));
+      : 'Ciò che hai detto a HIRIS, e cosa ne ha capito. '
+        + 'I ricordi non scadono e restano anche se cancelli la conversazione: per correggerne o '
+        + 'toglierne uno, chiedi a chi gestisce HIRIS.'));
     var status = el('p', 'sc-desc', '');
     status.id = 'memory-status';
     outlet.appendChild(status);

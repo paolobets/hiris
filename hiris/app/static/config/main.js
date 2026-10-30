@@ -116,15 +116,14 @@
      la costante del cancello: fix round 1 del Task 4).
 
      **Una regola sola, chiusa nel dubbio** (fix round 1): si configura solo
-     col `true` detto dal server o dal ricordo. Senza il pallino, o finche'
-     non si sa, no -- come la Memoria (config/memory-route.js). Un
-     amministratore non lo vede: senza ricordo il guscio aspetta la prima
-     risposta prima di scegliere la pagina (sotto, `ROUTER_WAIT_MS`). La
-     regola e' `configures()` di common.js, la stessa della Memoria. */
+     col `true` detto dal server, che lo scrive gia' nella pagina (S.6).
+     Senza il pallino, o finche' non si sa, no -- come la Memoria
+     (config/memory-route.js). La regola e' `configures()` di common.js, la
+     stessa della Memoria. */
 
-  /* Mai una pagina vuota: il titolo, il testo del server quando c'e' (un
-     «no» ricordato arriva senza, e la pagina si ridisegna quando la risposta
-     lo porta) e una strada per uscire. Tutto via `textContent`. */
+  /* Mai una pagina vuota: il titolo, il testo del server quando c'e' (la
+     pagina lo porta; senza, si ridisegna quando la risposta lo porta) e una
+     strada per uscire. Tutto via `textContent`. */
   function renderRefusal(title) {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
@@ -301,12 +300,6 @@
 
   var routerStarted = false;
 
-  /* Quanto si aspetta la prima risposta di `api/pending` prima di scegliere
-     la pagina senza saperla: una richiesta appesa non deve lasciare il
-     guscio bianco (fix round 1, F1). Scaduta l'attesa si parte chiusi -- gli
-     Impegni -- e una risposta che arriva dopo rimonta la pagina. */
-  var ROUTER_WAIT_MS = 3000;
-
   function startRouter() {
     if (routerStarted) return;
     routerStarted = true;
@@ -327,17 +320,18 @@
        d'atterraggio dipende da `can_configure`. */
     var badge = window.HirisPendingBadge;
     if (!badge) { startRouter(); return; }
-    /* Il router parte al primo `can_configure` saputo -- dal ricordo, gia'
-       dentro `mount`, o da una risposta, anche una successiva alla prima
-       (il ritorno del fuoco) -- oppure allo scadere dell'attesa, o se la
-       prima risposta fallisce. Dopo, un cambio rimonta la pagina aperta:
-       quella rifiutata diventa vera, quella vera diventa il rifiuto. */
-    badge.onChange(function (field, granted) {
-      if (field !== 'can_configure') return;
-      if (routerStarted) HirisRouter.refresh();
-      else if (granted !== null) startRouter();
+    /* Il router parte SUBITO dopo il montaggio: i permessi li ha gia'
+       scritti il server nella pagina (Fase S, S.6, 29/10/2026), e il
+       montaggio li applica prima di ogni richiesta. Fino al 29/10 si
+       aspettava la prima risposta di `api/pending` fino a tre secondi
+       (`ROUTER_WAIT_MS`), e una risposta arrivata dopo rimontava la pagina
+       anche quando era gia' giusta. Resta il rimontaggio sul CAMBIO, a
+       pagina aperta: quella rifiutata diventa vera, quella vera diventa il
+       rifiuto. */
+    badge.onChange(function (field) {
+      if (field === 'can_configure' && routerStarted) HirisRouter.refresh();
     });
-    badge.mount().then(startRouter);
-    setTimeout(startRouter, ROUTER_WAIT_MS);
+    badge.mount();
+    startRouter();
   });
 })();

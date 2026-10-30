@@ -108,16 +108,9 @@ window.HirisPendingBadge = (function () {
         if (n > 0) accendi(VOCI[k].voce, n);
         else spegni(VOCI[k].voce);
       }
-      /* Chi costruisce e chi configura lo dice il server a OGNI risposta, e
-         si ricorda per la prossima apertura: vedi `PERMISSIONS`. */
-      for (var p = 0; p < PERMISSIONS.length; p++) {
-        var permission = PERMISSIONS[p];
-        var granted = dati[permission.field] === true;
-        var refusal = permission.refusalField && typeof dati[permission.refusalField] === 'string'
-          ? dati[permission.refusalField] : null;
-        applyPermission(permission, granted, refusal);
-        remember(permission, granted);
-      }
+      /* Chi costruisce e chi configura lo ripete il server a OGNI risposta,
+         per la pagina gia' aperta: vedi `PERMISSIONS`. */
+      applyAll(dati);
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era
          acceso al giro prima: un numero vecchio lasciato li' mentre la rete
@@ -139,27 +132,27 @@ window.HirisPendingBadge = (function () {
      sole, col gesto di ogni rotta in `api/admission.py`): e' non offrire
      una strada chiusa.
 
-     **L'ultima risposta si ricorda** (fix round 1 del Task 4 della fetta
-     del 26/09): senza, la voce compariva a un amministratore un giro di rete
-     dopo ogni apertura, e mai se la prima risposta falliva. Il ricordo e'
-     una comodita' di chi guarda (`localStorage`, per questo browser): si
-     applica all'avvio, ogni risposta lo riscrive, un errore lo lascia
-     com'e'. Non apre niente -- il server continua a decidere -- e senza
-     ricordo (o con lo storage che solleva, in una finestra privata) si parte
-     nascosti. */
+     **La pagina nasce sapendolo** (Fase S, S.6, 29/10/2026): il server
+     scrive i permessi nel guscio che serve, nella `<meta
+     name="hiris-permessi">` (`api/shell.py`, la stessa domanda di `GET
+     api/pending`: `admission.request_permissions`), e il montaggio li
+     applica prima di ogni richiesta. Fino al 29/10 l'ultima risposta si
+     ricordava in `localStorage`, per browser e non per persona: su un
+     dispositivo condiviso chi veniva dopo un amministratore vedeva per un
+     attimo il suo menu, e `/config` aspettava fino a tre secondi la prima
+     risposta prima di scegliere la pagina. Una pagina senza la meta (o con
+     una meta che non si legge) parte nascosta, e decide la risposta. */
   /* `refusalField`: il testo con cui il server rifiuta cio' che il
      permesso non concede (fix round 1 del Task 4: `configure_refusal`, la
-     costante del cancello). Si tiene quello dell'ultima risposta e non si
-     ricorda: e' una frase del server, non una comodita' di chi guarda. */
+     costante del cancello), dalla pagina e poi da ogni risposta. */
   var PERMISSIONS = [
-    { field: 'can_build', storageKey: 'hiris.can_build', attribute: 'data-builder-only' },
-    { field: 'can_configure', storageKey: 'hiris.can_configure', attribute: 'data-configure-only',
+    { field: 'can_build', attribute: 'data-builder-only' },
+    { field: 'can_configure', attribute: 'data-configure-only',
       refusalField: 'configure_refusal' }
   ];
 
-  /* `true`/`false` dal server o dal ricordo; `null` quando non lo sa
-     nessuno dei due. Il terzo stato serve al guscio `/config`, che senza
-     sapere non sceglie la pagina d'atterraggio (config/main.js). */
+  /* `true`/`false` dalla pagina o da una risposta; `null` finche' non lo
+     dice nessuna delle due. */
   var grantedNow = {};
   var refusalNow = {};
   var listeners = [];
@@ -172,15 +165,26 @@ window.HirisPendingBadge = (function () {
   /* La regola del nodo, una volta sola: si vede solo col `true`. */
   function paint(node, granted) { node.hidden = granted !== true; }
 
-  function remembered(permission) {
+  /* I permessi scritti dal server nella pagina, o `null` quando non ci
+     sono o non si leggono. */
+  function fromPage() {
+    var meta = document.querySelector('meta[name="hiris-permessi"]');
+    if (!meta) return null;
     try {
-      var v = window.localStorage.getItem(permission.storageKey);
-      return v === '1' ? true : (v === '0' ? false : null);
+      var dati = JSON.parse(meta.getAttribute('content'));
+      return dati && typeof dati === 'object' ? dati : null;
     } catch { return null; }
   }
 
-  function remember(permission, granted) {
-    try { window.localStorage.setItem(permission.storageKey, granted ? '1' : '0'); } catch { /* comodita': senza, si riparte nascosti */ }
+  /* Una risposta del server -- la pagina o `api/pending` -- su ogni
+     permesso: solo il `true` concede. */
+  function applyAll(dati) {
+    for (var p = 0; p < PERMISSIONS.length; p++) {
+      var permission = PERMISSIONS[p];
+      var refusal = permission.refusalField && typeof dati[permission.refusalField] === 'string'
+        ? dati[permission.refusalField] : null;
+      applyPermission(permission, dati[permission.field] === true, refusal);
+    }
   }
 
   function applyPermission(permission, granted, refusal) {
@@ -193,8 +197,8 @@ window.HirisPendingBadge = (function () {
     /* Solo sul CAMBIO (del permesso o del suo testo di rifiuto): ogni
        ritorno del fuoco rilegge i permessi, e chi ascolta (il giro dei
        consumi, la pagina aperta nel guscio) non deve ripartire a ogni giro
-       con la stessa risposta. Il testo conta: un «no» ricordato arriva
-       senza, e la pagina rifiutata lo scrive quando la risposta lo porta. */
+       con la stessa risposta. Il testo conta: la pagina rifiutata lo
+       scrive quando arriva. */
     if (!changed) return;
     for (var j = 0; j < listeners.length; j++) {
       try { listeners[j](permission.field, granted); } catch (err) { console.error('[permessi] ascoltatore', err); }
@@ -202,7 +206,9 @@ window.HirisPendingBadge = (function () {
   }
 
   function mount() {
-    for (var i = 0; i < PERMISSIONS.length; i++) applyPermission(PERMISSIONS[i], remembered(PERMISSIONS[i]));
+    var page = fromPage();
+    if (page) applyAll(page);
+    else for (var i = 0; i < PERMISSIONS.length; i++) applyPermission(PERMISSIONS[i], null);
     window.addEventListener('focus', refresh);
     return refresh();
   }
@@ -218,15 +224,15 @@ window.HirisPendingBadge = (function () {
   }
 
   /* La regola di chi configura, una volta sola: solo il `true` detto dal
-     server o dal ricordo. Finche' non si sa, no. Le pagine la leggono da
+     server, dalla pagina o da una risposta. Finche' non si sa, no. Le pagine la leggono da
      `configures()` di common.js, che chiude anche se il pallino manca. */
   function configures() { return grantedNow.can_configure === true; }
   /* Il testo del server per una pagina di configurazione rifiutata, o ''
-     quando non e' arrivato (un «no» ricordato, prima della risposta). */
+     quando non e' arrivato. */
   function configureRefusal() { return refusalNow.can_configure || ''; }
 
   /* `fn(field, granted)` a ogni cambio di un permesso, compreso il primo
-     (dal ricordo, al montaggio): chi ascolta si iscrive PRIMA di `mount`. */
+     (dalla pagina, al montaggio): chi ascolta si iscrive PRIMA di `mount`. */
   function onChange(fn) { listeners.push(fn); }
 
   return {

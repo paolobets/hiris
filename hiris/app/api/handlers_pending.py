@@ -43,9 +43,8 @@ from ..action.construction.revisions import CONSTRUCTIONS_KEY
 from ..chat_thread import request_thread
 from ..keeper.store import AGENDA_KEY
 from ..mind.store import OBSERVATIONS_KEY
-from .admission import NOT_ADMITTED
+from .admission import request_permissions
 from .boundary import error_response
-from .soffitto import denies, request_ceiling
 
 
 def _proposals_pending(app) -> int:
@@ -67,26 +66,15 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         return error_response(503, "archivio non disponibile")
     # **Le Proposte e le pagine di configurazione sono di chi amministra**
     # (spec 2026-09-26 §3, decisione 5; spec 2026-09-27 §4): a chi non puo'
-    # deciderle il pallino conta zero, e `can_build` e `can_configure` dicono
-    # al guscio se mostrare le voci -- lo decide il server a ogni risposta,
-    # non un ruolo indovinato dal browser. Nascondere una voce non e' la
-    # difesa: la difesa e' il gesto `amministrare` delle rotte
-    # (`admission.ADMISSION`), che il confine chiede prima del gestore.
-    # Il soffitto qui si LEGGE e basta: gli Impegni restano del filo di chi
-    # guarda, amministratore compreso.
-    #
-    # **Una domanda sola** (F-01, F-03, Tappa 7): fino al 07/10/2026
-    # `can_build` leggeva `ceiling["costruire"]` nudo e `can_configure`
-    # chiedeva `denies(..., "amministrare")`, e in sviluppo dicevano due cose
-    # diverse (BACKLOG, «In sviluppo `can_configure` e' vero mentre
-    # `can_build` e' falso»). Le due chiavi restano perche' il guscio le legge
-    # entrambe: portano lo stesso fatto.
-    #
-    # Il soffitto viene dal ruolo che il cancello ha GIA' letto
-    # (`request_ceiling`): una lettura dei ruoli per richiesta, non due.
-    ceiling = request_ceiling(request)
-    can_configure = not denies(ceiling, "amministrare", request.get("soggetto"))
-    can_build = can_configure
+    # deciderle il pallino conta zero, e i permessi dicono al guscio se
+    # mostrare le voci. Li decide il server, con la stessa domanda che il
+    # guscio HTML scrive nella pagina (`admission.request_permissions`, Fase
+    # S, S.6): qui si ripetono per la pagina gia' aperta, a ogni risposta. Il
+    # testo del rifiuto viaggia con loro (fix round 1 del Task 4): il guscio
+    # `/config` lo scrive su una pagina di configurazione aperta per
+    # indirizzo, invece di chiederlo a una rotta negata.
+    # Gli Impegni restano del filo di chi guarda, amministratore compreso.
+    permissions = request_permissions(request)
     answer = {
         # Il pallino degli Impegni e' di chi guarda (spec 2026-09-26 §2): gli
         # esiti non letti del SUO filo, dal confine -- come la pagina.
@@ -95,16 +83,8 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         # contasse una sola direbbe un numero piu' piccolo di quello che ti
         # aspetta -- ed e' peggio di nessun pallino, perche' sembra un conto.
         "constructions_pending": (constructions.count_pending(now=time.time())
-                                  + _proposals_pending(request.app)) if can_build else 0,
-        "can_build": can_build,
-        "can_configure": can_configure,
+                                  + _proposals_pending(request.app))
+                                 if permissions["can_build"] else 0,
+        **permissions,
     }
-    # **Il testo del rifiuto viaggia qui** (fix round 1 del Task 4): il
-    # guscio `/config` lo scrive su una pagina di configurazione aperta per
-    # indirizzo, invece di chiederlo a una rotta negata -- che lasciava nel
-    # registro del cancello una riga falsa sulla pagina. E' la costante del
-    # cancello, non una copia. All'amministratore non arriva: la sua
-    # risposta resta quella di prima.
-    if not can_configure:
-        answer["configure_refusal"] = NOT_ADMITTED
     return web.json_response(answer)

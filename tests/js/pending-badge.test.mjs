@@ -218,49 +218,48 @@ test('un errore non tocca la voce: non e\' una risposta', async () => {
   assert.equal(voceProposte(ctx).hidden, false);
 });
 
-/* ── Il ricordo dell'ultima risposta (fix round 1 del Task 4) ─────────
-   Senza, la voce compariva a un amministratore un giro di rete dopo ogni
-   apertura, e mai se la prima risposta falliva. Mutazioni ESEGUITE
-   (rieseguite il 27/09/2026 sui nomi di oggi): togliere
-   `applyPermission(..., remembered(...))` da `mount` -- rossa la prima;
-   togliere `remember(...)` dalla risposta -- rossa la seconda; togliere il
-   try/catch di `remembered` -- rossa la terza. Il ricordo di
-   `can_configure` e' lo stesso meccanismo: le sue prove stanno in
-   `can-configure.test.mjs`. */
+/* ── I permessi scritti nella pagina (Fase S, S.6, 29/10/2026) ───────
+   Il server li scrive nel guscio (`api/shell.py`, `<meta
+   name="hiris-permessi">`), e il montaggio li applica prima di ogni
+   richiesta. Fino al 29/10 l'ultima risposta si ricordava in
+   `localStorage`, per browser e non per persona: chi veniva dopo un
+   amministratore sullo stesso dispositivo vedeva per un attimo il suo menu.
+   Mutazioni ESEGUITE: `mount` che ignora `fromPage()` -- rossa la prima;
+   `fromPage` senza il try/catch -- rossa la terza (il montaggio solleva). */
 
-function montaSenzaRisposta(prima) {
-  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
-  if (prima) prima(ctx);
+function conPermessi(contenuto) {
+  return HTML.replace('<body>',
+    '<head><meta name="hiris-permessi" content="' + contenuto.replace(/"/g, '&quot;') + '"></head><body>');
+}
+
+function montaSenzaRisposta(html = HTML) {
+  const ctx = loadScripts(['pending-badge.js'], { html });
   fintoFetch(ctx.window, { 'api/pending': maiRisposta });
   ctx.window.HirisPendingBadge.mount();
   return ctx;
 }
 
-test('un «può costruire» ricordato mostra la voce SUBITO, prima della risposta', () => {
-  const ctx = montaSenzaRisposta((c) => c.window.localStorage.setItem('hiris.can_build', '1'));
+test('un «può costruire» scritto nella pagina mostra la voce SUBITO, prima della risposta', () => {
+  const ctx = montaSenzaRisposta(conPermessi('{"can_build":true,"can_configure":true}'));
 
   assert.equal(voceProposte(ctx).hidden, false);
 });
 
-test('la risposta del server vince sul ricordo, e diventa il ricordo', async () => {
-  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
-  ctx.window.localStorage.setItem('hiris.can_build', '1');
+test('la risposta del server vince sulla pagina, e nel browser non resta niente', async () => {
+  const ctx = loadScripts(['pending-badge.js'], { html: conPermessi('{"can_build":true,"can_configure":true}') });
   fintoFetch(ctx.window, { 'api/pending': { agenda_unread: 0, constructions_pending: 0, can_build: false } });
   await ctx.window.HirisPendingBadge.mount();
   await tick(0);
 
   assert.equal(voceProposte(ctx).hidden, true);
-  assert.equal(ctx.window.localStorage.getItem('hiris.can_build'), '0');
+  assert.equal(ctx.window.localStorage.length, 0, 'nessun permesso si scrive nel browser');
 });
 
-test('uno storage che solleva non rompe niente: si parte nascosti e la risposta decide', async () => {
-  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
-  Object.defineProperty(ctx.window, 'localStorage', {
-    configurable: true, get() { throw new Error('SecurityError'); },
-  });
+test('una pagina coi permessi illeggibili parte nascosta, e la risposta decide', async () => {
+  const ctx = loadScripts(['pending-badge.js'], { html: conPermessi('{non e\' json') });
   fintoFetch(ctx.window, { 'api/pending': { agenda_unread: 0, constructions_pending: 2, can_build: true } });
   const montaggio = ctx.window.HirisPendingBadge.mount();
-  assert.equal(voceProposte(ctx).hidden, true, 'senza ricordo si parte nascosti');
+  assert.equal(voceProposte(ctx).hidden, true, 'senza permessi leggibili si parte nascosti');
   await montaggio;
   await tick(0);
 
@@ -268,7 +267,16 @@ test('uno storage che solleva non rompe niente: si parte nascosti e la risposta 
   assert.equal(pallino(ctx, 'constructions').textContent, '2');
 });
 
-test('senza ricordo si parte nascosti', () => {
+test('un ricordo di prima nel browser non apre piu\' niente', () => {
+  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
+  ctx.window.localStorage.setItem('hiris.can_build', '1');
+  fintoFetch(ctx.window, { 'api/pending': maiRisposta });
+  ctx.window.HirisPendingBadge.mount();
+
+  assert.equal(voceProposte(ctx).hidden, true);
+});
+
+test('senza permessi nella pagina si parte nascosti', () => {
   const ctx = montaSenzaRisposta();
 
   assert.equal(voceProposte(ctx).hidden, true);

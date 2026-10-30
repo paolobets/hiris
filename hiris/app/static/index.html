@@ -40,7 +40,7 @@
     <button id="sidebar-close-btn" aria-label="Chiudi menu" title="Chiudi menu">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
-    <!-- I MENU ESECUTIVI (fetta «i menu esecutivi», 03/09). Stavano solo
+    <!-- I MENU ESECUTIVI (fetta «i menu esecutivi», 03/09), e la Memoria. Stavano solo
          dentro l'altro guscio, sotto l'etichetta «Configurazione»: la chat
          diceva «e' in attesa di conferma» e non c'era una strada corta per
          arrivarci. Da qui -- dove l'utente sta davvero -- sono a un click.
@@ -54,8 +54,8 @@
          `data-badge` e' l'unico aggancio del pallino
          (static/pending-badge.js), che qui e' identico all'altro guscio
          perche' e' lo stesso fatto. «Proposte» nasce `hidden`: la mostra lo
-         stesso script quando `GET /api/pending` dice `can_build`, o ne
-         ricorda l'ultima risposta (spec
+         stesso script quando `GET /api/pending` dice `can_build`, o lo
+         dice gia' la pagina (spec
          2026-09-26 §3, la pagina e' di chi costruisce). -->
     <div id="sidebar-nav">
       <a href="config#/agenda" class="sb-nav-item" data-badge="agenda" title="Impegni" aria-label="Impegni">
@@ -63,6 +63,16 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
         </span>
         <span>Impegni</span>
+      </a>
+      <!-- La MEMORIA (Fase S, S.9, 29/10/2026, parere dell'ux-ui-specialist):
+           di tutti, come gli Impegni e come la stessa voce in /config, con la
+           stessa etichetta e la stessa icona. Fino al 29/10 chi non
+           amministra la trovava solo passando dagli Impegni. -->
+      <a href="config#/memory" class="sb-nav-item" title="Memoria" aria-label="Memoria">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h5M8 13h3"/></svg>
+        </span>
+        <span>Memoria</span>
       </a>
       <a href="config#/constructions" class="sb-nav-item" data-badge="constructions" data-builder-only title="Proposte" aria-label="Proposte" hidden>
         <span class="ic">
@@ -91,7 +101,7 @@
     <!-- Il piede con «Configurazione» e il riquadro «Utilizzo» sono di chi configura
          (spec 2026-09-27 §4): nascono `hidden` e li mostra
          static/pending-badge.js quando `GET /api/pending` dice
-         `can_configure`, o ne ricorda l'ultima risposta -- come «Proposte».
+         `can_configure`, o lo dice gia' la pagina -- come «Proposte».
          Chi non configura troverebbe dietro il link solo pagine chiuse, e
          dietro il riquadro una rotta che il cancello gli rifiuta. -->
     <div id="sidebar-footer" data-configure-only hidden>

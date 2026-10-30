@@ -263,6 +263,9 @@ trovato:
   prima di scegliere; le voci di configurazione nascono nascoste e compaiono quando il server dice
   `true`. Una pagina di configurazione aperta per indirizzo non si monta e non chiede i suoi dati:
   mostra titolo, testo del server e un link agli Impegni.
+  *Superato il 29/10/2026 (Fase S, S.6):* il ricordo nel browser e l'attesa di `ROUTER_WAIT_MS`
+  sono usciti. Il server scrive i permessi nel guscio che serve (`<meta name="hiris-permessi">`,
+  `admission.request_permissions`), e `/api/pending` li ripete per la pagina aperta.
 - **Nella chat** il giro dei consumi parte solo quando `can_configure` diventa vero, e si ferma se
   torna falso: chi non configura non chiede mai `api/usage`.
 - **I testi dei rifiuti** sono quelli del server, rivisti dal coordinatore; l'ux-ui-specialist ha

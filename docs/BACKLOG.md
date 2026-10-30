@@ -514,7 +514,9 @@ Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era pri
 La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
 farne.
 
-### Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo — aperta il 27/09/2026
+### ~~Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.6): il guscio porta i permessi scritti dal server (`api/shell.py`, `<meta name="hiris-permessi">`, la stessa domanda di `GET /api/pending`: `admission.request_permissions`), e `static/pending-badge.js` non scrive ne' legge piu' niente in `localStorage`. Lo difendono `tests/test_permessi_nel_guscio.py` e le prove JS di `pending-badge.test.mjs` e `can-configure.test.mjs`, con le mutazioni eseguite`
 
 `origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
 
@@ -527,7 +529,9 @@ il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, ne
 usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
 per l'amministratore.
 
-### Una risposta tardiva di `can_configure` rimonta la pagina aperta — aperta il 27/09/2026
+### ~~Una risposta tardiva di `can_configure` rimonta la pagina aperta~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.6): con i permessi nella pagina il router di `/config` parte subito dopo il montaggio; `ROUTER_WAIT_MS` e' uscito, e resta solo il rimontaggio sul CAMBIO a pagina aperta (`static/config/main.js`)`
 
 `origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
 
@@ -586,7 +590,9 @@ del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo s
 segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
 alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
 
-### La Memoria si raggiunge dalla chat solo passando dagli Impegni — aperta il 27/09/2026
+### ~~La Memoria si raggiunge dalla chat solo passando dagli Impegni~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.9, parere dell'ux-ui-specialist del 29/10): la voce «Memoria» sta nella barra della chat per tutti, subito dopo gli Impegni, con l'icona di `/config`; per chi non amministra il titolo della pagina e' «I tuoi ricordi». Sul telefono le voci della barra hanno 44 px di altezza minima`
 
 `origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
 
@@ -596,7 +602,9 @@ esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serv
 perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
 della chat per chi non configura.
 
-### Il testo della pagina non concessa — aperta il 27/09/2026
+### ~~Il testo della pagina non concessa~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, domanda 4): `admission.NOT_ADMITTED` dice il testo nuovo, e lo difende `tests/test_admission.py::test_i_testi_dei_rifiuti_sono_quelli_DECISI``
 
 `origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
 
