@@ -228,6 +228,31 @@ def _allows_empty_target(domain: str, definition: dict) -> bool:
     return domain in _DOMINI_DI_RECAPITO and not _declare_target(definition)
 
 
+def touches_no_entity(domain: str, definition: dict) -> bool:
+    """Vero se il servizio non si rivolge a un'entita' della casa: non
+    dichiara un `target` (`_declare_target`) e non e' un recapito
+    (`_DOMINI_DI_RECAPITO`).
+
+    E' la domanda del soffitto su `execute` per chi non amministra (Fase S,
+    S.4, scelta del proprietario il 30/10/2026): Home Assistant non dice da
+    nessuna API quale servizio riserva agli amministratori, e i servizi
+    riservati che si raggiungono da questa porta senza essere del dominio
+    `homeassistant` non dichiarano un `target`. Misurato il 30/10/2026 sul
+    sorgente: nel nucleo 2026.10.4 nessun servizio registrato con
+    `async_register_admin_service` lo dichiara; in Spook v5.11.1 (quello
+    installato in casa) 14 dei 17 raggiungibili non lo dichiarano -- i
+    `delete` degli aiutanti, `zone.update`/`zone.delete`,
+    `person.add_device_tracker`/`remove_device_tracker`,
+    `sensor.set_display_precision`. Gli altri tre (`input_number.set_range`,
+    `schedule.set_day`, `timer.set_duration`) restano un rischio scritto nel
+    BACKLOG.
+
+    I recapiti ne restano fuori per la stessa ragione per cui un bersaglio
+    vuoto e' ammesso solo per loro (`_allows_empty_target`): una notifica
+    non ha un'entita' da toccare, ed e' cio' che la chat fa per chiunque."""
+    return not _declare_target(definition) and domain not in _DOMINI_DI_RECAPITO
+
+
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
 # campo di Home Assistant che gli corrisponde. Le chiavi sono quelle che il
 # modello scrive (`strumenti.EXECUTE_TOOL_DEF`), i valori sono quelli di

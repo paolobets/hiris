@@ -94,7 +94,13 @@ from typing import Any
 
 from ..action.construction.advisor import STRUCTURES
 from ..action.construction.stakes import CHOSEN_BY_MODEL as STAKES_CHOSEN_BY_MODEL
-from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
+from ..action.verification import touches_no_entity
+from ..api.soffitto import (
+    ADMIN_READS_REFUSAL,
+    ADMIN_SERVICES_REFUSAL,
+    NO_ENTITY_SERVICES_REFUSAL,
+    denies,
+)
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import validate
 from ..memory.resolver import STORE_KEY_PER_TYPE
@@ -1249,24 +1255,61 @@ def _json_type_of(value: Any) -> str | None:
     return next((json_type for json_type in _TYPE_WORDS if _has_type(value, json_type)), None)
 
 
-def _reserved_core_service(arguments: dict[str, Any]) -> bool:
-    """La chiamata di `execute` e' un servizio del dominio `homeassistant` che
-    Home Assistant riserva agli amministratori (`privacy.HA_CORE_USER_SERVICES`)?
+def _reserved_core_service(_dispatcher, call: dict[str, Any]) -> bool:
+    """La chiamata e' un servizio del dominio `homeassistant` che Home
+    Assistant riserva agli amministratori (`privacy.HA_CORE_USER_SERVICES`)?
     Il dominio e' universale per la porta (`action/verification.py`) e HIRIS
     chiama col proprio token di amministratore: senza questa domanda chiunque
     chatti riavvierebbe Home Assistant."""
-    domain, _dot, service = str(arguments.get("servizio") or "").partition(".")
+    domain, _dot, service = str(call.get("servizio") or "").partition(".")
     return domain == "homeassistant" and service not in HA_CORE_USER_SERVICES
 
 
-def _asks_admin_reads(arguments: dict[str, Any]) -> bool:
+async def _service_without_entity(dispatcher, call: dict[str, Any]) -> bool:
+    """La chiamata e' un servizio, fuori dal dominio `homeassistant`, che non
+    si rivolge a un'entita' della casa (`verification.touches_no_entity`,
+    Fase S, S.4, scelta del proprietario il 30/10/2026)?
+
+    Lo dice la definizione nel registro dei servizi, scaldato qui
+    (`_ensure_registry_fresh`): un registro freddo non conosce nessun
+    servizio. Un servizio che il registro non conosce non e' riservato QUI:
+    la porta lo rifiuta comunque, con la sua ragione (non esiste, o il
+    registro e' muto). Il dominio `homeassistant` e' di
+    `_reserved_core_service`, e `update_entity`, concesso, non dichiara un
+    `target`."""
+    domain, _dot, service = str(call.get("servizio") or "").partition(".")
+    if domain == "homeassistant":
+        return False
+    await dispatcher._ensure_registry_fresh()
+    registry = dispatcher._registry
+    definition = None if registry is None else registry.service(domain, service)
+    return definition is not None and touches_no_entity(domain, definition)
+
+
+def _on_promised_call(asks: Callable[..., Any]) -> Callable[..., Any]:
+    """La stessa domanda di `execute`, fatta alla `chiamata` di una promessa
+    `fai`. **Il soffitto di chi chiede vale anche per l'azione rimandata**
+    (ruling 2.7 della revisione di sicurezza): lo schedulatore, al risveglio,
+    non ha piu' nessun soffitto da guardare, quindi un servizio che la chat
+    non chiamerebbe adesso non si promette. Fino al 30/10/2026 la promessa
+    chiedeva solo `comandare`, e un `fai` di `homeassistant.restart` nasceva
+    per chiunque potesse comandare."""
+    def asks_on_promised_call(dispatcher, arguments: dict[str, Any]) -> Any:
+        call = arguments.get("chiamata")
+        if arguments.get("specie") != "fai" or not isinstance(call, dict):
+            return False
+        return asks(dispatcher, call)
+    return asks_on_promised_call
+
+
+def _asks_admin_reads(_dispatcher, arguments: dict[str, Any]) -> bool:
     """La chiamata di `history` chiede una `cosa` che Home Assistant mostra ai
     soli amministratori (`privacy.ADMIN_ONLY_HISTORY_KINDS`: esecuzioni ed
     errori, con la fonte in Home Assistant scritta li')?"""
     return arguments.get("cosa") in ADMIN_ONLY_HISTORY_KINDS
 
 
-def _promises_an_action(arguments: dict[str, Any]) -> bool:
+def _promises_an_action(_dispatcher, arguments: dict[str, Any]) -> bool:
     """La promessa e' un `fai`? **Il soffitto di chi chiede vale anche per
     l'azione rimandata** (ruling 2.7 della revisione di sicurezza): chi non
     puo' comandare adesso non puo' farsi eseguire la stessa chiamata fra
@@ -1279,11 +1322,13 @@ def _promises_an_action(arguments: dict[str, Any]) -> bool:
 class Permission:
     """Un gesto del soffitto (`api/soffitto`) che una chiamata richiede.
 
-    `applies`: quando la richiede, dagli argomenti; `None` = sempre.
+    `applies`: quando la richiede; `None` = sempre. Si chiama come `handler`,
+    col dispatcher e gli argomenti, e puo' essere una coroutine: la domanda
+    sui servizi riservati chiede il registro dei servizi, che si scalda.
     `refusal`: la frase del rifiuto; `None` = il `perche` del soffitto, come
     ogni altro rifiuto del soffitto."""
     gesture: str
-    applies: Callable[[dict[str, Any]], bool] | None = None
+    applies: Callable[..., Any] | None = None
     refusal: str | None = None
 
 
@@ -1624,7 +1669,7 @@ class ToolDispatcher:
         bad_arguments = _bad_arguments(name, arguments)
         if bad_arguments is not None:
             return bad_arguments
-        refusal = self._refusal(tool, arguments)
+        refusal = await self._refusal(tool, arguments)
         if refusal is not None:
             return refusal
         # La maschera (`Tool.mask`): il soffitto si chiede QUI, una volta,
@@ -2091,7 +2136,8 @@ class ToolDispatcher:
         Home Assistant il gruppo `system-read-only` -- non comanda; e i
         servizi del dominio `homeassistant` che Home Assistant riserva agli
         amministratori non si chiamano per chi non lo e'
-        (`_reserved_core_service`).
+        (`_reserved_core_service`), come i servizi che non si rivolgono a
+        un'entita' della casa (`_service_without_entity`, Fase S, S.4).
         """
         outcome = await self._actuator.execute(
             arguments, actor=self._actor, subject=self._subject)
@@ -2496,7 +2542,7 @@ class ToolDispatcher:
         persona compresi, e' `soffitto.denies`."""
         return denies(self._soffitto, gesture, self._subject)
 
-    def _refusal(self, tool: Tool, arguments: dict[str, Any]) -> dict | None:
+    async def _refusal(self, tool: Tool, arguments: dict[str, Any]) -> dict | None:
         """Il rifiuto di questa chiamata prima del gestore, o `None`: il filo,
         poi il soffitto, chiesti alla riga (`Tool.needs_thread`,
         `Tool.permissions`). Fino al 05/10/2026 il filo si chiedeva in tre
@@ -2510,10 +2556,18 @@ class ToolDispatcher:
         if tool.needs_thread and self._thread is None:
             return {"errore": _NO_THREAD_REFUSAL}
         for permission in tool.permissions:
-            if permission.applies is not None and not permission.applies(arguments):
+            # Prima il soffitto, poi la domanda sulla chiamata: a chi il gesto
+            # e' concesso la domanda non serve, e quella sui servizi scalda il
+            # registro.
+            if not self._ceiling_denies(permission.gesture):
                 continue
-            if self._ceiling_denies(permission.gesture):
-                return {"errore": permission.refusal or self._soffitto["perche"]}
+            if permission.applies is not None:
+                applies = permission.applies(self, arguments)
+                if inspect.isawaitable(applies):
+                    applies = await applies
+                if not applies:
+                    continue
+            return {"errore": permission.refusal or self._soffitto["perche"]}
         return None
 
     def _seal(self):
@@ -2798,10 +2852,18 @@ TOOLS: tuple[Tool, ...] = (
     Tool(EXECUTE_TOOL_DEF, ToolDispatcher._execute, resources=("porta",),
          permissions=(Permission("comandare"),
                       Permission("amministrare", applies=_reserved_core_service,
-                                 refusal=ADMIN_SERVICES_REFUSAL))),
+                                 refusal=ADMIN_SERVICES_REFUSAL),
+                      Permission("amministrare", applies=_service_without_entity,
+                                 refusal=NO_ENTITY_SERVICES_REFUSAL))),
     Tool(PROMISE_TOOL_DEF, ToolDispatcher._promise, resources=("promesse",),
          needs_thread=True,
-         permissions=(Permission("comandare", applies=_promises_an_action),)),
+         permissions=(Permission("comandare", applies=_promises_an_action),
+                      Permission("amministrare",
+                                 applies=_on_promised_call(_reserved_core_service),
+                                 refusal=ADMIN_SERVICES_REFUSAL),
+                      Permission("amministrare",
+                                 applies=_on_promised_call(_service_without_entity),
+                                 refusal=NO_ENTITY_SERVICES_REFUSAL))),
     Tool(AGENDA_TOOL_DEF, ToolDispatcher._list_agenda, resources=("promesse",),
          needs_thread=True, read_only=True),
     Tool(CANCEL_TOOL_DEF, ToolDispatcher._cancel, resources=("promesse",),

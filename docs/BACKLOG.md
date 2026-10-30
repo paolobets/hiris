@@ -470,7 +470,9 @@ applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi f
 (`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
 `utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
 
-### I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant` — aperta il 27/09/2026
+### ~~I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant`~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+
+`fatta il 30/10/2026 (Fase S, S.4; scelta del proprietario del 30/10: «solo servizi con bersaglio»): a chi non amministra `execute` concede solo i servizi la cui definizione in `/api/services` dichiara un `target`, piu' le notifiche (`action/verification.py::touches_no_entity`, chiesta dalla riga di `execute` in `home_space/tools.py` come `_service_without_entity`, col rifiuto `soffitto.NO_ENTITY_SERVICES_REFUSAL`). Il dominio `homeassistant` resta di `privacy.HA_CORE_USER_SERVICES`. La stessa domanda vale ora per la `chiamata` di una promessa `fai` (`_on_promised_call`): fino a oggi una promessa chiedeva solo `comandare`, e un `fai` di `homeassistant.restart` nasceva per chiunque potesse comandare. Misurato sul sorgente il 30/10/2026: nel nucleo 2026.10.4 nessun servizio registrato con `async_register_admin_service` dichiara un `target`; in Spook v5.11.1 (quello di casa) 14 dei 17 riservati che la porta lasciava passare non lo dichiarano (i `delete` di nove aiutanti, `zone.update`, `zone.delete`, `person.add_device_tracker`, `person.remove_device_tracker`, `sensor.set_display_precision`) e da oggi sono chiusi. Il costo: chi non amministra perde anche i servizi senza `target` che non sono riservati (nel nucleo 2026.10.4, fra gli altri, `shopping_list.*`, `scene.apply`, `scene.create`, `conversation.process`, `logbook.log` e lo `script.<nome>` chiamato direttamente; `script.turn_on` con lo script come bersaglio resta). Lo difende `tests/test_servizi_senza_entita.py`, con le mutazioni eseguite. La nota qui sotto che diceva «quelli senza bersaglio sono gia' irraggiungibili» era falsa: la porta accetta come bersaglio un'entita' dello stesso dominio anche quando il servizio non dichiara un `target`, ed e' cosi' che i 14 passavano`
 
 `origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
 
@@ -487,6 +489,21 @@ da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione)
 per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
 servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
 nessuno raggiungibile con un bersaglio.
+
+### I servizi di Spook riservati agli amministratori che dichiarano un bersaglio — aperta il 30/10/2026
+
+`origine: Fase S, S.4, 30/10/2026 (rischio dichiarato con la scelta del proprietario)` · `hiris/app/action/verification.py::touches_no_entity`
+
+La regola di S.4 chiude i servizi che non si rivolgono a un'entita', perche' Home Assistant non dice
+da nessuna API quali riserva agli amministratori. Tre servizi riservati di Spook v5.11.1 dichiarano
+un `target` e quindi passano ancora per chi non amministra: `input_number.set_range` (cambia minimo
+e massimo), `schedule.set_day` (riscrive un giorno di una programmazione) e `timer.set_duration`
+(cambia una durata). Nessuno cancella niente, e nessuno apre una serratura. Letto nel sorgente di
+Spook al tag `v5.11.1` (b4efa45) il 30/10/2026, sulla versione misurata in casa dallo Sprint lo
+stesso giorno. **Cosa la chiude**: una fonte che dica, servizio per servizio, se Home Assistant lo
+riserva agli amministratori; oppure la decisione di accettare il rischio. Va riletta a ogni
+versione nuova di Spook: sul ramo principale del 27/10 i `create` e `delete` degli aiutanti non
+c'erano piu', e l'elenco cambia.
 
 ### Le persone anonime dell'ingress condividono un filo
 

@@ -140,6 +140,18 @@ ADMIN_SERVICES_REFUSAL = ("questo servizio di Home Assistant è riservato agli "
                           "amministratori (riavviare, fermare, ricaricare la "
                           "configurazione): HIRIS non lo chiama per chi non lo "
                           "è")
+#: Il rifiuto dei servizi che non si rivolgono a un'entità della casa
+#: (`verification.touches_no_entity`): Home Assistant non dice quali riserva
+#: agli amministratori, e fra loro ci sono quelli che cancellano un aiutante o
+#: una zona. La seconda frase è per il modello: lo stesso gesto, quando esiste
+#: su un'entità, si chiede da lì.
+NO_ENTITY_SERVICES_REFUSAL = ("questo servizio non si rivolge a un'entità della "
+                              "casa, e servizi così Home Assistant li riserva "
+                              "spesso agli amministratori senza dirlo: HIRIS "
+                              "lo chiama solo per chi lo è. Se lo stesso gesto "
+                              "esiste su un'entità (per esempio "
+                              "`script.turn_on` con lo script come "
+                              "bersaglio), si può chiedere quello")
 _IGNOTO = ("non ho potuto sapere che ruolo ha questa utenza in Home "
            "Assistant, e finché non lo so leggo soltanto: un guasto nella "
            "lettura non deve diventare un permesso in più")
