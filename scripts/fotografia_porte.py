@@ -491,7 +491,7 @@ async def _ports(app, clock: float) -> dict:
         "nucleo": {"caratteri": len(text), "testo": text, "riepilogo": summary},
         "schede": _cards(home_space, entries, mirror),
         "selezioni": _selections(home_space, entries, mirror, clock),
-        "osservatore": observer.house_lines(House(home_space, mirror)),
+        "osservatore": observer.question_parts("", House(home_space, mirror))[1],
         "ricette": {device["id"]: recipe_turn.device_lines(House(home_space, mirror),
                                                            device["id"])
                     for device in home_space["dispositivi"]},

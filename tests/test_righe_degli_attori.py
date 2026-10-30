@@ -52,7 +52,7 @@ def test_le_righe_degli_attori_si_scrivono_dalla_resa(monkeypatch):
 
     monkeypatch.setattr(render, "render_entity", resa)
     casa = _casa()
-    assert all(" · DALLA RESA" in riga for riga in observer.house_lines(casa))
+    assert all(" · DALLA RESA" in riga for riga in observer.question_parts("", casa)[1])
     assert all(" · DALLA RESA" in riga for riga in recipe_turn.device_lines(casa, "dev_forno"))
 
 
@@ -73,7 +73,7 @@ def test_l_osservatore_legge_la_casa_nell_ordine_dell_albero():
 
     Rossa prima: le righe uscivano nell'ordine dell'anagrafe. Mutazione
     ESEGUITA: `house_lines` senza l'ordine -- rossa."""
-    ordine = [riga.split(" · ")[0] for riga in observer.house_lines(_casa())]
+    ordine = [riga.split(" · ")[0] for riga in observer.question_parts("", _casa())[1]]
     assert ordine == ["light.studio", "sensor.z_cucina", "sensor.b_cucina",
                       "sensor.a_cucina", "sensor.senza_area"]
 
@@ -97,7 +97,7 @@ def test_il_segnaposto_non_porta_ne_area_ne_fonte():
         "person.marco · Marco · Camera di Marco · fonte: non_disponibile")
     for ident in ("person.marco", "device_tracker.telefono_marco"):
         assert render.entity_line(casa, ident, "media", subject="persona_1") == "persona_1"
-    righe = observer.house_lines(casa)
+    righe = observer.question_parts("", casa)[1]
     assert righe and not any("Marco" in riga or "fonte:" in riga for riga in righe), righe
 
 

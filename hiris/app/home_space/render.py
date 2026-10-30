@@ -381,7 +381,7 @@ def entity_line(house: House, entity_id: str, depth: str, *, subject: str | None
     e' un campo della resa media, e la riga lo legge da li'.
 
     `subject` e' il segnaposto di una persona o di un dispositivo che la
-    segue (`observer.presence_handles`): prende il posto dell'id, e la riga
+    segue (`privacy.PresenceMask.handles`): prende il posto dell'id, e la riga
     non porta ne' nome, ne' area, ne' fonte -- il nome di un'area puo' essere
     quello di chi ci dorme."""
     # La fonte che parla non costa una parola. `house` importa `house_query`,

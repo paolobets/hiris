@@ -111,7 +111,7 @@ def _cases(archivio):
     house = _house()
     return {
         "observer": (observer.build_question(
-                         archivio.objective()["testo"], observer.house_lines(house)),
+                         archivio.objective()["testo"], observer.question_parts("", house)[1]),
                      observer.bridge_turn(archivio, house, opening=False),
                      observer.ANSWER_CONTRACT),
         "analyst_turn": (analyst_turn.build_question(_series()),

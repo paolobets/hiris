@@ -87,8 +87,8 @@ def test_cambiata_l_unita_nello_specchio_l_osservatore_la_vede():
     specchio cambiato dopo -- l'osservatore e le ricette vedono l'unita' di
     adesso."""
     before, after = _house("°C"), _house("°F")
-    assert _line(observer.house_lines(before), TERMOMETRO).split(" · ")[3] == "°C"
-    assert _line(observer.house_lines(after), TERMOMETRO).split(" · ")[3] == "°F"
+    assert _line(observer.question_parts("", before)[1], TERMOMETRO).split(" · ")[3] == "°C"
+    assert _line(observer.question_parts("", after)[1], TERMOMETRO).split(" · ")[3] == "°F"
     recipe = _line(recipe_turn.device_lines(after, "dev_a"), TERMOMETRO)
     assert recipe.split(" · ")[2:4] == ["temperature", "°F"]
 

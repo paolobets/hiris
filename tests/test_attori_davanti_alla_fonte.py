@@ -207,7 +207,7 @@ async def test_senza_anagrafe_la_rotta_non_inventa_fonti(store, home_space_store
 def test_la_riga_di_un_entita_che_tace_dice_perche():
     """Una sparita e' ancora nell'anagrafe -- e quindi fra quelle che
     l'osservatore giudica -- ma tace: il modello lo legge sulla sua riga."""
-    lines = {line.split(" · ", 1)[0]: line for line in observer.house_lines(_house())}
+    lines = {line.split(" · ", 1)[0]: line for line in observer.question_parts("", _house())[1]}
     assert "fonte: sparita" in lines["light.sparita"]
     assert "fonte: non_disponibile" in lines["light.irraggiungibile"]
     assert "fonte" not in lines["light.viva"], "una fonte viva non costa una parola"

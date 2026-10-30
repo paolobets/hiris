@@ -198,7 +198,7 @@ class House:
         quella del dispositivo: la regola di Home Assistant -- e che sa gia'
         dire «Dispositivi non letti» o «Aree non lette» quando un registro non
         ha risposto. Rifare qui quelle cause sarebbe una seconda copia della
-        regola, la stessa che `observer.house_lines` ha (legge il solo
+        regola, la stessa che `observer.question_parts` ha (legge il solo
         `area_id` proprio: 194 entita' guardate su 324 senza area, cattura del
         01/10/2026) e che il Task 12 toglie.
 

@@ -51,6 +51,7 @@ from types import MappingProxyType
 
 from ..home_space.ha_vocabulary import RESTORED_ATTRIBUTE
 from ..home_space.house import House
+from ..home_space.privacy import PLACEHOLDER_HINT, PresenceMask
 from ..home_space.render import entity_line
 from ..home_space.type_judgments import DECLINED_FIELD, RECIPE_FIELD, UNDERSTOOD_FIELD
 from ..steering import RECIPES_SPECIES, SPECIES, chain_answer, chain_turn, read_json
@@ -250,7 +251,7 @@ def build_device_question_body(objective: str, house: House, device_id: str,
     erano **18 rifiuti su 28**.
 
     Il fatto si dice **una volta, a parte**, e non dentro la riga
-    dell'entita': quella riga e' la stessa di `observer.house_lines`
+    dell'entita': quella riga e' la stessa di `observer.question_parts`
     (`device_lines` qui sopra), e due forme della stessa riga sarebbero due
     verita' libere di divergere.
 
@@ -272,7 +273,7 @@ def build_device_question_body(objective: str, house: House, device_id: str,
     # Il nome, altrimenti l'id (`House.name`); l'id anche per un dispositivo
     # che l'anagrafe non conosce.
     name = house.name("dispositivo", device_id) or device_id
-    return (
+    question = (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Il dispositivo si chiama «{name}» e ha "
         f"{len(lines)} entita'. Ogni riga e':\n"
@@ -285,6 +286,17 @@ def build_device_question_body(objective: str, house: House, device_id: str,
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
     )
+    # **I nomi delle persone escono coperti, ovunque compaiano** (Fase S,
+    # S.8, scelta del proprietario del 30/10/2026): la maschera degli altri
+    # attori (`privacy.PresenceMask`), sulla domanda intera -- il nome del
+    # dispositivo, le righe, la dashboard. Misurato dallo Sprint il
+    # 30/10/2026: sui dispositivi che avrebbero una domanda il nome di una
+    # persona compariva dentro gli id 56 volte, anche nella frase «Il
+    # dispositivo si chiama ...». La risposta torna agli id veri in
+    # `apply_recipe`.
+    presence = PresenceMask(house)
+    covered = presence.mask(question)
+    return covered if covered == question else PLACEHOLDER_HINT + covered
 
 
 def _series_block(house: House, device_id: str,
@@ -492,6 +504,10 @@ def apply_recipe(store, house: House, device_id: str, answer: str, *,
         return {"scritta": False, "problemi": ["il modello non ha risposto"],
                 "risposta": False}
     entities = set(house.entities_of(device_id)) - set(repairing or ())
+    # La domanda portava i segnaposto dei nomi (`build_device_question_body`):
+    # la ricetta li nomina, e tornano agli id veri prima di ogni controllo.
+    # La maschera si rifa' dalla casa di adesso, come fa l'osservatore.
+    answer = PresenceMask(house).unmask(str(answer))
     # **Il JSON lo cava il lettore unico** (`steering.read_json`, D-11): la
     # staccionata e il testo intorno si tollerano, e un turno troncato non si
     # legge (D2). Il troncato finisce nel «non capito» con la SUA ragione: e'

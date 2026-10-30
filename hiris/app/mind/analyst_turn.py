@@ -48,6 +48,7 @@ import logging
 import time
 
 from ..home_space.ha_vocabulary import is_entity_id
+from ..home_space.privacy import PLACEHOLDER_HINT
 from ..home_space.reader import HOME_SPACE_KEY
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
 from ..proxy.ha_client import HA_CLIENT_KEY
@@ -488,7 +489,12 @@ def build_question_body(series: dict, previous: list[dict] | None = None, *,
         lines.append("")
     lines.extend(refused_lines(refused))
     question = "\n".join(lines)
-    return presence.mask(question) if presence is not None else question
+    if presence is None:
+        return question
+    # Il segnaposto si spiega quando c'e' (`privacy.PLACEHOLDER_HINT`, la
+    # stessa frase dell'osservatore e delle ricette; Fase S, S.8).
+    covered = presence.mask(question)
+    return covered if covered == question else PLACEHOLDER_HINT + covered
 
 
 def _objective_lines(runs: list[dict], days: list[str]) -> list[str]:

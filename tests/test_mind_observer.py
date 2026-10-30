@@ -96,7 +96,7 @@ def test_le_entita_di_servizio_le_nascoste_e_le_disabilitate_restano_fuori():
 
     Mutazione che la uccide: iterare `casa["entita"]` senza filtro.
     """
-    righe = observer.house_lines(_casa())
+    righe = observer.question_parts("", _casa())[1]
 
     testo = "\n".join(righe)
     assert "climate.camera_t" in testo
@@ -129,7 +129,7 @@ def test_la_regola_e_QUELLA_DELLA_CASA_non_una_seconda_uguale(monkeypatch):
                         lambda e: () if e["id"] == "sensor.wifi_signal"
                         else (("servizio", "finta"),))
 
-    righe = observer.house_lines(_casa())
+    righe = observer.question_parts("", _casa())[1]
 
     assert [r.split(" · ")[0] for r in righe] == ["sensor.wifi_signal"]
 
@@ -145,7 +145,8 @@ def test_ogni_riga_porta_cio_che_serve_a_giudicare_e_nient_altro():
     `dispositivo_id` sono identificatori opachi che non aiutano nessun giudizio
     e costano token su 381 righe.
     """
-    riga = next(r for r in observer.house_lines(_casa()) if r.startswith("sensor.presa_energia"))
+    riga = next(r for r in observer.question_parts("", _casa())[1]
+                if r.startswith("sensor.presa_energia"))
 
     assert "Presa Energia" in riga
     assert "energy" in riga
@@ -162,7 +163,7 @@ def test_un_area_senza_nome_non_diventa_un_identificatore_nudo():
     casa = _casa()
     casa.home_space["entita"][0]["area_id"] = "01K2CK4GG287VKK18M5J788MRQ"
 
-    riga = next(r for r in observer.house_lines(casa) if r.startswith("climate.camera_t"))
+    riga = next(r for r in observer.question_parts("", casa)[1] if r.startswith("climate.camera_t"))
 
     assert "01K2CK" not in riga
     assert riga == "climate.camera_t · Termostato Camera"
@@ -174,7 +175,7 @@ def test_la_domanda_porta_l_obiettivo_e_la_casa():
     """Lo scope e' una risposta a una domanda: senza l'obiettivo davanti, il
     modello deciderebbe rispetto a un criterio suo."""
     domanda = observer.build_question("tenere la casa calda e spendere poco",
-                                      observer.house_lines(_casa()))
+                                      observer.question_parts("", _casa())[1])
 
     assert "tenere la casa calda e spendere poco" in domanda
     assert "climate.camera_t" in domanda
@@ -501,7 +502,7 @@ def test_il_turno_del_ponte_porta_il_CONTRATTO_di_risposta(archivio):
 
 def test_si_chiede_SOLO_del_lotto_quando_glielo_si_dice(archivio):
     """Mutazione che la uccide: ignorare `only` e comporre su tutta la casa."""
-    righe = observer.house_lines(_casa(), only={"climate.camera_t"})
+    righe = observer.question_parts("", _casa(), only={"climate.camera_t"})[1]
 
     assert [r.split(" · ")[0] for r in righe] == ["climate.camera_t"]
 
@@ -514,7 +515,7 @@ def test_il_lotto_non_puo_far_entrare_cio_che_NON_compete_all_osservatore(archiv
     Mutazione che la uccide: filtrare su `only` invece che intersecare con la
     regola del nucleo.
     """
-    righe = observer.house_lines(_casa(), only={"sensor.wifi_signal"})
+    righe = observer.question_parts("", _casa(), only={"sensor.wifi_signal"})[1]
 
     assert righe == []
 
