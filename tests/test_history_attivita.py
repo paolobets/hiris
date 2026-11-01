@@ -138,7 +138,7 @@ def _p(quando, azione):
 
 def _conto(punti, **argomenti):
     query = _q(riferimento=_TERMOSTATO, **argomenti)
-    return hh.work_summary(punti, query)
+    return hh.work_summaries({_TERMOSTATO: punti}, query)[_TERMOSTATO]
 
 
 def test_un_ciclo_dice_quando_e_quanto():
@@ -280,6 +280,35 @@ def _righe(idents, serie, **argomenti):
     return hh.state_rows(query, chosen, serie, truncated=False, acts=[],
                          house=_casa_viva(casa, stati))
 
+
+
+def _cicli(primo_minuto, quanti):
+    """`quanti` accensioni di trenta secondi, una al minuto dal minuto dato."""
+    punti = [_p(_INIZIO, "idle")]
+    for minuto in range(primo_minuto, primo_minuto + quanti):
+        punti += [_p(f"2026-09-29T{minuto // 60:02d}:{minuto % 60:02d}:00+00:00", "heating"),
+                  _p(f"2026-09-29T{minuto // 60:02d}:{minuto % 60:02d}:30+00:00", "idle")]
+    return punti
+
+
+def test_i_periodi_hanno_il_tetto_di_una_risposta_in_tutto():
+    """R234-1 (giro 234): `ROWS_MAX` vale per la risposta intera, non per
+    soggetto (spec 2026-09-29 §2.3, «in tutto»). Otto termostati con
+    `ROWS_MAX` periodi l'uno, sfalsati: restano i `ROWS_MAX` piu' recenti fra
+    tutti, e chi resta senza li conta in `periodi_omessi`.
+
+    Mutazione ESEGUITA: il tetto per soggetto (`periods[-ROWS_MAX:]`) --
+    rossa."""
+    termostati = [f"climate.stanza_{n}" for n in range(8)]
+    serie = {ident: _cicli(n * ROWS_MAX, ROWS_MAX) for n, ident in enumerate(termostati)}
+    uscita = _righe(termostati, serie, dominio="climate")["attivita"]
+    tenuti = {ident: len(uscita[ident]["periodi"]) for ident in termostati}
+    assert sum(tenuti.values()) == ROWS_MAX
+    # I piu' recenti fra tutti: l'ultimo termostato, che ha i minuti piu' tardi.
+    assert tenuti[termostati[-1]] == ROWS_MAX
+    for ident in termostati[:-1]:
+        assert uscita[ident]["periodi_omessi"] == ROWS_MAX, ident
+        assert uscita[ident]["accensioni"] == ROWS_MAX, ident
 
 _SERIE = [_p(_INIZIO, "idle"), _p("2026-09-29T08:00:00+00:00", "heating"),
           _p("2026-09-29T08:30:00+00:00", "idle")]

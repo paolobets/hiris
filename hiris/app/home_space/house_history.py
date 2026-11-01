@@ -560,35 +560,54 @@ def _period_out(period: dict, zone) -> dict:
     return row
 
 
-def work_summary(points: list[dict], query: HistoryQuery, *, brief: bool = False) -> dict:
-    """Quando un'entita' ha lavorato nella finestra: accensioni e minuti, da
-    tutta la serie, piu' i periodi (nessuno in `brief`). I periodi di un
-    soggetto si fermano a `ROWS_MAX`, i piu' recenti: il tetto delle righe di
-    una risposta della casa (spec 2026-09-29 §2.3), non un tetto loro. Il
-    01/11/2026 Paolo ha chiesto di togliere i 20 «scelti, non misurati» con
-    cui il lavoro era nato (niente soglie nostre). Gli altri si contano in
-    `periodi_omessi`; come si legge `attivita` lo dice la legenda
-    (`legend.READINGS`). I conti sono qui e non nel modello: da 7.000 righe
-    un modello non conta.
+def work_summaries(series: dict[str, list[dict]], query: HistoryQuery, *,
+                   brief: bool = False) -> dict[str, dict]:
+    """Quando ogni entita' ha lavorato nella finestra: accensioni e minuti, da
+    tutta la sua serie, piu' i periodi (nessuno in `brief`).
+
+    **I periodi si fermano a `ROWS_MAX` in tutta la risposta**, i piu'
+    recenti fra tutti i soggetti: il tetto delle righe di una risposta della
+    casa (spec 2026-09-29 §2.3, «in tutto»), come il dettaglio di un'area
+    (`queries`), non un tetto loro. Il 01/11/2026 Paolo ha chiesto di
+    togliere i 20 per soggetto, «scelti, non misurati», con cui il lavoro era
+    nato (niente soglie nostre); e il revisore (R234-1, giro 234) ha misurato
+    che `ROWS_MAX` per soggetto, con otto termostati, sfonda il tetto dei
+    caratteri e fa scendere la risposta in corta, senza nessun periodo. Gli
+    omessi si contano per soggetto in `periodi_omessi`; come si legge
+    `attivita` lo dice la legenda (`legend.READINGS`). I conti sono qui e non
+    nel modello: da 7.000 righe un modello non conta.
 
     Chi non porta mai l'azione non ha «zero accensioni»: non la dichiara, e
     dirlo e' l'unica cosa vera (`hvac_action` e' facoltativo in Home
     Assistant)."""
-    if not any(point.get("attributo") for point in points):
-        return {"azione_non_dichiarata": True}
     zone = query.start.tzinfo
-    start_ts = query.start.timestamp()
-    periods, last = _work_periods(points, start_ts, query.end.timestamp())
-    out = {"accensioni": sum(not period["gia_attivo"] for period in periods),
-           "minuti": round(sum(_minutes(period) for period in periods), 1),
-           "ultima_azione": last}
-    born = _born_since(points, "quando", start_ts, _DETAIL_SLACK_S)
-    if born is not None:
-        out["dal"] = instant_out(born, zone)
-    if not brief:
-        out["periodi"] = [_period_out(p, zone) for p in periods[-ROWS_MAX:]]
-        if len(periods) > ROWS_MAX:
-            out["periodi_omessi"] = len(periods) - ROWS_MAX
+    start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
+    out: dict[str, dict] = {}
+    found: dict[str, list[dict]] = {}
+    for ident, points in series.items():
+        if not any(point.get("attributo") for point in points):
+            out[ident] = {"azione_non_dichiarata": True}
+            continue
+        periods, last = _work_periods(points, start_ts, end_ts)
+        row = {"accensioni": sum(not period["gia_attivo"] for period in periods),
+               "minuti": round(sum(_minutes(period) for period in periods), 1),
+               "ultima_azione": last}
+        born = _born_since(points, "quando", start_ts, _DETAIL_SLACK_S)
+        if born is not None:
+            row["dal"] = instant_out(born, zone)
+        out[ident] = row
+        found[ident] = periods
+    if brief:
+        return out
+    newest = sorted(((period["inizio"], ident, index)
+                     for ident, periods in found.items()
+                     for index, period in enumerate(periods)), reverse=True)
+    kept = {(ident, index) for _, ident, index in newest[:ROWS_MAX]}
+    for ident, periods in found.items():
+        mine = [period for index, period in enumerate(periods) if (ident, index) in kept]
+        out[ident]["periodi"] = [_period_out(period, zone) for period in mine]
+        if len(mine) < len(periods):
+            out[ident]["periodi_omessi"] = len(periods) - len(mine)
     return out
 
 
@@ -650,9 +669,9 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         out["oltre"] = beyond
     _declare_gaps(out, shown, series, truncated=truncated, query=query)
     # Chi lavora senza cambiare stato: nessuna riga sopra lo mostrerebbe.
-    activity = {ident: work_summary(series[ident], query, brief=chosen.depth == "corta")
-                for ident in shown
-                if series.get(ident) and "attributo" in series[ident][0]}
+    activity = work_summaries({ident: series[ident] for ident in shown
+                               if series.get(ident) and "attributo" in series[ident][0]},
+                              query, brief=chosen.depth == "corta")
     if activity:
         out["attivita"] = activity
     return out
