@@ -1,5 +1,81 @@
 # HIRIS — Changelog
 
+## [3.83.0] — Il Brain si legge, e ognuno ha la sua parte di HIRIS (2026-11-01)
+
+### Perché
+
+La pagina dell'osservatore diceva molto e si capiva poco: adesso si chiama Brain e si legge. Le
+persone che usano HIRIS senza amministrarlo prima vedevano troppo, oppure niente. Adesso ognuno ha
+i suoi ricordi e i suoi limiti, e i nomi delle persone non arrivano più ai modelli.
+
+### Added
+
+- **La pagina Brain.** Prende il posto della pagina dell'osservatore, sulla rotta `#/brain`; i vecchi
+  indirizzi (`#/osservatore`, `#/watcher`) portano lì. Le schede sono quattro, e la quarta si chiama
+  «Come lavoro». Sotto il titolo c'è scritto «Non tocca la casa senza il tuo sì.»
+  - **Il giorno.** Le misure che non si sono potute calcolare si raggruppano per causa, e i nomi
+    stanno dietro «Dettaglio».
+  - **Cosa fare.** La domanda («Perché l'ho guardata») e la risposta («Si spiega con», oppure
+    «Non so ancora spiegarlo») hanno una riga ciascuna, e il resto sta dietro «Tutta la
+    spiegazione». Accanto ci sono lo stato di adesso, con l'ora in cui è stato letto, e la novità.
+  - **Come lavoro.** Ogni tentativo dice quante decisioni ha preso, su quante entità e da quale
+    porta.
+  - **Sapere.** «Da sapere subito» si corregge dalla pagina: sì, no, o un elenco di stati.
+- **Ognuno legge i suoi ricordi.** Chi non amministra vede e usa solo ciò che ha detto lui: nella
+  chat, nelle promesse e nella pagina Memoria. Un giro del Brain li legge tutti, e un turno che non
+  dice chi è non ne legge nessuno.
+- **La Memoria nella barra della chat**, per tutti, dopo gli Impegni. Chi non amministra la trova
+  col titolo «I tuoi ricordi», chi amministra con «Ciò che le persone hanno detto a HIRIS».
+- **Un tetto di turni al giorno per chi non amministra**, nelle Impostazioni della chat. Di fabbrica
+  vale 0, cioè spento. Quando si raggiunge, la chat lo dice, e una promessa che deve chiedere si
+  ferma spiegando perché. I turni delle promesse contano per chi le ha chieste.
+
+### Changed
+
+- **Chi non amministra comanda solo i servizi che hanno un bersaglio**, più le notifiche. Home
+  Assistant non dice da nessuna parte quali servizi riserva agli amministratori, e HIRIS lo chiama
+  col proprio token di amministratore. Per questo vale una regola: un servizio passa solo se la sua
+  definizione dichiara un `target`. La stessa regola vale per la chiamata di una promessa «fai».
+  Misurato sul sorgente il 30/10/2026: nel nucleo di Home Assistant 2026.10.4 nessun servizio
+  riservato dichiara un `target`. In Spook v5.11.1 se ne chiudono 14 dei 17 che prima passavano;
+  i 3 con `target` restano, e sono scritti nel BACKLOG.
+- **I nomi delle persone escono coperti, ovunque compaiano.** Prima l'osservatore li copriva solo
+  nelle righe delle presenze, e le ricette non li coprivano per niente. Adesso osservatore, ricette
+  e analista coprono la domanda intera con la stessa maschera, e la risposta torna agli id veri
+  prima di ogni controllo.
+- **Le pagine si aprono già con i permessi giusti.** Cosa una persona può configurare o costruire
+  lo dice il server nella pagina stessa. Prima il browser lo ricordava da una volta all'altra, una
+  volta per browser e non per persona, e la pagina di configurazione si rimontava in ritardo.
+- **Le risposte degli strumenti della chat dicono come si leggono.** La legenda accompagna solo le
+  chiavi che compaiono davvero, ed è la stessa per la chat e per i giri del Brain. Le regole di
+  `execute` stanno in un posto solo; prima due copie si contraddicevano sul caso «niente è
+  cambiato».
+- **Il nucleo della casa è più corto.** Esce «Cosa si può chiedere alle cose di casa», perché le
+  capacità le dà già la ricerca nel dettaglio. Le pseudo-aree dicono il loro totale e come
+  chiederle.
+- Le frasi delle ricette hanno gli accenti veri. I pulsanti della pagina Brain, sul telefono, sono
+  grandi 44 px.
+
+### Removed
+
+- **La pulizia totale.** Escono l'opzione `pulizia_totale` della pagina dell'add-on e il codice che
+  la faceva. La pulizia in casa è stata fatta il 28/10/2026.
+
+### Da sapere
+
+- La cartella `/data/accantonati-2026-10-23/` con le copie **resta**. HIRIS non la cancella finché
+  non decidi tu.
+- Il tetto di turni è spento finché non gli dai un numero.
+
+### Per chi sviluppa
+
+- Le parole del ripiego dal ponte alla catena («manca il token», «scadenza», «tetto giornaliero»)
+  sono scritte una volta sola. Una prova verifica che ogni chiave di `_DOWNGRADE_REASONS` compaia
+  come letterale una volta sola nel prodotto.
+- Un cancello verifica che nessuna frase del contesto fisso stia in due posti.
+- L'avviso sul vocabolario delle classi passa a `verifica_componenti.py`, che al rilascio legge la
+  versione della casa e avvisa senza bloccare.
+
 ## [3.82.0] — Una pulizia per ripartire, e risposte più giuste sulla casa (2026-10-25)
 
 ### Perché
