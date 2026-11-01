@@ -50,6 +50,15 @@ READINGS: dict[str | tuple[str, str], str] = {
               "proporla di tua iniziativa; se la domanda la riguarda, usala e dillo"),
     "nulla_riconosciuto": ("nessun nome combacia: MAI «la cosa non esiste» -- segui il "
                            "`suggerimento`"),
+    "attivita": ("conti di HIRIS sul comando del termostato di quella stanza: non "
+                 "dicono la caldaia ne' il calore arrivato. `gia_attivo`: partito "
+                 "prima della finestra, non conta fra le `accensioni`. "
+                 "`ancora_attivo`: non finito alla fine della finestra. "
+                 "`inizio_incerto`/`fine_incerta`: caduti in un buco del dato, come "
+                 "un riavvio. `azione_non_dichiarata`: questo termostato non la "
+                 "espone, che non vuol dire che non si e' acceso. `periodi`: i piu' "
+                 "recenti, gli altri contati in `periodi_omessi`; nella corta solo i "
+                 "totali"),
     "stato_non_letto": ("gli stati non si sono potuti leggere: uno `stato` vuoto non dice "
                         "niente della casa"),
 }

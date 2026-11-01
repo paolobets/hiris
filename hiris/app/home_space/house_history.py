@@ -500,16 +500,8 @@ def _activity(tie: str, epoch: float | None) -> tuple:
 #: contano comunque tutti. La casa vera ne fa 6 in una settimana: scelto, non
 #: misurato, per fermare un termostato che batte ogni pochi minuti.
 WORK_PERIODS_MAX = 20
-#: Viaggia con la risposta e non nella descrizione dello strumento: il catalogo
-#: si paga a ogni giro, questa frase solo quando c'e' un termostato da leggere.
-_WORK_NOTE = (
-    "conti di HIRIS sul comando del termostato di quella stanza: non dicono la "
-    "caldaia ne' il calore arrivato. `gia_attivo`: partito prima della finestra, "
-    "non conta fra le `accensioni`. `ancora_attivo`: non finito alla fine della "
-    "finestra. `inizio_incerto`/`fine_incerta`: caduti in un buco del dato, come "
-    "un riavvio. `azione_non_dichiarata`: questo termostato non la espone, che non "
-    f"vuol dire che non si e' acceso. `periodi`: gli ultimi {WORK_PERIODS_MAX}, gli "
-    "altri contati in `periodi_omessi`; nella corta solo i totali")
+#: Come si legge `attivita` lo dice la legenda della risposta
+#: (`legend.READINGS`), solo quando c'e' un termostato da leggere.
 
 
 def _work_periods(points: list[dict], start_ts: float,
@@ -664,7 +656,6 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
                 if series.get(ident) and "attributo" in series[ident][0]}
     if activity:
         out["attivita"] = activity
-        out["attivita_nota"] = _WORK_NOTE
     return out
 
 

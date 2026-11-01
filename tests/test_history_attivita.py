@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from hiris.app.home_space import house_history as hh
-from hiris.app.home_space.tools import HISTORY_TOOL_DEF
+from hiris.app.home_space.legend import legend
 from hiris.app.home_space.type_judgments import WORK_ATTRIBUTES
 from hiris.app.mind import seed
 from hiris.app.proxy.ha_client import MAX_HISTORY_POINTS
@@ -341,10 +341,14 @@ def test_chi_legge_l_attivita_sa_cosa_e_e_cosa_non_e():
     perche' il catalogo si paga a ogni giro e la sua soglia non sale
     (`tests/test_catalogo_strumenti.py`).
 
-    Mutazione ESEGUITA: senza `attivita_nota` nella risposta -- rossa."""
-    assert "`attivita`" in HISTORY_TOOL_DEF["description"]
+    Dalla Fase 2 la frase sta nella legenda (`legend.READINGS`), che la mette
+    nella risposta solo quando `attivita` esce: la descrizione di `history` non
+    la ripete (`tests/test_legenda.py`)."""
     uscita = _righe([_TERMOSTATO], {_TERMOSTATO: _SERIE}, dominio="climate")
+    nota = legend(uscita)["attivita"]
     for chiave in ("gia_attivo", "ancora_attivo", "fine_incerta", "periodi_omessi",
                    "azione_non_dichiarata"):
-        assert f"`{chiave}`" in uscita["attivita_nota"], chiave
-    assert "caldaia" in uscita["attivita_nota"]
+        assert f"`{chiave}`" in nota, chiave
+    assert "caldaia" in nota
+    assert "attivita" not in legend(_righe([_TERMOSTATO], {_TERMOSTATO: []},
+                                           dominio="climate"))
