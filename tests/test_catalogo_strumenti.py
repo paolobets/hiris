@@ -97,7 +97,7 @@ _SOURCE = Path(tools.__file__).read_text(encoding="utf-8")
 # `history` dice che per gli errori puo' essere una libreria; per non salire,
 # la stessa descrizione non dice piu' «sola» della chiamata ne' «di Home
 # Assistant» del riavvio. Misurato: 29.138.
-CATALOG_CAP = 29135
+CATALOG_CAP = 29138
 
 
 def catalog_chars(definitions) -> int:
