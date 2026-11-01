@@ -259,6 +259,9 @@ options:
   # `debug_expose_port`. Le prime dodici sono DECISIONI, e si prendono dove si
   # vedono; `history_retention_days` sta in «Impostazioni chat»; e
   # `debug_expose_port` non decideva niente affatto.
+  # 3.83.0: esce `pulizia_totale` -- la pulizia totale del 23/10/2026 era
+  # codice a scadenza, ed e' stata fatta in casa il 28/10 (BACKLOG, «Si
+  # riparte puliti», punto 6).
 
 schema:
   # ── 1. Le credenziali dei provider ────────────────────────────────────────

@@ -84,7 +84,60 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      le riprese e dichiara il turno troncato (Tappa 8, Task 11). Se la CLI
 #      cambia forma, il ponte torna a chiamare «riuscito» la coda di una
 #      risposta. Ultima misura dal vivo: 2.1.300, 15/10/2026 (P7). Sui finti
-#      della nuvola: 2.1.308, 22/10/2026 (la voce qui sotto).
+#      della nuvola: 2.1.316, 01/11/2026 (la voce qui sotto).
+# 1 novembre 2026 — alzata da 2.1.308 a **2.1.316**, per scelta del
+# proprietario prima di pubblicare la 3.83.0 («Aggiorna la cli»). `npm view`
+# dava 2.1.309, .310, .311, .312, .314, .315 e .316 (31/10/2026 alle 00:42
+# UTC), l'ultima pubblicata; la 2.1.313 non e' stata pubblicata.
+#
+# Letto il CHANGELOG ufficiale della CLI (github.com/anthropics/claude-code,
+# CHANGELOG.md, il 01/11/2026), dalla 2.1.309 alla 2.1.316. Le righe che
+# nominano `-p` o cio' che il ponte usa:
+#   - 2.1.314: `claude -p` che non riesce a partire non esce piu' con 0 e
+#     niente in uscita: stampa l'errore ed esce con 1 (per `agent/runner` e'
+#     l'esito «rc diverso da 0», non piu' un turno vuoto);
+#   - 2.1.311: `claude -p` e le sessioni SDK non salvano piu' i messaggi del
+#     transcript fuori ordine;
+#   - 2.1.311: `stream-json` scrive i caratteri di controllo DEL, C1 e di
+#     formato Unicode dentro le stringhe come `\uXXXX`; i valori letti da un
+#     parser JSON non cambiano;
+#   - 2.1.310: una chiamata MCP che scade in una sessione non interattiva
+#     mentre il server aspetta una risposta dice a Claude di non ripeterla
+#     (`/api/mcp` non chiede risposte);
+#   - 2.1.309: le scritture automatiche non possono piu' cambiare il file
+#     passato con `--mcp-config`; un server MCP spento non si riconnette con
+#     una richiesta di permesso nelle sessioni `-p`;
+#   - 2.1.314: dietro un gateway che rifiuta i blocchi `tool_reference` della
+#     ricerca degli strumenti la richiesta si rimanda una volta senza (il
+#     ponte non imposta `ANTHROPIC_BASE_URL`).
+# Nessuna riga cambia l'evento `system/init`, `--mcp-config` come lo passa il
+# ponte o la ripresa al tetto di token.
+# Misurato il 01/11/2026 nel contenitore della nuvola (argv di produzione,
+# `chiusura/fm-cattura` con il finto che risponde `max_tokens` per i casi del
+# tetto), sulla 2.1.308 e sulla 2.1.316:
+#   - stesso `init` (il server `hiris` `connected`, dodici strumenti, tutti
+#     `mcp__hiris__`), con una chiave in piu' sulla 2.1.316,
+#     `ultrathink_available`; nell'evento `result` una chiave in piu',
+#     `model_usage_since_last_result`. `agent/runner` non legge nessuna delle
+#     due;
+#   - stesso prompt di sistema di 5.779 caratteri, gli stessi dodici
+#     strumenti di HIRIS con gli schemi interi, `max_tokens` 128000, una
+#     chiamata a `mcp__hiris__search` arrivata al server; nella richiesta
+#     all'API cambiano l'intestazione di fatturazione, la cartella temporanea
+#     e il blocco dell'ambiente («Shell: unknown» diventa «Shell: bash», 903
+#     caratteri contro 849);
+#   - la ripresa al tetto: un evento `user` con `isSynthetic: true` per ogni
+#     ripresa; una ripresa e rc 0, oppure tre e rc 1, `is_error` vero,
+#     `terminal_reason` `api_error`, `num_turns` 4, sulle due versioni.
+#     Letti da `agent/runner.read_stream`, i due stream contano 1 e 3
+#     riprese, e i due di controllo 0;
+#   - lo stdout di un turno senza strumenti: 4.520 byte sulla 2.1.308, 5.085
+#     sulla 2.1.316; con una chiamata 5.642 e 6.212.
+# Il passo 5 dal vivo, con il modello vero, resta da fare dal PC.
+#
+# **Ripiego dichiarato: la 2.1.283**, l'ultima LETTA dentro il container
+# (28/09/2026), finche' il passo 4 non legge la 2.1.316 da `GET /api/health`.
+#
 # 22 ottobre 2026 — alzata da 2.1.306 a **2.1.308**, per scelta del
 # proprietario prima di pubblicare la 3.81.0 («aggiorna la cli»).
 # `npm view` dava la 2.1.307 (21/10/2026 alle 20:47 UTC) e la 2.1.308
@@ -554,7 +607,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.308 \
+    && npm install -g @anthropic-ai/claude-code@2.1.316 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \

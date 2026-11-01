@@ -61,6 +61,14 @@ i suoi ricordi e i suoi limiti, e i nomi delle persone non arrivano più ai mode
 - **La pulizia totale.** Escono l'opzione `pulizia_totale` della pagina dell'add-on e il codice che
   la faceva. La pulizia in casa è stata fatta il 28/10/2026.
 
+### Componenti
+
+- CLI del ponte **2.1.316** (dalla 2.1.308), per scelta di Paolo del 01/11/2026.
+  - Letto il CHANGELOG ufficiale dalla 2.1.309 alla 2.1.316 (la 2.1.313 non è uscita). Nessuna voce cambia l'evento `system/init`, `--mcp-config` come lo passa il ponte o la ripresa al tetto.
+  - Dalla 2.1.314, `claude -p` che non riesce a partire esce con 1 e dice l'errore, invece di uscire con 0 senza niente.
+  - Dalla 2.1.311, `stream-json` scrive alcuni caratteri di controllo come `\uXXXX`: per chi legge il JSON i valori non cambiano.
+  - Misurata sui finti nella nuvola il 01/11/2026, accanto alla 2.1.308: stesso server `hiris` connesso con dodici strumenti, la stessa richiesta al modello a parte il blocco dell'ambiente, la stessa ripresa al tetto letta dal ponte. La prova col modello vero si fa dal PC dopo il rilascio.
+
 ### Da sapere
 
 - La cartella `/data/accantonati-2026-10-23/` con le copie **resta**. HIRIS non la cancella finché
