@@ -961,7 +961,7 @@ HISTORY_TOOL_DEF = {
         "Cio' che e' successo in casa nel tempo: gli stati, i valori, le "
         "esecuzioni di automazioni e script, il registro degli errori di Home "
         "Assistant. Una chiamata "
-        "anche per piu' cose insieme: DI CHI con gli stessi filtri di "
+        "per piu' cose insieme: DI CHI con gli stessi filtri di "
         "`search`, QUANDO con `ore` oppure con `da`/`a` -- non entrambi. "
         "`cosa`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
         "nel tempo; `esecuzioni` le partenze di automazioni e script; `errori` "

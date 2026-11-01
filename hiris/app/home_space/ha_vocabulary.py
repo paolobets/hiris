@@ -112,6 +112,10 @@ import re
 #
 # NON e' la regola di Home Assistant (`core.valid_entity_id` vieta anche i
 # `__` e il `_` ai bordi): e' la guardia di HIRIS, la stessa di prima.
+#: Le azioni di `HVACAction` in cui un termostato NON sta lavorando: tutte le
+#: altre lo sono, dal caldo allo sbrinamento.
+HVAC_RESTING_ACTIONS = frozenset({"idle", "off"})
+
 ENTITY_ID_SHAPE = re.compile(r"[a-z][a-z0-9_]*\.[a-z0-9_]+")
 
 

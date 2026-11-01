@@ -452,6 +452,15 @@ def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
     return chunks
 
 
+def _attribute_value(entry: dict, attribute: str) -> str | None:
+    """L'attributo di una riga dello storico, sigillato come il suo stato:
+    `None` se la riga non lo porta (`unavailable`, `unknown`) o se non e' un
+    testo."""
+    attributes = entry.get("attributes")
+    value = attributes.get(attribute) if isinstance(attributes, dict) else None
+    return sanitize_ha_value(value) if isinstance(value, str) and value else None
+
+
 def _identifiers(raw) -> list[str]:
     """Un insieme di identificatori di Home Assistant, letto come una lista.
 
@@ -1274,7 +1283,8 @@ class HAClient:
         return dashboards, unavailable
 
     @cost(rest=1)
-    async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
+    async def history(self, entities: list[str], from_iso: str, to_iso: str, *,
+                      with_attribute: dict[str, str] | None = None) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
         GET /api/history/period/<da>, A PEZZI (`_history_chunks`), uniti.
 
@@ -1324,6 +1334,19 @@ class HAClient:
         porta `entity_id`, gli altri no -- e questo metodo lo paga portando
         avanti l'identificatore.
 
+        **Il prezzo di `no_attributes` e' non vedere gli attributi**: un
+        termostato su `auto` non cambia mai stato, e il suo `hvac_action` qui
+        non c'era (la chat del 01/11/2026 rispose «non posso confermarlo», e il
+        dato era in Home Assistant). `with_attribute`, `{dominio: attributo}`,
+        lo chiede per quei domini: ogni punto porta `attributo` (`None` se la
+        riga non lo ha), e le righe in cui ne' lo stato ne' quell'attributo
+        cambiano cadono PRIMA del tetto. Un termostato vero fa ~970 righe al
+        giorno, quasi tutte per la temperatura: sette giorni sfonderebbero
+        `MAX_HISTORY_POINTS`. Misurato sugli otto termostati il 01/11/2026: un
+        giorno 2,5 MB invece di 1,5, sette giorni 15,7 invece di 9,4.
+        `minimal_response` non toglie gli attributi ai `climate`: col parametro
+        e senza la risposta pesa uguale.
+
         **Valida ogni `entity_id` PRIMA di fare rete** (F6, onda finale): era
         l'ultima asimmetria rimasta con il diario (uscito il 30/09/2026), che
         lo faceva gia'.
@@ -1337,19 +1360,25 @@ class HAClient:
         if invalid:
             logger.warning("storico: entita' non valide: %r", invalid)
             return _failure(REQUEST, _truncate(f"entita' non valide: {invalid!r}", 200))
+        wanted = with_attribute or {}
+        groups: dict[str | None, list[str]] = {}
+        for entity_id in entities:
+            groups.setdefault(wanted.get(domain_of(entity_id)), []).append(entity_id)
         series: dict[str, list[dict]] = {}
         truncated = False
-        for chunk in _history_chunks(entities):
-            answer = await self._history_piece(chunk, from_iso, to_iso)
-            if "errore" in answer:
-                return answer
-            series.update(answer["serie"])
-            truncated = truncated or answer["troncato"]
+        for attribute, identifiers in groups.items():
+            for chunk in _history_chunks(identifiers):
+                answer = await self._history_piece(chunk, from_iso, to_iso, attribute)
+                if "errore" in answer:
+                    return answer
+                series.update(answer["serie"])
+                truncated = truncated or answer["troncato"]
         return {"serie": series, "troncato": truncated}
 
-    async def _history_piece(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
+    async def _history_piece(self, entities: list[str], from_iso: str, to_iso: str,
+                             attribute: str | None = None) -> dict:
         """UN pezzo di `history`: una richiesta, gia' validata e sotto il
-        tetto della riga. Stessa forma di `history`."""
+        tetto della riga, con un `attribute` solo. Stessa forma di `history`."""
         entity_filter = quote(",".join(entities), safe="")
         # S-06: l'istante va nel PERCORSO, e il `+` del fuso non deve
         # arrivarci nudo. Codificato, Home Assistant risponde uguale:
@@ -1357,7 +1386,7 @@ class HAClient:
         path = (f"/api/history/period/{quote(from_iso, safe='')}"
                 f"?end_time={quote(to_iso, safe='')}"
                 f"&filter_entity_id={entity_filter}"
-                f"&minimal_response&no_attributes")
+                f"&minimal_response{'' if attribute else '&no_attributes'}")
         reply = await self._rest_get(path)
         if "errore" in reply:
             return reply
@@ -1379,7 +1408,10 @@ class HAClient:
                 current = entry.get("entity_id") or current
                 if not current:
                     continue
-                when = entry.get("last_changed") or entry.get("last_updated")
+                # `last_changed` si muove solo con lo stato: per chi guarda un
+                # attributo l'istante vero e' `last_updated`.
+                when = ((attribute and entry.get("last_updated"))
+                        or entry.get("last_changed") or entry.get("last_updated"))
                 if when is None:
                     continue
                 # I1 (review indipendente 25/08/2026): `valore` e' lo stato
@@ -1391,9 +1423,15 @@ class HAClient:
                 # come il PRIMO vettore concreto -- si applica identico alla
                 # storia quanto allo stato vivo.
                 value = entry.get("state")
-                raw.setdefault(current, []).append(
-                    {"quando": when,
-                     "valore": sanitize_ha_value(value) if value else value})
+                point = {"quando": when,
+                         "valore": sanitize_ha_value(value) if value else value}
+                points = raw.setdefault(current, [])
+                if attribute:
+                    point["attributo"] = _attribute_value(entry, attribute)
+                    if points and all(points[-1][k] == point[k]
+                                      for k in ("valore", "attributo")):
+                        continue
+                points.append(point)
         # /api/history/period risponde in ordine cronologico ASCENDENTE: il
         # taglio tiene la CODA -- i punti piu' RECENTI -- e scarta la testa,
         # non il contrario. Per "com'e' andata" contano i dati di adesso; un

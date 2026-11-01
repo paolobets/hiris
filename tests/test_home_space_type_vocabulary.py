@@ -536,6 +536,12 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
         "significherebbe far dipendere il significato di un tipo dal protocollo "
         "con cui lo si interroga. Un dominio che non e' qui dentro non ha una "
         "configurazione da chiedere, e il codice non se ne inventa una.",
+    ("home_space/ha_vocabulary.py", ("idle", "off")):
+        "`HVAC_RESTING_ACTIONS`: non sono tipi di entita' ne' giudizi su un tipo, "
+        "sono due valori dell'attributo `hvac_action` di Home Assistant "
+        "(`HVACAction`), le azioni in cui un termostato non lavora. Il vocabolario "
+        "dei tipi dice cosa un tipo E'; questa dice come si legge un valore che il "
+        "fornitore manda, e sta nel vocabolario di Home Assistant.",
     ("mind/seed.py", ("climate", "humidifier", "water_heater")):
         "`seed._WANTED_ATTRIBUTES`: non dice cosa un tipo E', dice **quali "
         "suoi ATTRIBUTI valga la pena tenere nel grezzo** (spec §5.4). E' un "

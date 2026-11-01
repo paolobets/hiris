@@ -147,6 +147,7 @@ def _ha_history(serie):
     def answer(path):
         return [[{"state": point["valore"], "last_changed": point["quando"]}
                  | ({"entity_id": eid} if index == 0 else {})
+                 | ({"attributes": point["attributi"]} if "attributi" in point else {})
                  for index, point in enumerate(serie[eid])]
                 for eid in _history_ids(path) if eid in serie]
     return answer
