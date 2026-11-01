@@ -66,7 +66,7 @@ from .redaction import seal_free_text
 from .reference import normalize
 from .render import depth_for, render_entity
 from .topology import live_name
-from .type_judgments import TypeJudgments
+from .type_judgments import WORK_ATTRIBUTES, TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
 
 #: Le chiavi di `app` che questo modulo possiede: `web.AppKey`, mai una
@@ -505,6 +505,111 @@ def _activity(tie: str, epoch: float | None) -> tuple:
     return (epoch is None, -(epoch or 0.0), tie)
 
 
+#: Quanti periodi di lavoro si danno per soggetto, i piu' recenti: i totali
+#: contano comunque tutti. La casa vera ne fa 6 in una settimana: scelto, non
+#: misurato, per fermare un termostato che batte ogni pochi minuti.
+WORK_PERIODS_MAX = 20
+#: Viaggia con la risposta e non nella descrizione dello strumento: il catalogo
+#: si paga a ogni giro, questa frase solo quando c'e' un termostato da leggere.
+_WORK_NOTE = (
+    "conti di HIRIS sul comando del termostato di quella stanza: non dicono la "
+    "caldaia ne' il calore arrivato. `gia_attivo`: partito prima della finestra, "
+    "non conta fra le `accensioni`. `ancora_attivo`: non finito alla fine della "
+    "finestra. `inizio_incerto`/`fine_incerta`: caduti in un buco del dato, come "
+    "un riavvio. `azione_non_dichiarata`: questo termostato non la espone, che non "
+    f"vuol dire che non si e' acceso. `periodi`: gli ultimi {WORK_PERIODS_MAX}, gli "
+    "altri contati in `periodi_omessi`; nella corta solo i totali")
+
+
+def _work_periods(points: list[dict], start_ts: float,
+                  end_ts: float) -> tuple[list[dict], str | None]:
+    """I periodi di lavoro di una serie con `attributo`, in epoch, e l'ultima
+    azione letta. Un buco -- una riga senza azione, cioe' un riavvio -- non e'
+    uno spegnimento: se dopo l'azione e' la stessa il periodo continua, e i
+    suoi minuti non si contano; altrimenti cio' che e' successo sta nel buco, e
+    l'estremo si dice incerto."""
+    periods: list[dict] = []
+    current: dict | None = None
+    hole_since: float | None = None
+    action: str | None = None
+    timeline = [(epoch, point.get("attributo")) for point in points
+                if (epoch := _epoch(point.get("quando"))) is not None]
+    for index, (raw_ts, action) in enumerate(timeline):
+        when = max(raw_ts, start_ts)
+        if action is None:
+            if hole_since is None:
+                hole_since = when
+            continue
+        came_back = hole_since is not None
+        if current is not None and action == current["azione"]:
+            if came_back:
+                current["buco"] += when - hole_since
+                hole_since = None
+            continue
+        if current is not None:
+            current["fine"] = hole_since if came_back else when
+            current["fine_incerta"] = came_back
+            periods.append(current)
+            current = None
+        if action not in ha_vocabulary.HVAC_RESTING_ACTIONS:
+            at_start = index == 0 and raw_ts <= start_ts + _DETAIL_SLACK_S
+            current = {"azione": action, "inizio": when, "buco": 0.0,
+                       "gia_attivo": at_start,
+                       "inizio_incerto": came_back or (index == 0 and not at_start)}
+        hole_since = None
+    if current is not None:
+        current["fine"] = end_ts if hole_since is None else hole_since
+        current["fine_incerta"] = hole_since is not None
+        current["ancora_attivo"] = hole_since is None
+        periods.append(current)
+    return periods, action
+
+
+def _minutes(period: dict) -> float:
+    return round((period["fine"] - period["inizio"] - period["buco"]) / 60, 1)
+
+
+def _period_out(period: dict, zone) -> dict:
+    """Un periodo verso il modello: le chiavi che non dicono niente non ci
+    sono."""
+    still = period.get("ancora_attivo", False)
+    row = {"azione": period["azione"], "da": instant_out(period["inizio"], zone),
+           "a": None if still else instant_out(period["fine"], zone),
+           "minuti": _minutes(period)}
+    if period["buco"]:
+        row["minuti_senza_dato"] = round(period["buco"] / 60, 1)
+    row.update({key: True for key in ("gia_attivo", "inizio_incerto", "fine_incerta",
+                                      "ancora_attivo") if period.get(key)})
+    return row
+
+
+def work_summary(points: list[dict], query: HistoryQuery, *, brief: bool = False) -> dict:
+    """Quando un'entita' ha lavorato nella finestra: accensioni e minuti, da
+    tutta la serie, piu' i periodi (`WORK_PERIODS_MAX`, i piu' recenti; nessuno
+    in `brief`). I conti sono qui e non nel modello: da 7.000 righe un modello
+    non conta.
+
+    Chi non porta mai l'azione non ha «zero accensioni»: non la dichiara, e
+    dirlo e' l'unica cosa vera (`hvac_action` e' facoltativo in Home
+    Assistant)."""
+    if not any(point.get("attributo") for point in points):
+        return {"azione_non_dichiarata": True}
+    zone = query.start.tzinfo
+    start_ts = query.start.timestamp()
+    periods, last = _work_periods(points, start_ts, query.end.timestamp())
+    out = {"accensioni": sum(not period["gia_attivo"] for period in periods),
+           "minuti": round(sum(_minutes(period) for period in periods), 1),
+           "ultima_azione": last}
+    born = _born_since(points, "quando", start_ts, _DETAIL_SLACK_S)
+    if born is not None:
+        out["dal"] = instant_out(born, zone)
+    if not brief:
+        out["periodi"] = [_period_out(p, zone) for p in periods[-WORK_PERIODS_MAX:]]
+        if len(periods) > WORK_PERIODS_MAX:
+            out["periodi_omessi"] = len(periods) - WORK_PERIODS_MAX
+    return out
+
+
 def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]], *,
                truncated: bool, acts: list[dict] | None, house: House,
                translations: dict | None = None,
@@ -562,6 +667,13 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
     if beyond:
         out["oltre"] = _oltre(beyond)
     _declare_gaps(out, shown, series, truncated=truncated, query=query)
+    # Chi lavora senza cambiare stato: nessuna riga sopra lo mostrerebbe.
+    activity = {ident: work_summary(series[ident], query, brief=chosen.depth == "corta")
+                for ident in shown
+                if series.get(ident) and "attributo" in series[ident][0]}
+    if activity:
+        out["attivita"] = activity
+        out["attivita_nota"] = _WORK_NOTE
     return out
 
 
@@ -1391,7 +1503,8 @@ def read_failure(answer, fallback: str) -> dict:
     return _failure(SHAPE, fallback)
 
 
-async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
+async def read_series(ha, entity_ids: list[str], query: HistoryQuery, *,
+                      with_attribute: dict[str, str] | None = None) -> dict:
     """Lo storico di tutti i soggetti: `{"serie", "troncato"}` o la busta
     del guasto, intera (`read_failure`). Quanti che siano: il taglio dell'URL
     vive in `HAClient.history` (A-27, Tappa 2).
@@ -1400,7 +1513,7 @@ async def read_series(ha, entity_ids: list[str], query: HistoryQuery) -> dict:
     finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
     sugli stessi."""
     start, end = query.start.isoformat(), query.end.isoformat()
-    answer = await ha.history(entity_ids, start, end)
+    answer = await ha.history(entity_ids, start, end, with_attribute=with_attribute)
     if not isinstance(answer, dict) or "serie" not in answer:
         return read_failure(answer, "lo storico di Home Assistant non ha risposto")
     return {"serie": answer["serie"], "troncato": bool(answer.get("troncato"))}
@@ -1448,7 +1561,8 @@ async def read_states(ha, query: HistoryQuery, chosen: Chosen, house: House, *,
     finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
     usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
     registra i sensori numerici (decisione del piano, 30/09/2026)."""
-    answer = await read_series(ha, [s.ident for s in chosen.subjects], query)
+    answer = await read_series(ha, [s.ident for s in chosen.subjects], query,
+                               with_attribute=WORK_ATTRIBUTES)
     if "errore" in answer:
         return answer
     return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],

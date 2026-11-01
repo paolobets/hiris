@@ -98,6 +98,13 @@ JUDGMENT_FIELD_NAMES = frozenset({
 #: anche la forma che `significato` usa gia'.
 ATTRIBUTE_FIELD = "attributi"
 
+#: L'attributo che dice se un'entita' di quel dominio sta lavorando adesso. Un
+#: termostato resta su `auto` tutto il giorno: lo stato non lo dice, e questo
+#: attributo si'. Una fonte sola per chi lo tiene nel grezzo
+#: (`mind/seed._WANTED_ATTRIBUTES`) e per chi lo legge dallo storico
+#: (`house_history.read_states`).
+WORK_ATTRIBUTES = {"climate": "hvac_action"}
+
 #: Il campo del sapere che porta la ricetta di un dispositivo.
 RECIPE_FIELD = "ricetta"
 

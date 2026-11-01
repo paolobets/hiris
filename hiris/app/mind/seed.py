@@ -27,7 +27,12 @@ semplicemente a essere quello scritto nel repo, che sembra giusto.
 """
 from __future__ import annotations
 
-from ..home_space.type_judgments import ATTRIBUTE_FIELD, MEANING_FIELD, type_subject
+from ..home_space.type_judgments import (
+    ATTRIBUTE_FIELD,
+    MEANING_FIELD,
+    WORK_ATTRIBUTES,
+    type_subject,
+)
 from .knowledge import Fact, now_ts
 
 #: Chi ha scritto le righe del seme: il repo stesso, non un modello e non il
@@ -183,7 +188,7 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
 #: uno per decimo di grado. La temperatura istantanea, se serve, e' un
 #: `sensor` a se' che Home Assistant riassume gia' (regola 1 della spec §5.3).
 _WANTED_ATTRIBUTES = {
-    "climate": ("hvac_action", "temperature"),
+    "climate": (WORK_ATTRIBUTES["climate"], "temperature"),
     "water_heater": ("temperature",),
     "humidifier": ("action", "humidity"),
 }

@@ -284,6 +284,18 @@ def _house(inputs):
          "last_changed": _ago(1), "last_updated": _ago(1)})
     series["sensor.ciclo_uno"] = [{"quando": _ago(3), "valore": "2.0"},
                                   {"quando": _ago(1), "valore": "3.1"}]
+    # Un termostato che lavora senza cambiare stato: `attivita`.
+    inputs["registries"]["entita"].append(
+        {**inputs["registries"]["entita"][6], "entity_id": "climate.termostato_uno",
+         "original_name": "Termostato"})
+    inputs["states"].append(
+        {"entity_id": "climate.termostato_uno", "state": "auto",
+         "attributes": {"friendly_name": "Termostato", "hvac_action": "idle"},
+         "last_changed": _ago(30), "last_updated": _ago(1)})
+    series["climate.termostato_uno"] = [
+        {"quando": _ago(3), "valore": "auto", "attributi": {"hvac_action": "idle"}},
+        {"quando": _ago(2), "valore": "auto", "attributi": {"hvac_action": "heating"}},
+        {"quando": _ago(1), "valore": "auto", "attributi": {"hvac_action": "idle"}}]
     # Il calendario sta nello specchio (A-34): la casa ne ha uno.
     inputs["states"].append(
         {"entity_id": "calendar.famiglia", "state": "off",
@@ -418,6 +430,7 @@ CALLS: dict[str, list[tuple[dict, Callable]]] = {
                               "target": {"entity_id": "light.luce_uno"}}]}, _healthy)],
     "confirm": [({"proposta_id": "nessuna"}, _healthy), ({}, _next_turn)],
     "history": [({"riferimento": "light.luce_uno"}, _healthy),
+                ({"riferimento": "climate.termostato_uno"}, _healthy),
                 ({"riferimento": "sensor.contatore_uno", "cosa": "valori"}, _healthy),
                 ({"riferimento": "sensor.contatore_uno", "cosa": "valori", "ore": 48},
                  _healthy),
