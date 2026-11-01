@@ -29,6 +29,7 @@ i suoi ricordi e i suoi limiti, e i nomi delle persone non arrivano più ai mode
 - **Un tetto di turni al giorno per chi non amministra**, nelle Impostazioni della chat. Di fabbrica
   vale 0, cioè spento. Quando si raggiunge, la chat lo dice, e una promessa che deve chiedere si
   ferma spiegando perché. I turni delle promesse contano per chi le ha chieste.
+- **Lo storico dice quando un termostato lavora.** Un termostato in `auto` non cambia stato per tutto il giorno, e lo storico che HIRIS chiedeva a Home Assistant lasciava fuori gli attributi: il 01/11 la chat ha risposto «non posso confermarlo» mentre il dato era in Home Assistant. Adesso, per i termostati, lo storico degli stati legge anche `hvac_action` e porta accanto l'`attivita`: quante accensioni, quanti minuti, e i periodi più recenti. Un termostato che non espone l'azione lo dice, invece di risultare spento. Sono i conti del comando del termostato: non dicono la caldaia.
 
 ### Changed
 
