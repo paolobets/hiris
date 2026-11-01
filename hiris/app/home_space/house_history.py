@@ -496,12 +496,6 @@ def _activity(tie: str, epoch: float | None) -> tuple:
     return (epoch is None, -(epoch or 0.0), tie)
 
 
-#: Quanti periodi di lavoro si danno per soggetto, i piu' recenti: i totali
-#: contano comunque tutti. La casa vera ne fa 6 in una settimana: scelto, non
-#: misurato, per fermare un termostato che batte ogni pochi minuti.
-WORK_PERIODS_MAX = 20
-#: Come si legge `attivita` lo dice la legenda della risposta
-#: (`legend.READINGS`), solo quando c'e' un termostato da leggere.
 
 
 def _work_periods(points: list[dict], start_ts: float,
@@ -568,9 +562,14 @@ def _period_out(period: dict, zone) -> dict:
 
 def work_summary(points: list[dict], query: HistoryQuery, *, brief: bool = False) -> dict:
     """Quando un'entita' ha lavorato nella finestra: accensioni e minuti, da
-    tutta la serie, piu' i periodi (`WORK_PERIODS_MAX`, i piu' recenti; nessuno
-    in `brief`). I conti sono qui e non nel modello: da 7.000 righe un modello
-    non conta.
+    tutta la serie, piu' i periodi (nessuno in `brief`). I periodi di un
+    soggetto si fermano a `ROWS_MAX`, i piu' recenti: il tetto delle righe di
+    una risposta della casa (spec 2026-09-29 §2.3), non un tetto loro. Il
+    01/11/2026 Paolo ha chiesto di togliere i 20 «scelti, non misurati» con
+    cui il lavoro era nato (niente soglie nostre). Gli altri si contano in
+    `periodi_omessi`; come si legge `attivita` lo dice la legenda
+    (`legend.READINGS`). I conti sono qui e non nel modello: da 7.000 righe
+    un modello non conta.
 
     Chi non porta mai l'azione non ha «zero accensioni»: non la dichiara, e
     dirlo e' l'unica cosa vera (`hvac_action` e' facoltativo in Home
@@ -587,9 +586,9 @@ def work_summary(points: list[dict], query: HistoryQuery, *, brief: bool = False
     if born is not None:
         out["dal"] = instant_out(born, zone)
     if not brief:
-        out["periodi"] = [_period_out(p, zone) for p in periods[-WORK_PERIODS_MAX:]]
-        if len(periods) > WORK_PERIODS_MAX:
-            out["periodi_omessi"] = len(periods) - WORK_PERIODS_MAX
+        out["periodi"] = [_period_out(p, zone) for p in periods[-ROWS_MAX:]]
+        if len(periods) > ROWS_MAX:
+            out["periodi_omessi"] = len(periods) - ROWS_MAX
     return out
 
 

@@ -18,6 +18,7 @@ import pytest
 
 from hiris.app.home_space import house_history as hh
 from hiris.app.home_space.legend import legend
+from hiris.app.home_space.queries import ROWS_MAX
 from hiris.app.home_space.type_judgments import WORK_ATTRIBUTES
 from hiris.app.mind import seed
 from hiris.app.proxy.ha_client import MAX_HISTORY_POINTS
@@ -234,18 +235,27 @@ def test_una_serie_nata_accesa_non_e_gia_attiva_ma_incerta():
     assert "gia_attivo" not in conto["periodi"][0]
 
 
-def test_i_periodi_hanno_un_tetto_i_totali_no():
-    """Mutazione ESEGUITA: totali contati sui periodi tenuti -- rossa."""
+def test_i_periodi_hanno_il_tetto_di_una_risposta_i_totali_no():
+    """Il tetto dei periodi e' quello delle righe di ogni risposta della casa
+    (`queries.ROWS_MAX`), non uno suo: scelta di Paolo del 01/11/2026.
+
+    Mutazioni ESEGUITE: totali contati sui periodi tenuti -- rossa; i periodi
+    PIU' VECCHI tenuti al posto dei piu' recenti -- rossa (R233-1)."""
     punti = [_p(_INIZIO, "idle")]
-    for ora in range(hh.WORK_PERIODS_MAX + 5):
-        punti += [_p(f"2026-09-29T{ora // 60:02d}:{ora % 60:02d}:00+00:00", "heating"),
-                  _p(f"2026-09-29T{ora // 60:02d}:{ora % 60:02d}:30+00:00", "idle")]
+    for minuto in range(ROWS_MAX + 5):
+        punti += [_p(f"2026-09-29T{minuto // 60:02d}:{minuto % 60:02d}:00+00:00", "heating"),
+                  _p(f"2026-09-29T{minuto // 60:02d}:{minuto % 60:02d}:30+00:00", "idle")]
     conto = _conto(punti)
-    assert conto["accensioni"] == hh.WORK_PERIODS_MAX + 5
-    assert len(conto["periodi"]) == hh.WORK_PERIODS_MAX
+    assert conto["accensioni"] == ROWS_MAX + 5
+    assert len(conto["periodi"]) == ROWS_MAX
     assert conto["periodi_omessi"] == 5
-    # I piu' recenti: «stamattina» conta piu' della settimana scorsa.
-    assert conto["periodi"][-1]["da"].startswith("2026-09-29T02:")
+    # I piu' recenti: «stamattina» conta piu' della settimana scorsa. I primi
+    # cinque, dal minuto 0 al 4, sono quelli omessi.
+    tenuti = [periodo["da"] for periodo in conto["periodi"]]
+    attesi = [_p(f"2026-09-29T{m // 60:02d}:{m % 60:02d}:00+00:00", "x")["quando"]
+              for m in (5, ROWS_MAX + 4)]
+    assert [tenuti[0], tenuti[-1]] == [hh.instant_out(hh._epoch(q), _q().start.tzinfo)
+                                       for q in attesi]
 
 
 def test_ogni_azione_che_lavora_conta_non_solo_il_caldo():
