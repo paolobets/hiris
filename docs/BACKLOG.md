@@ -153,6 +153,8 @@ a `/data` dell'add-on. Il codice è **a scadenza** (punto 6).
    traduzioni e le due ammissioni scritte in `tests/test_config_page.py`. La cartella
    `accantonati-2026-10-23/` **resta** finché Paolo non dice che il Brain nuovo lo convince: allora
    entra in `RESIDUI_DISMESSI`, o la cancella lui.
+   **Fatto il 30/10/2026**: il codice e l'opzione escono col prossimo rilascio, dopo la pulizia
+   fatta in casa il 28/10. La cartella resta, come detto qui sopra.
 
 **Cosa si perde, detto una volta:** l'obiettivo e la sua storia, le decisioni di Paolo su cosa
 guardare, le risposte alle proposte (il proponente è comunque spento), i giudizi corretti a mano,

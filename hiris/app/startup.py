@@ -37,7 +37,6 @@ from .chat_store import CHAT_STORE_KEY
 from .chat_store import open_store as open_chat_store
 from .claude_runner import CLAUDE_RUNNER_KEY
 from .conservazione import (
-    accantona_archivi,
     cancella_residui,
     decidi_vault,
     nightly,
@@ -375,11 +374,6 @@ async def _on_startup(app: web.Application) -> None:
     # richiesta.
     data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
     app[DATA_DIR_KEY] = data_dir
-    # La pulizia totale del 23/10/2026 (`conservazione.accantona_archivi`):
-    # QUI, prima che qualunque archivio si apra -- `sapere.db` si apre poche
-    # righe sotto. Codice a scadenza: esce nella release dopo.
-    accantona_archivi(
-        data_dir, attiva=os.environ.get("HIRIS_PULIZIA_TOTALE", "") == "true")
     # CR-1: le reti sorgenti fidate. Il bypass dell'ingress vale solo per le
     # richieste che vengono di li', cosi' un `X-Ingress-Path` falsificato da un
     # client diretto (LAN, o un tunnel da un'altra macchina) non scavalca il
