@@ -79,7 +79,7 @@ basso»), la porta dei modelli, i lavori «partial» nel log e il giro del matti
 «Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px» la Fase B prende
 solo la pagina del Brain, quindi la voce resta «In attesa».
 
-### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA col prossimo rilascio** — aperta il 22/10/2026
+### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA con la v3.83.0** — aperta il 22/10/2026
 
 `fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavoro», in prima persona come la propone ux-ui-specialist (scelta di Paolo del 29/10; dal 28/10 era «Come lavora»). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
 
@@ -399,7 +399,7 @@ Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si tr
 il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
 i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
 
-### ~~Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta~~ — **USCITA col prossimo rilascio**
+### ~~Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta~~ — **USCITA con la v3.83.0**
 
 `fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): l'editor in riga della scheda «Sapere» tocca anche `da_sapere_subito`, con le tre forme del valore: sì, no, oppure un elenco di stati scritti separati da virgola (`watcher-sapere.js`, `EDITABLE_JUDGMENT_FIELDS`, `statesInput`). La validazione resta della rotta, che rifiuta con la sua ragione`
 
@@ -417,7 +417,7 @@ al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
 dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
 dipende.
 
-### ~~Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS~~ — **USCITA col prossimo rilascio**
+### ~~Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS~~ — **USCITA con la v3.83.0**
 
 `fatta il 29/10/2026 (Fase S, S.1; D8 del 03/10 e scelta del proprietario del 29/10: «ognuno vede i suoi», anche quando il ricordo riguarda la casa): la regola vive una volta in `memory/store.py` (`_reader_clause`, `fetch_for`, `count_for`) e la chiedono il nucleo (`compose_briefing`, col soggetto obbligatorio), gli strumenti (`ToolDispatcher._all_memories`), la pagina Memoria e le due strade delle promesse (`keeper/exchange.promise_subject`). Un turno di sfondo, senza soggetto, li legge tutti; un soggetto senza id nessuno. Lo difende `tests/test_ricordi_per_persona.py`, con le mutazioni eseguite`
 
@@ -434,7 +434,7 @@ iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09
 ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
 pagina Memoria.
 
-### ~~Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona~~ — **USCITA col prossimo rilascio**
+### ~~Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona~~ — **USCITA con la v3.83.0**
 
 `fatta il 29/10/2026 (Fase S, S.2; scelta del proprietario del 29/10: turni al giorno, un valore solo per chi non amministra, spento di fabbrica): `ChatSettings.daily_turn_cap`, nella pagina Impostazioni della chat; il conto si chiede all'archivio dei consumi (`UsageStore.count_turns`, chat e promesse insieme, giorno della casa); il rifiuto in `steering.daily_turns_refusal`, chiesto dalla chat (429 `daily_turns_reached`) e da una promessa `chiedi` prima di ogni strada. I turni delle promesse portano ora chi le ha chieste nel registro, su catena e ponte. Lo difende `tests/test_tetto_per_persona.py`, con le mutazioni eseguite`
 
@@ -448,7 +448,7 @@ il freno.
 
 **Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
 
-### ~~Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS~~ — **USCITA col prossimo rilascio**
+### ~~Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS~~ — **USCITA con la v3.83.0**
 
 `fatta: la scrittura il 07/10/2026 (Tappa 7, F-01 e F-17: il cancello chiede il gesto della rotta a chiunque entri), la lettura il 29/10/2026 (Fase S, S.3): `soffitto.restricted_person` chiede il gesto «amministrare» al soffitto della richiesta invece di guardare la porta, quindi un servizio `utente` riceve da `GET /api/memories` i suoi ricordi e da `GET /api/chat-settings` i soli `CHAT_PAGE_FIELDS`. Una richiesta che non dice chi e' riceve la lettura ristretta. Lo difendono `tests/test_le_sue_memorie.py::test_un_servizio_firmato_legge_i_ricordi_come_una_persona_del_suo_ruolo` e `::test_un_servizio_utente_riceve_le_impostazioni_ridotte`, con la mutazione eseguita`
 
@@ -472,7 +472,7 @@ applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi f
 (`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
 `utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
 
-### ~~I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant`~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+### ~~I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant`~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
 
 `fatta il 30/10/2026 (Fase S, S.4; scelta del proprietario del 30/10: «solo servizi con bersaglio»): a chi non amministra `execute` concede solo i servizi la cui definizione in `/api/services` dichiara un `target`, piu' le notifiche (`action/verification.py::touches_no_entity`, chiesta dalla riga di `execute` in `home_space/tools.py` come `_service_without_entity`, col rifiuto `soffitto.NO_ENTITY_SERVICES_REFUSAL`). Il dominio `homeassistant` resta di `privacy.HA_CORE_USER_SERVICES`. La stessa domanda vale ora per la `chiamata` di una promessa `fai` (`_on_promised_call`): fino a oggi una promessa chiedeva solo `comandare`, e un `fai` di `homeassistant.restart` nasceva per chiunque potesse comandare. Misurato sul sorgente il 30/10/2026: nel nucleo 2026.10.4 nessun servizio registrato con `async_register_admin_service` dichiara un `target`; in Spook v5.11.1 (quello di casa) 14 dei 17 riservati che la porta lasciava passare non lo dichiarano (i `delete` di nove aiutanti, `zone.update`, `zone.delete`, `person.add_device_tracker`, `person.remove_device_tracker`, `sensor.set_display_precision`) e da oggi sono chiusi. Il costo: chi non amministra perde anche i servizi senza `target` che non sono riservati (nel nucleo 2026.10.4, fra gli altri, `shopping_list.*`, `scene.apply`, `scene.create`, `conversation.process`, `logbook.log` e lo `script.<nome>` chiamato direttamente; `script.turn_on` con lo script come bersaglio resta). Lo difende `tests/test_servizi_senza_entita.py`, con le mutazioni eseguite. La nota qui sotto che diceva «quelli senza bersaglio sono gia' irraggiungibili» era falsa: la porta accetta come bersaglio un'entita' dello stesso dominio anche quando il servizio non dichiara un `target`, ed e' cosi' che i 14 passavano`
 
@@ -533,7 +533,7 @@ Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era pri
 La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
 farne.
 
-### ~~Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+### ~~Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
 
 `fatta il 29/10/2026 (Fase S, S.6): il guscio porta i permessi scritti dal server (`api/shell.py`, `<meta name="hiris-permessi">`, la stessa domanda di `GET /api/pending`: `admission.request_permissions`), e `static/pending-badge.js` non scrive ne' legge piu' niente in `localStorage`. Lo difendono `tests/test_permessi_nel_guscio.py` e le prove JS di `pending-badge.test.mjs` e `can-configure.test.mjs`, con le mutazioni eseguite`
 
@@ -548,7 +548,7 @@ il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, ne
 usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
 per l'amministratore.
 
-### ~~Una risposta tardiva di `can_configure` rimonta la pagina aperta~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+### ~~Una risposta tardiva di `can_configure` rimonta la pagina aperta~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
 
 `fatta il 29/10/2026 (Fase S, S.6): con i permessi nella pagina il router di `/config` parte subito dopo il montaggio; `ROUTER_WAIT_MS` e' uscito, e resta solo il rimontaggio sul CAMBIO a pagina aperta (`static/config/main.js`)`
 
@@ -572,7 +572,7 @@ Fase S.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
-### ~~`GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata~~ — **USCITA col prossimo rilascio**
+### ~~`GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata~~ — **USCITA con la v3.83.0**
 
 `fatta il 28/10/2026 (Fase B, punto S.7, scelto da Paolo il 28/10): in `api/admission.py` la rotta passa al gesto «amministrare», come la scrittura del giudizio. Una persona che non amministra era gia' fuori (la riga non aveva `open_reason`): chi passava era un servizio firmato col ruolo `utente`, che adesso riceve 403. Lo difende `tests/test_admission.py::test_il_sapere_corretto_a_mano_NON_si_legge_da_un_servizio_utente`, con la mutazione eseguita`
 
@@ -584,7 +584,7 @@ scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /ap
 pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
 questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
 
-### ~~I nomi delle persone verso un modello, per tutte le porte degli attori~~ — **USCITA col prossimo rilascio** — aperta il 05/10/2026
+### ~~I nomi delle persone verso un modello, per tutte le porte degli attori~~ — **USCITA con la v3.83.0** — aperta il 05/10/2026
 
 `fatta il 30/10/2026 (Fase S, S.8; misura dello Sprint del 30/10 e scelta del proprietario dello stesso giorno: «ovunque compaia il nome»): ogni attore copre la domanda INTERA con la stessa maschera (`privacy.PresenceMask`), e la risposta torna agli id veri prima di ogni controllo. L'osservatore compone i pezzi in `observer.question_parts` (obiettivo, righe, soggetti che tacciono) e riporta le decisioni in `apply_answer`; le ricette coprono `build_device_question_body` e riportano la ricetta in `apply_recipe`; l'analista copriva gia' la domanda. Dove c'e' un segnaposto i tre lo spiegano con la stessa frase (`privacy.PLACEHOLDER_HINT`). La misura di prima: la domanda che apre la campagna dell'osservatore portava un nome in 27 righe su 383; le ricette, sui dispositivi che avrebbero una domanda, 56 volte dentro gli id; nessuna area porta un nome. Escono `observer.presence_handles`, `observer.masks_presences`, `observer.PRESENCE_HINT` e `observer.house_lines` (le righe si chiedono a `question_parts`, anche da `scripts/fotografia_porte.py`). Limiti che restano, gia' scritti in `privacy.named_after_person`: un pezzo solo di un nome in piu' parole non si copre (sulla casa nessuna persona ha un nome in piu' parole, misura del 03/10), e un nome si copre solo intero. Sul ponte la maschera della risposta si rifa' dalla casa del momento: se nel frattempo cambia chi porta il nome di una persona, un segnaposto puo' tornare a un altro id, che resta pero' uno di quelli chiesti. I nomi degli utenti di Home Assistant non sono stati misurati (`config/auth/list` non e' fra le letture di `scripts/casa.py`). La chat resta com'e', per decisione. Lo difende `tests/test_nomi_ovunque.py`, con le mutazioni eseguite`
 
@@ -611,7 +611,7 @@ del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo s
 segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
 alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
 
-### ~~La Memoria si raggiunge dalla chat solo passando dagli Impegni~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+### ~~La Memoria si raggiunge dalla chat solo passando dagli Impegni~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
 
 `fatta il 29/10/2026 (Fase S, S.9, parere dell'ux-ui-specialist del 29/10): la voce «Memoria» sta nella barra della chat per tutti, subito dopo gli Impegni, con l'icona di `/config`; per chi non amministra il titolo della pagina e' «I tuoi ricordi». Sul telefono le voci della barra hanno 44 px di altezza minima`
 
@@ -623,7 +623,7 @@ esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serv
 perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
 della chat per chi non configura.
 
-### ~~Il testo della pagina non concessa~~ — **USCITA col prossimo rilascio** — aperta il 27/09/2026
+### ~~Il testo della pagina non concessa~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
 
 `fatta il 29/10/2026 (Fase S, domanda 4): `admission.NOT_ADMITTED` dice il testo nuovo, e lo difende `tests/test_admission.py::test_i_testi_dei_rifiuti_sono_quelli_DECISI``
 
