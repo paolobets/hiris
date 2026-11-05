@@ -29,9 +29,19 @@ che non e' partito si ritenta al giro dopo.
 **E una notifica persistente in Home Assistant** (richiesta del proprietario
 del 21/10/2026: la push toccata apre Home Assistant e sparisce). La push dice
 cosa e' cambiato; la notifica (`NOTICE_ID`, una sola) dice com'e' adesso: una
-riga per ogni istanza ferma da almeno `ROUNDS_BEFORE_CLOSING` giri, che si
+riga per ogni istanza IN ERRORE da almeno `ROUNDS_BEFORE_CLOSING` giri, che si
 riscrive quando l'elenco cambia e si toglie quando l'ultima torna. Segue lo
 stato, non la push: c'e' anche quando nessun telefono l'ha ricevuta.
+
+**Un'istanza spenta si dice una volta, e poi si tace** (scelta del
+proprietario del 05/11/2026). Spegnerla e' una decisione di una persona, e
+Home Assistant la mostra gia' nella sua pagina delle integrazioni: la push
+resta, perche' chi riceve puo' non essere chi l'ha spenta, ma la notifica
+persistente no. Fino a quel giorno ci stava per tutto il tempo in cui
+l'istanza restava spenta, e ricompariva a ogni riscrittura anche dopo che il
+proprietario l'aveva chiusa: 59 volte in una settimana per un'integrazione
+spenta da lui (log dell'add-on, 25/10-01/11/2026). Proposta:
+`/mnt/project-files/analisi/2026-11-01-notifiche-ripetute-ave-proposta.md`.
 
 Il testo lo compone il codice, non un modello: non e' un agente (Legge III).
 """
@@ -60,6 +70,10 @@ TOLD_STOPS = frozenset({ENTRY_SWITCHED_OFF, ENTRY_BROKEN})
 #: (scelta del proprietario, 21/10/2026): viaggia verso Home Assistant, e
 #: porta il suo nome in inglese.
 NOTICE_ID = "hiris_stopped_integrations"
+#: I fermi che restano nella notifica persistente: quelli in errore. Una
+#: spenta e' una decisione di qualcuno, e si dice solo con la push (scelta del
+#: proprietario del 05/11/2026, vedi il docstring del modulo).
+NOTICE_STOPS = frozenset({ENTRY_BROKEN})
 NOTICE_TITLE = f"{DELIVERY_TITLE} · integrazioni ferme"
 
 
@@ -71,7 +85,7 @@ async def tell(store: ObservationsStore, house: House, integrations: list[dict] 
     non c'era niente da dire.
 
     `show` riceve a ogni giro la notifica persistente che deve esserci,
-    `{NOTICE_ID: (titolo, testo)}`, o `{}` quando non c'e' niente di fermo
+    `{NOTICE_ID: (titolo, testo)}`, o `{}` quando non c'e' niente in errore
     (`keeper/delivery.align_notices`). Viene prima della push, cosi' la push
     dice `NOTICE_HINT` solo se la notifica c'e' davvero.
 
@@ -99,7 +113,7 @@ async def tell(store: ObservationsStore, house: House, integrations: list[dict] 
         if stop is None and told is None:
             continue  # va, e nessuno ha detto il contrario: niente da ricordare
         rows[ident] = {"fermo": stop, "giri": streak, "detta": told, "visto_ts": now}
-        if stop is not None and (told is not None or streak >= ROUNDS_BEFORE_CLOSING):
+        if stop in NOTICE_STOPS and (told is not None or streak >= ROUNDS_BEFORE_CLOSING):
             standing.append((raw, stop))
         if streak < ROUNDS_BEFORE_CLOSING:
             continue

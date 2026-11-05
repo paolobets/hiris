@@ -19,6 +19,8 @@ sul cambio: viaggia come segnale interno, non come evento.
   senza; quando torna, una riga;
 - la prima volta, le istanze gia' ferme vanno in una push sola (scelta del
   proprietario);
+- la notifica persistente tiene solo le istanze in errore: una spenta si dice
+  con la push, e poi si tace (scelta del proprietario, 05/11/2026);
 - un'istanza si dice ferma dopo DUE giri che la vedono ferma, e tornata dopo
   due giri che la vedono caricata: al riavvio di Home Assistant le istanze
   passano da stati di passaggio, e un avviso per giro sarebbe una raffica.
@@ -132,6 +134,10 @@ AVE = {"entry_id": "ave", "domain": "ave_domina", "title": "Casa",
 LIFX_ROTTA = {"entry_id": "lifx", "domain": "lifx", "title": "Lampada",
               "state": "setup_retry", "source": "dhcp"}
 LIFX_VIVA = {**LIFX_ROTTA, "state": "loaded"}
+#: Una seconda istanza in errore, senza dispositivi nell'anagrafe: serve dove
+#: la notifica deve tenere due righe (dal 05/11/2026 ci stanno solo le guaste).
+ZWAVE_ROTTA = {"entry_id": "zw", "domain": "zwave_js", "title": "Chiavetta",
+               "state": "setup_error", "source": "user"}
 
 
 class _Avvisi:
@@ -295,7 +301,7 @@ def test_i_dispositivi_di_un_istanza_si_chiedono_alla_casa():
 
 def test_il_giro_delle_condizioni_avvisa_dopo_l_osservatore(archivio):
     """Il giro vero (`watch_system_conditions`) sulla casa finta, col client
-    vero sopra: al secondo giro con l'istanza spenta parte una push, con
+    vero sopra: al secondo giro con l'istanza in errore parte una push, con
     l'attore dell'osservatore.
 
     Mutazione ESEGUITA: tolta la chiamata a `stopped_integrations.tell` dal
@@ -316,8 +322,8 @@ def test_il_giro_delle_condizioni_avvisa_dopo_l_osservatore(archivio):
         return {"amministratori": 1, "push": 1, "mancate": [], "senza_telefono": []}
 
     app = _announced({**live_values(), WATCHER_KEY: _OsservatoreFinto(),
-                      OBSERVATIONS_KEY: archivio}, [AVE])
-    house = _system_house([], [AVE])
+                      OBSERVATIONS_KEY: archivio}, [LIFX_ROTTA])
+    house = _system_house([], [LIFX_ROTTA])
     mostrate = []
 
     async def finta_notifica(app, family, wanted, *, actor):
@@ -329,7 +335,7 @@ def test_il_giro_delle_condizioni_avvisa_dopo_l_osservatore(archivio):
         asyncio.run(conditions_round.watch_system_conditions(app, house))
         asyncio.run(conditions_round.watch_system_conditions(app, house))
     assert len(mandati) == 1
-    assert "è stata spenta" in mandati[0][0]
+    assert "è in errore" in mandati[0][0]
     assert mandati[0][1] == "osservatore"
     # La notifica persistente, a ogni giro: vuota al primo, l'istanza al secondo.
     # Mutazione ESEGUITA (21/10/2026): tolto `show=` dal giro -- rossa.
@@ -347,14 +353,14 @@ async def test_la_notifica_dice_le_istanze_ferme_e_la_push_dove_trovarla(archivi
     """Mutazione ESEGUITA (21/10/2026): la notifica composta con le istanze
     appena dette invece di quelle ferme adesso -- rossa al terzo giro."""
     avvisi, notifiche = _Avvisi(), _Notifiche()
-    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_000_000.0, notifiche)
+    await _giro(archivio, [LIFX_ROTTA], avvisi, 1_790_000_000.0, notifiche)
     assert notifiche.ultima == {}
-    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_000_600.0, notifiche)
+    await _giro(archivio, [LIFX_ROTTA], avvisi, 1_790_000_600.0, notifiche)
     (titolo, testo) = notifiche.ultima[si.NOTICE_ID]
     assert titolo == si.NOTICE_TITLE
-    assert "Casa" in testo and "è stata spenta" in testo and "2 dispositivi" in testo
+    assert "Lampada" in testo and "è in errore" in testo and "1 dispositivo" in testo
     assert avvisi.testi[0].endswith(delivery.NOTICE_HINT)
-    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_001_200.0, notifiche)
+    await _giro(archivio, [LIFX_ROTTA], avvisi, 1_790_001_200.0, notifiche)
     assert notifiche.ultima[si.NOTICE_ID] == (titolo, testo)
 
 
@@ -364,14 +370,14 @@ async def test_la_notifica_si_riscrive_quando_l_elenco_cambia_e_si_toglie_alla_f
     istanze tornate -- rossa (la notifica non si toglie mai)."""
     avvisi, notifiche = _Avvisi(), _Notifiche()
     for now in (1_790_000_000.0, 1_790_000_600.0):
-        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+        await _giro(archivio, [ZWAVE_ROTTA, LIFX_ROTTA], avvisi, now, notifiche)
     (_t, testo) = notifiche.ultima[si.NOTICE_ID]
-    assert "Casa" in testo and "Lampada" in testo
-    await _giro(archivio, [AVE, LIFX_VIVA], avvisi, 1_790_001_200.0, notifiche)
+    assert "Chiavetta" in testo and "Lampada" in testo
+    await _giro(archivio, [ZWAVE_ROTTA, LIFX_VIVA], avvisi, 1_790_001_200.0, notifiche)
     (_t, testo) = notifiche.ultima[si.NOTICE_ID]
-    assert "Casa" in testo and "Lampada" not in testo
-    ave_viva = {**AVE, "state": "loaded", "disabled_by": None}
-    await _giro(archivio, [ave_viva, LIFX_VIVA], avvisi, 1_790_001_800.0, notifiche)
+    assert "Chiavetta" in testo and "Lampada" not in testo
+    zwave_viva = {**ZWAVE_ROTTA, "state": "loaded"}
+    await _giro(archivio, [zwave_viva, LIFX_VIVA], avvisi, 1_790_001_800.0, notifiche)
     assert notifiche.ultima == {}
 
 
@@ -385,7 +391,7 @@ async def test_la_notifica_c_e_anche_se_la_push_non_e_arrivata(archivio):
     avvisi = _Avvisi({"errore": "utenti di Home Assistant non letti"})
     notifiche = _Notifiche()
     for now in (1_790_000_000.0, 1_790_000_600.0):
-        await _giro(archivio, [AVE], avvisi, now, notifiche)
+        await _giro(archivio, [LIFX_ROTTA], avvisi, now, notifiche)
     assert si.NOTICE_ID in notifiche.ultima
     assert _dette(archivio) == {}
 
@@ -396,7 +402,7 @@ async def test_senza_notifica_la_push_non_la_promette(archivio):
     l'esito di `show` -- rossa."""
     avvisi = _Avvisi()
     for now in (1_790_000_000.0, 1_790_000_600.0):
-        await _giro(archivio, [AVE], avvisi, now, _Notifiche(riesce=False))
+        await _giro(archivio, [LIFX_ROTTA], avvisi, now, _Notifiche(riesce=False))
     assert delivery.NOTICE_HINT not in avvisi.testi[0]
 
 
@@ -421,11 +427,44 @@ async def test_un_ritorno_mentre_un_altra_resta_ferma_non_promette_la_notifica(a
     notifica c'e', senza guardare se la push dice un fermo -- rossa."""
     avvisi, notifiche = _Avvisi(), _Notifiche()
     for now in (1_790_000_000.0, 1_790_000_600.0):
-        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+        await _giro(archivio, [ZWAVE_ROTTA, LIFX_ROTTA], avvisi, now, notifiche)
     for now in (1_790_001_200.0, 1_790_001_800.0):
-        await _giro(archivio, [AVE, LIFX_VIVA], avvisi, now, notifiche)
+        await _giro(archivio, [ZWAVE_ROTTA, LIFX_VIVA], avvisi, now, notifiche)
     assert len(avvisi.testi) == 2
     assert "tornata" in avvisi.testi[1]
     assert delivery.NOTICE_HINT not in avvisi.testi[1]
     (_t, testo) = notifiche.ultima[si.NOTICE_ID]
-    assert "Casa" in testo and "Lampada" not in testo
+    assert "Chiavetta" in testo and "Lampada" not in testo
+
+
+# -- spenta e' una decisione (scelta del proprietario, 05/11/2026) -------------
+#
+# Il proprietario riceveva la notifica persistente su AVE, un'integrazione che
+# aveva spento lui, ricomparsa 59 volte in una settimana (log dell'add-on,
+# 25/10-01/11/2026). Scelta: per un'istanza spenta una push sola; la notifica
+# persistente resta per le istanze in errore, dove c'e' qualcosa da fare.
+
+@pytest.mark.asyncio
+async def test_un_istanza_spenta_si_dice_una_volta_e_non_resta_fra_le_notifiche(archivio):
+    """Mutazione ESEGUITA (05/11/2026): `ENTRY_SWITCHED_OFF` di nuovo fra i
+    fermi della notifica -- rossa."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0, 1_790_001_200.0):
+        await _giro(archivio, [AVE, LIFX_VIVA], avvisi, now, notifiche)
+    assert len(avvisi.testi) == 1
+    assert "Casa" in avvisi.testi[0] and "è stata spenta" in avvisi.testi[0]
+    assert delivery.NOTICE_HINT not in avvisi.testi[0]
+    assert all(volute == {} for volute in notifiche.volute)
+
+
+@pytest.mark.asyncio
+async def test_accanto_a_una_spenta_la_notifica_dice_solo_quella_in_errore(archivio):
+    """La push riassuntiva dice tutte e due; la notifica solo quella in errore,
+    e la push manda a cercarla."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+    assert "Casa" in avvisi.testi[0] and "Lampada" in avvisi.testi[0]
+    assert avvisi.testi[0].endswith(delivery.NOTICE_HINT)
+    (_t, testo) = notifiche.ultima[si.NOTICE_ID]
+    assert "Lampada" in testo and "Casa" not in testo
