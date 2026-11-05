@@ -440,8 +440,8 @@ async def test_un_ritorno_mentre_un_altra_resta_ferma_non_promette_la_notifica(a
 # -- spenta e' una decisione (scelta del proprietario, 05/11/2026) -------------
 #
 # Il proprietario riceveva la notifica persistente su AVE, un'integrazione che
-# aveva spento lui, ricomparsa 59 volte in una settimana (log dell'add-on,
-# 25/10-01/11/2026). Scelta: per un'istanza spenta una push sola; la notifica
+# aveva spento lui: 59 scritture o ritiri della notifica in una settimana (log
+# dell'add-on, 25/10-01/11/2026). Scelta: per un'istanza spenta una push sola; la notifica
 # persistente resta per le istanze in errore, dove c'e' qualcosa da fare.
 
 @pytest.mark.asyncio
@@ -468,3 +468,19 @@ async def test_accanto_a_una_spenta_la_notifica_dice_solo_quella_in_errore(archi
     assert avvisi.testi[0].endswith(delivery.NOTICE_HINT)
     (_t, testo) = notifiche.ultima[si.NOTICE_ID]
     assert "Lampada" in testo and "Casa" not in testo
+
+
+@pytest.mark.asyncio
+async def test_una_spenta_accanto_a_una_guasta_gia_detta_non_manda_alla_notifica(archivio):
+    """R236-1 (revisore, giro 236): la notifica c'e' per l'istanza in errore,
+    ma la push dice solo la spenta, che nella notifica non sta: non manda a
+    cercarla."""
+    avvisi, notifiche = _Avvisi(), _Notifiche()
+    for now in (1_790_000_000.0, 1_790_000_600.0):
+        await _giro(archivio, [LIFX_ROTTA], avvisi, now, notifiche)
+    for now in (1_790_001_200.0, 1_790_001_800.0):
+        await _giro(archivio, [AVE, LIFX_ROTTA], avvisi, now, notifiche)
+    assert len(avvisi.testi) == 2
+    assert "Casa" in avvisi.testi[1] and "è stata spenta" in avvisi.testi[1]
+    assert delivery.NOTICE_HINT not in avvisi.testi[1]
+    assert si.NOTICE_ID in notifiche.ultima

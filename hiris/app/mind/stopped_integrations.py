@@ -38,9 +38,9 @@ proprietario del 05/11/2026). Spegnerla e' una decisione di una persona, e
 Home Assistant la mostra gia' nella sua pagina delle integrazioni: la push
 resta, perche' chi riceve puo' non essere chi l'ha spenta, ma la notifica
 persistente no. Fino a quel giorno ci stava per tutto il tempo in cui
-l'istanza restava spenta, e ricompariva a ogni riscrittura anche dopo che il
-proprietario l'aveva chiusa: 59 volte in una settimana per un'integrazione
-spenta da lui (log dell'add-on, 25/10-01/11/2026). Proposta:
+l'istanza restava spenta, e una notifica chiusa a mano tornava a ogni
+riscrittura: 59 scritture o ritiri della notifica in una settimana, con
+un'integrazione spenta dal proprietario (log dell'add-on, 25/10-01/11/2026). Proposta:
 `/mnt/project-files/analisi/2026-11-01-notifiche-ripetute-ave-proposta.md`.
 
 Il testo lo compone il codice, non un modello: non e' un agente (Legge III).
@@ -128,7 +128,10 @@ async def tell(store: ObservationsStore, house: House, integrations: list[dict] 
     if stops or returns:
         lines = [_stop_line(house, raw, stop) for _ident, raw, stop in stops]
         lines += [f"{_who(raw)} è tornata a funzionare." for _ident, raw in returns]
-        if stops and NOTICE_ID in (shown.get("allineate") or ()):
+        # La push manda alla notifica solo se dice un fermo che la notifica
+        # tiene: una spenta li' non sta (R236-1, revisore, giro 236).
+        if (any(stop in NOTICE_STOPS for _ident, _raw, stop in stops)
+                and NOTICE_ID in (shown.get("allineate") or ())):
             lines.append(NOTICE_HINT)
         report = await notify("\n".join(lines))
         if arrived(report):
