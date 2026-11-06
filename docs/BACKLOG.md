@@ -641,20 +641,26 @@ casa in Home Assistant.». Entra con la seconda fetta della Fase S (S.6 e S.9).
 
 ## In attesa
 
-### La CLI del ponte sale alla 2.1.318 nel prossimo rilascio — aperta il 06/11/2026
+### La CLI del ponte sale all'ultima patch nel prossimo rilascio — aperta il 06/11/2026
 
 `origine: rilascio della v3.83.1, scelta del proprietario del 06/11/2026` · `hiris/Dockerfile` (pin di `@anthropic-ai/claude-code`)
 
 La **v3.83.1** è uscita con la CLI del ponte ferma alla **2.1.316**, per scelta del proprietario:
 quel rilascio porta solo la correzione delle notifiche ripetute, e va verificato dal vivo da solo
-(la notifica su AVE sparisce e non torna). Su npm, letto il 06/11/2026, ci sono due patch dopo:
-la 2.1.317 (02/11/2026) e la 2.1.318 (03/11/2026). Il ponte in casa oggi è spento.
+(la notifica su AVE sparisce e non torna). Letto su npm il 06/11/2026 alle 17:05 UTC
+(`npm view @anthropic-ai/claude-code time`), dopo la 2.1.316 ci sono tre patch: la 2.1.317
+(02/11/2026), la 2.1.318 (03/11/2026) e la 2.1.319 (06/11/2026). Quale sia l'ultima lo dice
+`npm view` il giorno del rilascio, non questa voce.
 
-**Cosa fare nel rilascio successivo**: leggere le note delle due uscite,
-`python scripts/verifica_componenti.py --aggiorna --cli`, l'annotazione nel `Dockerfile` nella
-forma che la regola chiede (data, uscite saltate, piano di ripiego), la suite intera, e poi la
-prova che il pin arriva davvero dentro il container: `GET /api/health` deve rispondere
-`ponte.cli: "2.1.318"` (o l'ultima di quel giorno). Il ripiego dichiarato resta la **2.1.316**.
+**Cosa fare nel rilascio successivo**: i passi 1-5 di «Come si bumpa» nel `Dockerfile`, sopra la
+riga `npm install -g`, con le note di ogni uscita saltata e la sezione «Componenti» nel CHANGELOG.
+Due di quei passi oggi non si possono chiudere da soli, perché il ponte in casa è spento:
+`ponte.cli` in `GET /api/health` resta `null` finché nessun turno del ponte è passato (passo 4), e
+la misura B25 (passo 5) chiede un turno sul ponte. Si chiudono quando il ponte si riaccende, o con
+un turno di prova col ponte acceso, col sì del proprietario.
+
+**Il ripiego dichiarato** è quello che dice il `Dockerfile`: oggi la **2.1.283**, l'ultima letta
+dentro il container, finché `/api/health` non avrà letto la 2.1.316.
 
 ### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
 
