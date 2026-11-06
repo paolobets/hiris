@@ -641,6 +641,21 @@ casa in Home Assistant.». Entra con la seconda fetta della Fase S (S.6 e S.9).
 
 ## In attesa
 
+### La CLI del ponte sale alla 2.1.318 nel prossimo rilascio — aperta il 06/11/2026
+
+`origine: rilascio della v3.83.1, scelta del proprietario del 06/11/2026` · `hiris/Dockerfile` (pin di `@anthropic-ai/claude-code`)
+
+La **v3.83.1** è uscita con la CLI del ponte ferma alla **2.1.316**, per scelta del proprietario:
+quel rilascio porta solo la correzione delle notifiche ripetute, e va verificato dal vivo da solo
+(la notifica su AVE sparisce e non torna). Su npm, letto il 06/11/2026, ci sono due patch dopo:
+la 2.1.317 (02/11/2026) e la 2.1.318 (03/11/2026). Il ponte in casa oggi è spento.
+
+**Cosa fare nel rilascio successivo**: leggere le note delle due uscite,
+`python scripts/verifica_componenti.py --aggiorna --cli`, l'annotazione nel `Dockerfile` nella
+forma che la regola chiede (data, uscite saltate, piano di ripiego), la suite intera, e poi la
+prova che il pin arriva davvero dentro il container: `GET /api/health` deve rispondere
+`ponte.cli: "2.1.318"` (o l'ultima di quel giorno). Il ripiego dichiarato resta la **2.1.316**.
+
 ### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
 
 `origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
