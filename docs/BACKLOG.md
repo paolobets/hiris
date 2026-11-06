@@ -42,6 +42,48 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### L'agente: il Brain che propone, che ti parla, e il primo agente — aperta il 05/11/2026
+
+`origine: Paolo, 05/11/2026 — alle 09:00 chiede cosa manca per «quel agente di supporto automatico (o interrogato via chat) che mi permette di configurare HA e interrogarlo ma che poi persegue l'obiettivo dato osservando analizzando e facendo / proponendo azioni»; alle 10:18 «proviamo a implementare questo» (le sei opzioni consigliate dell'analisi); alle 10:44 approva il piano` · analisi: `/mnt/project-files/analisi/2026-11-05-cosa-manca-per-l-agente.md` · piano: `/mnt/project-files/piani/2026-11-05-sprint-l-agente-piano.md`
+
+**L'obiettivo, in una frase.** Il Brain propone e le proposte arrivano a Paolo; poi Paolo puo'
+dare a HIRIS un obiettivo che un agente persegue da solo, dentro un perimetro approvato. Parte
+quando «Il giro snello» chiude con la sua misura di dopo, e porta con se' i passi 1 e 3 della voce
+«I prossimi passi, in ordine».
+
+Le sei scelte di Paolo (05/11): **D1** prima il Brain che propone, poi il Brain che parla, poi il
+primo agente; **D2** il primo agente nasce da una frase di Paolo, con perimetro stretto; **D3**
+riga in chat e push per le proposte `medio` e `alto`, `banale` e `lieve` solo nella pagina; **D4**
+le azioni `alto` non entrano mai in un perimetro, si propongono (annotazione del 05/11 allo
+scope §5); **D5** le plance restano nel contratto e si fanno dopo l'agente; **D6** analista e
+proponente si misurano su due modelli, la catena di oggi e Claude.
+
+Le fasi (il dettaglio, con cio' che si toglie e si crea, sta nel piano):
+
+- **D — I documenti**: questa voce; le tre annotazioni del 05/11 allo scope (§3 ① il documentale
+  uscito, §4 le plance dopo l'agente, §5 l'`alto` fuori dal perimetro).
+- **0 — Si chiude lo sprint in corso**: la misura di dopo del «Giro snello»; Paolo riscrive
+  l'obiettivo nella pagina Brain.
+- **1 — Il Brain che propone**: la diagnosi delle due proposte perse (Task 4.0, passo 1); la
+  misura dal vivo dell'analista con gli strumenti su due modelli, col si' di Paolo perche'
+  spende; poi `ENABLED` esce da `mind/proposer_round.py` in un rilascio suo, col criterio di
+  spegnimento della spec dell'attuatore §8. Voce «⚠️ Prima di accendere il proponente».
+- **2 — Il Brain che ti parla**: l'avviso per `medio` e `alto` (una tupla sola dei livelli
+  avvisati in `action/construction/stakes.py`); una riga nel filo della chat di ogni
+  amministratore; un numero breve per proposta nell'archivio delle costruzioni, la lettura
+  `proposte` dello strumento `mind`, e `confirm` che accetta il numero («si' alla 12»). Si scrive
+  in parallelo alla fase 1 ed esce con l'accensione del proponente o dopo, mai prima.
+  *Scritta il 05/11/2026 sul ramo `claude/project-thread-dafyhu` (migrazione 8 delle
+  costruzioni: `numero` e `riga_chat`); resta la rinomina `_alert_high` -> `_alert` in un commit
+  di sola rinomina, e il parere di `ux-ui-specialist` sulle tre frasi.*
+- **3 — Il primo agente**: prima la spec (`docs/design/`, approvata da Paolo): l'oggetto agente
+  con obiettivo, perimetro, stato e taccuino; l'agente come soggetto nel cancello unico (oggi il
+  soffitto con soggetto `None` non nega niente); il motore condiviso con le promesse «chiedi»
+  (D5 del 03/10); la nascita da una frase in chat; sospendi e revoca. Poi il codice a fette.
+  Restano fuori il giro del mattino (rimandato dal 03/10), l'agente proposto dal Brain, la voce.
+- **4 — Piu' configurazione**: `history_stats` dal config flow, voce «L'officina impara i config
+  flow: `history_stats` prima di tutto».
+
 ### Il giro snello e il Brain leggibile — lo sprint in corso, aperto il 22/10/2026
 
 `origine: Paolo, 22/10/2026 — alle 13:20 approva l'obiettivo 1 della proposta del 22/10 («ogni giro porta solo ciò che serve») e le azioni sul backlog; alle 13:28, 13:31 e 13:32 aggiunge la pulizia totale, il Brain, le chat e i ricordi, la sicurezza; alle 13:34 «ok procedi come da piano»` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`

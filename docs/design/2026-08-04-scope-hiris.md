@@ -88,6 +88,12 @@ HIRIS mantiene **una rappresentazione viva della casa**, alimentata da più font
 - **Il sistema documentale** — documenti, scadenze, obblighi
 - **Le fonti future** — l'architettura deve accoglierne di nuove senza riprogettazione
 
+> ## 🗄 Annotazione — 5 novembre 2026: il sistema documentale è uscito
+>
+> L'integrazione documentale (Mayan) è uscita con la 2.1.0, insieme a `knowledge.db`: non aveva
+> più un consumatore vivo. Oggi le fonti di HIRIS sono Home Assistant e ciò che le persone hanno
+> detto (`memory/`). Il documentale resta fra le **fonti future**, non fra quelle attive.
+
 Non è una cache: è **ciò che HIRIS sa**, e cresce. Impara le abitudini, ricorda ciò che gli viene
 detto, correla ciò che vede.
 
@@ -154,6 +160,12 @@ Un'unica conversazione, con un'unica intelligenza che conosce la casa.
 
 La regola di scelta è la Legge I: *standard finché basta, agente quando serve giudizio.*
 
+> ## 🗄 Annotazione — 5 novembre 2026: le plance vengono dopo l'agente
+>
+> Al 5 novembre l'officina costruisce automazioni, script, scene e helper; le plance non sono mai
+> state costruite. Restano un oggetto che HIRIS costruisce (Legge I), e il proprietario ha deciso
+> che si fanno **dopo il primo agente** (sprint «L'agente», D5).
+
 ---
 
 ## 5. Il perimetro — ciò che si approva
@@ -175,6 +187,18 @@ frequenza e di spesa appartiene a chi spende — l'agente — non al motore che 
 
 **Perché lo stato è parte del contratto.** Ciò che si approva si deve poter disattivare. Non è un
 extra dell'interfaccia: è metà del significato di «approvare».
+
+> ## 🗄 Annotazione — 5 novembre 2026: ciò che non entra mai in un perimetro
+>
+> **Le azioni di livello `alto` non entrano mai in un perimetro.** Un agente che ritiene di
+> doverne fare una la **propone**, con l'avviso, come fa il Brain. Il livello `alto` lo impone il
+> codice (`action/construction/stakes.py`: serrature, allarme, servizi scritti come modello).
+>
+> Così si tengono insieme due regole che altrimenti si contraddirebbero: il **semaforo per-azione**
+> resta condannato (non c'è niente da chiedere «ogni volta», perché l'agente non può farle), e
+> **serrature e allarme chiedono sempre** (decisione del proprietario del 3 ottobre 2026), perché
+> ognuna è una proposta che decide una persona. Chiude la domanda sull'irreversibilità del §8.
+> Deciso dal proprietario il 5 novembre 2026 (sprint «L'agente», D4).
 
 ---
 
