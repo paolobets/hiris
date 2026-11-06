@@ -1,5 +1,22 @@
 # HIRIS — Changelog
 
+## [3.83.1] — Un'integrazione spenta non resta fra le notifiche (2026-11-06)
+
+### Perché
+
+Nella settimana dal 25/10 al 01/11, AVE era spenta e la notifica «integrazioni ferme» è stata
+scritta o ritirata 59 volte. Quando la chiudevi a mano, tornava a ogni riscrittura.
+
+### Fixed
+
+- **Un'integrazione spenta da una persona si dice una volta sola, con la push agli amministratori.**
+  La notifica persistente in Home Assistant tiene solo le integrazioni in errore. Spegnere
+  un'integrazione è una scelta di qualcuno, e Home Assistant la mostra già nella sua pagina delle
+  integrazioni. La push resta, perché chi la riceve può non essere chi l'ha spenta.
+- **La push di un'integrazione spenta non rimanda più alla notifica.** Prima, se la notifica
+  c'era già per un'altra integrazione in errore, la push diceva «Lo trovi anche fra le notifiche di
+  Home Assistant» anche per quella spenta, che lì non compare.
+
 ## [3.83.0] — Il Brain si legge, e ognuno ha la sua parte di HIRIS (2026-11-01)
 
 ### Perché
