@@ -632,6 +632,41 @@ async def test_sul_PONTE_si_accoda_e_si_raccoglie_con_l_id_del_turno(casa, monke
 
 
 @pytest.mark.asyncio
+async def test_sul_PONTE_la_raccolta_segna_le_proposte_nate_nel_turno(casa, monkeypatch):
+    """Revisione, giro 238 (R238-2, P11): una `medio` avvisa solo se porta il
+    segno del giro (`stakes.ALERTED_FROM_ANY_ORIGIN`). Sulla catena lo scrive
+    `_chain`; sul ponte la raccolta, col turno della decisione. Una proposta
+    nata in un altro turno non lo prende.
+
+    Mutazione ESEGUITA (06/11/2026): `_collect` senza `_mark_round_born` --
+    rossa (`giro` resta falso)."""
+    coda = _coda_ponte(casa, monkeypatch)
+    await pr.proposer_round(casa)
+    (accodato,) = coda.accodati
+
+    def _nasce(chiave, turno):
+        return casa[CONSTRUCTIONS_KEY].propose(
+            operation="crea", domain="automation", key=chiave,
+            actor=steering.PROPOSER_SPECIES, exchange=turno, phrase=None,
+            prima=None, dopo={}, helper=[], preview="", stakes="medio",
+            now=time.time())["id"]
+
+    nata = _nasce("k1", "xch-1")
+    altrove = _nasce("k2", "rifalla-1")
+    coda.turno = {"status": "decided", "wake": accodato["wake"], "decided_ts": 0,
+                  "decision": {"reply": json.dumps({"esiti": [
+                      {"osservazione": 0, "esito": "costruita", "proposta_id": nata},
+                      {"osservazione": 1, "esito": "niente", "perche": "x"}]}),
+                      "outcome": "riuscito", "exchange_id": "xch-1"}}
+
+    await pr.proposer_round(casa)
+
+    archivio = casa[CONSTRUCTIONS_KEY]
+    assert archivio.read(nata, now=time.time())["giro"] is True
+    assert archivio.read(altrove, now=time.time())["giro"] is False
+
+
+@pytest.mark.asyncio
 async def test_un_analisi_RIFATTA_dopo_una_raccolta_viene_chiesta(casa, monkeypatch):
     """Il turno raccolto resta l'ultimo della sua specie: se l'analisi del
     giorno si rifa' con un'osservazione nuova, il giro deve chiederla, non

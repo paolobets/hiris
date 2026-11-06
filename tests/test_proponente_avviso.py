@@ -763,6 +763,48 @@ async def test_la_push_dice_il_numero_da_rispondere(casa):
     assert f"sì alla {nata['numero']}" in chiamata["call"]["dati"]["message"]
 
 
+@pytest.mark.asyncio
+async def test_una_riga_che_NON_ARRIVA_a_nessuna_chat_si_ritenta(casa, monkeypatch):
+    """Revisione, giro 238 (R238-2, P9): la riga si segna detta solo se e'
+    stata scritta in almeno una chat. Se nessuna si raggiunge, al battito dopo
+    si riprova, e la riga arriva.
+
+    Mutazione ESEGUITA (06/11/2026): `mark_written_in_chat` anche quando
+    `tell_admins_in_chat` ne ha scritte 0 -- rossa (la chat resta vuota)."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+    vero = pr.tell_admins_in_chat
+
+    async def _nessuna(app, text):
+        return 0
+
+    monkeypatch.setattr(pr, "tell_admins_in_chat", _nessuna)
+    await pr.proposer_round(casa)
+    assert _admin_chat(casa, "u-paolo") == []
+
+    monkeypatch.setattr(pr, "tell_admins_in_chat", vero)
+    await pr._alert_high(casa)
+
+    assert len(_admin_chat(casa, "u-paolo")) == 1
+
+
+@pytest.mark.asyncio
+async def test_il_titolo_della_notifica_dice_il_livello(casa):
+    """Revisione, giro 238 (R238-2, P10): il titolo si confronta con la frase
+    scritta per intero, non con `NOTICE_TITLE` stesso, che una mutazione
+    cambierebbe insieme al codice.
+
+    Mutazione ESEGUITA (06/11/2026): `NOTICE_TITLE` senza il livello -- rossa."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+
+    await pr.proposer_round(casa)
+
+    (scritta,) = casa[ACTUATOR_KEY].notifiche
+    assert scritta["call"]["dati"]["title"] == \
+        f"{DELIVERY_TITLE} · proposta di livello medio"
+
+
 def _born_from_page(casa, livello: str, alias: str) -> dict:
     """Una proposta del proponente nata da un gesto della pagina («Rifalla»,
     «Rendila automatica»): firma come lui, ma il giro non la segna."""
