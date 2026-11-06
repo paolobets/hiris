@@ -74,7 +74,8 @@ Le fasi (il dettaglio, con cio' che si toglie e si crea, sta nel piano):
   `proposte` dello strumento `mind`, e `confirm` che accetta il numero («si' alla 12»). Si scrive
   in parallelo alla fase 1 ed esce con l'accensione del proponente o dopo, mai prima.
   *Scritta il 05/11/2026 sul ramo `claude/project-thread-dafyhu` (migrazione 8 delle
-  costruzioni: `numero` e `riga_chat`); resta la rinomina `_alert_high` -> `_alert` in un commit
+  costruzioni: `numero`, `riga_chat` e `giro`; la tabella `numerazione`, perche' un numero non
+  torni dopo la potatura); resta la rinomina `_alert_high` -> `_alert` in un commit
   di sola rinomina, e il parere di `ux-ui-specialist` sulle tre frasi.*
 - **3 — Il primo agente**: prima la spec (`docs/design/`, approvata da Paolo): l'oggetto agente
   con obiettivo, perimetro, stato e taccuino; l'agente come soggetto nel cancello unico (oggi il
