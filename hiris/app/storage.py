@@ -244,7 +244,7 @@ def archive_name(db_path: str) -> str:
 
 def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
                 migrations: dict[int, Migration] | None = None,
-                after_sql: str | None = None) -> int:
+                after_sql: str | tuple[str, ...] | None = None) -> int:
     """Ensure the schema exists and is at `version`, migrating idempotently.
 
     Detection (before creating tables): a DB with NO user tables is 'fresh' and
@@ -257,8 +257,9 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
     indexes on columns that a migration adds. In `schema_sql` they would make
     an old archive fail to open (the script runs before the migrations, and a
     `CREATE INDEX` on a column that does not exist yet raises), so the
-    archives created them by hand after this call. One statement, and
-    idempotent (`IF NOT EXISTS`): it runs at every opening.
+    archives created them by hand after this call. One statement, or a tuple
+    of them run in order, each idempotent (`IF NOT EXISTS`, `OR IGNORE`): they
+    run at every opening.
 
     The caller is responsible for holding any lock if called concurrently
     (normally this runs once at store construction, single-threaded).
@@ -284,11 +285,12 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
                 "versione senza migrazione si dichiara con una funzione vuota, "
                 "non si lascia come un buco nel dizionario")
         migrations[target](conn)
-    if after_sql:
-        # `execute` e non `executescript`: il secondo fa commit prima di
-        # cominciare, e separerebbe le scritture delle migrazioni dal timbro.
-        # Una frase sola, quindi -- due farebbero sollevare subito.
-        conn.execute(after_sql)
+    # `execute` e non `executescript`: il secondo fa commit prima di
+    # cominciare, e separerebbe le scritture delle migrazioni dal timbro.
+    # Una frase per `execute` -- due farebbero sollevare subito -- e piu'
+    # frasi si passano come tupla.
+    for statement in (after_sql,) if isinstance(after_sql, str) else after_sql or ():
+        conn.execute(statement)
     conn.execute(f"PRAGMA user_version = {int(version)}")
     conn.commit()
     return version

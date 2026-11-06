@@ -60,6 +60,7 @@ def test_un_archivio_v7_riceve_i_numeri_nell_ordine_di_nascita(tmp_path):
     # Si riporta l'archivio a com'era alla versione 7: niente numeri.
     conn = sqlite3.connect(path)
     conn.execute("DROP INDEX idx_costruzioni_numero")
+    conn.execute("DROP TABLE numerazione")
     conn.execute("ALTER TABLE costruzioni DROP COLUMN numero")
     conn.execute("ALTER TABLE costruzioni DROP COLUMN riga_chat")
     conn.execute("ALTER TABLE costruzioni DROP COLUMN giro")
@@ -71,6 +72,32 @@ def test_un_archivio_v7_riceve_i_numeri_nell_ordine_di_nascita(tmp_path):
     try:
         assert [archivio.read(n["id"], now=ADESSO)["numero"] for n in nate] == [1, 2, 3]
         assert _nasce(archivio, "dopo", now=ADESSO + 9)["numero"] == 4
+    finally:
+        archivio.close()
+
+
+def test_un_numero_non_torna_dopo_la_potatura(tmp_path):
+    """Revisione, giro 238 (R238-3): la potatura toglie anche la riga col
+    numero piu' alto, e il numero dopo non lo riusa. Se tornasse, una vecchia
+    riga di chat, «si' alla 2», confermerebbe la proposta nuova.
+
+    Mutazione ESEGUITA (06/11/2026): `propose` di nuovo con
+    `MAX(numero) + 1` -- rossa (torna il 1)."""
+    archivio = ConstructionStore(os.path.join(str(tmp_path), "c.db"))
+    try:
+        vecchie = [_nasce(archivio, f"a{n}", now=ADESSO + n) for n in range(2)]
+        assert [n["numero"] for n in vecchie] == [1, 2]
+        tolte = archivio.prune(now=ADESSO + 400 * 86400)
+        assert tolte and archivio.id_of_number(2) is None
+        nuova = _nasce(archivio, "dopo", now=ADESSO + 401 * 86400)
+        assert nuova["numero"] == 3
+    finally:
+        archivio.close()
+
+    # Anche riaperto: la numerazione sta sul disco, non nella memoria.
+    archivio = ConstructionStore(os.path.join(str(tmp_path), "c.db"))
+    try:
+        assert _nasce(archivio, "ancora", now=ADESSO + 402 * 86400)["numero"] == 4
     finally:
         archivio.close()
 

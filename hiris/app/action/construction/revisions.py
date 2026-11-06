@@ -129,6 +129,11 @@ CONSERVAZIONE: Retention = {
         ("gli avvisi seguono la loro proposta: una riga senza proposta non "
          "dice piu' niente a nessuno"),
         "DELETE FROM avvisi WHERE proposta_id NOT IN (SELECT id FROM costruzioni)"),
+    "numerazione": (
+        None,
+        ("una riga sola: l'ultimo numero dato a una proposta. Non si pota, "
+         "perche' un numero non deve tornare (`_AFTER_SQL`)"),
+        None),
 }
 
 _SCHEMA = """
@@ -174,8 +179,9 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     -- Il NUMERO breve della proposta (sprint «L'agente», fase 2.3, D3 del
     -- 05/11/2026): quello che la push, la riga nella chat, la pagina e lo
     -- strumento `mind` dicono, e che `confirm` accetta («si' alla 12»). Lo
-    -- assegna l'archivio alla nascita, il successivo del piu' alto; e' la
-    -- sua casa sola, quindi tutte le porte dicono lo stesso numero.
+    -- assegna l'archivio alla nascita, il successivo dell'ultimo dato
+    -- (`numerazione`, in `_AFTER_SQL`: non torna mai); e' la sua casa sola,
+    -- quindi tutte le porte dicono lo stesso numero.
     numero INTEGER,
     -- La RIGA NELLA CHAT di chi amministra (fase 2.2): 1 quando e' stata
     -- scritta, cosi' che il ritentare della push non la ripeta. Separata da
@@ -393,11 +399,26 @@ def _migration_8(conn) -> None:
     conn.commit()
 
 
-#: L'indice sul numero nasce DOPO le migrazioni (`storage.init_schema`,
-#: `after_sql`): in `_SCHEMA` farebbe cadere l'apertura di un archivio che la
-#: colonna non ce l'ha ancora.
-_AFTER_SQL = ("CREATE UNIQUE INDEX IF NOT EXISTS idx_costruzioni_numero "
-              "ON costruzioni(numero)")
+#: Dopo le migrazioni (`storage.init_schema`, `after_sql`), a ogni apertura:
+#:
+#: - **l'indice sul numero**: in `_SCHEMA` farebbe cadere l'apertura di un
+#:   archivio che la colonna non ce l'ha ancora;
+#: - **la numerazione**, l'ultimo numero dato. Un numero non torna mai, nemmeno
+#:   dopo la potatura (`CONSERVAZIONE`): `MAX(numero) + 1` ripartirebbe piu' in
+#:   basso quando la potatura toglie le righe piu' alte, e una vecchia riga di
+#:   chat, «si' alla 12», confermerebbe una proposta diversa da quella di cui
+#:   parlava (revisione, giro 238, R238-3). Non e' un doppione del massimo: e'
+#:   un altro fatto, il numero piu' alto MAI dato, che le righe potate non
+#:   dicono piu'. Nasce col massimo di adesso, e non si pota. In `_SCHEMA`
+#:   comparirebbe anche in un archivio vecchio prima delle sue migrazioni,
+#:   fuori dalla loro transazione.
+_AFTER_SQL = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_costruzioni_numero ON costruzioni(numero)",
+    ("CREATE TABLE IF NOT EXISTS numerazione ("
+     "  id INTEGER PRIMARY KEY CHECK (id = 1), ultimo INTEGER NOT NULL)"),
+    ("INSERT OR IGNORE INTO numerazione(id, ultimo) "
+     "SELECT 1, COALESCE(MAX(numero), 0) FROM costruzioni"),
+)
 
 
 #: Le colonne JSON di una riga, lette tutte da `_row` con la guardia.
@@ -538,8 +559,9 @@ class ConstructionStore:
             if aperte >= self.MAX_PENDING:
                 return {"errore": (f"ci sono gia' {aperte} proposte in attesa (il tetto e' "
                                    f"{self.MAX_PENDING}): decidi quelle prima di farne altre.")}
+            self._conn.execute("UPDATE numerazione SET ultimo = ultimo + 1 WHERE id = 1")
             number = self._conn.execute(
-                "SELECT COALESCE(MAX(numero), 0) + 1 FROM costruzioni").fetchone()[0]
+                "SELECT ultimo FROM numerazione WHERE id = 1").fetchone()[0]
             self._conn.execute(
                 "INSERT INTO costruzioni(id,creata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
