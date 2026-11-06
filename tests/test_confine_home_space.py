@@ -43,9 +43,10 @@ def _imports_mind(tree) -> bool:
             # `from .. import mind`
             if node.level == 2 and not module and any(a.name == "mind" for a in node.names):
                 return True
-        elif isinstance(node, ast.Import):
-            if any(a.name.startswith("hiris.app.mind") for a in node.names):
-                return True
+        elif isinstance(node, ast.Import) and any(
+            a.name.startswith("hiris.app.mind") for a in node.names
+        ):
+            return True
     return False
 
 
