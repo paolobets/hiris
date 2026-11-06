@@ -124,6 +124,35 @@ async def notify_admins(app, text: str, *, actor: str) -> dict:
             "mancate": failures, "senza_telefono": unreachable}
 
 
+async def tell_admins_in_chat(app, text: str) -> int:
+    """La stessa notizia dell'avviso, come riga di HIRIS nella chat di ogni
+    amministratore (sprint «L'agente», fase 2.2): il filo del pannello
+    (`thread_for(..., "ingress")`), lo stesso in cui l'esito di una promessa
+    torna a chi l'ha chiesta. Torna in quante chat e' entrata; `0` quando non
+    si sa chi amministra. Non solleva.
+
+    Chi la legge risponde nella chat stessa («si' alla 12»), e la risposta
+    passa da `confirm` come ogni conferma."""
+    from ..api.soffitto import administrators
+    from ..chat_store import append_assistant_line
+    from ..chat_thread import thread_for
+    from ..storage import DATA_DIR_KEY
+
+    admins = await administrators(app)
+    if admins is None:
+        return 0
+    data_dir = app[DATA_DIR_KEY]
+    written = 0
+    for subject in admins:
+        try:
+            if append_assistant_line(text, data_dir, thread=thread_for(subject, "ingress")):
+                written += 1
+        except Exception as error:
+            logger.warning("riga in chat per %s non scritta (%s)", subject.get("id"),
+                           type(error).__name__)
+    return written
+
+
 #: La riga in fondo alla push quando la notifica persistente c'e': il tocco
 #: apre Home Assistant e la push sparisce, e chi la legge sa dove ritrovarla.
 #: Nessun `url` al tocco: non c'e' una rotta che apra il pannello delle

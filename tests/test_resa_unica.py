@@ -157,6 +157,10 @@ ADMITTED: dict[str, str] = {
     "mind/store.py::proposals": (
         "la riga di una proposta: `stato` e `stato_leggibile` sono quelli "
         "della proposta, con la stessa frase delle costruzioni (C-10)"),
+    "home_space/tools.py::_mind_proposals": (
+        "la riga di una costruzione che `mind` consegna (sprint «L'agente», "
+        "fase 2.3): `dominio` e `stato_leggibile` sono quelli della proposta "
+        "(`revisions._row`), non di un'entita' della casa"),
 }
 
 

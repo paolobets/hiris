@@ -903,7 +903,8 @@ CONFIRM_TOOL_DEF = {
         "un `avviso`: riferiscilo invece di dichiarare un successo pieno. "
         "**Il `proposta_id` puoi ometterlo**: senza, applico l'unica proposta "
         "in sospeso nata in un turno precedente. Se ce ne fosse piu' d'una te "
-        "le elenco invece di sceglierne una."
+        "le elenco invece di sceglierne una. Se chi ti sta parlando nomina una "
+        "proposta col suo numero («si' alla 12»), passa `numero`."
     ),
     "input_schema": {
         "type": "object",
@@ -923,6 +924,9 @@ CONFIRM_TOOL_DEF = {
                             "description": "L'identificatore restituito da "
                                            "`propose`. Facoltativo: senza, "
                                            "applico l'unica in sospeso."},
+            "numero": {"type": "integer",
+                       "description": "Il numero breve della proposta, come lo "
+                                      "dicono l'avviso e la pagina Proposte."},
         },
     },
 }
@@ -1307,6 +1311,19 @@ def _asks_admin_reads(_dispatcher, arguments: dict[str, Any]) -> bool:
     soli amministratori (`privacy.ADMIN_ONLY_HISTORY_KINDS`: esecuzioni ed
     errori, con la fonte in Home Assistant scritta li')?"""
     return arguments.get("cosa") in ADMIN_ONLY_HISTORY_KINDS
+
+
+def _asks_proposals(_dispatcher, arguments: dict[str, Any]) -> bool:
+    """La chiamata di `mind` chiede le proposte del cervello? Sono decisioni
+    di chi amministra la casa, come la pagina Proposte e `confirm`."""
+    return arguments.get("cosa") == "proposte"
+
+
+#: I campi di una proposta che `mind` consegna: un sottoinsieme della riga
+#: della pagina (`revisions._row`), con gli stessi nomi (fondamenta 3). I
+#: corpi interi restano alla pagina: l'anteprima dice gia' cosa cambierebbe.
+PROPOSAL_FIELDS = ("numero", "id", "livello", "gesto", "dominio", "chiave",
+                   "anteprima", "stato_leggibile")
 
 
 def _promises_an_action(_dispatcher, arguments: dict[str, Any]) -> bool:
@@ -2402,6 +2419,7 @@ class ToolDispatcher:
         proposal_id = (arguments or {}).get("proposta_id")
         proposal_id = (proposal_id.strip()
                        if isinstance(proposal_id, str) else None)
+        number = (arguments or {}).get("numero")
         occurrence = await self._workshop.apply(
             proposal_id, actor=self._actor, exchange=self._exchange,
             now=_time.time(), subject=self._subject,
@@ -2412,7 +2430,9 @@ class ToolDispatcher:
             confirm_phrase=self._phrase,
             # Task 7, spec §5: «confirm e' del filo». Il filo di QUESTO
             # turno, non quello della proposta -- l'officina confronta i due.
-            thread=self._thread)
+            thread=self._thread,
+            number=number if isinstance(number, int) and not isinstance(number, bool)
+            else None)
         # Come dopo `execute`: una configurazione applicata cambia la casa,
         # e la casa di questo turno si rilegge alla prossima domanda.
         self._house = None
@@ -2743,6 +2763,16 @@ class ToolDispatcher:
     async def _mind_objective(self, _day) -> dict:
         return self._mind_missing() or {"obiettivo": self._mind.objective()}
 
+    async def _mind_proposals(self, _day) -> dict:
+        """Le proposte del cervello in attesa, col numero che dicono l'avviso
+        e la pagina: chi le legge puo' rispondere «si' alla 12» con
+        `confirm` (sprint «L'agente», fase 2.3)."""
+        from ..steering import PROPOSER_SPECIES
+
+        rows = self._workshop.pending_of(PROPOSER_SPECIES, now=time.time())
+        return {"proposte": [{field: row.get(field) for field in PROPOSAL_FIELDS}
+                             for row in rows]}
+
     async def _mind_reports(self, day: str | None) -> dict:
         missing = self._mind_missing()
         if missing is not None:
@@ -2812,6 +2842,7 @@ MIND_READINGS: dict[str, MindReading] = {
     "resoconti": MindReading(ToolDispatcher._mind_reports, by_day=True),
     "analisi": MindReading(ToolDispatcher._mind_analyses, by_day=True),
     "energia": MindReading(ToolDispatcher._mind_energy, resources=("ha", "casa")),
+    "proposte": MindReading(ToolDispatcher._mind_proposals, resources=("officina",)),
 }
 
 MIND_TOOL_DEF = {
@@ -2821,7 +2852,8 @@ MIND_TOOL_DEF = {
         "`cosa`: `scope` cosa guarda, perche' e cosa ha lasciato fuori; "
         "`obiettivo` la domanda della casa; `resoconti` le misure dei giorni; "
         "`analisi` le osservazioni dell'analista; `energia` la dashboard "
-        "Energia di Home Assistant."),
+        "Energia di Home Assistant; `proposte` cio' che il cervello propone e "
+        "aspetta un si', col numero da passare a `confirm`."),
     "input_schema": {
         "type": "object",
         "properties": {
@@ -2892,7 +2924,8 @@ TOOLS: tuple[Tool, ...] = (
     # Nessun archivio nella riga: ogni lettura dichiara i suoi
     # (`MindReading.resources`, l'energia: canale e casa), e le letture del
     # cervello dicono da se' cosa manca a loro (`_mind_missing`).
-    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True),
+    Tool(MIND_TOOL_DEF, ToolDispatcher._read_mind, read_only=True,
+         permissions=(Permission("amministrare", applies=_asks_proposals),)),
 )
 
 # Le viste sulla tabella. Il catalogo che il modello riceve si DERIVA: un

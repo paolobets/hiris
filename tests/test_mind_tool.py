@@ -115,6 +115,10 @@ async def _route(app, what: str, day: str | None) -> dict:
 WITHOUT_ROUTE = {
     "energia": "e' un oggetto della casa (`home_space/energy.py`), non del "
                "cervello; la sua prova e' qui sotto, contro `energy_dashboard`",
+    "proposte": "vive nell'archivio delle costruzioni (`action/construction/`), "
+                "e la pagina la chiede a `GET /api/constructions`, non a una "
+                "rotta del cervello; la sua prova, contro le righe della pagina, "
+                "e' in `tests/test_numero_proposte.py`",
 }
 
 

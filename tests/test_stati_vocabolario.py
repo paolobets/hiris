@@ -321,7 +321,7 @@ def test_la_migrazione_7_delle_costruzioni(tmp_path):
     store = ConstructionStore(path)
     try:
         rows = {r["id"]: r for r in store.list(now=ADESSO + 10)}
-        alerted = store.to_alert(actor="chat", stakes="alto", now=ADESSO + 10)
+        alerted = store.to_alert(actor="chat", stakes=("alto",), now=ADESSO + 10)
     finally:
         store.close()
     assert {k: r["stato"] for k, r in rows.items()} == {
@@ -396,7 +396,9 @@ def test_la_migrazione_7_delle_costruzioni_e_tutto_o_niente(tmp_path, monkeypatc
     finally:
         store.close()
     assert states_by_id == {"guasto": "fallita", "fatta": "applicata"}
-    assert _user_version(path) == 7
+    # Riaperto, l'archivio sale fino all'ultima versione: la 8 (il numero
+    # breve della proposta, sprint «L'agente») viene dopo la 7.
+    assert _user_version(path) == 8
 
 
 def test_la_migrazione_6_dei_consumi_porta_l_esito_scartato(tmp_path):
@@ -430,7 +432,7 @@ def test_la_migrazione_6_dei_consumi_porta_l_esito_scartato(tmp_path):
 
 
 def test_un_archivio_nuovo_nasce_alla_versione_delle_migrazioni(tmp_path):
-    for store_class, name, version in ((ConstructionStore, "c.db", 7),
+    for store_class, name, version in ((ConstructionStore, "c.db", 8),
                                        (UsageStore, "u.db", 6)):
         path = os.path.join(str(tmp_path), name)
         store_class(path).close()

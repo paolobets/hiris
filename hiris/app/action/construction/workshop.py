@@ -333,9 +333,18 @@ class Workshop:
         # anche cio' che la pagina Costruzioni archivia: ripeterlo qui lo
         # faceva leggere due volte al modello (C-53, Tappa 4). `consiglio`
         # porta il resto del verdetto.
-        return {"proposta_id": occurrence["id"], "anteprima": preview,
-                "livello": level,
+        return {"proposta_id": occurrence["id"], "numero": occurrence["numero"],
+                "anteprima": preview, "livello": level,
                 "consiglio": {k: v for k, v in consiglio.items() if k != "motivo"}}
+
+    def pending_of(self, actor: str, *, now: float) -> list[dict]:
+        """Le proposte di `actor` che aspettano una risposta, per numero: le
+        righe dell'archivio, con la forma della pagina (`revisions._row`).
+        Le chiede lo strumento `mind` per le proposte del cervello (sprint
+        «L'agente», fase 2.3). Non scrive."""
+        rows = [row for row in self._store.list(now=now, pending_only=True)
+                if row["origine"] == actor]
+        return sorted(rows, key=lambda row: row["numero"] or 0)
 
     async def _free_key(self, domain: str, intent: dict) -> dict:
         """Una chiave che in questa casa non e' gia' occupata.
@@ -459,7 +468,8 @@ class Workshop:
                       exchange: str | None, now: float,
                       subject: dict | None = None,
                       confirm_phrase: str | None = None,
-                      thread: ChatThread | None = None) -> dict:
+                      thread: ChatThread | None = None,
+                      number: int | None = None) -> dict:
         """`confirm_phrase` e' **la frase su cui l'oggetto e' nato** (B-5).
 
         Il cancello qui sotto sa dire «in mezzo c'e' stato un turno». Non sa
@@ -481,6 +491,15 @@ class Workshop:
         che passa da `home_space/tools.py::ToolDispatcher._confirm` porta un
         `thread` vero, ed e' li' che la restrizione morde.
         """
+        if not proposal_id and number is not None:
+            # Il numero breve («si' alla 12», sprint «L'agente», fase 2.3) e'
+            # solo un altro nome dell'id: da qui in poi tutto e' come se la
+            # proposta fosse stata nominata per id, cancello del filo
+            # compreso. Un numero che non c'e' ha lo stesso rifiuto di un id
+            # che non c'e' (`_UNKNOWN_ID`).
+            proposal_id = self._store.id_of_number(number)
+            if proposal_id is None:
+                return refused(_UNKNOWN_ID)
         if not proposal_id:
             proposal_id, reason = self._only_pending(exchange, thread, now=now)
             if proposal_id is None:

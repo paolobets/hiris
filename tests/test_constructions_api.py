@@ -85,7 +85,7 @@ class FintaOfficina:
         return self._esito_no or {"id": proposal_id, "stato": "disdetta"}
 
     async def apply(self, proposta_id, *, actor, exchange, now, subject=None,
-                    confirm_phrase=None, thread=None):
+                    confirm_phrase=None, thread=None, number=None):
         self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self.esito
 

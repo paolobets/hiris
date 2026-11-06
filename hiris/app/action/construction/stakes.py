@@ -3,8 +3,8 @@
 approvata dal proprietario il 06/10/2026).
 
 Nel cervello il livello decide **come si chiede**, non se si chiede: una
-proposta `alto` avvisa chi amministra la casa, le altre tre vanno fra le
-Proposte allo stesso modo. Quando ci saranno gli agenti decidera' anche come
+proposta `medio` o `alto` avvisa chi amministra la casa (`ALERTED`), le altre
+due vanno fra le Proposte e basta. Quando ci saranno gli agenti decidera' anche come
 una cosa entra nel loro perimetro. **Non da' autonomia a nessuno**: «il
 cervello non tocca la casa senza un si'» resta vero a ogni livello.
 
@@ -36,6 +36,25 @@ STAKES = ("banale", "lieve", "medio", "alto")
 
 #: Il livello che solo il codice assegna.
 HIGH = "alto"
+
+#: Il livello da cui in su una proposta del cervello **avvisa** chi amministra
+#: la casa: push e riga nel suo filo della chat.
+MEDIUM = "medio"
+
+#: **I livelli che avvisano.** Enuncia la decisione del proprietario del
+#: 05/11/2026 (D3 dello sprint «L'agente»: «riga in chat e push per `medio` e
+#: `alto`, `banale` e `lieve` solo nella pagina»), che allarga la D13 del
+#: 06/10/2026 (solo `alto`). Derivato dall'ordine di `STAKES`, «da `medio` in
+#: su»: un livello nuovo piu' pesante entra da solo, uno piu' leggero no.
+ALERTED = STAKES[STAKES.index(MEDIUM):]
+
+#: **I livelli che avvisano da qualunque parte nascano.** Una proposta del
+#: proponente nasce dal suo giro o da un gesto di una persona sulla pagina
+#: («Rifalla», «Rendila automatica»): chi ha appena premuto il pulsante e' gia'
+#: davanti alla pagina, e una `medio` lo avviserebbe di cio' che sta guardando
+#: (scelta del proprietario del 06/11/2026: «solo quelle nate dal giro»). Le
+#: `alto` avvisano sempre, come vuole la D14 del 06/10/2026.
+ALERTED_FROM_ANY_ORIGIN = (HIGH,)
 
 #: Cio' che il modello puo' scegliere: tutti, tranne quello che impone il
 #: codice. Derivato, non ricopiato: un livello nuovo entra qui da solo.

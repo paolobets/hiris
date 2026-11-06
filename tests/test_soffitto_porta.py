@@ -65,7 +65,7 @@ class _Officina:
         self.soggetti = []
 
     async def apply(self, ident, *, actor, exchange, now, subject=None,
-                    confirm_phrase=None, thread=None):
+                    confirm_phrase=None, thread=None, number=None):
         self.applicate.append((ident, actor))
         self.soggetti.append(subject)
         return {"eseguito": True}
@@ -228,7 +228,7 @@ class _OfficinaContata:
         self.applicate = []
 
     async def apply(self, ident, *, actor, exchange, now, subject=None,
-                    confirm_phrase=None, thread=None):
+                    confirm_phrase=None, thread=None, number=None):
         self.applicate.append(ident)
         return {"eseguito": True}
 

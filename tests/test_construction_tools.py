@@ -12,6 +12,7 @@ from tests._contracts import assert_stessa_firma
 class FintaOfficina:
     def __init__(self, esito_proponi=None, esito_applica=None):
         self.chiamate = []
+        self.numeri = []
         self._proponi = esito_proponi or {"proposta_id": "p1", "anteprima": "farei cosi'"}
         self._applica = esito_applica or {"eseguito": True, "esecuzione_id": "e1",
                                           "entita": ["automation.x"], "avviso": None}
@@ -22,8 +23,9 @@ class FintaOfficina:
         return self._proponi
 
     async def apply(self, proposta_id, *, actor, exchange, now, subject=None,
-                    confirm_phrase=None, thread=None):
+                    confirm_phrase=None, thread=None, number=None):
         self.chiamate.append(("apply", proposta_id, actor, exchange))
+        self.numeri.append(number)
         return self._applica
 
 
@@ -142,3 +144,21 @@ async def test_conferma_senza_identificatore_NON_sceglie_QUI():
     assert workshop.chiamate == [("apply", None, "chat", "t7")], (
         "il dispatcher non deve ne' rifiutare da solo ne' scegliere: "
         "inoltra None e lascia decidere l'officina")
+
+
+@pytest.mark.asyncio
+async def test_conferma_inoltra_il_NUMERO_e_niente_che_non_sia_un_intero():
+    """«Si' alla 12» (sprint «L'agente», fase 2.3): il numero arriva
+    all'officina com'e', e chi decide resta lei. Un booleano o un testo non
+    sono un numero: li ferma lo schema dello strumento (`_bad_arguments`),
+    prima dell'officina.
+
+    Mutazione ESEGUITA (05/11/2026): il dispatcher che non passa `number` --
+    rossa."""
+    workshop = FintaOfficina()
+    d = _dispatcher(workshop=workshop, exchange="t7")
+    await d.dispatch("confirm", {"numero": 12})
+    for storto in (True, "12"):
+        esito = await d.dispatch("confirm", {"numero": storto})
+        assert "errore" in esito, esito
+    assert workshop.numeri == [12]

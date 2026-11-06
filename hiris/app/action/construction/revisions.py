@@ -170,7 +170,25 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     -- all'anti-ripetizione (`decided_proposals`), come le stesse colonne di
     -- `proposte`.
     impronta TEXT,
-    prova_json TEXT
+    prova_json TEXT,
+    -- Il NUMERO breve della proposta (sprint «L'agente», fase 2.3, D3 del
+    -- 05/11/2026): quello che la push, la riga nella chat, la pagina e lo
+    -- strumento `mind` dicono, e che `confirm` accetta («si' alla 12»). Lo
+    -- assegna l'archivio alla nascita, il successivo del piu' alto; e' la
+    -- sua casa sola, quindi tutte le porte dicono lo stesso numero.
+    numero INTEGER,
+    -- La RIGA NELLA CHAT di chi amministra (fase 2.2): 1 quando e' stata
+    -- scritta, cosi' che il ritentare della push non la ripeta. Separata da
+    -- `avvisi` perche' i due recapiti arrivano o mancano ognuno per conto
+    -- suo: una push che non parte si ritenta, una riga gia' scritta no.
+    riga_chat INTEGER,
+    -- 1 quando la proposta e' NATA DAL GIRO del proponente, e non da un
+    -- gesto di una persona dalla pagina («Rifalla», «Rendila automatica»),
+    -- che firmano come lui. Una `medio` avvisa solo se e' nata dal giro: chi
+    -- ha appena premuto il pulsante e' gia' davanti alla pagina (scelta del
+    -- proprietario, 06/11/2026). Lo scrive il giro, che sa quali proposte
+    -- sono nate nel suo turno (`proposed_in`).
+    giro INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
@@ -354,6 +372,34 @@ def _migration_7(conn) -> None:
         raise
 
 
+def _migration_8(conn) -> None:
+    """v7 -> v8 (sprint «L'agente», fasi 2.2 e 2.3): il numero breve della
+    proposta, il segno della riga scritta nella chat di chi amministra (le
+    righe di prima non ne hanno scritta nessuna: `NULL`), e il segno di una
+    proposta nata dal giro (`NULL` per le righe di prima: chi le abbia fatte
+    nascere non e' scritto, e non si indovina).
+
+    Le righe che ci sono gia' ricevono il loro numero nell'ordine in cui sono
+    nate (`creata_ts`, poi `rowid`): non e' un fatto del passato che si
+    inventa, e' un nome che si da' adesso, ed e' lo stesso che riceverebbero
+    nascendo oggi una dopo l'altra."""
+    add_missing_columns(conn, "costruzioni", {"numero": "INTEGER", "riga_chat": "INTEGER",
+                                              "giro": "INTEGER"})
+    righe = conn.execute("SELECT id FROM costruzioni WHERE numero IS NULL "
+                         "ORDER BY creata_ts, rowid").fetchall()
+    first = conn.execute("SELECT COALESCE(MAX(numero), 0) FROM costruzioni").fetchone()[0]
+    conn.executemany("UPDATE costruzioni SET numero=? WHERE id=?",
+                     [(first + n, r[0]) for n, r in enumerate(righe, start=1)])
+    conn.commit()
+
+
+#: L'indice sul numero nasce DOPO le migrazioni (`storage.init_schema`,
+#: `after_sql`): in `_SCHEMA` farebbe cadere l'apertura di un archivio che la
+#: colonna non ce l'ha ancora.
+_AFTER_SQL = ("CREATE UNIQUE INDEX IF NOT EXISTS idx_costruzioni_numero "
+              "ON costruzioni(numero)")
+
+
 #: Le colonne JSON di una riga, lette tutte da `_row` con la guardia.
 _JSON_COLUMNS = ("prima_json", "dopo_json", "helper_json", "prova_json")
 
@@ -387,6 +433,7 @@ def _row(r) -> dict | None:
     state = EXPIRED if expired else r["stato"]
     return {
         "id": r["id"],
+        "numero": r["numero"],
         "creata_ts": r["creata_ts"],
         "stato": state,
         # La frase dello stato, dal vocabolario (C-10, Tappa 8): la pagina la
@@ -422,6 +469,7 @@ def _row(r) -> dict | None:
         "esecuzione_id": r["esecuzione_id"],
         "motivo": REASON_EXPIRED if expired else r["motivo"],
         "livello": r["stakes"],
+        "giro": bool(r["giro"]),
         # La stessa coppia, con gli stessi nomi, delle proposte da fare a
         # mano (`mind/store.proposals`): le due code, una forma.
         "impronta": r["impronta"],
@@ -447,9 +495,11 @@ class ConstructionStore:
         self._conn = connect(db_path)
         self.archive_name = archive_name(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=7,
+        init_schema(self._conn, _SCHEMA, version=8,
                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                               5: _migration_5, 6: _migration_6, 7: _migration_7})
+                               5: _migration_5, 6: _migration_6, 7: _migration_7,
+                               8: _migration_8},
+                   after_sql=_AFTER_SQL)
 
     def close(self) -> None:
         with self._lock:
@@ -488,18 +538,20 @@ class ConstructionStore:
             if aperte >= self.MAX_PENDING:
                 return {"errore": (f"ci sono gia' {aperte} proposte in attesa (il tetto e' "
                                    f"{self.MAX_PENDING}): decidi quelle prima di farne altre.")}
+            number = self._conn.execute(
+                "SELECT COALESCE(MAX(numero), 0) + 1 FROM costruzioni").fetchone()[0]
             self._conn.execute(
                 "INSERT INTO costruzioni(id,creata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
-                "esecuzione_id,motivo,subject_key,entry_point,stakes) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
+                "esecuzione_id,motivo,subject_key,entry_point,stakes,numero) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?,?)",
                 (ident, now, PENDING, operation, domain, key, actor, exchange, phrase,
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
                  json.dumps(list(helper)), preview,
-                 *thread_params(thread), stakes))
+                 *thread_params(thread), stakes, number))
             self._conn.commit()
-        return {"id": ident}
+        return {"id": ident, "numero": number}
 
     def read(self, ident: str, *, now: float) -> dict | None:
         with self._lock:
@@ -507,6 +559,14 @@ class ConstructionStore:
                 f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni WHERE id=?",
                 (now - self.DEADLINE_S, ident)).fetchone()
         return None if r is None else _row(r)
+
+    def id_of_number(self, number: int) -> str | None:
+        """L'id della proposta che porta il numero `number`, o `None`. Non
+        dice niente del suo stato: lo legge chi la usa, con `read`."""
+        with self._lock:
+            r = self._conn.execute("SELECT id FROM costruzioni WHERE numero=?",
+                                   (int(number),)).fetchone()
+        return None if r is None else r[0]
 
     def list(self, *, now: float, pending_only: bool = False,
              limit: int = 200) -> list[dict]:
@@ -615,33 +675,47 @@ class ConstructionStore:
                                  "creata_ts": r[2], "id": r[4], "a_mano": False}
         return decided
 
-    def waiting(self, *, actor: str, stakes: str, now: float) -> list[dict]:
-        """Le proposte di `actor` a livello `stakes` ancora in attesa,
+    def waiting(self, *, actor: str, stakes: tuple[str, ...],
+                now: float) -> list[dict]:
+        """Le proposte di `actor` a uno dei livelli `stakes` ancora in attesa,
         avvisate o no. Non scaduta con `_EXPIRED_SQL`: una proposta scaduta
         che nessuno ha ancora segnato non chiede piu' niente a nessuno. La
         colonna `scaduta_ora` e' la forma con cui `_row` legge le righe. Non
         scrive.
 
-        Le chiede la notifica persistente di una proposta `alto`
-        (`mind/proposer_round._alert_high`, 21/10/2026): c'e' finche' la
-        proposta aspetta, che la push sia arrivata o no."""
+        Le chiede la notifica persistente di una proposta che avvisa
+        (`mind/proposer_round._alert_high`, 21/10/2026; dal 05/11/2026 i
+        livelli sono quelli di `stakes.ALERTED`): c'e' finche' la proposta
+        aspetta, che la push sia arrivata o no."""
+        if isinstance(stakes, str):
+            # Una parola sola diventerebbe le sue lettere: «alto» chiederebbe
+            # i livelli «a», «l», «t», «o», e non ne troverebbe nessuno.
+            raise TypeError("`stakes` e' un insieme di livelli, non una parola")
         cutoff = now - self.DEADLINE_S
+        levels = tuple(stakes)
+        if not levels:
+            return []
         with self._lock:
             righe = self._conn.execute(
                 f"SELECT *, {_EXPIRED_SQL} AS scaduta_ora FROM costruzioni "
-                f"WHERE origine=? AND stakes=? AND stato=? "
-                f"AND NOT {_EXPIRED_SQL} ORDER BY creata_ts",
-                (cutoff, actor, stakes, PENDING, cutoff)).fetchall()
+                f"WHERE origine=? AND stakes IN ({', '.join('?' * len(levels))}) "
+                f"AND stato=? AND NOT {_EXPIRED_SQL} ORDER BY creata_ts",
+                (cutoff, actor, *levels, PENDING, cutoff)).fetchall()
         return _rows(righe)
 
-    def to_alert(self, *, actor: str, stakes: str, now: float) -> list[dict]:
+    def to_alert(self, *, actor: str, stakes: tuple[str, ...],
+                 now: float) -> list[dict]:
         """Le proposte di `waiting` mai avvisate (D14): la push non e' ancora
         arrivata a nessuno. Non scrive."""
+        return self._waiting_without(
+            "SELECT proposta_id FROM avvisi", actor=actor, stakes=stakes, now=now)
+
+    def mark_born_in_round(self, idents) -> None:
+        """Le proposte `idents` sono nate dal giro del proponente."""
         with self._lock:
-            alerted = {r[0] for r in self._conn.execute(
-                "SELECT proposta_id FROM avvisi").fetchall()}
-        return [row for row in self.waiting(actor=actor, stakes=stakes, now=now)
-                if row["id"] not in alerted]
+            self._conn.executemany("UPDATE costruzioni SET giro = 1 WHERE id = ?",
+                                   [(ident,) for ident in idents])
+            self._conn.commit()
 
     def mark_alerted(self, ident: str) -> None:
         """L'avviso per `ident` e' arrivato: non si ritenta piu'."""
@@ -649,6 +723,28 @@ class ConstructionStore:
             self._conn.execute(
                 "INSERT OR IGNORE INTO avvisi(proposta_id) VALUES(?)", (ident,))
             self._conn.commit()
+
+    def to_write_in_chat(self, *, actor: str, stakes: tuple[str, ...],
+                         now: float) -> list[dict]:
+        """Le proposte di `waiting` la cui riga nella chat di chi amministra
+        non e' ancora stata scritta (fase 2.2). Non scrive."""
+        return self._waiting_without(
+            "SELECT id FROM costruzioni WHERE riga_chat = 1",
+            actor=actor, stakes=stakes, now=now)
+
+    def mark_written_in_chat(self, ident: str) -> None:
+        """La riga nella chat per `ident` c'e': non si riscrive."""
+        with self._lock:
+            self._conn.execute("UPDATE costruzioni SET riga_chat = 1 WHERE id = ?",
+                               (ident,))
+            self._conn.commit()
+
+    def _waiting_without(self, done_sql: str, **filters) -> list[dict]:
+        """Le righe di `waiting` meno quelle che `done_sql` (una query fissa,
+        scritta qui, mai un valore da fuori) dice gia' recapitate."""
+        with self._lock:
+            done = {r[0] for r in self._conn.execute(done_sql).fetchall()}
+        return [row for row in self.waiting(**filters) if row["id"] not in done]
 
     def count_pending(self, *, now: float) -> int:
         """Quante proposte aspettano una risposta di chi costruisce.

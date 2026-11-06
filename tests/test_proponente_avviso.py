@@ -1,11 +1,12 @@
-"""L'avviso per una proposta `alto` (piano degli attori, strato 4, Task 4.3;
-D14, approvata dal proprietario il 06/10/2026).
+"""L'avviso per una proposta `medio` o `alto` (piano degli attori, strato 4,
+Task 4.3; D14, approvata dal proprietario il 06/10/2026; dal 05/11/2026 anche
+`medio`, D3 dello sprint «L'agente»).
 
 Una proposta del proponente che agisce su una serratura o sull'allarme esce
 `alto` qualunque livello scriva il modello (D13, la regola e' in
 `action/construction/stakes.py`), e **avvisa gli amministratori**: una push sui
-loro telefoni, dal recapito delle promesse e dalla porta dei servizi. Una
-`medio` va fra le Proposte e basta.
+loro telefoni, dal recapito delle promesse e dalla porta dei servizi. Anche
+una `medio` avvisa; una `lieve` o una `banale` va fra le Proposte e basta.
 
 Le prove del livello dentro l'officina vere stanno in
 `tests/test_livello_proposte.py`; il cancello che ammette l'avviso, e solo lui,
@@ -45,6 +46,7 @@ from hiris.app.live_value import LiveValue
 from hiris.app.mind import proposer_round as pr
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.startup import live_values
+from hiris.app.storage import DATA_DIR_KEY
 from hiris.app.usage.store import UsageStore
 from tests._casa_sintetica import synthetic_inputs
 from tests._oggi_fermo import ferma_oggi
@@ -67,6 +69,7 @@ _LUCE = {"gesto": "crea", "dominio": "automation", "alias": "Luce del portico",
          "livello": "medio", "innesco": [],
          "azioni": [{"action": "light.turn_on",
                      "target": {"entity_id": "light.portico"}}]}
+_LUCE_LIEVE = {**_LUCE, "alias": "Luce della cantina", "livello": "lieve"}
 
 
 class _Officina:
@@ -192,7 +195,7 @@ def casa(tmp_path):
            OBSERVATIONS_KEY: store, USAGE_KEY: usage, CONSTRUCTIONS_KEY: costruzioni,
            WORKSHOP_KEY: _Officina(costruzioni), BRIDGE_ACTIVE_KEY: LiveValue(False),
            HA_CLIENT_KEY: _casa_ha(porta=porta), SERVICE_REGISTRY_KEY: ServiceRegistry(),
-           ACTUATOR_KEY: porta}
+           ACTUATOR_KEY: porta, DATA_DIR_KEY: str(tmp_path)}
     soffitto.prepara_ruoli(app)
     try:
         yield app
@@ -248,30 +251,65 @@ async def test_una_proposta_ALTO_avvisa_gli_amministratori(casa):
 
 
 @pytest.mark.asyncio
-async def test_una_proposta_MEDIO_non_avvisa_nessuno(casa):
-    """D13: nel cervello cambia solo `alto`. Una `medio` va fra le Proposte, e
-    nessun telefono suona.
+async def test_una_proposta_LIEVE_non_avvisa_nessuno(casa):
+    """D3 dello sprint «L'agente» (05/11/2026): `banale` e `lieve` vanno fra
+    le Proposte, e nessun telefono suona.
 
-    Mutazione ESEGUITA (06/10/2026): `to_alert` senza il filtro sul livello
-    -- rossa."""
+    Mutazione ESEGUITA (06/10/2026, allora sulla `medio`): `to_alert` senza
+    il filtro sul livello -- rossa."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE_LIEVE)
+
+    await pr.proposer_round(casa)
+
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
+    assert riga["livello"] == "lieve"
+    assert casa[ACTUATOR_KEY].chiamate == []
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_MEDIO_avvisa_col_suo_livello(casa):
+    """D3 dello sprint «L'agente» (05/11/2026): una `medio` avvisa come una
+    `alto`, e la push dice il livello vero della proposta."""
     _analisi(casa, 1)
     casa[LLM_ROUTER_KEY] = _modello(_LUCE)
 
     await pr.proposer_round(casa)
 
-    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
-    assert riga["livello"] == "medio"
-    assert casa[ACTUATOR_KEY].chiamate == []
+    (chiamata,) = casa[ACTUATOR_KEY].push
+    assert chiamata["call"]["servizio"] == "notify.mobile_app_iphone_bet"
+    messaggio = chiamata["call"]["dati"]["message"]
+    assert "livello medio" in messaggio and "Luce del portico" in messaggio
+
+
+def test_i_livelli_che_avvisano_sono_da_medio_in_su():
+    """La regola ha una casa (`stakes.ALERTED`), e si legge dall'ordine dei
+    livelli."""
+    from hiris.app.action.construction.stakes import ALERTED, STAKES
+
+    assert ALERTED == ("medio", "alto")
+    assert set(ALERTED) <= set(STAKES)
+
+
+def test_una_parola_sola_come_livello_si_rifiuta(tmp_path):
+    """«alto» passato come stringa diventerebbe le sue quattro lettere, e
+    l'avviso non troverebbe mai niente senza dirlo."""
+    archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    try:
+        with pytest.raises(TypeError):
+            archivio.waiting(actor="proponente", stakes="alto", now=1.0)
+    finally:
+        archivio.close()
 
 
 @pytest.mark.asyncio
-async def test_un_turno_con_una_ALTO_e_una_MEDIO_avvisa_una_volta(casa):
-    _analisi(casa, 2)
-    casa[LLM_ROUTER_KEY] = _modello(_LUCE, _SERRATURA)
+async def test_un_turno_con_una_ALTO_una_MEDIO_e_una_LIEVE_avvisa_due_volte(casa):
+    _analisi(casa, 3)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE, _SERRATURA, _LUCE_LIEVE)
 
     await pr.proposer_round(casa)
 
-    assert len(casa[ACTUATOR_KEY].push) == 1
+    assert len(casa[ACTUATOR_KEY].push) == 2
 
 
 @pytest.mark.asyncio
@@ -346,10 +384,10 @@ def test_una_proposta_SCADUTA_non_si_avvisa_piu(tmp_path):
                          actor="proponente", exchange="t", phrase=None,
                          prima=None, dopo={"alias": "x"}, helper=[],
                          preview="", stakes="alto", now=1_000_000.0)
-        assert len(archivio.to_alert(actor="proponente", stakes="alto",
+        assert len(archivio.to_alert(actor="proponente", stakes=("alto",),
                                      now=1_000_001.0)) == 1
         dopo = 1_000_000.0 + ConstructionStore.DEADLINE_S + 1
-        assert archivio.to_alert(actor="proponente", stakes="alto", now=dopo) == []
+        assert archivio.to_alert(actor="proponente", stakes=("alto",), now=dopo) == []
     finally:
         archivio.close()
 
@@ -468,7 +506,7 @@ def test_to_alert_porta_SCADUTA_ORA_che_ROW_legge(tmp_path):
                          actor="proponente", exchange="t", phrase=None,
                          prima=None, dopo={"alias": "x"}, helper=[],
                          preview="", stakes="alto", now=1_000_000.0)
-        (riga,) = archivio.to_alert(actor="proponente", stakes="alto",
+        (riga,) = archivio.to_alert(actor="proponente", stakes=("alto",),
                                     now=1_000_001.0)
     finally:
         archivio.close()
@@ -504,7 +542,7 @@ async def test_una_proposta_ALTO_lascia_una_notifica_PERSISTENTE(casa):
     (scritta,) = porta.notifiche
     assert scritta["call"]["servizio"] == "persistent_notification.create"
     assert scritta["call"]["dati"]["notification_id"] == ident
-    assert scritta["call"]["dati"]["title"] == pr.NOTICE_TITLE
+    assert scritta["call"]["dati"]["title"] == pr.NOTICE_TITLE.format(level="alto")
     assert "Chiudi la porta di notte" in scritta["call"]["dati"]["message"]
     assert scritta["actor"] == "proponente"
     (push,) = porta.push
@@ -650,3 +688,127 @@ async def test_una_notifica_tolta_e_poi_voluta_di_nuovo_si_mostra(tmp_path):
 
     assert esito["allineate"] == ["hiris_proposal_1"]
     assert "hiris_proposal_1" in porta.mostrate
+
+
+
+# -- La riga nella chat (sprint «L'agente», fase 2.2) ------------------------
+
+def _admin_chat(casa, ident):
+    from hiris.app.chat_store import load_history
+    from hiris.app.chat_thread import thread_for
+
+    return load_history(casa[DATA_DIR_KEY],
+                        thread=thread_for(new_subject("persona", ident=ident), "ingress"))
+
+
+@pytest.mark.asyncio
+async def test_una_MEDIO_scrive_una_riga_nella_chat_di_chi_amministra(casa):
+    """D3 dello sprint «L'agente»: accanto alla push, una riga di HIRIS nella
+    chat del pannello di ogni amministratore, col numero da dire in risposta.
+    Marta non amministra, e la sua chat resta vuota.
+
+    Mutazione ESEGUITA (05/11/2026): il giro senza il passo della riga --
+    rossa."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+
+    await pr.proposer_round(casa)
+
+    (riga,) = _admin_chat(casa, "u-paolo")
+    (nata,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
+    assert riga["role"] == "assistant"
+    assert f"n. {nata['numero']}" in riga["content"]
+    assert f"sì alla {nata['numero']}" in riga["content"]
+    assert "Luce del portico" in riga["content"]
+    assert _admin_chat(casa, "u-marta") == []
+
+
+@pytest.mark.asyncio
+async def test_la_riga_nella_chat_non_si_ripete_mentre_la_push_si_ritenta(casa):
+    """La push che non arriva si ritenta a ogni battito (D14); la riga nella
+    chat, scritta la prima volta, no.
+
+    Mutazione ESEGUITA (05/11/2026): `mark_written_in_chat` che non scrive --
+    rossa (due righe)."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+    casa[ACTUATOR_KEY].arriva = False
+
+    await pr.proposer_round(casa)
+    await pr._alert_high(casa)
+
+    assert len(casa[ACTUATOR_KEY].push) == 2
+    assert len(_admin_chat(casa, "u-paolo")) == 1
+
+
+@pytest.mark.asyncio
+async def test_una_LIEVE_non_scrive_in_chat(casa):
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE_LIEVE)
+
+    await pr.proposer_round(casa)
+
+    assert _admin_chat(casa, "u-paolo") == []
+
+
+@pytest.mark.asyncio
+async def test_la_push_dice_il_numero_da_rispondere(casa):
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+
+    await pr.proposer_round(casa)
+
+    (chiamata,) = casa[ACTUATOR_KEY].push
+    (nata,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
+    assert f"sì alla {nata['numero']}" in chiamata["call"]["dati"]["message"]
+
+
+def _born_from_page(casa, livello: str, alias: str) -> dict:
+    """Una proposta del proponente nata da un gesto della pagina («Rifalla»,
+    «Rendila automatica»): firma come lui, ma il giro non la segna."""
+    return casa[CONSTRUCTIONS_KEY].propose(
+        operation="crea", domain="automation", key=alias, actor="proponente",
+        exchange="rifalla-1", phrase=None, prima=None, dopo={"alias": alias},
+        helper=[], preview="", stakes=livello, now=time.time())
+
+
+@pytest.mark.asyncio
+async def test_una_MEDIO_nata_da_un_gesto_della_pagina_non_avvisa(casa):
+    """Scelta del proprietario, 06/11/2026: «solo quelle nate dal giro». Chi
+    ha premuto «Rifalla» e' gia' davanti alla pagina.
+
+    Mutazione ESEGUITA (06/11/2026): `_alerts` che torna sempre vero --
+    rossa (una push e una riga)."""
+    _born_from_page(casa, "medio", "Luce del garage")
+
+    await pr._alert_high(casa)
+
+    assert casa[ACTUATOR_KEY].push == []
+    assert _admin_chat(casa, "u-paolo") == []
+
+
+@pytest.mark.asyncio
+async def test_una_ALTO_avvisa_anche_se_nata_da_un_gesto_della_pagina(casa):
+    """D14 resta: le `alto` avvisano sempre, da qualunque parte nascano.
+
+    Mutazione ESEGUITA (06/11/2026): `ALERTED_FROM_ANY_ORIGIN` vuoto -- rossa."""
+    _born_from_page(casa, "alto", "Chiudi la porta")
+
+    await pr._alert_high(casa)
+
+    assert len(casa[ACTUATOR_KEY].push) == 1
+    assert len(_admin_chat(casa, "u-paolo")) == 1
+
+
+@pytest.mark.asyncio
+async def test_il_giro_segna_le_proposte_nate_nel_suo_turno(casa):
+    """Il segno lo scrive il giro, dall'archivio (`proposed_in`), non dal
+    modello. Mutazione ESEGUITA (06/11/2026): il giro senza
+    `_mark_round_born` -- rossa qui e nelle prove della `medio`."""
+    _analisi(casa, 1)
+    casa[LLM_ROUTER_KEY] = _modello(_LUCE)
+
+    await pr.proposer_round(casa)
+
+    (riga,) = casa[CONSTRUCTIONS_KEY].list(now=time.time())
+    assert riga["giro"] is True

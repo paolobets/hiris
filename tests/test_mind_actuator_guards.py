@@ -84,10 +84,19 @@ RADICE_GIRO = "proposer_round"
 #: che chi chiama possiede -- mai un servizio scelto dal modello. Il testo lo
 #: compone il codice (`proposer_round.ALERT_TEXT`).
 #:
+#: `tell_admins_in_chat` (`keeper/delivery.py`) e' una FUNZIONE come le altre
+#: due: la riga nella chat di chi amministra per una proposta che avvisa
+#: (sprint «L'agente», fase 2.2, D3 del proprietario del 05/11/2026). Da Home
+#: Assistant **legge soltanto** chi amministra (`soffitto.administrators`, la
+#: stessa lettura di `notify_admins`); scrive nell'archivio delle chat di HIRIS
+#: (`chat_store.append_assistant_line`), mai in Home Assistant. Il testo lo
+#: compone il codice (`proposer_round.CHAT_TEXT`).
+#:
 #: Questa lista non ricopia niente: **dice cosa il cancello ammette**. Un metodo
 #: nuovo dell'officina non entra qui da solo -- va ammesso a mano, con la ragione,
 #: che e' esattamente il momento in cui qualcuno deve pensarci.
-AMMESSI = frozenset({"propose", "notify_admins", "align_notices"})
+AMMESSI = frozenset({"propose", "notify_admins", "align_notices",
+                     "tell_admins_in_chat"})
 
 
 def _albero(percorso: pathlib.Path):

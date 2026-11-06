@@ -22,10 +22,16 @@ import time
 from aiohttp import web
 
 from ..action.construction.revisions import CONSTRUCTIONS_KEY
-from ..action.construction.stakes import HIGH
+from ..action.construction.stakes import ALERTED, ALERTED_FROM_ANY_ORIGIN
 from ..home_space import historian
 from ..home_space.reader import HOME_SPACE_KEY, house_timezone_of
-from ..keeper.delivery import NOTICE_HINT, align_notices, arrived, notify_admins
+from ..keeper.delivery import (
+    NOTICE_HINT,
+    align_notices,
+    arrived,
+    notify_admins,
+    tell_admins_in_chat,
+)
 from ..keeper.promise import DELIVERY_TITLE
 from ..live_value import LiveValue
 from ..proxy.entity_cache import ENTITY_CACHE_KEY
@@ -76,7 +82,7 @@ async def proposer_beat(app) -> dict | None:
     """Cio' che lo schedulatore chiama ogni ora: il giro, se e' acceso
     (`ENABLED`); altrimenti niente, e non lo dice a ogni battito.
 
-    **Gli avvisi delle proposte `alto` partono anche a giro spento** (N141-1,
+    **Gli avvisi delle proposte che avvisano partono anche a giro spento** (N141-1,
     giro 141): il «Rifalla» resta acceso e firma come il proponente, quindi
     una proposta su una serratura puo' nascere `alto` anche oggi, e la regola
     del proprietario (D14, 06/10/2026: «si ritenta finche' arriva») vuole
@@ -154,6 +160,7 @@ async def _chain(app, store, day: str, pending, refused, runner) -> dict:
         truncated=turn.truncated, presence=presence)
     if occurrence["risposta"] and occurrence["problemi"] and not turn.truncated:
         declare_refused(app.get(USAGE_KEY), turn.turn_id, occurrence["problemi"])
+    _mark_round_born(app, exchange)
     _settle(app, store, day, occurrence)
     await _alert_high_safely(app)
     return occurrence
@@ -218,6 +225,7 @@ async def _collect(app, store, today: str) -> dict | None:
         presence=presence)
     if occurrence["problemi"]:
         declare_refused(app.get(USAGE_KEY), decision.get("turn_id"), occurrence["problemi"])
+    _mark_round_born(app, decision.get("exchange_id"))
     _settle(app, store, today, occurrence)
     await _alert_high_safely(app)
     return occurrence
@@ -260,6 +268,22 @@ def _built_in(app, exchange: str | None) -> frozenset[str]:
         return frozenset()
     return constructions.proposed_in(exchange, actor=PROPOSER_SPECIES) \
         | {row["id"] for row in _unbound(app)}
+
+
+def _mark_round_born(app, exchange: str | None) -> None:
+    """Le proposte nate in QUESTO turno del giro portano il segno del giro:
+    una `medio` avvisa solo cosi' (`stakes.ALERTED_FROM_ANY_ORIGIN`). Lo dice
+    l'archivio, che ha scritto ogni proposta col suo turno."""
+    constructions = app.get(CONSTRUCTIONS_KEY)
+    if constructions is not None:
+        constructions.mark_born_in_round(
+            constructions.proposed_in(exchange, actor=PROPOSER_SPECIES))
+
+
+def _alerts(row: dict) -> bool:
+    """Questa proposta in attesa, a un livello di `ALERTED`, avvisa? Si' se e'
+    nata dal giro, o se il suo livello avvisa da qualunque parte nasca."""
+    return row.get("giro") or row.get("livello") in ALERTED_FROM_ANY_ORIGIN
 
 
 def _settle(app, store, day: str, occurrence: dict) -> None:
@@ -323,16 +347,24 @@ def _settle(app, store, day: str, occurrence: dict) -> None:
                            when_ts=now)
 
 #: Il testo della push agli amministratori. Lo scrive il codice, non il
-#: modello: il nome dell'oggetto e' l'unica parte che viene dalla proposta.
-#: Non nomina i domini: quali sono `alto` lo dice `stakes.HIGH_STAKES_DOMAINS`,
-#: e una frase che li ricopiasse mentirebbe il giorno in cui la lista cambia.
-ALERT_TEXT = ("HIRIS ha una proposta di livello alto: «{name}». "
-              "Decidi tu, nella pagina Proposte.")
+#: modello: il nome dell'oggetto e' l'unica parte che viene dalla proposta, il
+#: livello quella che viene dall'officina. Non nomina i domini: quali sono
+#: `alto` lo dice `stakes.HIGH_STAKES_DOMAINS`, e una frase che li ricopiasse
+#: mentirebbe il giorno in cui la lista cambia.
+ALERT_TEXT = ("HIRIS ha una proposta (n. {number}, livello {level}): «{name}». "
+              "Rispondi «sì alla {number}» in chat, o decidi nella pagina Proposte.")
 
-#: Le notifiche persistenti delle proposte `alto`, una per proposta: l'id
-#: viaggia verso Home Assistant, e porta il suo nome in inglese.
+#: La riga nella chat di chi amministra (fase 2.2): la stessa notizia, detta
+#: da HIRIS nella conversazione, dove la risposta e' una frase.
+CHAT_TEXT = ("Ho una proposta per la casa (n. {number}, livello {level}): «{name}». "
+             "Se ti va bene rispondimi «sì alla {number}»; la trovi anche nella "
+             "pagina Proposte.")
+
+#: Le notifiche persistenti delle proposte che avvisano, una per proposta:
+#: l'id viaggia verso Home Assistant, e porta il suo nome in inglese. Il
+#: titolo dice il livello della proposta (`{level}`).
 NOTICE_FAMILY = "hiris_proposal_"
-NOTICE_TITLE = f"{DELIVERY_TITLE} · proposta di livello alto"
+NOTICE_TITLE = f"{DELIVERY_TITLE} · proposta di livello {{level}}"
 
 
 async def _alert_high_safely(app) -> None:
@@ -341,20 +373,21 @@ async def _alert_high_safely(app) -> None:
     try:
         await _alert_high(app)
     except Exception as error:
-        logger.warning("proponente: avviso per le proposte alto non riuscito "
+        logger.warning("proponente: avviso per le proposte da avvisare non riuscito "
                        "(%s: %s) -- si ritenta al giro dopo",
                        type(error).__name__, error)
 
 
 async def _alert_high(app) -> None:
-    """L'avviso per una proposta `alto` (D14, approvata il 06/10/2026): una
-    push agli amministratori, dal recapito delle promesse e dalla porta dei
-    servizi (`keeper/delivery.notify_admins`). Le altre proposte vanno fra le
-    Proposte e basta (D13: nel cervello cambia solo `alto`).
+    """L'avviso per una proposta che avvisa (D14, approvata il 06/10/2026):
+    una push agli amministratori, dal recapito delle promesse e dalla porta
+    dei servizi (`keeper/delivery.notify_admins`). Quali livelli avvisano lo
+    dice `stakes.ALERTED` -- `medio` e `alto` dal 05/11/2026 (D3 dello sprint
+    «L'agente»); le altre vanno fra le Proposte e basta.
 
     **Si ritenta finche' arriva** (scelta del proprietario, 06/10/2026): le
-    proposte da avvisare le dice l'archivio delle costruzioni -- `alto`, del
-    proponente, in attesa, senza un avviso arrivato -- e il giro le guarda a
+    proposte da avvisare le dice l'archivio delle costruzioni -- a un livello
+    che avvisa, del proponente, in attesa, senza un avviso arrivato -- e il giro le guarda a
     ogni battito. Smette quando almeno una push e' arrivata, o quando la
     proposta non e' piu' in attesa: nessun numero di tentativi scelto da noi.
     Il livello l'ha scritto l'officina; qui non si ricalcola.
@@ -370,19 +403,33 @@ async def _alert_high(app) -> None:
         return
     now = time.time()
     shown = await align_notices(app, NOTICE_FAMILY, {
-        f"{NOTICE_FAMILY}{row['id']}": (NOTICE_TITLE, _alert_text(row))
-        for row in constructions.waiting(actor=PROPOSER_SPECIES, stakes=HIGH, now=now)},
+        f"{NOTICE_FAMILY}{row['id']}": (_notice_title(row), _alert_text(row))
+        for row in constructions.waiting(actor=PROPOSER_SPECIES, stakes=ALERTED,
+                                         now=now) if _alerts(row)},
         actor=PROPOSER_SPECIES)
-    for row in constructions.to_alert(actor=PROPOSER_SPECIES, stakes=HIGH, now=now):
+    for row in filter(_alerts, constructions.to_alert(actor=PROPOSER_SPECIES,
+                                                     stakes=ALERTED, now=now)):
         text = _alert_text(row)
         if f"{NOTICE_FAMILY}{row['id']}" in (shown.get("allineate") or ()):
             text = f"{text}\n{NOTICE_HINT}"
         report = await notify_admins(app, text, actor=PROPOSER_SPECIES)
         if arrived(report):
             constructions.mark_alerted(row["id"])
+    # La riga nella chat si scrive una volta, che la push sia arrivata o no:
+    # chi ritenta e' la push, non la riga.
+    for row in filter(_alerts, constructions.to_write_in_chat(
+            actor=PROPOSER_SPECIES, stakes=ALERTED, now=now)):
+        if await tell_admins_in_chat(app, _alert_text(row, CHAT_TEXT)):
+            constructions.mark_written_in_chat(row["id"])
 
 
-def _alert_text(row: dict) -> str:
+def _alert_text(row: dict, template: str | None = None) -> str:
     body = row.get("dopo") or row.get("prima") or {}
     name = body.get("alias") if isinstance(body, dict) else None
-    return ALERT_TEXT.format(name=name or row.get("chiave"))
+    return (template or ALERT_TEXT).format(number=row.get("numero"),
+                                           level=row.get("livello"),
+                                           name=name or row.get("chiave"))
+
+
+def _notice_title(row: dict) -> str:
+    return NOTICE_TITLE.format(level=row.get("livello"))
