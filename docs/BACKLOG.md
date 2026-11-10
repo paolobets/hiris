@@ -79,18 +79,6 @@ basso»), la porta dei modelli, i lavori «partial» nel log e il giro del matti
 «Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px» la Fase B prende
 solo la pagina del Brain, quindi la voce resta «In attesa».
 
-### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA con la v3.83.0** — aperta il 22/10/2026
-
-`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavoro», in prima persona come la propone ux-ui-specialist (scelta di Paolo del 29/10; dal 28/10 era «Come lavora»). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
-
-`origine: Paolo, 22/10/2026 13:28 («la pagina L'osservatore si chiama Brain»)` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`, Fase B.1
-
-La voce di menu, il titolo e le schede della pagina dicono «Brain» invece di «L'osservatore».
-Nasce una rotta `#/brain`; `#/watcher` e `#/osservatore` restano come alias verso di lei, perché
-un segnalibro vecchio non deve portare a una pagina vuota. Gli identificatori nel codice non si
-toccano: la rinomina del codice si fa a sviluppo fermo (CLAUDE.md, «Il debito dichiarato: la
-rinomina in inglese»). Prima di disegnare si interpella `ux-ui-specialist`.
-
 ### I dati e le considerazioni del Brain si leggono: contenuti, usabilità, feedback — aperta il 22/10/2026
 
 `origine: Paolo, 22/10/2026 13:28 — «capire cosa mi stanno dicendo osservatore e analista, perché per ora le info sono ancora poco chiare»; «così si legge male»` · piano: Fasi L e B (B.2-B.5)
@@ -399,99 +387,6 @@ Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si tr
 il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
 i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
 
-### ~~Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta~~ — **USCITA con la v3.83.0**
-
-`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): l'editor in riga della scheda «Sapere» tocca anche `da_sapere_subito`, con le tre forme del valore: sì, no, oppure un elenco di stati scritti separati da virgola (`watcher-sapere.js`, `EDITABLE_JUDGMENT_FIELDS`, `statesInput`). La validazione resta della rotta, che rifiuta con la sua ragione`
-
-`origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
-
-**Il fatto.** Il giudizio nuovo compare nella pagina del sapere (sezione 04) con la sua riga e il
-suo gruppo, e **il ritorno al seme si fa gia' dalla pagina**: il comando «Torna al seme» vale per
-qualunque riga corretta, di qualunque campo. Cio' che manca e' **scrivere un valore nuovo**, che
-oggi si fa **solo dalla rotta** (`POST /api/mind/judgment`, a mano o da script): l'editor in riga
-della sezione 04 tocca solo `genere`. Non e' un difetto di questa fetta: e' un limite dichiarato
-finche' la pagina dell'osservatore non lo dispone.
-
-**Cosa servirebbe.** Estendere l'editor in riga della sezione 04 a `da_sapere_subito` (il ritorno
-al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
-dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
-dipende.
-
-### ~~Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS~~ — **USCITA con la v3.83.0**
-
-`fatta il 29/10/2026 (Fase S, S.1; D8 del 03/10 e scelta del proprietario del 29/10: «ognuno vede i suoi», anche quando il ricordo riguarda la casa): la regola vive una volta in `memory/store.py` (`_reader_clause`, `fetch_for`, `count_for`) e la chiedono il nucleo (`compose_briefing`, col soggetto obbligatorio), gli strumenti (`ToolDispatcher._all_memories`), la pagina Memoria e le due strade delle promesse (`keeper/exchange.promise_subject`). Un turno di sfondo, senza soggetto, li legge tutti; un soggetto senza id nessuno. Lo difende `tests/test_ricordi_per_persona.py`, con le mutazioni eseguite`
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
-
-Con l'accesso ai non amministratori, la pagina Memoria mostra a ciascuno **solo i ricordi che ha
-detto lui**, ma in chat la memoria di HIRIS **resta condivisa** (decisione delle chat divise,
-25/09/2026): il modello legge i ricordi di tutti (lo strumento `fetch`, il nucleo). Quindi un non
-amministratore può farsi ripetere, chiedendo, ciò che un altro ha detto a HIRIS. E ciò che lui fa
-ricordare (`remember`) entra nei turni successivi di tutti, amministratori compresi: un canale di
-iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09).
-
-**Da decidere**: se certi ricordi diventano personali (visibili al modello solo nel filo di chi li
-ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
-pagina Memoria.
-
-### ~~Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona~~ — **USCITA con la v3.83.0**
-
-`fatta il 29/10/2026 (Fase S, S.2; scelta del proprietario del 29/10: turni al giorno, un valore solo per chi non amministra, spento di fabbrica): `ChatSettings.daily_turn_cap`, nella pagina Impostazioni della chat; il conto si chiede all'archivio dei consumi (`UsageStore.count_turns`, chat e promesse insieme, giorno della casa); il rifiuto in `steering.daily_turns_refusal`, chiesto dalla chat (429 `daily_turns_reached`) e da una promessa `chiedi` prima di ogni strada. I turni delle promesse portano ora chi le ha chieste nel registro, su catena e ponte. Lo difende `tests/test_tetto_per_persona.py`, con le mutazioni eseguite`
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
-
-Ogni turno di chat di un non amministratore spende sui provider configurati dal proprietario (catena
-e piano). Esiste solo il tetto globale dei turni per conversazione (`max_chat_turns`), non un tetto
-per persona né per giorno; nascondere il widget dei consumi a chi non amministra non toglie la spesa.
-Il registro dei turni (`turn.subject_json`) sa già chi ha chiesto: la misura per persona c'è, manca
-il freno.
-
-**Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
-
-### ~~Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS~~ — **USCITA con la v3.83.0**
-
-`fatta: la scrittura il 07/10/2026 (Tappa 7, F-01 e F-17: il cancello chiede il gesto della rotta a chiunque entri), la lettura il 29/10/2026 (Fase S, S.3): `soffitto.restricted_person` chiede il gesto «amministrare» al soffitto della richiesta invece di guardare la porta, quindi un servizio `utente` riceve da `GET /api/memories` i suoi ricordi e da `GET /api/chat-settings` i soli `CHAT_PAGE_FIELDS`. Una richiesta che non dice chi e' riceve la lettura ristretta. Lo difendono `tests/test_le_sue_memorie.py::test_un_servizio_firmato_legge_i_ricordi_come_una_persona_del_suo_ruolo` e `::test_un_servizio_utente_riceve_le_impostazioni_ridotte`, con la mutazione eseguita`
-
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
-
-La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
-firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
-distingue solo lettura e scrittura: un servizio approvato come `utente` può chiamare le rotte di
-configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/usage/reset`, …)
-che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
-il chiamante può in HA».
-
-**Anche in lettura** (aggiunto dal Task 5 della stessa fetta, 27/09/2026): i filtri che la fetta
-ha messo sulle letture valgono solo per le persone dall'ingress (`soffitto.restricted_person`,
-che guarda `auth_via == "ingress"`). Un servizio firmato con ruolo `utente` o `lettore` riceve da
-`GET /api/memories` **tutti** i ricordi (non solo i suoi) e da `GET /api/chat-settings` **tutte**
-le impostazioni della chat, prompt di sistema compreso — non solo `name` e `max_chat_turns`.
-
-**Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
-applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi filtri di lettura
-(`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
-`utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
-
-### ~~I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant`~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
-
-`fatta il 30/10/2026 (Fase S, S.4; scelta del proprietario del 30/10: «solo servizi con bersaglio»): a chi non amministra `execute` concede solo i servizi la cui definizione in `/api/services` dichiara un `target`, piu' le notifiche (`action/verification.py::touches_no_entity`, chiesta dalla riga di `execute` in `home_space/tools.py` come `_service_without_entity`, col rifiuto `soffitto.NO_ENTITY_SERVICES_REFUSAL`). Il dominio `homeassistant` resta di `privacy.HA_CORE_USER_SERVICES`. La stessa domanda vale ora per la `chiamata` di una promessa `fai` (`_on_promised_call`): fino a oggi una promessa chiedeva solo `comandare`, e un `fai` di `homeassistant.restart` nasceva per chiunque potesse comandare. Misurato sul sorgente il 30/10/2026: nel nucleo 2026.10.4 nessun servizio registrato con `async_register_admin_service` dichiara un `target`; in Spook v5.11.1 (quello di casa) 14 dei 17 riservati che la porta lasciava passare non lo dichiarano (i `delete` di nove aiutanti, `zone.update`, `zone.delete`, `person.add_device_tracker`, `person.remove_device_tracker`, `sensor.set_display_precision`) e da oggi sono chiusi. Il costo: chi non amministra perde anche i servizi senza `target` che non sono riservati (nel nucleo 2026.10.4, fra gli altri, `shopping_list.*`, `scene.apply`, `scene.create`, `conversation.process`, `logbook.log` e lo `script.<nome>` chiamato direttamente; `script.turn_on` con lo script come bersaglio resta). Lo difende `tests/test_servizi_senza_entita.py`, con le mutazioni eseguite. La nota qui sotto che diceva «quelli senza bersaglio sono gia' irraggiungibili» era falsa: la porta accetta come bersaglio un'entita' dello stesso dominio anche quando il servizio non dichiara un `target`, ed e' cosi' che i 14 passavano`
-
-`origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
-
-Home Assistant registra alcuni servizi con `async_register_admin_service`: a un non amministratore
-li rifiuta (`helpers/service.py`). HIRIS li chiama col proprio token di amministratore, quindi deve
-rifiutarli da sé. Oggi lo fa **solo per il dominio `homeassistant`** (verificato il 27/09/2026 su
-Core 2026.9.3): a chi non amministra `execute` concede solo `turn_on`, `turn_off`, `toggle`,
-`update_entity`. I servizi riservati di **altri domini che dichiarano un bersaglio** (entità,
-dispositivo, area) passano la porta come qualunque comando: quelli senza bersaglio sono gia'
-irraggiungibili (`action/verification.py`, un bersaglio vuoto e' sempre un rifiuto).
-
-**Perche' resta fuori**: l'elenco di quali servizi di quali domini siano riservati non e' esposto
-da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione), e scriverlo a mano
-per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
-servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
-nessuno raggiungibile con un bersaglio.
-
 ### I servizi di Spook riservati agli amministratori che dichiarano un bersaglio — aperta il 30/10/2026
 
 `origine: Fase S, S.4, 30/10/2026 (rischio dichiarato con la scelta del proprietario)` · `hiris/app/action/verification.py::touches_no_entity`
@@ -533,112 +428,6 @@ Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era pri
 La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
 farne.
 
-### ~~Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
-
-`fatta il 29/10/2026 (Fase S, S.6): il guscio porta i permessi scritti dal server (`api/shell.py`, `<meta name="hiris-permessi">`, la stessa domanda di `GET /api/pending`: `admission.request_permissions`), e `static/pending-badge.js` non scrive ne' legge piu' niente in `localStorage`. Lo difendono `tests/test_permessi_nel_guscio.py` e le prove JS di `pending-badge.test.mjs` e `can-configure.test.mjs`, con le mutazioni eseguite`
-
-`origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
-
-Il guscio ricorda `can_configure` in `localStorage["hiris.can_configure"]`, per profilo del
-browser. Su un dispositivo condiviso, se un amministratore ha aperto HIRIS e poi entra un non
-amministratore con lo stesso profilo, questo vede **per un attimo** il menu di configurazione e il
-guscio fa **una** lettura riservata, che il server rifiuta; alla prima risposta di `/api/pending`
-il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, nessun dato passa.
-**Cosa la chiude**: legare il ricordo alla persona (per esempio alla chiave del soggetto), o non
-usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
-per l'amministratore.
-
-### ~~Una risposta tardiva di `can_configure` rimonta la pagina aperta~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
-
-`fatta il 29/10/2026 (Fase S, S.6): con i permessi nella pagina il router di `/config` parte subito dopo il montaggio; `ROUTER_WAIT_MS` e' uscito, e resta solo il rimontaggio sul CAMBIO a pagina aperta (`static/config/main.js`)`
-
-`origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
-
-Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` fino a 3 secondi
-(`ROUTER_WAIT_MS`), poi parte chiuso. Una risposta che arriva dopo rimonta la pagina aperta
-(`HirisRouter.refresh()`), anche quando la pagina era gia' quella giusta: un ridisegno in piu', non
-un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
-mostra.
-
-**Strada scelta il 29/10/2026** (Fase S, S.6, per questa voce e per quella sopra sul ricordo di
-`can_configure`): il server scrive i permessi dentro il guscio quando lo serve, e il ricordo in
-`localStorage`, l'attesa di `ROUTER_WAIT_MS` e il rimontaggio tardivo escono. Seconda fetta della
-Fase S.
-
-> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
-> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
-> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
-> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
-> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
-> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
-
-### ~~`GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata~~ — **USCITA con la v3.83.0**
-
-`fatta il 28/10/2026 (Fase B, punto S.7, scelto da Paolo il 28/10): in `api/admission.py` la rotta passa al gesto «amministrare», come la scrittura del giudizio. Una persona che non amministra era gia' fuori (la riga non aveva `open_reason`): chi passava era un servizio firmato col ruolo `utente`, che adesso riceve 403. Lo difende `tests/test_admission.py::test_il_sapere_corretto_a_mano_NON_si_legge_da_un_servizio_utente`, con la mutazione eseguita`
-
-`origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
-
-Il cancello di chi costruisce (`soffitto.require_builder`) protegge `POST /api/mind/judgment` (la
-scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /api/mind/knowledge`
-(la lettura del sapere della casa): chi non costruisce vede ancora il modulo «Correzioni» nella
-pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
-questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
-
-### ~~I nomi delle persone verso un modello, per tutte le porte degli attori~~ — **USCITA con la v3.83.0** — aperta il 05/10/2026
-
-`fatta il 30/10/2026 (Fase S, S.8; misura dello Sprint del 30/10 e scelta del proprietario dello stesso giorno: «ovunque compaia il nome»): ogni attore copre la domanda INTERA con la stessa maschera (`privacy.PresenceMask`), e la risposta torna agli id veri prima di ogni controllo. L'osservatore compone i pezzi in `observer.question_parts` (obiettivo, righe, soggetti che tacciono) e riporta le decisioni in `apply_answer`; le ricette coprono `build_device_question_body` e riportano la ricetta in `apply_recipe`; l'analista copriva gia' la domanda. Dove c'e' un segnaposto i tre lo spiegano con la stessa frase (`privacy.PLACEHOLDER_HINT`). La misura di prima: la domanda che apre la campagna dell'osservatore portava un nome in 27 righe su 383; le ricette, sui dispositivi che avrebbero una domanda, 56 volte dentro gli id; nessuna area porta un nome. Escono `observer.presence_handles`, `observer.masks_presences`, `observer.PRESENCE_HINT` e `observer.house_lines` (le righe si chiedono a `question_parts`, anche da `scripts/fotografia_porte.py`). Limiti che restano, gia' scritti in `privacy.named_after_person`: un pezzo solo di un nome in piu' parole non si copre (sulla casa nessuna persona ha un nome in piu' parole, misura del 03/10), e un nome si copre solo intero. Sul ponte la maschera della risposta si rifa' dalla casa del momento: se nel frattempo cambia chi porta il nome di una persona, un segnaposto puo' tornare a un altro id, che resta pero' uno di quelli chiesti. I nomi degli utenti di Home Assistant non sono stati misurati (`config/auth/list` non e' fra le letture di `scripts/casa.py`). La chat resta com'e', per decisione. Lo difende `tests/test_nomi_ovunque.py`, con le mutazioni eseguite`
-
-`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
-
-La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
-porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
-Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
-come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
-
-Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
-
-- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
-  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
-- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
-- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
-  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
-  dispositivo.
-
-Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
-davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
-attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
-del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
-segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
-alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
-
-### ~~La Memoria si raggiunge dalla chat solo passando dagli Impegni~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
-
-`fatta il 29/10/2026 (Fase S, S.9, parere dell'ux-ui-specialist del 29/10): la voce «Memoria» sta nella barra della chat per tutti, subito dopo gli Impegni, con l'icona di `/config`; per chi non amministra il titolo della pagina e' «I tuoi ricordi». Sul telefono le voci della barra hanno 44 px di altezza minima`
-
-`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
-
-Per chi non amministra la barra laterale della chat mostra «Impegni» (`config#/agenda`) ma non il
-link «Configurazione»: la Memoria c'e', ma la si trova solo dal menu del guscio `/config`, dopo
-esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serve una voce nuova nella chat, fuori dal
-perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
-della chat per chi non configura.
-
-### ~~Il testo della pagina non concessa~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
-
-`fatta il 29/10/2026 (Fase S, domanda 4): `admission.NOT_ADMITTED` dice il testo nuovo, e lo difende `tests/test_admission.py::test_i_testi_dei_rifiuti_sono_quelli_DECISI``
-
-`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
-
-Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX ha suggerito «…riservata
-a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
-la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
-posto solo (arriva anche al guscio come `configure_refusal`).
-
-**Decisa il 29/10/2026** (Fase S, domanda 4): «Questa parte di HIRIS è riservata a chi gestisce la
-casa in Home Assistant.». Entra con la seconda fetta della Fase S (S.6 e S.9).
-
----
-
 ## In attesa
 
 ### La CLI del ponte sale all'ultima patch nel prossimo rilascio — aperta il 06/11/2026
@@ -676,6 +465,49 @@ nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda co
 24/10): il ponte oggi è spento e risponde la catena, dove ogni persona ha il suo filo e la sua
 storia, quindi il prefisso condiviso varrebbe solo il nucleo del primo messaggio. Si riprende
 quando il ponte si riaccende, con la misura della cache per turno.
+
+### Il refactoring si chiude: cosa resta — aperta il 09/11/2026
+
+`origine: Paolo, 09/11/2026 20:01 («procedi come consigliato»), sulla proposta del 09/11, decisione D2` · analisi: `/mnt/project-files/analisi/2026-11-09-regole-mancanti.md` §4
+
+**Cosa vuol dire «finito».** Il refactoring è finito quando tre cose sono vere insieme: (1) i
+cancelli della fonte unica sono a zero, ed è **fatto** (misurato il 09/11/2026: registro dei
+doppioni 0 voci aperte su 515, una sola eccezione nel censimento, `rotta-solo-test`); (2) le voci
+qui sotto sono chiuse; (3) il proponente è acceso (voce «⚠️ Prima di accendere il proponente»),
+ultimo pezzo del riordino degli attori deciso il 03/10/2026. **Tutto il resto è prodotto nuovo**,
+non refactoring: l'agente, la voce, le plance, `history_stats`.
+
+I residui strutturali, ognuno con la sua voce (si nominano per titolo; il dettaglio sta lì):
+
+- «La persona e il suo telefono sono lo stesso fatto, scritto due volte» — un fatto in due case;
+- «Una quarta sede dei prefissi «non è un'entità»» — un doppione attraverso il confine Python/JS;
+- «Le liste dei moduli JS ricopiate a mano in quattro test» — un elenco che ricopia;
+- «Separare `notevole` nei suoi due sensi…» e «Separare `lavoro` nei suoi due sensi…» — un nome,
+  due significati;
+- «Il collettore delle tracce tiene tre pezzi di stato su `app`…» — stato senza un oggetto;
+- «L'opzione `canali` e' rimasta nelle opzioni salvate dell'add-on» — un avanzo;
+- «I residui della fetta «una porta sola»» — rilievi minori dichiarati;
+- «I tre attributi fissi del grezzo non sono usciti» — scritti e mai letti;
+- la voce sul «Rifalla» che manda davvero il giro sul ponte — chiusa nel codice il 06/10/2026, manca la verifica
+  dal vivo.
+
+Fuori da questo elenco, con la ragione: «La fusione dei composer» (restano tre composizioni per
+tre protocolli, una ragione vera), e la rinomina in inglese, che da oggi si fa fetta per fetta
+(CLAUDE.md, «Il debito dichiarato: la rinomina in inglese»).
+
+### La domanda 30: il dato arriva, il modello non lo racconta — aperta il 09/11/2026
+
+`origine: misura di dopo dello sprint «Il giro snello», 09/11/2026 (26 giuste su 28, la 30 incompleta); Paolo, 09/11/2026 20:01, sulla proposta del 09/11` · `hiris/app/home_space/render.py::render_behavior`
+
+Alla domanda generale sulle automazioni HIRIS le elenca per nome senza raccontare cosa fanno. Dalla
+3.83.0 (rimedio C) ogni automazione in `search` porta la `descrizione` di Home Assistant o, senza,
+il `riassunto` di inneschi e passi: **il dato arriva al modello, e il modello non lo usa**. Due
+ipotesi, nessuna misurata: le istruzioni di risposta spingono a elencare («breve e pertinente» sul
+ponte, `agent/prompts.py::_CHAT_INSTRUCTION`; la modalità `compact` se è accesa nelle impostazioni
+di casa, `claude_runner.COMPACT_PROMPT`), oppure il modello della catena non apre la riga intera.
+**Prima si misura**: la sola domanda 30 su due modelli (la catena di casa e Claude), dal PC, col sì
+di Paolo. Se Claude racconta e la catena no, è la regola «con qualunque modello» (CLAUDE.md): la
+cura sta in ciò che il codice consegna, non nel modello.
 
 ### ⚠️ Prima di accendere il proponente: `ENABLED = True` — aperta il 06/10/2026
 
@@ -1768,30 +1600,6 @@ Terza fetta della sequenza (leggere la casa, la storia, **relazioni e promesse**
 dei turni (ora con gli argomenti, §7) mostrano che quegli strumenti costano giri o sbagliano; se
 non lo mostrano, restano come sono, come dice §8.
 
-### ~~Il campo `notevole` del giudizio di tipo non ha più un lettore~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
-
-**Come si è chiusa.** Il proprietario ha messo «le righe morte del sapere (`notevole`, `direzione`),
-con la loro migrazione» fra ciò che esce con la Tappa 0, e ha approvato la dichiarazione D4. Il
-campo è uscito dai giudizi: non si semina, la porta non lo accetta, la pagina «Cosa ho capito» non
-lo mostra, e la migrazione 9 del sapere toglie le righe già scritte (in casa erano 23, tutte del
-seme). La coda — le 23 dichiarazioni `notable` nel vocabolario dei tipi, che nessun codice leggeva —
-è uscita lo stesso giorno, per decisione del proprietario, con le prove che le pinnavano.
-
-*Il testo della domanda, com'era:*
-
-
-`origine: costruzione della fetta «una porta sola», Task 6` · `hiris/app/home_space/type_vocabulary.py:880` · `type_judgments.py`, `mind/judgments.py:72`, `static/config/watcher-sapere.js`
-
-Con l'uscita di «Notevole adesso» dal nucleo (§5 della spec) il giudizio `notevole` di un tipo ha
-perso il suo unico lettore, `TypeJudgments.is_notable`, che è stato cancellato. Il campo resta nel
-seme, nell'API, nella pagina dei giudizi e nel JS del watcher, dove si può ancora impostare **senza
-che cambi nulla**: una promessa falsa dell'interfaccia.
-
-**Domanda**: si **toglie** (seme, API, pagina, watcher: un cambio di interfaccia e una migrazione
-del seme) o gli si **dà un lettore** (per esempio la pagina dell'osservatore, o una risposta di
-`search` ordinata per «notevole»)? Nessuna delle due è stata scelta: cancellarlo tocca un'interfaccia
-che il proprietario usa.
-
 ### I residui della fetta «una porta sola» — aperti il 30/09/2026
 
 `origine: revisione finale del ramo e ondata di correzioni, 29-30/09/2026` · `.superpowers/sdd/2026-09-29-una-porta-sola-per-la-casa/progress.md` (i rilievi «minor (deferred)» e «parked»)
@@ -1899,37 +1707,6 @@ di uscita, e un `result` che lo dichiara vero scrive `outcome: "fallito"` come g
 processo. Fino ad allora, il documento di esito (§8 della spec) che conta i turni riusciti del
 ponte include un numero non ancora corretto di errori della CLI travestiti da successi.
 
-### ~~In sviluppo `can_configure` e' vero mentre `can_build` e' falso~~ — CHIUSA il 07/10/2026 nel codice, non ancora rilasciata (Tappa 7, T6)
-
-**Come si e' chiusa.** Con il cancello unico delle rotte (`api/admission.ADMISSION`, il gesto di ogni
-rotta chiesto a `soffitto.denies` per ogni soggetto, D4 della Tappa 7) e `costruire` fuso in
-`amministrare` (D6), la domanda e' una sola: `can_build` e `can_configure` portano lo stesso valore,
-e lo sviluppo con l'interruttore acceso apre anche la pagina Costruzioni e i gesti della pagina
-Servizi -- come la chat glieli apriva gia' (`confirm`). Era la «scelta del proprietario» scritta
-qui sotto: la si e' presa perche' il cancello unico non ha un secondo ramo per lo sviluppo, e
-tenerlo chiuso solo sulle rotte `amministrare` avrebbe chiuso allo sviluppo anche le sei rotte di
-configurazione che fino ad allora gli erano aperte. In produzione quel soggetto non esiste. Resta
-da unire, nel guscio, le due chiavi che portano lo stesso fatto (`pending-badge.js`).
-
-
-`origine: review del Task 3 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/handlers_pending.py`
-
-Con `HIRIS_ALLOW_NO_TOKEN=1` il soggetto `sviluppo` non si restringe per ruolo
-(`soffitto.denies`): `can_configure` in `/api/pending` e' vero. `can_build` invece viene dal
-soffitto nudo (`request_ceiling(request)["costruire"]`), e il soggetto di sviluppo non ha un ruolo:
-e' falso. In sviluppo il menu mostra quindi la configurazione ma non le Proposte. Incoerenza
-**dichiarata**, non un buco: in produzione quel soggetto non esiste. **Cosa la chiude**: calcolare
-`can_build` con la stessa domanda (`not denies(ceiling, "costruire", subject)`), dopo aver
-guardato chi, fra le prove, pinna il comportamento di oggi.
-
-**Misurato alla review finale (27/09/2026)**: la stessa lettura nuda c'e' anche in
-`soffitto.require_builder` e in `handlers_servizi._solo_amministratori`. Su ogni specie per ogni
-ruolo, interruttore acceso e spento, `ceiling["costruire"]` e `not denies(...)` differiscono in un
-caso solo: lo sviluppo con l'interruttore acceso. Lo pinna
-`test_chi_costruisce.py::test_il_cancello_decide_per_ogni_ingresso` (la riga `sviluppo` diventa
-rossa con `denies`). Il comportamento resta com'e'; unirle apre la pagina Costruzioni e i gesti
-della pagina Servizi allo sviluppo, ed e' una scelta del proprietario.
-
 ### «Ogni utente e' fidato»: il cancello di HIRIS e' l'unica protezione — aperta il 27/09/2026
 
 `origine: misurato per la fetta «HIRIS per chi non amministra», 27/09/2026 (Core 2026.9.3, Supervisor 2026.09.2)` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md` §1
@@ -1944,101 +1721,6 @@ per gli **altri add-on** della casa la porta resta aperta, e HIRIS non la puo' c
 **Perche' resta fuori**: non e' codice di HIRIS. **Cosa la chiude**: niente dentro HIRIS; va
 detto a chi installa, e riverificato se Home Assistant cambia `WS_NO_ADMIN_ENDPOINTS` o il proxy
 ingress.
-
-### ~~Chi ha chiesto una promessa~~ — **USCITA con la v3.68.0**
-
-`origine: dichiarato fuori perimetro dalla fetta «le chat divise», spec §6, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §6
-
-**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
-(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §2), Task 1-3. `promesse`
-(`keeper/store.py`) porta ora `subject_key`/`entry_point`; `agenda`, `cancel`, le rotte
-`GET/DELETE /api/agenda`, `POST /api/agenda/read`, `GET /api/executions/{id}` e il conteggio
-`agenda_unread` lavorano solo sul filo di chi ha chiesto (un id di un altro filo risponde come
-inesistente); l'esito torna nel filo di chi ha chiesto e, quando risolve un recapito
-(`keeper/recipient.py::recipients_for`), come push al suo telefono. Le promesse di prima della
-fetta si adottano col proprietario, come la cronologia — o al loro risveglio, se maturano prima
-che lui apra il pannello e Home Assistant dice un proprietario solo. Il testo sotto è il reperto com'era, con
-il rimando corretto (era `mind/watcher.py`, che non esiste: il codice dell'agenda è
-`keeper/store.py`).
-
-La promessa (`keeper/store.py`/l'agenda) **non porta il filo**: nasce da un turno ma non registra
-chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa la vede allo stesso
-modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
-solo il proprio.
-
-### ~~L'autore del giudizio fisso a `"proprietario"`~~ — **USCITA con la v3.68.0**
-
-`origine: misurato durante la fetta «le chat divise», 25/09/2026` · `mind/judgments.py:50`
-
-**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**, Task 4
-(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 6). `JUDGMENT_AUTHOR` e'
-uscito: un giudizio porta il nome di chi l'ha scritto (`who`, dalla casa dei nomi
-`soffitto.subject_name`) e la sua chiave (`said_by`, colonna nuova del sapere), e la porta di
-scrittura ha il cancello di chi costruisce (`soffitto.require_builder`). I giudizi scritti prima
-restano «proprietario»: per loro e' vero. Il testo sotto e' il reperto com'era.
-
-`JUDGMENT_AUTHOR = "proprietario"`: chiunque corregga un giudizio del sapere (genere, notevole,
-limiti operabili...) — anche una persona non amministratrice che ora, dalla fetta «le chat
-divise», puo' avere una conversazione sua — viene registrato come se fosse il proprietario.
-Non e' un buco di sicurezza (la porta di scrittura, `write_judgment`, non ha oggi un cancello di
-ruolo), ma e' un fatto scritto male: la cronaca del sapere mentirebbe su chi ha deciso, il giorno
-in cui a scrivere sara' qualcun altro.
-
-### ~~Più conversazioni per filo, con elenco nella pagina~~ — **USCITA con la v3.68.0**
-
-`origine: decisione 2 della spec «le chat divise», rimandata il 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §0 (decisione 2), §6
-
-**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
-(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §4), Task 6-7. Una conversazione è una
-sessione di `chat_sessions`, tutta limitata al filo (`chat_store.list_conversations`,
-`new_conversation`, `resume_conversation`, `delete_conversation`); le rotte
-`GET/POST /api/chat/conversations`, `POST .../resume`, `DELETE .../{id}` rispondono 409 se nel
-filo c'è già una risposta in arrivo. La pagina porta l'elenco in barra laterale (col pulsante
-«Nuova conversazione», il titolo, la data relativa, la voce attiva) e il cestino cancella la
-conversazione aperta. Il testo sotto è il reperto com'era.
-
-Il proprietario ha scelto **un filo solo** per soggetto (col meccanismo di oggi: sessione chiusa
-da due ore di silenzio, riassunto) per questa fetta. Più conversazioni nello stesso filo, con un
-elenco nella pagina per riaprirle o iniziarne una nuova, resta un passo dichiarato e non preso.
-
-### ~~`GET /api/constructions` non ha il cancello del soffitto~~ — **USCITA con la v3.68.0**
-
-`origine: misurato durante la fetta «le chat divise», Task 7, 25/09/2026` · `hiris/app/api/handlers_constructions.py`
-
-**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
-(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 5), Task 4.
-`api/soffitto.py::require_builder` è ora la PRIMA istruzione di ogni rotta della pagina
-Costruzioni, delle proposte a mano e dei giudizi (le due GET comprese): un non amministratore
-riceve 403 su tutte, e `GET /api/pending` conta zero proposte per lui. Un amministratore vede
-ogni proposta con chi l'ha chiesta (`chiesta_da`, il nome — mai la chiave). Il testo sotto è il
-reperto com'era.
-
-Le due rotte GET della pagina Costruzioni (l'elenco e il dettaglio) non passano da
-`per_richiesta`/il soffitto — solo `apply`/`restore` lo fanno (`_act`). Oggi la risposta non porta
-piu' i campi del filo (`_strip_thread`, fix round 1 Task 7), quindi non rivela chi ha proposto
-cosa; ma **ogni utente dell'ingress vede le proposte di tutti i fili**, non solo le proprie —
-il contrario della decisione 4 della spec («ognuno legge solo il suo, amministratore compreso»),
-applicata finora solo alla chat.
-
-### ~~Testi del prompt che assumono un proprietario unico~~ — **USCITA con la v3.68.0**
-
-`origine: misurato durante la fetta «le chat divise», Task 5, 25/09/2026` · `hiris/app/claude_runner.py`, `hiris/app/agent/prompts.py`
-
-**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
-(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3), Task 5. «L'utente»/«il proprietario»
-sono usciti dai prompt e dalle descrizioni degli strumenti citati sotto: `DICHIARAZIONE_CASA`
-riferisce a **chi ti sta parlando**, e lascia la decisione a **chi amministra la casa**, nella
-stessa frase; `BASE_TOOL_RULES` e le descrizioni degli strumenti dicono **«chi ti sta parlando»**
-(o «la persona», per un'impostazione HA generica non legata a chi chatta ora); osservatore,
-attuatore e «Rifalla» dicono **«chi amministra la casa»**. Il testo sotto è il reperto com'era.
-
-Due testi fissi parlano ancora come se in casa parlasse una sola persona, il proprietario:
-`DICHIARAZIONE_CASA` (`agent/prompts.py`) dice di riferire una richiesta trovata nel materiale
-letto **«al proprietario, che e' l'unico che puo' decidere»**; `BASE_TOOL_RULES`
-(`claude_runner.py`) parla sempre de **«l'utente»**, al singolare. Da questa fetta il modello sa
-CHI gli sta parlando — e non e' detto che sia il proprietario. Nessuno dei due testi e' sbagliato
-sui fatti (execute/propose restano quello che sono), ma entrambi presumono un ascoltatore che
-questa fetta ha appena smesso di essere l'unico.
 
 ### Il legame utente→dispositivo dell'app companion non è esposto dalle API di Home Assistant
 
@@ -2249,16 +1931,6 @@ il sapere, o l'entità stessa; e cosa fa una ricetta su un tipo di cui il riposo
 dichiarazione **senza valore di fabbrica**: è ciò che ha impedito al difetto del 14/09 di tornare
 alla prossima operazione nuova.
 
-### ~~Le ricette si scrivono su entità che non possono avere statistiche~~ — CHIUSA il 15/09/2026 (3.47.0)
-
-**Chiusa dai due lati insieme**, come la voce diceva che andava fatto: il rifiuto ora dice la sua
-vera ragione, e la domanda al modello dice **prima** quali entità abbiano una serie — cosi' le
-ricette nuove non nascono piu' contro una fonte che non esiste. Resta da vedere dal vivo quante
-delle 31 ricette gia' scritte cambino esito: quelle vecchie restano dove sono, e le loro misure
-diranno la ragione giusta invece di «la serie e' vuota».
-
-**Com'era scritta quando era aperta:**
-
 ### Le ricette si scrivono su entità che non possono avere statistiche: 18 rifiuti al giorno, per sempre
 
 `origine: verifica dal vivo della 3.46.0, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
@@ -2296,53 +1968,14 @@ prima.**
 
 **Da decidere.** Se dire al modello quali entità abbiano una serie (il sapere lo saprebbe: è un
 fatto che HA dichiara, come le unità), oppure se il motore debba scegliere la fonte in base
-all'entità — statistiche dove ci sono, storia dove no. La seconda risponde anche alla voce qui
-sopra; la prima è più piccola e si può fare subito.
+all'entità — statistiche dove ci sono, storia dove no. La seconda risponde anche alla voce «Le ricette si
+scrivono su entità che non possono avere statistiche» (chiusa, ora in «Usciti»); la prima è più piccola e si può fare subito.
 
 **Nota di metodo, scomoda.** Questa voce esiste perché la prima diagnosi era **sbagliata**: avevo
 letto la *storia* di quella luce, visto cinque punti, e concluso che l'operazione ricevesse punti
 non numerici. Storia e statistiche sono due fonti diverse e solo la seconda viene letta. La
 correzione in `operations._reject_for_coverage` resta — dire «vuota» di una serie piena sarebbe
 falso — ma ha **zero occorrenze** su questa casa, e la sua docstring lo dichiara.
-
-### ~~Il sapere non ha una porta~~ — CHIUSA il 15/09/2026 (3.45.0), e ha trovato tre cose
-
-`origine: verifica dal vivo della 3.45.0, 15/09/2026`
-
-La porta (`GET /api/mind/knowledge`, sezione 04 dell'osservatore) è viva. **Nelle prime ore ha
-mostrato tre difetti**, tutti chiusi nella 3.46.0 e tutti invisibili finché nessuno poteva
-chiedere: 18 rifiuti ragionati archiviati come «non capito» con una frase nostra che le prove
-accanto smentivano; il riassunto lungo quanto il dato (14 righe da uno su 19); e — cercando la
-causa — i nomi dei dispositivi risolti da una porta del cervello su quattro.
-
-**Nota di metodo.** Nessuno dei tre si sarebbe visto leggendo il codice: si sono visti guardando
-246 righe di sapere vero. È la ragione per cui la porta viene prima della fetta che ci lavora
-sopra.
-
-**Com'era scritta quando era aperta** (13/09/2026), che e' cio' contro cui si e' misurata:
-
-
-`origine: verifica dal vivo della 3.31.0, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
-
-**Il fatto.** Il sapere (`sapere.db`) contiene le direzioni dell'energia, ~177 significati di
-classe, gli attributi che valgono la pena e le ricette dei dispositivi. Si legge da tre posti --
-`energy_directions` (le direzioni), `guarda` sul dettaglio di un'entita' (il significato),
-l'osservatore (gli attributi) -- e da **nessuna pagina**. Non c'e' nessuna rotta HTTP che lo
-serva.
-
-**Perche' conta.** La quarta fondamenta dice che *«se un dato c'e' e nessuno puo' chiederlo, non
-esiste»*. Qui il dato si puo' chiedere alla chat, e non e' poco, ma «cosa HIRIS ha capito della mia
-casa, con quale provenienza, e cosa non ha capito» e' esattamente la domanda che il proprietario si
-fa guardando la pagina dell'Osservatore -- e oggi quella pagina mostra solo cosa HIRIS GUARDA, non
-cosa ha CAPITO.
-
-**Cosa costa non farlo.** Le righe `verifica = non_capito` -- i dispositivi di cui il modello non
-ha saputo scrivere una ricetta -- sono invisibili. Sono precisamente cio' che il proprietario
-potrebbe risolvere in dieci secondi («quello e' il contatore dell'acqua»), e nessuno gliele mostra.
-
-**Cosa servirebbe.** Una rotta che serva il sapere raggruppato per soggetto, e una sezione della
-pagina che lo renda con la provenienza accanto a ogni riga. E' piccola, e va fatta insieme alla
-resa del resoconto (fetta 5), che tocca la stessa pagina.
 
 ### ~~La regola 1 della spec §5.3~~ — SCRITTA il 16/09/2026
 
@@ -2392,31 +2025,6 @@ dalle statistiche -- non dal grezzo -- quindi toglierle dal grezzo non dovrebbe 
 misura. Ma la **cronaca** nasce dal grezzo (`mind/facts.aggregate_day`): va misurato **prima** cosa
 sparirebbe dalla cronaca, o si scopre dopo il rilascio di aver reso muto qualcosa che si vedeva.
 
-### ~~Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano~~ — CHIUSA il 17/09/2026 (3.49.0)
-
-**Chiusa costruendo il sostituto**, che e' la sola strada che la voce ammetteva: il genere
-dell'episodio non nasce piu' dalla gamba, lo chiede all'**istantanea dei giudizi**
-(`mind/facts.genre_for` -> `TypeJudgments.genre_of`), e i giudizi sono righe del sapere che la casa
-puo' correggere. Le gambe sono **cancellate**: `ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of`, i
-campi `aspect` e `aspect_guard` (43 celle) e con loro `is_operable`, `operable_domains`,
-`resting_states_of`, `resting_states`, `working_states_of`, `is_notable`, `notable_types`,
-`parameter_limits`; `tests/test_home_space_gamba.py` e' eliminato e le sue prove sono tradotte sui
-giudizi. Il rilevatore di fumo che la voce difendeva non torna a leggersi «Acceso»: nel seme e' una
-riga `genere` `sicurezza`, e una prova la fissa.
-
-**La misura che rendeva la sostituzione sicura** (spec §1, misura 7): ripassate 52.123 righe di
-storia di Home Assistant su 304 entita' dei tipi con genere, dal 09/09 al 16/09, chiedendo il
-riposo al tipo invece che all'unione di tutti i riposi -- **0 righe cambiano esito**.
-
-**Un cambio di comportamento dichiarato, non un effetto collaterale**: `none` non e' piu' un
-riposo. Su 6 apparati di rete, 200 righe `none` in una settimana non apriranno piu' un'assenza e
-non chiuderanno piu' un episodio.
-
-**Cosa resta da fare, ed e' il Task 12 del piano**: la verifica dal vivo in casa dopo il rilascio,
-col confronto fra le cronache salvate prima e quelle rifatte dopo.
-
-**Com'era scritta quando era aperta:**
-
 ### Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano
 
 `origine: revisione indipendente dello sprint, 15/09/2026; decisa il 16/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §13
@@ -2431,8 +2039,8 @@ La riga di §13 era vera per meta': il giudizio di **rilevanza** e' passato all'
 prometteva. Il secondo lavoro delle gambe -- dare un genere -- quella riga non l'aveva visto.
 
 **Cosa servirebbe per toglierle davvero:** che il genere nasca dal **sapere**, come e' successo
-alle direzioni dell'energia (erano codice, sono righe). E' parente stretto della voce qui sotto sul
-vocabolario-seme, e va fatta con quella: sono lo stesso movimento -- il giudizio del repo diventa
+alle direzioni dell'energia (erano codice, sono righe). E' parente stretto della voce «Il vocabolario
+dei tipi non e' ancora un seme del sapere» (chiusa, ora in «Usciti»), e va fatta con quella: sono lo stesso movimento -- il giudizio del repo diventa
 una riga che la casa puo' correggere.
 
 **Nel frattempo la spec non mente piu'**: le due righe di §13 dicono «RESTANO», con la ragione.
@@ -2457,46 +2065,6 @@ stessa ragione gia' scritta nella voce «I tre attributi fissi del grezzo non so
 genere dal sapere invece che dalla gamba, che e' parente stretto della voce del vocabolario-seme
 qui sotto), **oppure la §13 va corretta** per dire che gambe e generi RESTANO, e perche'. Oggi la
 spec dichiara distrutto cio' che gira, ed e' una bugia scritta accanto al codice.
-
-### ~~Il vocabolario dei tipi non e' ancora un seme del sapere~~ — CHIUSA il 17/09/2026 (3.49.0)
-
-**Chiusa con un terzo disegno, che questa voce non aveva visto** (correzione del 17/09/2026, dopo
-la revisione a 360 gradi: la prima stesura di questa chiusura diceva «il primo dei due disegni», ed
-era falsa -- la spec §0 li ha **confrontati e scartati entrambi**, per ragioni misurate). Il disegno
-scelto dal proprietario e' l'**istantanea immutabile** (disegno «C»): i giudizi si leggono dal
-sapere una volta sola e si consegnano ai lettori come un oggetto fermo, invece di spostare i lettori
-sull'archivio (letture SQLite nel percorso caldo) o di fare del modulo il confine (uno stato
-condiviso caricato pigramente in un modulo oggi puro). **Misura del 16/09/2026**: non
-sette moduli e undici porte, ma **7 moduli e 17 porte** (`action/verification`,
-`home_space/briefing`, `home_space/queries`, `home_space/topology`, `home_space/type_census`,
-`mind/facts`, `proxy/entity_cache` -- la voce elencava `action/registry`, che lo cita soltanto, e
-non aveva visto `proxy/entity_cache`).
-
-**E i lettori dei GIUDIZI sono quattro, non sette** (spec §3, D4): `home_space/briefing`
-(`notevole`, `lavoro`), `home_space/queries` (`limiti_parametri`), `home_space/type_census`
-(`riposo`, `lavoro`, `accendibile`) e `mind/facts` (`genere`, `riposo`). Gli altri tre leggono
-**fatti di Home Assistant** o `assumable_attributes`, che non sono giudizi nostri e per decisione
-D1 restano codice accanto alla tabella importata che correggono.
-
-**Cosa si carica adesso all'avvio**: `mind/seed.judgment_seed` semina **99 celle** dal letterale --
-26 `genere`, 23 `notevole`, 18 `riposo` (16 piu' le 2 `home` nuove su `person` e `device_tracker`),
-13 `accendibile`, 10 `limiti_parametri`, 9 `lavoro` -- con provenienza `nostro` e autore «seme del
-repo» (conteggio rieseguito il 17/09/2026: 99). La regola del seme che esisteva gia' («nessuno l'ha
-toccata si legge dal valore») e' cio' che permette di **tornare al seme** dopo una correzione.
-
-**Il doppione senza lettori, che la seconda fondamenta vieta, non e' nato**: cio' che e' diventato
-sapere e' uscito dal letterale nello stesso movimento (Task 8 del piano: **tredici nomi**
-cancellati fra costanti, porte e un aiutante privato -- `ASPECT`, `ASPECT_GUARD`, `ASPECTS`,
-`aspect_of`, `_text`, `is_operable`, `operable_domains`, `resting_states_of`, `resting_states`,
-`working_states_of`, `is_notable`, `notable_types`, `parameter_limits` -- e **43 celle** di gamba e
-guardia), e cio' che resta codice -- `capability_names`, `capability_attributes`,
-`state_attributes` (68 celle `importato`), `capability_attributes_dropped`, `assumable_attributes`
--- resta con le sue 12 prove ancorate al sorgente.
-
-**La promessa del §8 e' mantenuta**: la casa scrive sopra il giudizio del repo, da una porta sola
-(`POST /api/mind/judgment`) e dalla pagina del sapere, nella sezione «Le tue correzioni».
-
-**Com'era scritta quando era aperta:**
 
 ### Il vocabolario dei tipi non e' ancora un seme del sapere
 
@@ -2582,65 +2150,6 @@ nascere una riga anche quando lo stato non si muove.
 **Cosa resta da decidere.** `state_class` non lo legge nessuno dal 27/08/2026. Resta nel grezzo con
 una ragione scritta («i 22 giorni permettono di rifare il giudizio se un domani tornasse a
 servire»): o quella ragione si conferma e la voce si chiude, o la colonna esce.
-
-### ~~I due rifiuti della spec §6~~ — CHIUSA il 16/09/2026: il primo fatto, il secondo dichiarato non applicabile
-
-`origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6
-
-**Il fatto.** La spec elenca fra i «rifiuta se» di un'operazione due casi: *«l'entita' non ha
-statistiche»* e *«il periodo e' fuori dalla memoria disponibile»*. Nessuna delle diciotto voci di
-`hiris/app/mind/operations.py` li dichiara, e nessuna li produce: il registro sa rifiutare per
-copertura, per unita' incompatibili, per troppi pochi punti — **non per un periodo che l'archivio
-non copre affatto**.
-
-**CHIUSO il 15/09/2026 (3.47.0) il primo dei due: «l'entita' non ha statistiche».** Otto
-operazioni lo dichiarano (`Operation.refuses_when`), `HAClient.statistic_ids()` legge il registro
-delle statistiche di Home Assistant, `Recipe.run(without_statistics=...)` lo produce per il passo
-che nomina quell'entita' -- non per l'intera ricetta -- e la domanda al modello dice **prima** di
-scrivere quali entita' abbiano una serie e quali no. `None` e non insieme vuoto quando la lettura
-fallisce: affermare «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
-
-**IL SECONDO RESTA, e non e' piu' una svista: e' una decisione da prendere.** «Il periodo e' fuori
-dalla memoria disponibile» ha **zero occorrenze misurate** su questa casa, e per due ragioni
-indipendenti: (a) HIRIS non chiede mai un giorno prima del suo grezzo — `_write_missing_reports`
-si ferma a `oldest_reading_ts()`, e la ragione e' scritta li'; (b) le statistiche di lungo periodo
-di Home Assistant non si potano come gli stati. Misurato il 15/09/2026 su questa casa: le
-statistiche piu' vecchie sono di **luglio 2026**, e cio' che sembrava «periodo fuori memoria» era
-in realta' **tre entita' iscritte al registro delle statistiche che non hanno mai registrato
-niente** (l'albero di Natale, le luci di Natale, la gestione carichi) — che e' un terzo caso
-ancora, e «la serie e' vuota» lo dice gia' bene.
-
-**DECISO il 16/09/2026: si scrive nella spec, non si costruisce.** La §6 ora porta l'annotazione
-col numero -- zero occorrenze, le due ragioni indipendenti, e il terzo caso (tre entita' iscritte
-al registro che non hanno mai registrato niente) per cui «la serie e' vuota» e' gia' la frase
-giusta. Costruire un rifiuto per un caso che non accade costerebbe una lettura per entita' a ogni
-giro: **non si fa finche' una misura non lo chiede**. Se il proprietario la vede diversamente, e'
-una riga di specifica da riscrivere, non codice da disfare.
-
-**AGGIORNAMENTO 15/09/2026 — il primo dei due ha adesso un numero, misurato sulla casa vera.**
-Home Assistant tiene statistiche orarie per **130 entita' su 1206, tutte `sensor`**
-(`recorder/list_statistic_ids`): nessuno `switch`, `light`, `valve`, `binary_sensor`. Nel resoconto
-del 14/09, **18 rifiuti su 28** sono su dieci dispositivi che non hanno nemmeno un'entita' con
-statistiche, e dicono «la serie e' vuota» — vero, e inutile: non dice a chi legge (ne' al modello,
-a cui il rifiuto torna) che quella fonte per quell'entita' **non esistera' mai**. Vedi la voce
-«Le ricette si scrivono su entita' che non possono avere statistiche»: e' lo stesso problema visto
-dal lato del dato.
-
-**Perche' non entra nella fetta 3.** Tutti e due chiedono di sapere fin dove arriva la memoria:
-i 22 giorni del grezzo (`archivio.READING_RETENTION_S`) e le statistiche che Home Assistant tiene
-per quell'entita' (`ha_vocabulary.produces_statistics`). E' conoscenza della casa, e il registro
-deve saper calcolare e basta — la stessa ragione per cui `quando_succede` riceve il fuso gia'
-risolto e `raggruppa_per` riceve la chiave da fuori.
-
-**Cosa costa oggi.** La domanda vera del proprietario *«dammi il totale delle ore irrigate tra
-maggio e settembre»* riceve il rifiuto giusto **solo se chi compone la ricetta lo costruisce a
-mano**. Se qualcuno dimentica il controllo, il registro somma le tre settimane che ha e le
-consegna come cinque mesi: e' il difetto fondativo di questa fetta, lasciato fuori dal cancello.
-`tests/test_mind_operations.py::test_domanda_5_...` lo dichiara nel suo docstring.
-
-**Cosa servirebbe.** Un ingresso comune — il periodo chiesto e l'orizzonte davvero disponibile per
-quell'entita' — che il chiamante risolve e che un'operazione (o un controllo all'ingresso della
-ricetta, fetta 4) confronta prima di calcolare qualunque cosa.
 
 ### Il grezzo butta l'unita' di misura, e l'oggetto di energia resta senza
 
@@ -2750,73 +2259,6 @@ membri sono nella cesta `members` dello specchio, e `queries.group_membership` e
 **Sulla casa vera non morde oggi**: l'unico gruppo delle 841 entita'
 (`light.lampadario_sala_da_pranzo`) ha tre membri con capacita' identiche, misurato il 09/09/2026.
 Morde il giorno in cui il proprietario mette una luce a colore accanto a due prese.
-
-### ~~HIRIS per gli utenti non-admin di Home Assistant~~ — **USCITA con la v3.69.0**
-
-`origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento` (alla chiusura: `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`)
-
-**CHIUSA il 27/09/2026 con la fetta «HIRIS per chi non amministra»**
-(`docs/design/2026-09-27-hiris-per-chi-non-amministra.md`). Il blocco qui sotto — *come* HIRIS
-sappia chi e' amministratore — l'aveva gia' sciolto il soffitto (`api/soffitto.py`, sprint
-sicurezza): il ruolo si legge da `config/auth/list`, con la regola di Home Assistant
-(`User.is_admin`: proprietario, oppure attivo e nel gruppo `system-admin`). La fetta aggiunge
-l'opzione dell'add-on `non_admin_access` (spenta per difetto), che sposta anche la voce di menu con
-`frontend/update_panel` (HA 2026.3 e dopo), e **un cancello al confine**
-(`api/admission.py::ADMISSION`): a una persona non amministratrice dall'ingress passano solo la
-chat, le sue conversazioni, i suoi Impegni e le sue memorie in sola lettura; con l'opzione spenta
-nemmeno quelle. Delle tre decisioni del brainstorming: la 1 («poteri uguali per tutti») e'
-superata dal soffitto — chi non amministra comanda come dalla plancia, ma non costruisce, non
-configura e non legge cio' che Home Assistant riserva agli amministratori (gesto `amministrare`);
-la 2 l'ha costruita la fetta «le chat divise»; la 3 e' la forma di questa fetta, con la «Casa»
-chiusa anche lei a chi non amministra (legge rotte di configurazione). Cio' che resta fuori e' nelle voci del 27/09/2026 in «In attesa». Il testo sotto e' il reperto com'era.
-
-**Il bersaglio**: gli utenti HA **non amministratori**, che oggi l'add-on non lo vedono nemmeno.
-La distribuzione ad altre case e' l'orizzonte dichiarato, non il problema di questa voce.
-
-**Il fatto che governa tutto**, e va letto prima di ogni disegno: HIRIS parla con Home Assistant
-usando il **token del Supervisor**, non i permessi di chi sta chattando. Via ingress HA inoltra
-l'identita' ma **non applica i ruoli**. Quindi oggi *vedere l'add-on equivale ad avere pieni
-poteri sulla casa*, aggirando il modello di permessi di HA.
-
-**Verificato alla fonte il 05/09** (non dedotto):
-
-| | |
-|---|---|
-| `panel_admin` | «Make the menu entry only available to users in the admin group», default `true`. Governa **la voce di menu** |
-| header inoltrati dal Supervisor (`supervisor/api/ingress.py`) | `X-Remote-User-ID`, `X-Remote-User-Name`, `X-Remote-User-Display-Name` |
-| header sul **ruolo** | **nessuno**: il Supervisor non dice se l'utente e' amministratore |
-| `config/auth/list` (`components/config/auth.py`) | esiste, torna `group_ids`, ed e' `@websocket_api.require_admin` |
-
-**Deciso in brainstorming:**
-1. **Poteri uguali per tutti**, e li stabilisce la fetta sicurezza — non questa.
-2. **Una conversazione privata per persona.** Oggi ce n'e' **una sola per tutta la casa**
-   (`chat_messages(session_id, role, content, timestamp)`: nessun autore, nessun agente). Un
-   modello che legge un thread con tre autori indistinguibili ragiona su un interlocutore che non
-   esiste: e' la quarta spina — la provenienza — a un secondo livello. I **ricordi** un autore
-   gia' ce l'hanno («detto da Paolo»); le conversazioni no.
-3. **La cucitura e' quella che il prodotto ha gia'**: «Da fare» (Impegni, Proposte) e «La casa» a
-   tutti, «Configurazione» ai soli admin. Non «chat contro pannello»: un non-admin che chiede di
-   costruire qualcosa creerebbe una proposta **che non potrebbe vedere ne' approvare**, e la chat
-   gli direbbe «ti aspetta nella pagina Proposte» — la frase aggiunta il 04/09 per chiudere il
-   difetto «non sai dove» — indicando una porta che per lui non esiste.
-
-**Bloccato, e su decisione del proprietario:** *come* HIRIS sappia chi e' amministratore. Le due
-strade sono `config/auth/list` (verita' di HA, ma un'API riservata chiamata col token del
-Supervisor che scarica **tutti** gli utenti con le loro `credentials` per una domanda su uno) o un
-elenco esplicito nella configurazione dell'add-on. **Si decide con la fetta sicurezza.**
-
-**Conseguenza pratica, ed e' il motivo per cui questa voce non e' pronta a diventare una fetta:**
-senza il ruolo non si puo' scrivere `panel_admin: false`, perche' aprirebbe anche
-«Configurazione». Finche' la sicurezza non arriva, **i non-admin non raggiungono HIRIS** — e
-costruire ora i thread privati sarebbe costruire per utenti che non possono ancora entrare. Lo
-stesso genere di lavoro senza chiamanti che questo progetto ha gia' cancellato due volte
-(`get_error_log`, i calendari).
-
-**Il documento del 26/07** (`docs/design/2026-07-26-chat-tutta-la-casa-design.md`, sul ramo
-`analysis`/`feat/chat-household`, mai fuso) resta utile per l'inquadramento ma **tre dei suoi
-cinque fatti sono superati** dal refactor 2.0: `resolve_owner` non esiste piu' (uscito come
-orfano), la cronologia non e' piu' per agente ma unica, e il semaforo per-azione e' fra le cose
-che lo scope 2.0 dichiara assorbite.
 
 ### I comandi verso Home Assistant
 
@@ -2959,32 +2401,6 @@ component. Lo studio completo è fuori da git, fra i file del progetto
 (`ricerche/2026-10-02-hiris-vs-openjarvis.md`). Aggiunta approvata dal proprietario il 02/10/2026
 nel thread sul confronto con OpenJarvis; lo studio è di quel thread, non riverificato qui.
 
-### ~~La sicurezza~~ — **USCITA**: lo sprint c'e' stato, dal 21 al 23/09/2026
-
-`origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-21-sicurezza-esposizioni.md`
-
-**Chiusa il 23/09/2026 con la v3.65.0.** Otto fette, venticinque reperti in quattro classi, tutti
-con una nota: chiusi, o **ritirati con la misura accanto**. Il registro dei rischi e la tabella
-delle fette stanno nei due documenti del 21/09; il racconto, rilascio per rilascio, nel CHANGELOG
-(3.55.0 → 3.65.0).
-
-E il reperto che apriva questa voce ha avuto una risposta che non e' quella che si aspettava: **la
-lista di servizi vietati non e' stata scritta, ed e' deliberato**. Una lista di divieto e'
-aggirabile per costruzione — un `shell_command` dentro il corpo di un'automazione passa
-`validate_config` ed e' un oggetto permanente che chiama cio' che `execute` non avrebbe potuto
-chiamare. Al suo posto: l'anteprima dice **quali servizi il corpo chiama** e quali **compaiono**
-rispetto a prima (B-4), c'e' un freno di ritmo **per entita'** (B-3), e la cronaca registra la
-frase su cui una conferma e' nata (B-5). Si e' scelto di **rendere visibile** invece di vietare,
-perche' il divieto lo si aggira e la visibilita' no.
-
-La forma originale della voce, com'era quando era aperta:
-
-> Sprint a se', **dopo** quello dei comandi. Il reperto che lo apre: HIRIS non ha nessuna lista di
-servizi vietati. Cio' che oggi rende irraggiungibili `homeassistant.restart`, `hassio.host_reboot`,
-`recorder.purge`, `shell_command.*` e' un accidente di forma — quei servizi non dichiarano un
-`target`, e un bersaglio vuoto e' sempre stato un rifiuto. La difesa non e' progettata: e'
-incidentale, e cade tutta insieme il giorno in cui quella condizione si allarga.
-
 ### La scheda della proposta dentro la chat
 
 `origine: il proprietario, segnalata il 03/09/2026` · `documento: docs/design/2026-09-03-i-menu-esecutivi.md §6.4`
@@ -3023,22 +2439,6 @@ un altro strato dallo stesso problema, e si convertono qui.
 32 entita' di irrigazione, **zero osservate**. La gamba e' progettata e non fatta: `valve`+`water` e
 `sensor`+`water` — che oggi finirebbe nell'energia, ed e' una risorsa diversa.
 
-### ~~Il prompt dell'obiettivo dell'osservatore~~ — CHIUSA il 15/09/2026
-
-**Chiusa dallo sprint «i tre attori», e la sua premessa non esiste più.** L'obiettivo è il prompt:
-`mind/observer.build_question(objective, lines)` glielo mette davanti, `mind/cadence` fa
-riconsiderare lo scope quando cambia, il resoconto di ogni giorno porta quello di ALLORA, e
-l'analista lo legge. E **il pavimento — «fisso», che questa voce voleva allargare — è stato
-cancellato l'11/09/2026**: al suo posto c'è la cadenza (spec §5.2). Resta aperta la voce sua, «Otto
-domini su dieci in `_OPERABLE` non possono arrivare», che parla di un'altra cosa.
-
-
-`origine: dichiarata nella spec dell'osservatore, mai fatta` · `documento: docs/design/2026-08-26-l-osservatore.md`
-
-Non esiste ancora: il pavimento e' fisso, e il prompt dovra' solo allargarlo. E' il motivo per cui
-**8 domini su 10** fra quelli elencati come funzionanti (luci, interruttori, ventilatori, media
-player, valvole...) oggi non producono nessun oggetto — il pavimento non li lascia passare.
-
 ### `build.yaml` dichiara una licenza che non e' la nostra
 
 `origine: rilevato il 10/08/2026` · `nessun documento`
@@ -3046,29 +2446,6 @@ player, valvole...) oggi non producono nessun oggetto — il pavimento non li la
 `hiris/build.yaml:9` dichiara `org.opencontainers.image.licenses: "MIT"`, etichetta che finisce
 nell'immagine Docker pubblicata, mentre `LICENSE` dice «PROPRIETARY SOFTWARE LICENSE». Da sanare
 prima di un rilascio.
-
-### ~~`_ENTITY_ID_RE` vive in tre copie~~ — **CHIUSA il 04/10/2026** (Tappa 3, Task 7, B-24)
-
-Un'espressione sola, `home_space/ha_vocabulary.py::ENTITY_ID_SHAPE`, provata sempre con
-`fullmatch` da `is_entity_id`; le tre copie e l'importazione del nome privato sono uscite. Sotto,
-la voce com'era.
-
-`origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
-`nessun documento`
-
-Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una guardia sulla forma
-`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte
-(tre dal 30/09/2026: la copia di `home_space/tools.py` e' uscita con i quattro lettori del
-tempo, quando `history` ha preso il loro posto), ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
-(la prima), `home_space/behavior.py:89` (indipendente, un'espressione diversa nello scopo ma
-identica nel testo), `mind/watcher.py:88` (Task 4 di questa stessa fetta) e
-`home_space/tools.py` (Task 5, questo giro; la copia e' uscita il 30/09/2026 con la
-storia). Non si unifica adesso: ogni fetta che
-l'ha scritta aveva una ragione dichiarata per non importarla da un'altra (modulo diverso,
-accoppiamento non voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
-collaterale di un giro di correzioni. Ma tre copie della stessa guardia, scoperte una alla
-volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
-lasciar perdere.
 
 ### `home_space/behavior.py` ipotizza un `id` di automazione intero, e la fonte dice `str`
 
@@ -3128,37 +2505,6 @@ tre in un oggetto con le sue prove, invece di aggiungerne una quarta accanto.
 Vale la stessa disciplina della voce sulle copie di `_ENTITY_ID_RE` (quattro quando fu scritta, tre oggi): si nomina adesso
 perche' e' stato visto adesso,
 e si chiude in una fetta sua, non come effetto collaterale di un giro di correzioni.
-
-### `troncato`: stessa chiave, due semantiche di presenza in `ha_client.py`
-
-`origine: il coordinatore del Task 1 di «i calendari», 06/09/2026` · `nessun documento`
-
-**Chiusa il 12/10/2026** (Tappa 9, F7, C-38): `calendar_events()` dichiara il taglio con
-`oltre: {restano}`, la forma delle risposte degli strumenti. `troncato` resta solo a `history()`
-(`logbook()` non c'e' piu'), con una semantica sola.
-
-`HAClient.history()` e `HAClient.logbook()` dichiarano `"troncato": bool` **sempre**, anche a
-falso — e' la loro scelta esplicita, motivata solo dalla coerenza reciproca fra i due ("non due
-modi di dire la stessa cosa", si legge nel docstring di `history()`). `HAClient.calendar_events()`,
-aggiunto dallo stesso task, dichiara la stessa identica cosa — un elenco tagliato dal tetto
-(`MAX_HISTORY_POINTS`/`MAX_LOGBOOK_ENTRIES`/`MAX_CALENDAR_EVENTS`) — ma con la chiave `"troncato"`
-che esce **solo quando il taglio e' avvenuto**, stessa disciplina di
-`elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in `home_space/queries.py` ("le chiavi che non
-hanno niente da dire non escono").
-
-Non e' un errore: e' la scelta **giusta** per `calendar_events()` (la legge del prodotto — un fatto
-che non c'e' non deve parlare — e' piu' generale del "sempre" dei due fratelli), ed e' stata
-verificata e confermata durante la revisione del task che l'ha introdotta. Ma nello stesso file,
-sotto lo stesso nome di chiave, convivono oggi due semantiche di presenza diverse per lo stesso
-concetto ("questo elenco e' stato tagliato"): chi legge `"troncato" in risposta` per un metodo e
-"il valore di `risposta['troncato']`" per un altro sta leggendo due contratti diversi con lo stesso
-nome.
-
-**Chi chiude questa voce**: allinei `history()` e `logbook()` alla disciplina omit-quando-falso di
-`calendar_events()` (non il contrario: e' quella piu' generale). **Nessun consumatore si rompe**:
-gli unici chiamanti di produzione leggono con `risposta.get("troncato")`, che torna `None` sia
-quando la chiave manca sia quando vale `False` — verificato prima di scrivere questa voce, non
-assunto.
 
 ### Il calendario come contesto per interpretare la casa
 
@@ -3273,54 +2619,6 @@ nessuna unita') non ha bisogno di `state_class`, e aggiungerlo a `live_mirror` s
 citare" senza un secondo consumatore reale sarebbe stata una porta nuova senza un dato che la
 attraversa davvero -- la stessa disciplina per cui `capacita'`/`stato_presunto` sono entrati SOLO
 quando la decodifica produceva qualcosa.
-
-### ~~«Cosa sto guardando» stampa i soggetti grezzi, gli episodi no~~ — CHIUSA il 15/09/2026
-
-**Chiusa dalla riscrittura della pagina dell'osservatore.** `describeWatchedSubject` esiste, è
-condivisa, e la lista di «cosa sto guardando» ci passa (`watcher-route.js:407`) come già facevano
-gli episodi — con in più un avviso per il gruppo, detto una volta, quando tutte le voci sotto sono
-identificatori e non nomi.
-
-
-`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
-
-Nella pagina dell'osservatore le **due liste sono rese in due modi diversi**, e una sola e' stata
-corretta. `hiris/app/static/config/watcher-route.js:257` scrive `v.soggetto` **tale e quale**:
-
-```
-integrazione:01K2CK4GG287VKK18M5J788MRQ
-log:aioamazondevices@components/alexa_devices/coordinator.py:192
-log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481
-```
-
-Le righe **826** e **885** della stessa pagina — gli **episodi** — passano invece da
-`protagonistName()`, la funzione corretta durante la fetta «le tracce e il log» proprio perche' un
-prefisso tecnico non resti a schermo. Due elenchi sulla stessa pagina, uno corretto e uno no: e' la
-forma ricorrente dell'**elenco incompleto**, e nessuna prova poteva vederlo — e' resa, e si vede
-solo aprendo il gruppo in un browser vero.
-
-**Il difetto e' precedente alla fetta, ma la fetta lo ha reso molto piu' visibile**: quel gruppo
-aveva due voci, ora ne ha **diciannove**, di cui **diciassette sono percorsi di file**.
-
-`protagonistName(o)` non si puo' riusare com'e': lavora su un episodio, che porta `titolo` e
-`dominio`; una voce di «cosa sto guardando» porta solo `{soggetto, gamba, provenienza}`. Serve una
-resa che parta dal **solo soggetto** — «registro: `aioamazondevices`», «un'integrazione non
-caricata» — e la si condivide con `protagonistName` invece di scriverne una seconda.
-
-### ~~Il README documenta sei rotte che non esistono~~ — **CHIUSA** il 14/10/2026
-
-`chiusa dalla fetta F9 della Chiusura dello sprint: i sei nomi erano gia' stati corretti il 07/09/2026 (commit f60d19c8, uscito con la v3.22.2) e la voce era rimasta aperta. La tabella «Interface» la confrontava gia' una prova che leggeva il testo di main.js con una regex; da F9 la confronta, nelle due direzioni, tests/js/readme-rotte.test.mjs, che chiede le route al router avviato`
-
-`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
-
-`README.md:427-437` elenca nove rotte del pannello: sei hanno il **nome sbagliato**. Il prodotto
-vivo usa `#/tree`, `#/memory`, `#/agenda`, `#/constructions`, `#/watcher`, `#/settings`; il README
-dice `#/albero`, `#/memoria`, `#/promesse`, `#/costruzioni`, `#/osservatore`, `#/impostazioni`.
-Solo `#/`, `#/models` e `#/usage` combaciano. La riga di `#/promesse` parla inoltre di «promesse»,
-nome sostituito da **«Impegni»** nella v3.21.0.
-
-E' il residuo di una rinomina che ha toccato il codice e non il documento — verificato aprendo il
-pannello col browser e confrontando gli `href` veri con la tabella.
 
 ### Il nome di un'automazione rotta e' gia' in memoria, e «cosa sto guardando» non lo usa
 
@@ -3529,34 +2827,6 @@ renderla capace di accorgersi.
 **Una legge da rispettare nel disegno**: quando la lettura da HA non riesce, *«non ho potuto
 chiedere»* e *«non c'è»* sono **due fatti diversi**, e chi produce il motivo lo etichetta.
 
-### ~~L'analista — chi trasforma le osservazioni in qualcosa di funzionale~~ — CHIUSA il 15/09/2026
-
-**Fatta dallo sprint «i tre attori»** (spec del 10/09, §10). L'analista gira, legge trenta giorni
-di misure, e sulla casa vera ha prodotto **cinque osservazioni** con gli inneschi 1 e 3 della spec
-— il secondo, «stabile e costa», non è mai comparso, ed è l'esempio che la spec porta come il più
-prezioso — il perché di ciascuna e cosa cambierebbe. Non scrive numeri: nomina la misura, e il codice ci attacca
-il valore — è ciò che impedisce a un modello di inventare una cifra. Resta sotto, come voce sua,
-il testo con cui il proprietario l'ha chiesta.
-
-
-`origine: il proprietario, 07/09/2026` · `nessun documento`
-
-**Sprint suo, dichiarato tale dal proprietario.** Non è una correzione e non entra in nessuna
-fetta in corso.
-
-> *«Mettere insieme le letture dell'osservatore spetterà all'analista, che avrà proprio questo
-> compito: analizzare le letture dell'osservatore per raggruppare informazioni, creare tendenze,
-> e trasformare in qualcosa di funzionale un'osservazione dettagliata e più estesa possibile.»*
-
-**Perché adesso**: l'osservatore è vivo in produzione e scrive. Fin qui il lavoro è stato tutto
-sul **leggere meglio** — l'appartenenza, la salute senza soglia, il guasto con nome e condizione,
-le tracce, i calendari, i nomi e gli stati. Nessuno però **legge ciò che l'osservatore ha
-scritto**: gli episodi si accumulano e restano un elenco.
-
-Questa voce è il lettore che manca. E ha una conseguenza sul resto del registro: **osservare di
-più ha senso solo se qualcuno poi mette insieme** — quindi ogni fetta che allarga il pavimento
-(vedi «La luce accesa col sole alto») ha il suo valore vero **qui**, non dove nasce.
-
 ### La luce accesa col sole alto
 
 `origine: il proprietario, 07/09/2026, rispondendo alla domanda sui domini orfani di _OPERABLE` · `nessun documento`
@@ -3587,45 +2857,6 @@ l'osservatore non ha, e va disegnata invece che infilata.
 **Ordine deciso**: viene **dopo** «L'anagrafe dei tipi di entità». Aggiungere `light` al
 pavimento prima di quella vorrebbe dire scrivere la **quarta** lista a mano invece di toglierne
 tre.
-
-### ~~`chat_stream` vive solo per i test~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
-
-**Come si è chiusa.** È stata presa la strada 1: `chat_stream` è uscito dai due runner e dal
-router, e la rotta di `POST /api/chat` risponde sempre in JSON anche a chi chiede
-`text/event-stream` o `"stream": true` (dichiarazione D2, approvata dal proprietario). Le prove che
-lo esercitavano sono uscite con lui.
-
-*Il testo della voce, com'era:*
-
-`origine: audit delle fondamenta, «sotto la soglia dei dieci» n.8, 09/09/2026` · `nessun documento`
-
-Tre metodi -- `ClaudeRunner.chat_stream`, `OpenAICompatRunner.chat_stream`, `LLMRouter.chat_stream`
--- e la rotta SSE di `api/handlers_chat.py::handle_chat` (dietro `Accept: text/event-stream` o
-`{"stream": true}`) non hanno **nessun** lettore di produzione: nessun file in `static/` manda
-quell'header o quel campo (grep, zero occorrenze), il ponte (il canale della CLI di Claude Code)
-ha una strada sua e non passa mai da `LLMRouter.chat()`/`.chat_stream()`, e
-`docs/design/2026-08-05-mappa-funzionalita.md` dichiara che la pagina chat "funziona, senza
-streaming" e che questo TIENE. Vivono per i test: **12 file** `.py`, rimisurato il 09/09/2026 (`grep -rl
-chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py`,
-`test_chat_briefing.py`, `test_chat_sse.py`, `test_claude_runner.py`, `test_composition_order.py`,
-`test_llm_router_policies.py`, `test_model_invariants.py`, `test_openai_compat_runner.py`,
-`test_runner_catalog.py`, `test_runner_parity.py` e tre soli marginali.
-
-**La decisione (fondamenta 4) e' fra due strade, nessuna delle due presa qui:**
-
-1. **Cancellare** -- il metodo su tre runner, la rotta SSE, e i 12 file di prova che lo esercitano
-   (alcuni solo di striscio, altri -- `test_chat_sse.py`, `test_openai_compat_runner.py`,
-   `test_runner_catalog.py` -- a fondo). E' un lavoro con la sua verifica, non l'effetto
-   collaterale di una correzione sotto soglia.
-2. **Collegare** -- dargli un lettore vero (streaming reale nella pagina chat), che e' una
-   FUNZIONALITA' NUOVA contraria a quanto la mappa delle funzionalita' dichiara oggi, e che
-   richiederebbe prima di chiudere un gap reale: `LLMRouter.chat_stream` non ripiega su un secondo
-   backend come fa `chat()` (commento originale: "no fallback in streaming (as today)") e non
-   scrive mai nel registro degli esiti (`.successo`/`.fallimento`) che lo stesso modulo alimenta
-   per ogni turno sincrono -- collegarlo com'e' oggi farebbe mentire la pagina Consumi su ogni
-   turno in streaming.
-
-Chi sceglie questa voce per uno sprint decide fra le due, con la sua verifica.
 
 ### Gli undici stati che non sono né riposo né acceso
 
@@ -3665,57 +2896,6 @@ dall'audit: `hiris/app/static/config/watcher-route.js` li duplica.
 
 È un doppione **attraverso il confine dei linguaggi**, che nessuno dei due cancelli sui doppioni
 guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
-
-### ~~Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni~~ — CHIUSA il 15/09/2026
-
-**Fatta a metà, e va detto quale metà.** Il disegno del 09/09 è stato sostituito il 10/09
-(`docs/design/2026-09-10-i-tre-attori.md`): il catalogatore non sopravvive come attore, **il
-pavimento esce** (`mind/baseline.py` cancellato con la 3.26.0), e nascono il registro delle
-operazioni, le ricette e il resoconto giornaliero. **Le gambe NON sono uscite**: `ASPECTS` e
-`aspect_of` vivono in `home_space/type_vocabulary.py`, `GENRES` e `genre_for` in `mind/facts.py`, e
-girano ogni notte dentro `aggregate_day`. Quando ho marcato questa voce chiusa, il 15/09, ho
-ripetuto «gambe e pavimento escono» come se fosse un fatto: non lo era, e l'ha trovato la revisione
-indipendente lo stesso giorno. Vedi la voce nuova «§13 dice di cancellare le gambe e i generi».
-Tutte e tre vivono in produzione, col sapere interrogabile da una pagina. Le tre mancanze del
-09/09 sono chiuse: la casa per ciò che HIRIS deduce è `sapere.db`, il resoconto giornaliero
-esiste e ne nascono le tendenze, e le porzioni sono le tre forme di `GET /api/mind/report`.
-Il testo originale resta sotto: è la cronaca di come ci si è arrivati.
-
-
-`origine: il proprietario, 09/09/2026, discutendo l'impianto solare` · `documento: docs/design/2026-09-09-il-sapere-di-hiris.md`
-
-**Sprint successivo, dichiarato fondamentale dal proprietario**, con il permesso esplicito di
-**distruggere e ricostruire** se il disegno lo richiede.
-
-**Il vincolo nuovo che cambia tutti gli altri: HIRIS verrà distribuito ad altri utenti.**
-
-Tre attori: il **catalogatore** (cos''e questa cosa — dedotto dal modello, verificato sulla
-documentazione di HA), l'**analista** (mi serve per la domanda dell'obiettivo?), l'**osservatore**
-(raccoglie ci'o che gli 'e stato detto — esiste gi'a e gira).
-
-**Le tre mancanze misurate il 09/09**: non c''e una casa per ci'o che HIRIS deduce (la quarta
-provenienza non ha un tetto); non esiste il **resoconto giornaliero** da cui nascono le tendenze;
-e HIRIS **non sa prendere porzioni** — il modello riceve un testo fisso di 6.800 caratteri, e sotto
-non c''e niente da cui pescare.
-
-**E il vocabolario dei tipi 'e un file nel repository**: non esiste nessun posto dove una singola
-casa scriva ci'o che HIRIS ha imparato. Su questa casa funziona perch'e il proprietario risponde;
-**quello non si distribuisce**.
-
-Il caso che ha fatto emergere tutto: **otto entit'a dell'impianto solare con otto ruoli diversi e
-un solo `device_class`** (`power`), indistinguibili dal consumo di una presa.
-
-Tutto il resto — misure, decisioni gi'a prese, domande in pausa, sospesi — sta nel documento.
-
-**AGGIORNAMENTO 10/09/2026 — il disegno e' cambiato, la spec e'
-`docs/design/2026-09-10-i-tre-attori.md`.** Misurando sulla casa vera e' emerso che **il problema non
-e' il riconoscimento**: Home Assistant dichiara gia' quasi tutto (100% delle entita' ha un
-`unique_id`, 64% un `translation_key`, il 99% dei dispositivi il produttore), e il difetto e' che
-`casa.db` ne conserva una **copia impoverita** che butta `translation_key`, `unique_id`,
-`original_name` e il dispositivo come oggetto. Di conseguenza: il catalogatore **non sopravvive come
-attore** (restano due attori e una lettura), **gambe e pavimento escono**, e nascono il **registro
-delle operazioni**, le **ricette** e il **resoconto giornaliero**. Il documento del 09/09 resta
-valido come cronaca di come ci si e' arrivati; **la specifica e' quella del 10/09**.
 
 ### Separare `notevole` nei suoi due sensi: «vale la pena raccontarlo» e «e' da sapere subito»
 
@@ -3865,6 +3045,869 @@ n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glo
 ---
 
 ## Usciti
+
+### ~~`troncato`: stessa chiave, due semantiche di presenza in `ha_client.py`~~ — CHIUSA il 12/10/2026 (Tappa 9, F7, C-38)
+
+`origine: il coordinatore del Task 1 di «i calendari», 06/09/2026` · `nessun documento`
+
+**Chiusa il 12/10/2026** (Tappa 9, F7, C-38): `calendar_events()` dichiara il taglio con
+`oltre: {restano}`, la forma delle risposte degli strumenti. `troncato` resta solo a `history()`
+(`logbook()` non c'e' piu'), con una semantica sola.
+
+`HAClient.history()` e `HAClient.logbook()` dichiarano `"troncato": bool` **sempre**, anche a
+falso — e' la loro scelta esplicita, motivata solo dalla coerenza reciproca fra i due ("non due
+modi di dire la stessa cosa", si legge nel docstring di `history()`). `HAClient.calendar_events()`,
+aggiunto dallo stesso task, dichiara la stessa identica cosa — un elenco tagliato dal tetto
+(`MAX_HISTORY_POINTS`/`MAX_LOGBOOK_ENTRIES`/`MAX_CALENDAR_EVENTS`) — ma con la chiave `"troncato"`
+che esce **solo quando il taglio e' avvenuto**, stessa disciplina di
+`elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in `home_space/queries.py` ("le chiavi che non
+hanno niente da dire non escono").
+
+Non e' un errore: e' la scelta **giusta** per `calendar_events()` (la legge del prodotto — un fatto
+che non c'e' non deve parlare — e' piu' generale del "sempre" dei due fratelli), ed e' stata
+verificata e confermata durante la revisione del task che l'ha introdotta. Ma nello stesso file,
+sotto lo stesso nome di chiave, convivono oggi due semantiche di presenza diverse per lo stesso
+concetto ("questo elenco e' stato tagliato"): chi legge `"troncato" in risposta` per un metodo e
+"il valore di `risposta['troncato']`" per un altro sta leggendo due contratti diversi con lo stesso
+nome.
+
+**Chi chiude questa voce**: allinei `history()` e `logbook()` alla disciplina omit-quando-falso di
+`calendar_events()` (non il contrario: e' quella piu' generale). **Nessun consumatore si rompe**:
+gli unici chiamanti di produzione leggono con `risposta.get("troncato")`, che torna `None` sia
+quando la chiave manca sia quando vale `False` — verificato prima di scrivere questa voce, non
+assunto.
+
+### ~~La pagina «L'osservatore» si chiama Brain~~ — **USCITA con la v3.83.0** — aperta il 22/10/2026
+
+`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): voce di menu, titolo e schede dicono «Brain»; la rotta e' `#/brain` con le quattro schede (`giorno`, `cosa-fare`, `sapere`, `lavoro`); `#/osservatore`, `#/watcher` e `#/watcher/<scheda>` sono alias in `static/config/router.js` (`HASH_DI_PRIMA`). La quarta scheda si chiama «Come lavoro», in prima persona come la propone ux-ui-specialist (scelta di Paolo del 29/10; dal 28/10 era «Come lavora»). Gli identificatori nel codice restano `watcher-*`, per la regola della rinomina a sviluppo fermo. Il sottotitolo non dice piu' «Non tocca niente», perche' la pagina scrive: dice «Non tocca la casa senza il tuo sì.»`
+
+`origine: Paolo, 22/10/2026 13:28 («la pagina L'osservatore si chiama Brain»)` · piano: `/mnt/project-files/piani/2026-10-22-sprint-giro-snello-proposta.md`, Fase B.1
+
+La voce di menu, il titolo e le schede della pagina dicono «Brain» invece di «L'osservatore».
+Nasce una rotta `#/brain`; `#/watcher` e `#/osservatore` restano come alias verso di lei, perché
+un segnalibro vecchio non deve portare a una pagina vuota. Gli identificatori nel codice non si
+toccano: la rinomina del codice si fa a sviluppo fermo (CLAUDE.md, «Il debito dichiarato: la
+rinomina in inglese»). Prima di disegnare si interpella `ux-ui-specialist`.
+
+### ~~Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta~~ — **USCITA con la v3.83.0**
+
+`fatta il 28/10/2026 (Fase B dello sprint «Il giro snello e il Brain leggibile»): l'editor in riga della scheda «Sapere» tocca anche `da_sapere_subito`, con le tre forme del valore: sì, no, oppure un elenco di stati scritti separati da virgola (`watcher-sapere.js`, `EDITABLE_JUDGMENT_FIELDS`, `statesInput`). La validazione resta della rotta, che rifiuta con la sua ragione`
+
+`origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
+
+**Il fatto.** Il giudizio nuovo compare nella pagina del sapere (sezione 04) con la sua riga e il
+suo gruppo, e **il ritorno al seme si fa gia' dalla pagina**: il comando «Torna al seme» vale per
+qualunque riga corretta, di qualunque campo. Cio' che manca e' **scrivere un valore nuovo**, che
+oggi si fa **solo dalla rotta** (`POST /api/mind/judgment`, a mano o da script): l'editor in riga
+della sezione 04 tocca solo `genere`. Non e' un difetto di questa fetta: e' un limite dichiarato
+finche' la pagina dell'osservatore non lo dispone.
+
+**Cosa servirebbe.** Estendere l'editor in riga della sezione 04 a `da_sapere_subito` (il ritorno
+al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
+dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
+dipende.
+
+### ~~Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS~~ — **USCITA con la v3.83.0**
+
+`fatta il 29/10/2026 (Fase S, S.1; D8 del 03/10 e scelta del proprietario del 29/10: «ognuno vede i suoi», anche quando il ricordo riguarda la casa): la regola vive una volta in `memory/store.py` (`_reader_clause`, `fetch_for`, `count_for`) e la chiedono il nucleo (`compose_briefing`, col soggetto obbligatorio), gli strumenti (`ToolDispatcher._all_memories`), la pagina Memoria e le due strade delle promesse (`keeper/exchange.promise_subject`). Un turno di sfondo, senza soggetto, li legge tutti; un soggetto senza id nessuno. Lo difende `tests/test_ricordi_per_persona.py`, con le mutazioni eseguite`
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
+
+Con l'accesso ai non amministratori, la pagina Memoria mostra a ciascuno **solo i ricordi che ha
+detto lui**, ma in chat la memoria di HIRIS **resta condivisa** (decisione delle chat divise,
+25/09/2026): il modello legge i ricordi di tutti (lo strumento `fetch`, il nucleo). Quindi un non
+amministratore può farsi ripetere, chiedendo, ciò che un altro ha detto a HIRIS. E ciò che lui fa
+ricordare (`remember`) entra nei turni successivi di tutti, amministratori compresi: un canale di
+iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09).
+
+**Da decidere**: se certi ricordi diventano personali (visibili al modello solo nel filo di chi li
+ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
+pagina Memoria.
+
+### ~~Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona~~ — **USCITA con la v3.83.0**
+
+`fatta il 29/10/2026 (Fase S, S.2; scelta del proprietario del 29/10: turni al giorno, un valore solo per chi non amministra, spento di fabbrica): `ChatSettings.daily_turn_cap`, nella pagina Impostazioni della chat; il conto si chiede all'archivio dei consumi (`UsageStore.count_turns`, chat e promesse insieme, giorno della casa); il rifiuto in `steering.daily_turns_refusal`, chiesto dalla chat (429 `daily_turns_reached`) e da una promessa `chiedi` prima di ogni strada. I turni delle promesse portano ora chi le ha chieste nel registro, su catena e ponte. Lo difende `tests/test_tetto_per_persona.py`, con le mutazioni eseguite`
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
+
+Ogni turno di chat di un non amministratore spende sui provider configurati dal proprietario (catena
+e piano). Esiste solo il tetto globale dei turni per conversazione (`max_chat_turns`), non un tetto
+per persona né per giorno; nascondere il widget dei consumi a chi non amministra non toglie la spesa.
+Il registro dei turni (`turn.subject_json`) sa già chi ha chiesto: la misura per persona c'è, manca
+il freno.
+
+**Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
+
+### ~~Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS~~ — **USCITA con la v3.83.0**
+
+`fatta: la scrittura il 07/10/2026 (Tappa 7, F-01 e F-17: il cancello chiede il gesto della rotta a chiunque entri), la lettura il 29/10/2026 (Fase S, S.3): `soffitto.restricted_person` chiede il gesto «amministrare» al soffitto della richiesta invece di guardare la porta, quindi un servizio `utente` riceve da `GET /api/memories` i suoi ricordi e da `GET /api/chat-settings` i soli `CHAT_PAGE_FIELDS`. Una richiesta che non dice chi e' riceve la lettura ristretta. Lo difendono `tests/test_le_sue_memorie.py::test_un_servizio_firmato_legge_i_ricordi_come_una_persona_del_suo_ruolo` e `::test_un_servizio_utente_riceve_le_impostazioni_ridotte`, con la mutazione eseguita`
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
+
+La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
+firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
+distingue solo lettura e scrittura: un servizio approvato come `utente` può chiamare le rotte di
+configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/usage/reset`, …)
+che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
+il chiamante può in HA».
+
+**Anche in lettura** (aggiunto dal Task 5 della stessa fetta, 27/09/2026): i filtri che la fetta
+ha messo sulle letture valgono solo per le persone dall'ingress (`soffitto.restricted_person`,
+che guarda `auth_via == "ingress"`). Un servizio firmato con ruolo `utente` o `lettore` riceve da
+`GET /api/memories` **tutti** i ricordi (non solo i suoi) e da `GET /api/chat-settings` **tutte**
+le impostazioni della chat, prompt di sistema compreso — non solo `name` e `max_chat_turns`.
+
+**Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
+applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi filtri di lettura
+(`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
+`utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
+
+### ~~I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant`~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
+
+`fatta il 30/10/2026 (Fase S, S.4; scelta del proprietario del 30/10: «solo servizi con bersaglio»): a chi non amministra `execute` concede solo i servizi la cui definizione in `/api/services` dichiara un `target`, piu' le notifiche (`action/verification.py::touches_no_entity`, chiesta dalla riga di `execute` in `home_space/tools.py` come `_service_without_entity`, col rifiuto `soffitto.NO_ENTITY_SERVICES_REFUSAL`). Il dominio `homeassistant` resta di `privacy.HA_CORE_USER_SERVICES`. La stessa domanda vale ora per la `chiamata` di una promessa `fai` (`_on_promised_call`): fino a oggi una promessa chiedeva solo `comandare`, e un `fai` di `homeassistant.restart` nasceva per chiunque potesse comandare. Misurato sul sorgente il 30/10/2026: nel nucleo 2026.10.4 nessun servizio registrato con `async_register_admin_service` dichiara un `target`; in Spook v5.11.1 (quello di casa) 14 dei 17 riservati che la porta lasciava passare non lo dichiarano (i `delete` di nove aiutanti, `zone.update`, `zone.delete`, `person.add_device_tracker`, `person.remove_device_tracker`, `sensor.set_display_precision`) e da oggi sono chiusi. Il costo: chi non amministra perde anche i servizi senza `target` che non sono riservati (nel nucleo 2026.10.4, fra gli altri, `shopping_list.*`, `scene.apply`, `scene.create`, `conversation.process`, `logbook.log` e lo `script.<nome>` chiamato direttamente; `script.turn_on` con lo script come bersaglio resta). Lo difende `tests/test_servizi_senza_entita.py`, con le mutazioni eseguite. La nota qui sotto che diceva «quelli senza bersaglio sono gia' irraggiungibili» era falsa: la porta accetta come bersaglio un'entita' dello stesso dominio anche quando il servizio non dichiara un `target`, ed e' cosi' che i 14 passavano`
+
+`origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
+
+Home Assistant registra alcuni servizi con `async_register_admin_service`: a un non amministratore
+li rifiuta (`helpers/service.py`). HIRIS li chiama col proprio token di amministratore, quindi deve
+rifiutarli da sé. Oggi lo fa **solo per il dominio `homeassistant`** (verificato il 27/09/2026 su
+Core 2026.9.3): a chi non amministra `execute` concede solo `turn_on`, `turn_off`, `toggle`,
+`update_entity`. I servizi riservati di **altri domini che dichiarano un bersaglio** (entità,
+dispositivo, area) passano la porta come qualunque comando: quelli senza bersaglio sono gia'
+irraggiungibili (`action/verification.py`, un bersaglio vuoto e' sempre un rifiuto).
+
+**Perche' resta fuori**: l'elenco di quali servizi di quali domini siano riservati non e' esposto
+da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione), e scriverlo a mano
+per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
+servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
+nessuno raggiungibile con un bersaglio.
+
+### ~~Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.6): il guscio porta i permessi scritti dal server (`api/shell.py`, `<meta name="hiris-permessi">`, la stessa domanda di `GET /api/pending`: `admission.request_permissions`), e `static/pending-badge.js` non scrive ne' legge piu' niente in `localStorage`. Lo difendono `tests/test_permessi_nel_guscio.py` e le prove JS di `pending-badge.test.mjs` e `can-configure.test.mjs`, con le mutazioni eseguite`
+
+`origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
+
+Il guscio ricorda `can_configure` in `localStorage["hiris.can_configure"]`, per profilo del
+browser. Su un dispositivo condiviso, se un amministratore ha aperto HIRIS e poi entra un non
+amministratore con lo stesso profilo, questo vede **per un attimo** il menu di configurazione e il
+guscio fa **una** lettura riservata, che il server rifiuta; alla prima risposta di `/api/pending`
+il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, nessun dato passa.
+**Cosa la chiude**: legare il ricordo alla persona (per esempio alla chiave del soggetto), o non
+usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
+per l'amministratore.
+
+### ~~Una risposta tardiva di `can_configure` rimonta la pagina aperta~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.6): con i permessi nella pagina il router di `/config` parte subito dopo il montaggio; `ROUTER_WAIT_MS` e' uscito, e resta solo il rimontaggio sul CAMBIO a pagina aperta (`static/config/main.js`)`
+
+`origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
+
+Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` fino a 3 secondi
+(`ROUTER_WAIT_MS`), poi parte chiuso. Una risposta che arriva dopo rimonta la pagina aperta
+(`HirisRouter.refresh()`), anche quando la pagina era gia' quella giusta: un ridisegno in piu', non
+un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
+mostra.
+
+**Strada scelta il 29/10/2026** (Fase S, S.6, per questa voce e per quella sopra sul ricordo di
+`can_configure`): il server scrive i permessi dentro il guscio quando lo serve, e il ricordo in
+`localStorage`, l'attesa di `ROUTER_WAIT_MS` e il rimontaggio tardivo escono. Seconda fetta della
+Fase S.
+
+> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
+> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
+> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
+> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
+> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
+> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
+
+### ~~`GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata~~ — **USCITA con la v3.83.0**
+
+`fatta il 28/10/2026 (Fase B, punto S.7, scelto da Paolo il 28/10): in `api/admission.py` la rotta passa al gesto «amministrare», come la scrittura del giudizio. Una persona che non amministra era gia' fuori (la riga non aveva `open_reason`): chi passava era un servizio firmato col ruolo `utente`, che adesso riceve 403. Lo difende `tests/test_admission.py::test_il_sapere_corretto_a_mano_NON_si_legge_da_un_servizio_utente`, con la mutazione eseguita`
+
+`origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
+
+Il cancello di chi costruisce (`soffitto.require_builder`) protegge `POST /api/mind/judgment` (la
+scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /api/mind/knowledge`
+(la lettura del sapere della casa): chi non costruisce vede ancora il modulo «Correzioni» nella
+pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
+questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
+
+### ~~I nomi delle persone verso un modello, per tutte le porte degli attori~~ — **USCITA con la v3.83.0** — aperta il 05/10/2026
+
+`fatta il 30/10/2026 (Fase S, S.8; misura dello Sprint del 30/10 e scelta del proprietario dello stesso giorno: «ovunque compaia il nome»): ogni attore copre la domanda INTERA con la stessa maschera (`privacy.PresenceMask`), e la risposta torna agli id veri prima di ogni controllo. L'osservatore compone i pezzi in `observer.question_parts` (obiettivo, righe, soggetti che tacciono) e riporta le decisioni in `apply_answer`; le ricette coprono `build_device_question_body` e riportano la ricetta in `apply_recipe`; l'analista copriva gia' la domanda. Dove c'e' un segnaposto i tre lo spiegano con la stessa frase (`privacy.PLACEHOLDER_HINT`). La misura di prima: la domanda che apre la campagna dell'osservatore portava un nome in 27 righe su 383; le ricette, sui dispositivi che avrebbero una domanda, 56 volte dentro gli id; nessuna area porta un nome. Escono `observer.presence_handles`, `observer.masks_presences`, `observer.PRESENCE_HINT` e `observer.house_lines` (le righe si chiedono a `question_parts`, anche da `scripts/fotografia_porte.py`). Limiti che restano, gia' scritti in `privacy.named_after_person`: un pezzo solo di un nome in piu' parole non si copre (sulla casa nessuna persona ha un nome in piu' parole, misura del 03/10), e un nome si copre solo intero. Sul ponte la maschera della risposta si rifa' dalla casa del momento: se nel frattempo cambia chi porta il nome di una persona, un segnaposto puo' tornare a un altro id, che resta pero' uno di quelli chiesti. I nomi degli utenti di Home Assistant non sono stati misurati (`config/auth/list` non e' fra le letture di `scripts/casa.py`). La chat resta com'e', per decisione. Lo difende `tests/test_nomi_ovunque.py`, con le mutazioni eseguite`
+
+`origine: rapporto della Tappa 6, T5-T6 («Cosa resta aperto», punto 1) dello sprint «Una fonte sola di verita'»; domanda 28 del secondo giro, approvata dal proprietario il 05/10/2026 (consigliata: «voce nel BACKLOG, da misurare sulla casa»)` · nessun altro documento
+
+La decisione 12 della spec degli attori (Tappa 6, Task 6) ha tolto il nome di una persona da **una**
+porta: le righe della casa che l'osservatore manda al modello (`mind/observer.py`, `house_lines`).
+Un `person.*` o un `device_tracker.*` (il genere «presenza», `privacy.MOVING_DOMAINS`) ci arriva
+come segnaposto `person.#N`, senza nome ne' area, e torna id vero prima di ogni controllo.
+
+Il nome ha altre strade, lette nel codice e **non ancora misurate sulla casa**:
+
+- le **entita' sorelle** del telefono, che portano il nome nell'id e nel nome dell'entita' (per
+  esempio la batteria del telefono, accanto al tracker dello stesso dispositivo);
+- i **nomi delle aree** nelle righe delle altre entita': un'area puo' chiamarsi come chi ci dorme;
+- il turno delle **ricette** (`mind/recipe_turn.py`), che per dispositivo elenca tutte le entita'
+  guardate (`House.entities_of`): un telefono con `mobile_app` porta il tracker e il nome del
+  dispositivo.
+
+Cosa chiede: **prima la misura, poi il come**. Sulla casa vera, quali di queste strade portano
+davvero un nome di persona a un modello, per ogni attore (osservatore, ricette, analista,
+attuatore). Le entita' del dispositivo di un tracker si chiedono a Home Assistant (il `device_id`
+del tracker nel registro delle entita'), non si indovinano dai nomi. Solo dopo si decide se il
+segnaposto si estende, e a cosa. Le alternative scartate per ora: estendere subito il segnaposto
+alle entita' dello stesso dispositivo di un tracker; lasciare cosi'.
+
+### ~~La Memoria si raggiunge dalla chat solo passando dagli Impegni~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, S.9, parere dell'ux-ui-specialist del 29/10): la voce «Memoria» sta nella barra della chat per tutti, subito dopo gli Impegni, con l'icona di `/config`; per chi non amministra il titolo della pagina e' «I tuoi ricordi». Sul telefono le voci della barra hanno 44 px di altezza minima`
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
+
+Per chi non amministra la barra laterale della chat mostra «Impegni» (`config#/agenda`) ma non il
+link «Configurazione»: la Memoria c'e', ma la si trova solo dal menu del guscio `/config`, dopo
+esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serve una voce nuova nella chat, fuori dal
+perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
+della chat per chi non configura.
+
+### ~~Il testo della pagina non concessa~~ — **USCITA con la v3.83.0** — aperta il 27/09/2026
+
+`fatta il 29/10/2026 (Fase S, domanda 4): `admission.NOT_ADMITTED` dice il testo nuovo, e lo difende `tests/test_admission.py::test_i_testi_dei_rifiuti_sono_quelli_DECISI``
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
+
+Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX ha suggerito «…riservata
+a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
+la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
+posto solo (arriva anche al guscio come `configure_refusal`).
+
+**Decisa il 29/10/2026** (Fase S, domanda 4): «Questa parte di HIRIS è riservata a chi gestisce la
+casa in Home Assistant.». Entra con la seconda fetta della Fase S (S.6 e S.9).
+
+---
+
+### ~~Il campo `notevole` del giudizio di tipo non ha più un lettore~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
+
+**Come si è chiusa.** Il proprietario ha messo «le righe morte del sapere (`notevole`, `direzione`),
+con la loro migrazione» fra ciò che esce con la Tappa 0, e ha approvato la dichiarazione D4. Il
+campo è uscito dai giudizi: non si semina, la porta non lo accetta, la pagina «Cosa ho capito» non
+lo mostra, e la migrazione 9 del sapere toglie le righe già scritte (in casa erano 23, tutte del
+seme). La coda — le 23 dichiarazioni `notable` nel vocabolario dei tipi, che nessun codice leggeva —
+è uscita lo stesso giorno, per decisione del proprietario, con le prove che le pinnavano.
+
+*Il testo della domanda, com'era:*
+
+
+`origine: costruzione della fetta «una porta sola», Task 6` · `hiris/app/home_space/type_vocabulary.py:880` · `type_judgments.py`, `mind/judgments.py:72`, `static/config/watcher-sapere.js`
+
+Con l'uscita di «Notevole adesso» dal nucleo (§5 della spec) il giudizio `notevole` di un tipo ha
+perso il suo unico lettore, `TypeJudgments.is_notable`, che è stato cancellato. Il campo resta nel
+seme, nell'API, nella pagina dei giudizi e nel JS del watcher, dove si può ancora impostare **senza
+che cambi nulla**: una promessa falsa dell'interfaccia.
+
+**Domanda**: si **toglie** (seme, API, pagina, watcher: un cambio di interfaccia e una migrazione
+del seme) o gli si **dà un lettore** (per esempio la pagina dell'osservatore, o una risposta di
+`search` ordinata per «notevole»)? Nessuna delle due è stata scelta: cancellarlo tocca un'interfaccia
+che il proprietario usa.
+
+### ~~In sviluppo `can_configure` e' vero mentre `can_build` e' falso~~ — CHIUSA il 07/10/2026 nel codice, non ancora rilasciata (Tappa 7, T6)
+
+**Come si e' chiusa.** Con il cancello unico delle rotte (`api/admission.ADMISSION`, il gesto di ogni
+rotta chiesto a `soffitto.denies` per ogni soggetto, D4 della Tappa 7) e `costruire` fuso in
+`amministrare` (D6), la domanda e' una sola: `can_build` e `can_configure` portano lo stesso valore,
+e lo sviluppo con l'interruttore acceso apre anche la pagina Costruzioni e i gesti della pagina
+Servizi -- come la chat glieli apriva gia' (`confirm`). Era la «scelta del proprietario» scritta
+qui sotto: la si e' presa perche' il cancello unico non ha un secondo ramo per lo sviluppo, e
+tenerlo chiuso solo sulle rotte `amministrare` avrebbe chiuso allo sviluppo anche le sei rotte di
+configurazione che fino ad allora gli erano aperte. In produzione quel soggetto non esiste. Resta
+da unire, nel guscio, le due chiavi che portano lo stesso fatto (`pending-badge.js`).
+
+
+`origine: review del Task 3 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/handlers_pending.py`
+
+Con `HIRIS_ALLOW_NO_TOKEN=1` il soggetto `sviluppo` non si restringe per ruolo
+(`soffitto.denies`): `can_configure` in `/api/pending` e' vero. `can_build` invece viene dal
+soffitto nudo (`request_ceiling(request)["costruire"]`), e il soggetto di sviluppo non ha un ruolo:
+e' falso. In sviluppo il menu mostra quindi la configurazione ma non le Proposte. Incoerenza
+**dichiarata**, non un buco: in produzione quel soggetto non esiste. **Cosa la chiude**: calcolare
+`can_build` con la stessa domanda (`not denies(ceiling, "costruire", subject)`), dopo aver
+guardato chi, fra le prove, pinna il comportamento di oggi.
+
+**Misurato alla review finale (27/09/2026)**: la stessa lettura nuda c'e' anche in
+`soffitto.require_builder` e in `handlers_servizi._solo_amministratori`. Su ogni specie per ogni
+ruolo, interruttore acceso e spento, `ceiling["costruire"]` e `not denies(...)` differiscono in un
+caso solo: lo sviluppo con l'interruttore acceso. Lo pinna
+`test_chi_costruisce.py::test_il_cancello_decide_per_ogni_ingresso` (la riga `sviluppo` diventa
+rossa con `denies`). Il comportamento resta com'e'; unirle apre la pagina Costruzioni e i gesti
+della pagina Servizi allo sviluppo, ed e' una scelta del proprietario.
+
+### ~~Chi ha chiesto una promessa~~ — **USCITA con la v3.68.0**
+
+`origine: dichiarato fuori perimetro dalla fetta «le chat divise», spec §6, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §6
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §2), Task 1-3. `promesse`
+(`keeper/store.py`) porta ora `subject_key`/`entry_point`; `agenda`, `cancel`, le rotte
+`GET/DELETE /api/agenda`, `POST /api/agenda/read`, `GET /api/executions/{id}` e il conteggio
+`agenda_unread` lavorano solo sul filo di chi ha chiesto (un id di un altro filo risponde come
+inesistente); l'esito torna nel filo di chi ha chiesto e, quando risolve un recapito
+(`keeper/recipient.py::recipients_for`), come push al suo telefono. Le promesse di prima della
+fetta si adottano col proprietario, come la cronologia — o al loro risveglio, se maturano prima
+che lui apra il pannello e Home Assistant dice un proprietario solo. Il testo sotto è il reperto com'era, con
+il rimando corretto (era `mind/watcher.py`, che non esiste: il codice dell'agenda è
+`keeper/store.py`).
+
+La promessa (`keeper/store.py`/l'agenda) **non porta il filo**: nasce da un turno ma non registra
+chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa la vede allo stesso
+modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
+solo il proprio.
+
+### ~~L'autore del giudizio fisso a `"proprietario"`~~ — **USCITA con la v3.68.0**
+
+`origine: misurato durante la fetta «le chat divise», 25/09/2026` · `mind/judgments.py:50`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**, Task 4
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 6). `JUDGMENT_AUTHOR` e'
+uscito: un giudizio porta il nome di chi l'ha scritto (`who`, dalla casa dei nomi
+`soffitto.subject_name`) e la sua chiave (`said_by`, colonna nuova del sapere), e la porta di
+scrittura ha il cancello di chi costruisce (`soffitto.require_builder`). I giudizi scritti prima
+restano «proprietario»: per loro e' vero. Il testo sotto e' il reperto com'era.
+
+`JUDGMENT_AUTHOR = "proprietario"`: chiunque corregga un giudizio del sapere (genere, notevole,
+limiti operabili...) — anche una persona non amministratrice che ora, dalla fetta «le chat
+divise», puo' avere una conversazione sua — viene registrato come se fosse il proprietario.
+Non e' un buco di sicurezza (la porta di scrittura, `write_judgment`, non ha oggi un cancello di
+ruolo), ma e' un fatto scritto male: la cronaca del sapere mentirebbe su chi ha deciso, il giorno
+in cui a scrivere sara' qualcun altro.
+
+### ~~Più conversazioni per filo, con elenco nella pagina~~ — **USCITA con la v3.68.0**
+
+`origine: decisione 2 della spec «le chat divise», rimandata il 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §0 (decisione 2), §6
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §4), Task 6-7. Una conversazione è una
+sessione di `chat_sessions`, tutta limitata al filo (`chat_store.list_conversations`,
+`new_conversation`, `resume_conversation`, `delete_conversation`); le rotte
+`GET/POST /api/chat/conversations`, `POST .../resume`, `DELETE .../{id}` rispondono 409 se nel
+filo c'è già una risposta in arrivo. La pagina porta l'elenco in barra laterale (col pulsante
+«Nuova conversazione», il titolo, la data relativa, la voce attiva) e il cestino cancella la
+conversazione aperta. Il testo sotto è il reperto com'era.
+
+Il proprietario ha scelto **un filo solo** per soggetto (col meccanismo di oggi: sessione chiusa
+da due ore di silenzio, riassunto) per questa fetta. Più conversazioni nello stesso filo, con un
+elenco nella pagina per riaprirle o iniziarne una nuova, resta un passo dichiarato e non preso.
+
+### ~~`GET /api/constructions` non ha il cancello del soffitto~~ — **USCITA con la v3.68.0**
+
+`origine: misurato durante la fetta «le chat divise», Task 7, 25/09/2026` · `hiris/app/api/handlers_constructions.py`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 5), Task 4.
+`api/soffitto.py::require_builder` è ora la PRIMA istruzione di ogni rotta della pagina
+Costruzioni, delle proposte a mano e dei giudizi (le due GET comprese): un non amministratore
+riceve 403 su tutte, e `GET /api/pending` conta zero proposte per lui. Un amministratore vede
+ogni proposta con chi l'ha chiesta (`chiesta_da`, il nome — mai la chiave). Il testo sotto è il
+reperto com'era.
+
+Le due rotte GET della pagina Costruzioni (l'elenco e il dettaglio) non passano da
+`per_richiesta`/il soffitto — solo `apply`/`restore` lo fanno (`_act`). Oggi la risposta non porta
+piu' i campi del filo (`_strip_thread`, fix round 1 Task 7), quindi non rivela chi ha proposto
+cosa; ma **ogni utente dell'ingress vede le proposte di tutti i fili**, non solo le proprie —
+il contrario della decisione 4 della spec («ognuno legge solo il suo, amministratore compreso»),
+applicata finora solo alla chat.
+
+### ~~Testi del prompt che assumono un proprietario unico~~ — **USCITA con la v3.68.0**
+
+`origine: misurato durante la fetta «le chat divise», Task 5, 25/09/2026` · `hiris/app/claude_runner.py`, `hiris/app/agent/prompts.py`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3), Task 5. «L'utente»/«il proprietario»
+sono usciti dai prompt e dalle descrizioni degli strumenti citati sotto: `DICHIARAZIONE_CASA`
+riferisce a **chi ti sta parlando**, e lascia la decisione a **chi amministra la casa**, nella
+stessa frase; `BASE_TOOL_RULES` e le descrizioni degli strumenti dicono **«chi ti sta parlando»**
+(o «la persona», per un'impostazione HA generica non legata a chi chatta ora); osservatore,
+attuatore e «Rifalla» dicono **«chi amministra la casa»**. Il testo sotto è il reperto com'era.
+
+Due testi fissi parlano ancora come se in casa parlasse una sola persona, il proprietario:
+`DICHIARAZIONE_CASA` (`agent/prompts.py`) dice di riferire una richiesta trovata nel materiale
+letto **«al proprietario, che e' l'unico che puo' decidere»**; `BASE_TOOL_RULES`
+(`claude_runner.py`) parla sempre de **«l'utente»**, al singolare. Da questa fetta il modello sa
+CHI gli sta parlando — e non e' detto che sia il proprietario. Nessuno dei due testi e' sbagliato
+sui fatti (execute/propose restano quello che sono), ma entrambi presumono un ascoltatore che
+questa fetta ha appena smesso di essere l'unico.
+
+### ~~Le ricette si scrivono su entità che non possono avere statistiche~~ — CHIUSA il 15/09/2026 (3.47.0)
+
+**Chiusa dai due lati insieme**, come la voce diceva che andava fatto: il rifiuto ora dice la sua
+vera ragione, e la domanda al modello dice **prima** quali entità abbiano una serie — cosi' le
+ricette nuove non nascono piu' contro una fonte che non esiste. Resta da vedere dal vivo quante
+delle 31 ricette gia' scritte cambino esito: quelle vecchie restano dove sono, e le loro misure
+diranno la ragione giusta invece di «la serie e' vuota».
+
+**Com'era scritta quando era aperta:**
+
+### ~~Il sapere non ha una porta~~ — CHIUSA il 15/09/2026 (3.45.0), e ha trovato tre cose
+
+`origine: verifica dal vivo della 3.45.0, 15/09/2026`
+
+La porta (`GET /api/mind/knowledge`, sezione 04 dell'osservatore) è viva. **Nelle prime ore ha
+mostrato tre difetti**, tutti chiusi nella 3.46.0 e tutti invisibili finché nessuno poteva
+chiedere: 18 rifiuti ragionati archiviati come «non capito» con una frase nostra che le prove
+accanto smentivano; il riassunto lungo quanto il dato (14 righe da uno su 19); e — cercando la
+causa — i nomi dei dispositivi risolti da una porta del cervello su quattro.
+
+**Nota di metodo.** Nessuno dei tre si sarebbe visto leggendo il codice: si sono visti guardando
+246 righe di sapere vero. È la ragione per cui la porta viene prima della fetta che ci lavora
+sopra.
+
+**Com'era scritta quando era aperta** (13/09/2026), che e' cio' contro cui si e' misurata:
+
+
+`origine: verifica dal vivo della 3.31.0, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
+
+**Il fatto.** Il sapere (`sapere.db`) contiene le direzioni dell'energia, ~177 significati di
+classe, gli attributi che valgono la pena e le ricette dei dispositivi. Si legge da tre posti --
+`energy_directions` (le direzioni), `guarda` sul dettaglio di un'entita' (il significato),
+l'osservatore (gli attributi) -- e da **nessuna pagina**. Non c'e' nessuna rotta HTTP che lo
+serva.
+
+**Perche' conta.** La quarta fondamenta dice che *«se un dato c'e' e nessuno puo' chiederlo, non
+esiste»*. Qui il dato si puo' chiedere alla chat, e non e' poco, ma «cosa HIRIS ha capito della mia
+casa, con quale provenienza, e cosa non ha capito» e' esattamente la domanda che il proprietario si
+fa guardando la pagina dell'Osservatore -- e oggi quella pagina mostra solo cosa HIRIS GUARDA, non
+cosa ha CAPITO.
+
+**Cosa costa non farlo.** Le righe `verifica = non_capito` -- i dispositivi di cui il modello non
+ha saputo scrivere una ricetta -- sono invisibili. Sono precisamente cio' che il proprietario
+potrebbe risolvere in dieci secondi («quello e' il contatore dell'acqua»), e nessuno gliele mostra.
+
+**Cosa servirebbe.** Una rotta che serva il sapere raggruppato per soggetto, e una sezione della
+pagina che lo renda con la provenienza accanto a ogni riga. E' piccola, e va fatta insieme alla
+resa del resoconto (fetta 5), che tocca la stessa pagina.
+
+### ~~Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano~~ — CHIUSA il 17/09/2026 (3.49.0)
+
+**Chiusa costruendo il sostituto**, che e' la sola strada che la voce ammetteva: il genere
+dell'episodio non nasce piu' dalla gamba, lo chiede all'**istantanea dei giudizi**
+(`mind/facts.genre_for` -> `TypeJudgments.genre_of`), e i giudizi sono righe del sapere che la casa
+puo' correggere. Le gambe sono **cancellate**: `ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of`, i
+campi `aspect` e `aspect_guard` (43 celle) e con loro `is_operable`, `operable_domains`,
+`resting_states_of`, `resting_states`, `working_states_of`, `is_notable`, `notable_types`,
+`parameter_limits`; `tests/test_home_space_gamba.py` e' eliminato e le sue prove sono tradotte sui
+giudizi. Il rilevatore di fumo che la voce difendeva non torna a leggersi «Acceso»: nel seme e' una
+riga `genere` `sicurezza`, e una prova la fissa.
+
+**La misura che rendeva la sostituzione sicura** (spec §1, misura 7): ripassate 52.123 righe di
+storia di Home Assistant su 304 entita' dei tipi con genere, dal 09/09 al 16/09, chiedendo il
+riposo al tipo invece che all'unione di tutti i riposi -- **0 righe cambiano esito**.
+
+**Un cambio di comportamento dichiarato, non un effetto collaterale**: `none` non e' piu' un
+riposo. Su 6 apparati di rete, 200 righe `none` in una settimana non apriranno piu' un'assenza e
+non chiuderanno piu' un episodio.
+
+**Cosa resta da fare, ed e' il Task 12 del piano**: la verifica dal vivo in casa dopo il rilascio,
+col confronto fra le cronache salvate prima e quelle rifatte dopo.
+
+**Com'era scritta quando era aperta:**
+
+### ~~Il vocabolario dei tipi non e' ancora un seme del sapere~~ — CHIUSA il 17/09/2026 (3.49.0)
+
+**Chiusa con un terzo disegno, che questa voce non aveva visto** (correzione del 17/09/2026, dopo
+la revisione a 360 gradi: la prima stesura di questa chiusura diceva «il primo dei due disegni», ed
+era falsa -- la spec §0 li ha **confrontati e scartati entrambi**, per ragioni misurate). Il disegno
+scelto dal proprietario e' l'**istantanea immutabile** (disegno «C»): i giudizi si leggono dal
+sapere una volta sola e si consegnano ai lettori come un oggetto fermo, invece di spostare i lettori
+sull'archivio (letture SQLite nel percorso caldo) o di fare del modulo il confine (uno stato
+condiviso caricato pigramente in un modulo oggi puro). **Misura del 16/09/2026**: non
+sette moduli e undici porte, ma **7 moduli e 17 porte** (`action/verification`,
+`home_space/briefing`, `home_space/queries`, `home_space/topology`, `home_space/type_census`,
+`mind/facts`, `proxy/entity_cache` -- la voce elencava `action/registry`, che lo cita soltanto, e
+non aveva visto `proxy/entity_cache`).
+
+**E i lettori dei GIUDIZI sono quattro, non sette** (spec §3, D4): `home_space/briefing`
+(`notevole`, `lavoro`), `home_space/queries` (`limiti_parametri`), `home_space/type_census`
+(`riposo`, `lavoro`, `accendibile`) e `mind/facts` (`genere`, `riposo`). Gli altri tre leggono
+**fatti di Home Assistant** o `assumable_attributes`, che non sono giudizi nostri e per decisione
+D1 restano codice accanto alla tabella importata che correggono.
+
+**Cosa si carica adesso all'avvio**: `mind/seed.judgment_seed` semina **99 celle** dal letterale --
+26 `genere`, 23 `notevole`, 18 `riposo` (16 piu' le 2 `home` nuove su `person` e `device_tracker`),
+13 `accendibile`, 10 `limiti_parametri`, 9 `lavoro` -- con provenienza `nostro` e autore «seme del
+repo» (conteggio rieseguito il 17/09/2026: 99). La regola del seme che esisteva gia' («nessuno l'ha
+toccata si legge dal valore») e' cio' che permette di **tornare al seme** dopo una correzione.
+
+**Il doppione senza lettori, che la seconda fondamenta vieta, non e' nato**: cio' che e' diventato
+sapere e' uscito dal letterale nello stesso movimento (Task 8 del piano: **tredici nomi**
+cancellati fra costanti, porte e un aiutante privato -- `ASPECT`, `ASPECT_GUARD`, `ASPECTS`,
+`aspect_of`, `_text`, `is_operable`, `operable_domains`, `resting_states_of`, `resting_states`,
+`working_states_of`, `is_notable`, `notable_types`, `parameter_limits` -- e **43 celle** di gamba e
+guardia), e cio' che resta codice -- `capability_names`, `capability_attributes`,
+`state_attributes` (68 celle `importato`), `capability_attributes_dropped`, `assumable_attributes`
+-- resta con le sue 12 prove ancorate al sorgente.
+
+**La promessa del §8 e' mantenuta**: la casa scrive sopra il giudizio del repo, da una porta sola
+(`POST /api/mind/judgment`) e dalla pagina del sapere, nella sezione «Le tue correzioni».
+
+**Com'era scritta quando era aperta:**
+
+### ~~I due rifiuti della spec §6~~ — CHIUSA il 16/09/2026: il primo fatto, il secondo dichiarato non applicabile
+
+`origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6
+
+**Il fatto.** La spec elenca fra i «rifiuta se» di un'operazione due casi: *«l'entita' non ha
+statistiche»* e *«il periodo e' fuori dalla memoria disponibile»*. Nessuna delle diciotto voci di
+`hiris/app/mind/operations.py` li dichiara, e nessuna li produce: il registro sa rifiutare per
+copertura, per unita' incompatibili, per troppi pochi punti — **non per un periodo che l'archivio
+non copre affatto**.
+
+**CHIUSO il 15/09/2026 (3.47.0) il primo dei due: «l'entita' non ha statistiche».** Otto
+operazioni lo dichiarano (`Operation.refuses_when`), `HAClient.statistic_ids()` legge il registro
+delle statistiche di Home Assistant, `Recipe.run(without_statistics=...)` lo produce per il passo
+che nomina quell'entita' -- non per l'intera ricetta -- e la domanda al modello dice **prima** di
+scrivere quali entita' abbiano una serie e quali no. `None` e non insieme vuoto quando la lettura
+fallisce: affermare «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
+
+**IL SECONDO RESTA, e non e' piu' una svista: e' una decisione da prendere.** «Il periodo e' fuori
+dalla memoria disponibile» ha **zero occorrenze misurate** su questa casa, e per due ragioni
+indipendenti: (a) HIRIS non chiede mai un giorno prima del suo grezzo — `_write_missing_reports`
+si ferma a `oldest_reading_ts()`, e la ragione e' scritta li'; (b) le statistiche di lungo periodo
+di Home Assistant non si potano come gli stati. Misurato il 15/09/2026 su questa casa: le
+statistiche piu' vecchie sono di **luglio 2026**, e cio' che sembrava «periodo fuori memoria» era
+in realta' **tre entita' iscritte al registro delle statistiche che non hanno mai registrato
+niente** (l'albero di Natale, le luci di Natale, la gestione carichi) — che e' un terzo caso
+ancora, e «la serie e' vuota» lo dice gia' bene.
+
+**DECISO il 16/09/2026: si scrive nella spec, non si costruisce.** La §6 ora porta l'annotazione
+col numero -- zero occorrenze, le due ragioni indipendenti, e il terzo caso (tre entita' iscritte
+al registro che non hanno mai registrato niente) per cui «la serie e' vuota» e' gia' la frase
+giusta. Costruire un rifiuto per un caso che non accade costerebbe una lettura per entita' a ogni
+giro: **non si fa finche' una misura non lo chiede**. Se il proprietario la vede diversamente, e'
+una riga di specifica da riscrivere, non codice da disfare.
+
+**AGGIORNAMENTO 15/09/2026 — il primo dei due ha adesso un numero, misurato sulla casa vera.**
+Home Assistant tiene statistiche orarie per **130 entita' su 1206, tutte `sensor`**
+(`recorder/list_statistic_ids`): nessuno `switch`, `light`, `valve`, `binary_sensor`. Nel resoconto
+del 14/09, **18 rifiuti su 28** sono su dieci dispositivi che non hanno nemmeno un'entita' con
+statistiche, e dicono «la serie e' vuota» — vero, e inutile: non dice a chi legge (ne' al modello,
+a cui il rifiuto torna) che quella fonte per quell'entita' **non esistera' mai**. Vedi la voce
+«Le ricette si scrivono su entita' che non possono avere statistiche»: e' lo stesso problema visto
+dal lato del dato.
+
+**Perche' non entra nella fetta 3.** Tutti e due chiedono di sapere fin dove arriva la memoria:
+i 22 giorni del grezzo (`archivio.READING_RETENTION_S`) e le statistiche che Home Assistant tiene
+per quell'entita' (`ha_vocabulary.produces_statistics`). E' conoscenza della casa, e il registro
+deve saper calcolare e basta — la stessa ragione per cui `quando_succede` riceve il fuso gia'
+risolto e `raggruppa_per` riceve la chiave da fuori.
+
+**Cosa costa oggi.** La domanda vera del proprietario *«dammi il totale delle ore irrigate tra
+maggio e settembre»* riceve il rifiuto giusto **solo se chi compone la ricetta lo costruisce a
+mano**. Se qualcuno dimentica il controllo, il registro somma le tre settimane che ha e le
+consegna come cinque mesi: e' il difetto fondativo di questa fetta, lasciato fuori dal cancello.
+`tests/test_mind_operations.py::test_domanda_5_...` lo dichiara nel suo docstring.
+
+**Cosa servirebbe.** Un ingresso comune — il periodo chiesto e l'orizzonte davvero disponibile per
+quell'entita' — che il chiamante risolve e che un'operazione (o un controllo all'ingresso della
+ricetta, fetta 4) confronta prima di calcolare qualunque cosa.
+
+### ~~HIRIS per gli utenti non-admin di Home Assistant~~ — **USCITA con la v3.69.0**
+
+`origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento` (alla chiusura: `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`)
+
+**CHIUSA il 27/09/2026 con la fetta «HIRIS per chi non amministra»**
+(`docs/design/2026-09-27-hiris-per-chi-non-amministra.md`). Il blocco qui sotto — *come* HIRIS
+sappia chi e' amministratore — l'aveva gia' sciolto il soffitto (`api/soffitto.py`, sprint
+sicurezza): il ruolo si legge da `config/auth/list`, con la regola di Home Assistant
+(`User.is_admin`: proprietario, oppure attivo e nel gruppo `system-admin`). La fetta aggiunge
+l'opzione dell'add-on `non_admin_access` (spenta per difetto), che sposta anche la voce di menu con
+`frontend/update_panel` (HA 2026.3 e dopo), e **un cancello al confine**
+(`api/admission.py::ADMISSION`): a una persona non amministratrice dall'ingress passano solo la
+chat, le sue conversazioni, i suoi Impegni e le sue memorie in sola lettura; con l'opzione spenta
+nemmeno quelle. Delle tre decisioni del brainstorming: la 1 («poteri uguali per tutti») e'
+superata dal soffitto — chi non amministra comanda come dalla plancia, ma non costruisce, non
+configura e non legge cio' che Home Assistant riserva agli amministratori (gesto `amministrare`);
+la 2 l'ha costruita la fetta «le chat divise»; la 3 e' la forma di questa fetta, con la «Casa»
+chiusa anche lei a chi non amministra (legge rotte di configurazione). Cio' che resta fuori e' nelle voci del 27/09/2026 in «In attesa». Il testo sotto e' il reperto com'era.
+
+**Il bersaglio**: gli utenti HA **non amministratori**, che oggi l'add-on non lo vedono nemmeno.
+La distribuzione ad altre case e' l'orizzonte dichiarato, non il problema di questa voce.
+
+**Il fatto che governa tutto**, e va letto prima di ogni disegno: HIRIS parla con Home Assistant
+usando il **token del Supervisor**, non i permessi di chi sta chattando. Via ingress HA inoltra
+l'identita' ma **non applica i ruoli**. Quindi oggi *vedere l'add-on equivale ad avere pieni
+poteri sulla casa*, aggirando il modello di permessi di HA.
+
+**Verificato alla fonte il 05/09** (non dedotto):
+
+| | |
+|---|---|
+| `panel_admin` | «Make the menu entry only available to users in the admin group», default `true`. Governa **la voce di menu** |
+| header inoltrati dal Supervisor (`supervisor/api/ingress.py`) | `X-Remote-User-ID`, `X-Remote-User-Name`, `X-Remote-User-Display-Name` |
+| header sul **ruolo** | **nessuno**: il Supervisor non dice se l'utente e' amministratore |
+| `config/auth/list` (`components/config/auth.py`) | esiste, torna `group_ids`, ed e' `@websocket_api.require_admin` |
+
+**Deciso in brainstorming:**
+1. **Poteri uguali per tutti**, e li stabilisce la fetta sicurezza — non questa.
+2. **Una conversazione privata per persona.** Oggi ce n'e' **una sola per tutta la casa**
+   (`chat_messages(session_id, role, content, timestamp)`: nessun autore, nessun agente). Un
+   modello che legge un thread con tre autori indistinguibili ragiona su un interlocutore che non
+   esiste: e' la quarta spina — la provenienza — a un secondo livello. I **ricordi** un autore
+   gia' ce l'hanno («detto da Paolo»); le conversazioni no.
+3. **La cucitura e' quella che il prodotto ha gia'**: «Da fare» (Impegni, Proposte) e «La casa» a
+   tutti, «Configurazione» ai soli admin. Non «chat contro pannello»: un non-admin che chiede di
+   costruire qualcosa creerebbe una proposta **che non potrebbe vedere ne' approvare**, e la chat
+   gli direbbe «ti aspetta nella pagina Proposte» — la frase aggiunta il 04/09 per chiudere il
+   difetto «non sai dove» — indicando una porta che per lui non esiste.
+
+**Bloccato, e su decisione del proprietario:** *come* HIRIS sappia chi e' amministratore. Le due
+strade sono `config/auth/list` (verita' di HA, ma un'API riservata chiamata col token del
+Supervisor che scarica **tutti** gli utenti con le loro `credentials` per una domanda su uno) o un
+elenco esplicito nella configurazione dell'add-on. **Si decide con la fetta sicurezza.**
+
+**Conseguenza pratica, ed e' il motivo per cui questa voce non e' pronta a diventare una fetta:**
+senza il ruolo non si puo' scrivere `panel_admin: false`, perche' aprirebbe anche
+«Configurazione». Finche' la sicurezza non arriva, **i non-admin non raggiungono HIRIS** — e
+costruire ora i thread privati sarebbe costruire per utenti che non possono ancora entrare. Lo
+stesso genere di lavoro senza chiamanti che questo progetto ha gia' cancellato due volte
+(`get_error_log`, i calendari).
+
+**Il documento del 26/07** (`docs/design/2026-07-26-chat-tutta-la-casa-design.md`, sul ramo
+`analysis`/`feat/chat-household`, mai fuso) resta utile per l'inquadramento ma **tre dei suoi
+cinque fatti sono superati** dal refactor 2.0: `resolve_owner` non esiste piu' (uscito come
+orfano), la cronologia non e' piu' per agente ma unica, e il semaforo per-azione e' fra le cose
+che lo scope 2.0 dichiara assorbite.
+
+### ~~La sicurezza~~ — **USCITA**: lo sprint c'e' stato, dal 21 al 23/09/2026
+
+`origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-21-sicurezza-esposizioni.md`
+
+**Chiusa il 23/09/2026 con la v3.65.0.** Otto fette, venticinque reperti in quattro classi, tutti
+con una nota: chiusi, o **ritirati con la misura accanto**. Il registro dei rischi e la tabella
+delle fette stanno nei due documenti del 21/09; il racconto, rilascio per rilascio, nel CHANGELOG
+(3.55.0 → 3.65.0).
+
+E il reperto che apriva questa voce ha avuto una risposta che non e' quella che si aspettava: **la
+lista di servizi vietati non e' stata scritta, ed e' deliberato**. Una lista di divieto e'
+aggirabile per costruzione — un `shell_command` dentro il corpo di un'automazione passa
+`validate_config` ed e' un oggetto permanente che chiama cio' che `execute` non avrebbe potuto
+chiamare. Al suo posto: l'anteprima dice **quali servizi il corpo chiama** e quali **compaiono**
+rispetto a prima (B-4), c'e' un freno di ritmo **per entita'** (B-3), e la cronaca registra la
+frase su cui una conferma e' nata (B-5). Si e' scelto di **rendere visibile** invece di vietare,
+perche' il divieto lo si aggira e la visibilita' no.
+
+La forma originale della voce, com'era quando era aperta:
+
+> Sprint a se', **dopo** quello dei comandi. Il reperto che lo apre: HIRIS non ha nessuna lista di
+servizi vietati. Cio' che oggi rende irraggiungibili `homeassistant.restart`, `hassio.host_reboot`,
+`recorder.purge`, `shell_command.*` e' un accidente di forma — quei servizi non dichiarano un
+`target`, e un bersaglio vuoto e' sempre stato un rifiuto. La difesa non e' progettata: e'
+incidentale, e cade tutta insieme il giorno in cui quella condizione si allarga.
+
+### ~~Il prompt dell'obiettivo dell'osservatore~~ — CHIUSA il 15/09/2026
+
+**Chiusa dallo sprint «i tre attori», e la sua premessa non esiste più.** L'obiettivo è il prompt:
+`mind/observer.build_question(objective, lines)` glielo mette davanti, `mind/cadence` fa
+riconsiderare lo scope quando cambia, il resoconto di ogni giorno porta quello di ALLORA, e
+l'analista lo legge. E **il pavimento — «fisso», che questa voce voleva allargare — è stato
+cancellato l'11/09/2026**: al suo posto c'è la cadenza (spec §5.2). Resta aperta la voce sua, «Otto
+domini su dieci in `_OPERABLE` non possono arrivare», che parla di un'altra cosa.
+
+
+`origine: dichiarata nella spec dell'osservatore, mai fatta` · `documento: docs/design/2026-08-26-l-osservatore.md`
+
+Non esiste ancora: il pavimento e' fisso, e il prompt dovra' solo allargarlo. E' il motivo per cui
+**8 domini su 10** fra quelli elencati come funzionanti (luci, interruttori, ventilatori, media
+player, valvole...) oggi non producono nessun oggetto — il pavimento non li lascia passare.
+
+### ~~`_ENTITY_ID_RE` vive in tre copie~~ — **CHIUSA il 04/10/2026** (Tappa 3, Task 7, B-24)
+
+Un'espressione sola, `home_space/ha_vocabulary.py::ENTITY_ID_SHAPE`, provata sempre con
+`fullmatch` da `is_entity_id`; le tre copie e l'importazione del nome privato sono uscite. Sotto,
+la voce com'era.
+
+`origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
+`nessun documento`
+
+Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una guardia sulla forma
+`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte
+(tre dal 30/09/2026: la copia di `home_space/tools.py` e' uscita con i quattro lettori del
+tempo, quando `history` ha preso il loro posto), ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
+(la prima), `home_space/behavior.py:89` (indipendente, un'espressione diversa nello scopo ma
+identica nel testo), `mind/watcher.py:88` (Task 4 di questa stessa fetta) e
+`home_space/tools.py` (Task 5, questo giro; la copia e' uscita il 30/09/2026 con la
+storia). Non si unifica adesso: ogni fetta che
+l'ha scritta aveva una ragione dichiarata per non importarla da un'altra (modulo diverso,
+accoppiamento non voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
+collaterale di un giro di correzioni. Ma tre copie della stessa guardia, scoperte una alla
+volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
+lasciar perdere.
+
+### ~~«Cosa sto guardando» stampa i soggetti grezzi, gli episodi no~~ — CHIUSA il 15/09/2026
+
+**Chiusa dalla riscrittura della pagina dell'osservatore.** `describeWatchedSubject` esiste, è
+condivisa, e la lista di «cosa sto guardando» ci passa (`watcher-route.js:407`) come già facevano
+gli episodi — con in più un avviso per il gruppo, detto una volta, quando tutte le voci sotto sono
+identificatori e non nomi.
+
+
+`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
+
+Nella pagina dell'osservatore le **due liste sono rese in due modi diversi**, e una sola e' stata
+corretta. `hiris/app/static/config/watcher-route.js:257` scrive `v.soggetto` **tale e quale**:
+
+```
+integrazione:01K2CK4GG287VKK18M5J788MRQ
+log:aioamazondevices@components/alexa_devices/coordinator.py:192
+log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481
+```
+
+Le righe **826** e **885** della stessa pagina — gli **episodi** — passano invece da
+`protagonistName()`, la funzione corretta durante la fetta «le tracce e il log» proprio perche' un
+prefisso tecnico non resti a schermo. Due elenchi sulla stessa pagina, uno corretto e uno no: e' la
+forma ricorrente dell'**elenco incompleto**, e nessuna prova poteva vederlo — e' resa, e si vede
+solo aprendo il gruppo in un browser vero.
+
+**Il difetto e' precedente alla fetta, ma la fetta lo ha reso molto piu' visibile**: quel gruppo
+aveva due voci, ora ne ha **diciannove**, di cui **diciassette sono percorsi di file**.
+
+`protagonistName(o)` non si puo' riusare com'e': lavora su un episodio, che porta `titolo` e
+`dominio`; una voce di «cosa sto guardando» porta solo `{soggetto, gamba, provenienza}`. Serve una
+resa che parta dal **solo soggetto** — «registro: `aioamazondevices`», «un'integrazione non
+caricata» — e la si condivide con `protagonistName` invece di scriverne una seconda.
+
+### ~~Il README documenta sei rotte che non esistono~~ — **CHIUSA** il 14/10/2026
+
+`chiusa dalla fetta F9 della Chiusura dello sprint: i sei nomi erano gia' stati corretti il 07/09/2026 (commit f60d19c8, uscito con la v3.22.2) e la voce era rimasta aperta. La tabella «Interface» la confrontava gia' una prova che leggeva il testo di main.js con una regex; da F9 la confronta, nelle due direzioni, tests/js/readme-rotte.test.mjs, che chiede le route al router avviato`
+
+`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
+
+`README.md:427-437` elenca nove rotte del pannello: sei hanno il **nome sbagliato**. Il prodotto
+vivo usa `#/tree`, `#/memory`, `#/agenda`, `#/constructions`, `#/watcher`, `#/settings`; il README
+dice `#/albero`, `#/memoria`, `#/promesse`, `#/costruzioni`, `#/osservatore`, `#/impostazioni`.
+Solo `#/`, `#/models` e `#/usage` combaciano. La riga di `#/promesse` parla inoltre di «promesse»,
+nome sostituito da **«Impegni»** nella v3.21.0.
+
+E' il residuo di una rinomina che ha toccato il codice e non il documento — verificato aprendo il
+pannello col browser e confrontando gli `href` veri con la tabella.
+
+### ~~L'analista — chi trasforma le osservazioni in qualcosa di funzionale~~ — CHIUSA il 15/09/2026
+
+**Fatta dallo sprint «i tre attori»** (spec del 10/09, §10). L'analista gira, legge trenta giorni
+di misure, e sulla casa vera ha prodotto **cinque osservazioni** con gli inneschi 1 e 3 della spec
+— il secondo, «stabile e costa», non è mai comparso, ed è l'esempio che la spec porta come il più
+prezioso — il perché di ciascuna e cosa cambierebbe. Non scrive numeri: nomina la misura, e il codice ci attacca
+il valore — è ciò che impedisce a un modello di inventare una cifra. Resta sotto, come voce sua,
+il testo con cui il proprietario l'ha chiesta.
+
+
+`origine: il proprietario, 07/09/2026` · `nessun documento`
+
+**Sprint suo, dichiarato tale dal proprietario.** Non è una correzione e non entra in nessuna
+fetta in corso.
+
+> *«Mettere insieme le letture dell'osservatore spetterà all'analista, che avrà proprio questo
+> compito: analizzare le letture dell'osservatore per raggruppare informazioni, creare tendenze,
+> e trasformare in qualcosa di funzionale un'osservazione dettagliata e più estesa possibile.»*
+
+**Perché adesso**: l'osservatore è vivo in produzione e scrive. Fin qui il lavoro è stato tutto
+sul **leggere meglio** — l'appartenenza, la salute senza soglia, il guasto con nome e condizione,
+le tracce, i calendari, i nomi e gli stati. Nessuno però **legge ciò che l'osservatore ha
+scritto**: gli episodi si accumulano e restano un elenco.
+
+Questa voce è il lettore che manca. E ha una conseguenza sul resto del registro: **osservare di
+più ha senso solo se qualcuno poi mette insieme** — quindi ogni fetta che allarga il pavimento
+(vedi «La luce accesa col sole alto») ha il suo valore vero **qui**, non dove nasce.
+
+### ~~`chat_stream` vive solo per i test~~ — CHIUSA il 02/10/2026 (Tappa 0 dello sprint «Una fonte sola di verità»)
+
+**Come si è chiusa.** È stata presa la strada 1: `chat_stream` è uscito dai due runner e dal
+router, e la rotta di `POST /api/chat` risponde sempre in JSON anche a chi chiede
+`text/event-stream` o `"stream": true` (dichiarazione D2, approvata dal proprietario). Le prove che
+lo esercitavano sono uscite con lui.
+
+*Il testo della voce, com'era:*
+
+`origine: audit delle fondamenta, «sotto la soglia dei dieci» n.8, 09/09/2026` · `nessun documento`
+
+Tre metodi -- `ClaudeRunner.chat_stream`, `OpenAICompatRunner.chat_stream`, `LLMRouter.chat_stream`
+-- e la rotta SSE di `api/handlers_chat.py::handle_chat` (dietro `Accept: text/event-stream` o
+`{"stream": true}`) non hanno **nessun** lettore di produzione: nessun file in `static/` manda
+quell'header o quel campo (grep, zero occorrenze), il ponte (il canale della CLI di Claude Code)
+ha una strada sua e non passa mai da `LLMRouter.chat()`/`.chat_stream()`, e
+`docs/design/2026-08-05-mappa-funzionalita.md` dichiara che la pagina chat "funziona, senza
+streaming" e che questo TIENE. Vivono per i test: **12 file** `.py`, rimisurato il 09/09/2026 (`grep -rl
+chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py`,
+`test_chat_briefing.py`, `test_chat_sse.py`, `test_claude_runner.py`, `test_composition_order.py`,
+`test_llm_router_policies.py`, `test_model_invariants.py`, `test_openai_compat_runner.py`,
+`test_runner_catalog.py`, `test_runner_parity.py` e tre soli marginali.
+
+**La decisione (fondamenta 4) e' fra due strade, nessuna delle due presa qui:**
+
+1. **Cancellare** -- il metodo su tre runner, la rotta SSE, e i 12 file di prova che lo esercitano
+   (alcuni solo di striscio, altri -- `test_chat_sse.py`, `test_openai_compat_runner.py`,
+   `test_runner_catalog.py` -- a fondo). E' un lavoro con la sua verifica, non l'effetto
+   collaterale di una correzione sotto soglia.
+2. **Collegare** -- dargli un lettore vero (streaming reale nella pagina chat), che e' una
+   FUNZIONALITA' NUOVA contraria a quanto la mappa delle funzionalita' dichiara oggi, e che
+   richiederebbe prima di chiudere un gap reale: `LLMRouter.chat_stream` non ripiega su un secondo
+   backend come fa `chat()` (commento originale: "no fallback in streaming (as today)") e non
+   scrive mai nel registro degli esiti (`.successo`/`.fallimento`) che lo stesso modulo alimenta
+   per ogni turno sincrono -- collegarlo com'e' oggi farebbe mentire la pagina Consumi su ogni
+   turno in streaming.
+
+Chi sceglie questa voce per uno sprint decide fra le due, con la sua verifica.
+
+### ~~Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni~~ — CHIUSA il 15/09/2026
+
+**Fatta a metà, e va detto quale metà.** Il disegno del 09/09 è stato sostituito il 10/09
+(`docs/design/2026-09-10-i-tre-attori.md`): il catalogatore non sopravvive come attore, **il
+pavimento esce** (`mind/baseline.py` cancellato con la 3.26.0), e nascono il registro delle
+operazioni, le ricette e il resoconto giornaliero. **Le gambe NON sono uscite**: `ASPECTS` e
+`aspect_of` vivono in `home_space/type_vocabulary.py`, `GENRES` e `genre_for` in `mind/facts.py`, e
+girano ogni notte dentro `aggregate_day`. Quando ho marcato questa voce chiusa, il 15/09, ho
+ripetuto «gambe e pavimento escono» come se fosse un fatto: non lo era, e l'ha trovato la revisione
+indipendente lo stesso giorno. Vedi la voce nuova «§13 dice di cancellare le gambe e i generi».
+Tutte e tre vivono in produzione, col sapere interrogabile da una pagina. Le tre mancanze del
+09/09 sono chiuse: la casa per ciò che HIRIS deduce è `sapere.db`, il resoconto giornaliero
+esiste e ne nascono le tendenze, e le porzioni sono le tre forme di `GET /api/mind/report`.
+Il testo originale resta sotto: è la cronaca di come ci si è arrivati.
+
+
+`origine: il proprietario, 09/09/2026, discutendo l'impianto solare` · `documento: docs/design/2026-09-09-il-sapere-di-hiris.md`
+
+**Sprint successivo, dichiarato fondamentale dal proprietario**, con il permesso esplicito di
+**distruggere e ricostruire** se il disegno lo richiede.
+
+**Il vincolo nuovo che cambia tutti gli altri: HIRIS verrà distribuito ad altri utenti.**
+
+Tre attori: il **catalogatore** (cos''e questa cosa — dedotto dal modello, verificato sulla
+documentazione di HA), l'**analista** (mi serve per la domanda dell'obiettivo?), l'**osservatore**
+(raccoglie ci'o che gli 'e stato detto — esiste gi'a e gira).
+
+**Le tre mancanze misurate il 09/09**: non c''e una casa per ci'o che HIRIS deduce (la quarta
+provenienza non ha un tetto); non esiste il **resoconto giornaliero** da cui nascono le tendenze;
+e HIRIS **non sa prendere porzioni** — il modello riceve un testo fisso di 6.800 caratteri, e sotto
+non c''e niente da cui pescare.
+
+**E il vocabolario dei tipi 'e un file nel repository**: non esiste nessun posto dove una singola
+casa scriva ci'o che HIRIS ha imparato. Su questa casa funziona perch'e il proprietario risponde;
+**quello non si distribuisce**.
+
+Il caso che ha fatto emergere tutto: **otto entit'a dell'impianto solare con otto ruoli diversi e
+un solo `device_class`** (`power`), indistinguibili dal consumo di una presa.
+
+Tutto il resto — misure, decisioni gi'a prese, domande in pausa, sospesi — sta nel documento.
+
+**AGGIORNAMENTO 10/09/2026 — il disegno e' cambiato, la spec e'
+`docs/design/2026-09-10-i-tre-attori.md`.** Misurando sulla casa vera e' emerso che **il problema non
+e' il riconoscimento**: Home Assistant dichiara gia' quasi tutto (100% delle entita' ha un
+`unique_id`, 64% un `translation_key`, il 99% dei dispositivi il produttore), e il difetto e' che
+`casa.db` ne conserva una **copia impoverita** che butta `translation_key`, `unique_id`,
+`original_name` e il dispositivo come oggetto. Di conseguenza: il catalogatore **non sopravvive come
+attore** (restano due attori e una lettura), **gambe e pavimento escono**, e nascono il **registro
+delle operazioni**, le **ricette** e il **resoconto giornaliero**. Il documento del 09/09 resta
+valido come cronaca di come ci si e' arrivati; **la specifica e' quella del 10/09**.
 
 ### ~~`release.py` scrive la versione sulle voci uscite prima del loro rilascio~~ — **USCITA con la v3.82.0** — aperta il 15/10/2026
 
