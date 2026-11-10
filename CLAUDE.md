@@ -2,8 +2,11 @@
 
 ## ⚠️ Leggi prima questo
 
-Il **Refactor 2.0 è concluso**: non è più un cantiere, è il prodotto. Resta in piedi la sua regola
-più dura — una parte del codice esistente è **deliberatamente condannata** (tabella «Cosa è
+Del **Refactor 2.0 è conclusa la demolizione**: i cancelli della fonte unica sono a zero, e il
+codice non è più un cantiere. **Il refactoring non è ancora finito**: cosa vuol dire «finito», e
+cosa manca, lo dice una voce sola del BACKLOG, «Il refactoring si chiude: cosa resta» (Paolo,
+09/11/2026). Ciò che non sta in quella voce (l'agente, la voce, le plance) è prodotto nuovo, non
+refactoring. Resta in piedi la regola più dura del refactor — una parte del codice esistente è **deliberatamente condannata** (tabella «Cosa è
 condannato dal refactor», più sotto: se stai per estenderne una voce, **fermati e chiedi**).
 Prima di scrivere qualunque riga:
 
@@ -13,7 +16,7 @@ Prima di scrivere qualunque riga:
 | Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
 | Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
 | Cosa **aspetta** uno sprint | `docs/BACKLOG.md` — **il registro degli argomenti** |
-| Quali **doppioni** restano da unire | `docs/design/2026-10-01-registro-dei-doppioni.md` — **la lista di lavoro** dello sprint «Una fonte sola di verità» (spec: `docs/design/2026-10-01-una-fonte-sola-di-verita.md`). Si legge con `python scripts/registro.py conta` |
+| Quali **doppioni** sono stati uniti, e come non ne nascono di nuovi | `docs/design/2026-10-01-registro-dei-doppioni.md` — **il cancello dei doppioni**: la lista di lavoro dello sprint «Una fonte sola di verità», chiuso il 22/10/2026, oggi con zero voci aperte (spec: `docs/design/2026-10-01-una-fonte-sola-di-verita.md`). Si legge con `python scripts/registro.py conta` |
 
 **Quando il proprietario dice «inseriamo per il prossimo sprint», la voce entra in
 `docs/BACKLOG.md` subito**, prima di continuare il discorso — non in un appunto, non in una
@@ -421,6 +424,56 @@ Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dock
 - Frontend: interpellare l'agente `ux-ui-specialist` prima di disegnare.
 - Mai `*/` dentro un commento a blocco JS: rompe il boot. Validare con `node --check`.
 
+### Un numero nel codice dice da dove viene
+
+**Promossa a regola del progetto il 09/11/2026** (Paolo, decisione D1 della proposta del 09/11).
+Nata nella spec dei tre attori (`docs/design/2026-09-10-i-tre-attori.md` §10, 09/09/2026: *«non si
+inventa una soglia: si archivia e si interpreta»*) e applicata da allora ovunque, ma scritta solo
+lì, dove sembrava valere per l'analista.
+
+> **Un numero nel codice ha una di tre origini, e la dice accanto a sé:** misurato (con la data),
+> dichiarato da Home Assistant, o scelto da Paolo. Un numero scelto da noi «perché sembra
+> ragionevole» è un difetto. **Il codice calcola, il modello sceglie, la persona decide.**
+
+*Perché adesso:* lo sprint «L'agente» deve fissare i **freni del perimetro** (quante volte al
+giorno, quanti token, entro quanto). È il posto esatto dove nascerebbero soglie nostre: i freni
+li sceglie Paolo quando l'agente nasce, come dice lo scope §5. Esempi già pagati: `ROWS_MAX` che
+tagliava i periodi «a 20 nostri» (`0b6b2f8c`), il tempo massimo delle scritture rimandato finché
+non si misura (BACKLOG, Fase B).
+
+### HIRIS risponde bene con qualunque modello, e il conto delle giuste non scende
+
+**Regola di Paolo del 23/10/2026, scritta qui il 09/11/2026** (decisioni D1 e D5 della proposta
+del 09/11). Fino a quel giorno viveva solo nella memoria del progetto.
+
+> **Con qualunque modello configurato.** Ciò che il codice consegna al modello (nucleo, strumenti,
+> legenda delle risposte) deve bastare a un modello debole: se una risposta giusta richiede che il
+> modello «capisca da sé», è un difetto del codice, non del modello.
+>
+> **Il conto delle risposte giuste non scende.** Un rilascio che cambia ciò che il modello riceve
+> (prompt, strumenti, nucleo, forma delle risposte) si misura prima con la batteria
+> (`scripts/batteria_misure.py`) **su almeno due modelli**: la catena di casa e Claude. Se le giuste
+> sono meno della misura precedente, il rilascio dice quali e perché, e Paolo decide se esce.
+
+Non è una soglia: il confronto è con HIRIS stesso, come per il conteggio delle prove JS. Le domande
+stanno sul PC del proprietario (fuori dal repo: l'esempio di `scripts/batteria_misure.py` le
+cerca in `~/.hiris-batteria.json`), perché nominano la casa vera; la misura
+la lancia lo Sprint dal PC, col sì di Paolo, perché le domande con effetti toccano la casa.
+Riferimento al 09/11/2026: 26 giuste su 28 sulla catena (3.83.1).
+
+### Come si decide
+
+**Il metodo del proprietario, scritto qui il 09/11/2026** (decisione D1; fino a quel giorno
+stava nella memoria del progetto).
+
+- **Ogni proposta si valuta contro questo regolamento** (le tre leggi, le quattro fondamenta, le
+  regole qui sotto). Se va contro una regola, si capisce perché: se è sbagliata la **regola**, si
+  propone di cambiarla, per iscritto; se è sbagliata l'**implementazione**, ci si ferma (Paolo,
+  03/10/2026).
+- **Prima una proposta da discutere, poi il disegno**: la parte tecnica, cosa si toglie e cosa si
+  crea, nominati.
+- **Una domanda a Paolo porta le opzioni e quella consigliata**, con il perché in una riga.
+
 ### Su Home Assistant non si ipotizza mai: prima la documentazione, poi le API vere
 
 **Regola non negoziabile, dal proprietario il 26 agosto 2026.**
@@ -586,7 +639,11 @@ in `api/shell.py`, il governo del ponte in `agent/bridge_governor.py`, la conseg
 
 ### Il debito dichiarato: la rinomina in inglese
 
-**Deciso il 26 agosto dal proprietario, da fare a sviluppo fermo, mai durante una fetta.**
+**Deciso il 26 agosto dal proprietario. Il «quando» è cambiato il 09/11/2026** (decisione D4 della
+proposta del 09/11): la regola diceva «a sviluppo fermo, mai durante una fetta», ma lo sviluppo
+non si ferma mai, e il debito cresceva a ogni fetta. Ora **si rinomina ciò che una fetta tocca, in
+un commit di sola rinomina che precede la fetta**: chi apre un modulo per cambiarne il
+comportamento ne porta prima gli identificatori in inglese, poi cambia il comportamento.
 
 Gli identificatori — funzioni, metodi, parametri — vanno portati in inglese, per interoperabilità e
 per allineamento alle convenzioni. Il vocabolario **di dominio** resta discutibile caso per caso: una

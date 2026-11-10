@@ -140,6 +140,21 @@ insieme — agenti e oggetti di Home Assistant — e si approva.
 
 Un'unica conversazione, con un'unica intelligenza che conosce la casa.
 
+> ## 🗄 Annotazione — 9 novembre 2026: una conversazione, più porte
+>
+> Questa sezione dice «la porta è la Chat». Al 9 novembre HIRIS raggiunge le persone anche da
+> solo: la push di un'integrazione ferma, le promesse che scadono, e (sprint «L'agente», D3) le
+> proposte `medio` e `alto` del Brain, col numero da dire in chat. La voce via Assist è decisa
+> dal 16/09/2026 (BACKLOG, «HIRIS come assistente VOCALE di Home Assistant»). Ognuna di queste
+> aveva deciso **quando parlare** per conto suo, nel codice. La regola, da oggi:
+>
+> **Una conversazione, più porte.** Si chiede dalla chat, e a voce quando ci sarà un satellite.
+> HIRIS **parla per primo** solo quando serve una decisione di una persona o qualcosa si è rotto:
+> una proposta `medio` o `alto`, un'integrazione ferma, una promessa che scade. Il resto aspetta
+> nella sua pagina. Ciò che arriva per avviso si risponde nella stessa conversazione.
+>
+> Deciso dal proprietario il 9 novembre 2026 (proposta del 09/11, D1).
+
 ---
 
 ## 4. Gli oggetti che HIRIS costruisce
